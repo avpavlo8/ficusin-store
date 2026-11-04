@@ -20,8 +20,11 @@ export default function AdminChat() {
       ? { id, name: "Покупатель", status: "open", preview: "", unread: 0, updatedAt: "" }
       : null;
   });
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("open");
+  // Из заказа приходят с ?q=имя покупателя: сразу ищем его диалог во всех.
+  const [query, setQuery] = useState(() => new URLSearchParams(location.search).get("q") || "");
+  const [status, setStatus] = useState(() =>
+    new URLSearchParams(location.search).get("q") ? "" : "open",
+  );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(false);

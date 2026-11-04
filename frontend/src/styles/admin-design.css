@@ -28,8 +28,12 @@
   --ws-green: #11804f;
   --ws-green-dark: #0b6a40;
   --ws-green-soft: #e6f4ec;
-  --ws-rust: #8a5100;
-  --ws-rust-soft: #fff3dc;
+  --ws-rust: #a23d04;
+  --ws-rust-soft: #f7ece6;
+  /* Терракота кнопки «В корзину» на витрине — для важного и «Отменить». */
+  --ws-terracotta: #af4305;
+  --ws-terracotta-dark: #963904;
+  --ws-terracotta-soft: rgba(175, 67, 5, 0.1);
   --ws-blue-soft: #e8effa;
   --ws-blue: #1d4ed8;
   --ws-warn-soft: #fff3dc;
@@ -954,28 +958,6 @@
   font-size: 17px;
 }
 
-.admin-page .order-status-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ws-text);
-  font-weight: 550;
-}
-.admin-page .order-status-control select {
-  min-width: 180px;
-}
-.admin-page .order-payment-state {
-  color: #965f16;
-  font-weight: 600;
-}
-.admin-page .order-payment-state[data-paid="true"] {
-  color: #1b5f41;
-}
-
-.admin-page .order-customer-comment {
-  white-space: pre-line;
-}
-
 @media (max-width: 760px) {
   /* Таблица заказов на телефоне — список карточек: горизонтальная
      прокрутка таблицы пальцем неудобна и прячет сумму и статус. */
@@ -1020,12 +1002,6 @@
   .admin-page .orders-list-page .admin-table td:nth-child(2) small,
   .admin-page .orders-list-page .admin-table td:nth-child(3) small:not(.admin-flag) {
     display: none;
-  }
-  .admin-page .order-status-control {
-    width: 100%;
-  }
-  .admin-page .order-status-control select {
-    flex: 1;
   }
 }
 
@@ -1480,12 +1456,6 @@
   color: var(--ws-warn);
 }
 .admin-page .ws-main .admin-flag,
-.admin-page .order-payment-state {
-  color: var(--ws-warn);
-}
-.admin-page .order-payment-state[data-paid="true"] {
-  color: var(--ws-green-dark);
-}
 .admin-page .admin-message.error {
   border-color: #f2d8a7;
   background: var(--ws-warn-soft);
@@ -1544,33 +1514,6 @@
   margin: 6px 0 0;
   color: var(--ws-muted);
 }
-.admin-page .order-path {
-  margin: 18px 0 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
-  list-style: none;
-  color: var(--ws-muted);
-  font-size: 13px;
-}
-.admin-page .order-path li {
-  display: grid;
-  gap: 6px;
-}
-.admin-page .order-path li span {
-  height: 4px;
-  border-radius: 4px;
-  background: #e4e6ea;
-}
-.admin-page .order-path li[data-state="done"] span,
-.admin-page .order-path li[data-state="current"] span {
-  background: var(--ws-green);
-}
-.admin-page .order-path li[data-state="current"] {
-  color: var(--ws-ink);
-  font-weight: 600;
-}
 .admin-page .order-page-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -1583,41 +1526,26 @@
   min-width: 0;
 }
 .admin-page .order-now {
-  padding: 18px 20px;
+  padding: 12px 16px;
   border-radius: var(--ws-radius);
-  background: var(--ws-soft);
+  background: var(--ws-rust-soft);
+  color: var(--ws-rust);
 }
 .admin-page .order-now.is-muted {
+  background: var(--ws-soft);
   color: var(--ws-muted);
 }
-.admin-page .order-now-label {
-  color: var(--ws-green);
-  font-size: 13px;
-  font-weight: 600;
-}
 .admin-page .ws-main .order-now h2 {
-  margin: 4px 0 6px;
-  font-size: 20px;
-}
-.admin-page .order-now p {
-  margin: 0 0 14px;
-  color: var(--ws-text);
-}
-.admin-page .order-now-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.admin-page .ws-main .order-now-actions .ws-button:not(.primary) {
-  background: #fff;
+  margin: 0;
+  font-size: 16px;
 }
 .admin-page .order-now-more {
-  margin: 14px 0 0;
-  padding: 12px 0 0;
+  margin: 0;
+  padding: 0;
   display: grid;
   gap: 4px;
-  border-top: 1px solid #e4e6ea;
   list-style: none;
+  font-weight: 600;
 }
 .admin-page .order-now-more li {
   display: flex;
@@ -1677,50 +1605,14 @@
   font-size: 13px;
 }
 .admin-page .order-item-qty {
-  width: 56px;
-  text-align: center;
-  font-weight: 600;
+  min-width: 110px;
+  text-align: right;
+  color: var(--ws-text);
+  white-space: nowrap;
 }
 .admin-page .order-item-sum {
   width: 96px;
   text-align: right;
-}
-.admin-page .order-who {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.admin-page .order-who > div {
-  padding: 14px 16px;
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  border-radius: var(--ws-radius);
-  background: var(--ws-side);
-  box-shadow: inset 0 0 0 1px var(--ws-line-soft);
-}
-.admin-page .order-who small {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: var(--ws-muted);
-  font-size: 12px;
-}
-.admin-page .order-who small .ws-link-button {
-  min-height: 24px;
-  font-size: 13px;
-}
-.admin-page .order-who strong {
-  font-size: 15px;
-}
-.admin-page .order-who a {
-  color: var(--ws-green);
-}
-.admin-page .order-who .order-customer-comment {
-  margin: 6px 0 0;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #fff;
 }
 .admin-page .order-muted {
   color: var(--ws-muted);
@@ -1758,37 +1650,159 @@
 .admin-page .order-total-card .order-total-sum span:first-child {
   color: var(--ws-ink);
 }
-.admin-page .order-total-card dl {
-  margin: 4px 0 0;
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 12px;
-}
-.admin-page .order-total-card dt {
-  color: var(--ws-muted);
-}
-.admin-page .order-total-card dd {
-  margin: 0;
-  text-align: right;
-}
 .admin-page .order-aside-actions {
   display: grid;
   justify-items: start;
-  gap: 6px;
+  gap: 2px;
 }
-.admin-page .order-aside-actions .order-status-control {
+.admin-page .order-total-payment {
+  align-items: center;
+}
+.admin-page .order-pay-pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--ws-soft);
+  color: var(--ws-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.admin-page .order-pay-pill[data-tone="ok"] {
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+}
+.admin-page .order-pay-pill[data-tone="attention"] {
+  background: var(--ws-terracotta-soft);
+  color: var(--ws-rust);
+}
+.admin-page .ws-main .order-renew-link {
   width: 100%;
-  margin-top: 6px;
-  padding-top: 12px;
+}
+.admin-page .order-renew-notice {
+  margin: 0;
+  color: var(--ws-green-dark);
+  font-size: 13px;
+}
+/* Статус — светло-зелёный выпадающий список с текущим статусом. */
+.admin-page .order-status-card {
+  padding: 16px 20px;
   display: grid;
-  gap: 6px;
-  border-top: 1px solid var(--ws-line);
+  gap: 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+}
+.admin-page .order-status-card label {
   color: var(--ws-muted);
   font-size: 13px;
 }
-.admin-page .order-aside-actions .order-status-control select {
+.admin-page .ws-main .order-status-card select {
   width: 100%;
-  min-width: 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background-color: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+  font-weight: 600;
+}
+.admin-page .order-status-card small {
+  color: var(--ws-muted);
+}
+/* Под составом: «Отменить» слева, «Изменить» и «Подтвердить» справа. */
+.admin-page .order-actions {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.admin-page .order-actions-gap {
+  flex: 1;
+}
+.admin-page .ws-main .order-actions .order-cancel {
+  background: var(--ws-terracotta);
+  color: #fff;
+}
+.admin-page .ws-main .order-actions .order-cancel:hover:not(:disabled) {
+  background: var(--ws-terracotta-dark);
+}
+/* Контакты: каждое значение копируется по нажатию. */
+.admin-page .order-contacts {
+  padding: 18px 20px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+}
+.admin-page .order-contacts-label {
+  margin-top: 8px;
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .order-contacts-label:first-child {
+  margin-top: 0;
+}
+.admin-page .order-copy {
+  margin: 0 -8px;
+  padding: 6px 8px;
+  min-height: 36px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ws-ink);
+  font: inherit;
+  text-align: left;
+  cursor: copy;
+  overflow-wrap: anywhere;
+}
+.admin-page .order-copy:hover,
+.admin-page .order-copy:focus-visible {
+  background: var(--ws-soft);
+}
+.admin-page .order-copy-mark {
+  flex: none;
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .order-contacts-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+.admin-page .order-contacts-actions .ws-button {
+  flex: 1;
+}
+/* Позвонить — только на телефоне: с компьютера звонок не набрать. */
+@media (hover: hover) and (pointer: fine) {
+  .admin-page .order-contacts-actions .order-call {
+    display: none;
+  }
+}
+.admin-page .order-edit-switch {
+  margin: 0 0 16px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  width: fit-content;
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-soft);
+}
+.admin-page .order-edit-switch button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ws-text);
+  font: inherit;
+  font-weight: 600;
+}
+.admin-page .order-edit-switch button[aria-current="page"] {
+  background: #fff;
+  color: var(--ws-ink);
+  box-shadow: var(--ws-shadow);
 }
 /* Режим правки блока — та же страница, без правой колонки. */
 .admin-page .admin-order-editor[data-view] {
@@ -1804,17 +1818,27 @@
   }
 }
 @media (max-width: 760px) {
-  .admin-page .order-path {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .admin-page .order-pick-list li {
+    flex-wrap: wrap;
   }
-  .admin-page .order-who {
-    grid-template-columns: 1fr;
+  .admin-page .order-item-name {
+    flex-basis: calc(100% - 62px);
+  }
+  .admin-page .order-item-qty {
+    margin-left: 62px;
+    flex: 1;
+    text-align: left;
+    color: var(--ws-muted);
+    font-weight: 500;
+  }
+  .admin-page .order-actions .ws-button {
+    flex: 1 1 100%;
+  }
+  .admin-page .order-actions-gap {
+    display: none;
   }
   .admin-page .ws-main .order-page-title h2 {
     font-size: 22px;
-  }
-  .admin-page .order-item-qty {
-    width: auto;
   }
   .admin-page .order-item-sum {
     width: auto;
@@ -1836,11 +1860,6 @@
 }
 .admin-page .ws-main :is(.orders-number-link, .catalog-product-name):hover {
   color: var(--ws-green);
-}
-.admin-page .order-aside-actions .order-status-control:first-child {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
 }
 @media (max-width: 760px) {
   .admin-page .ws-topbar .ws-mark small {
@@ -2197,4 +2216,10 @@
 .admin-page .product-editor-dialog .product-editor-cover,
 .admin-page .product-editor-dialog .product-editor-cover * {
   border-color: var(--ws-line) !important;
+}
+.admin-page .order-now-more small {
+  display: block;
+  margin-top: 2px;
+  color: var(--ws-text);
+  font-weight: 400;
 }

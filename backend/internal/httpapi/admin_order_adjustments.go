@@ -313,6 +313,51 @@ func (handlers adminHandlers) createOrderPaymentLink(response http.ResponseWrite
 	writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance})
 }
 
+// renewOrderPaymentLink гасит прежнюю ссылку на оплату и выдаёт новую на
+// текущую сумму заказа, затем сообщает покупателю письмом и пушем.
+// Прежняя попытка закрывается локально (SupersedePending): ЮKassa не даёт
+// отменить открытую страницу оплаты, но платежи двухстадийные, и поздняя
+// оплата по старой ссылке будет отменена воркером, деньги не спишутся.
+func (handlers adminHandlers) renewOrderPaymentLink(response http.ResponseWriter, request *http.Request) {
+	_, _, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
+	if !ok {
+		return
+	}
+	id, ok := pathID(response, request)
+	if !ok {
+		return
+	}
+	payments, able := handlers.payments.(adminOrderPaymentService)
+	if !able {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Оплата картой не настроена"})
+		return
+	}
+	notifier, able := handlers.repository.(paymentLinkNotifier)
+	if !able {
+		handlers.failed(response, "payment link notifier unavailable", errors.New("payment link notifier unavailable"))
+		return
+	}
+	if err := payments.SupersedePending(request.Context(), id); err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	url, balance, err := payments.StartOutstandingForOrderID(request.Context(), id)
+	if err != nil {
+		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
+		return
+	}
+	notice, err := notifier.NotifyNewPaymentLink(request.Context(), id, url)
+	if err != nil {
+		handlers.logger.Error("payment link notice failed", "error", err, "order_id", id)
+		notice = admin.PaymentLinkNotice{Email: "failed", Push: "failed"}
+	}
+	writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance, "notice": notice})
+}
+
+type paymentLinkNotifier interface {
+	NotifyNewPaymentLink(context.Context, int64, string) (admin.PaymentLinkNotice, error)
+}
+
 func (handlers adminHandlers) createShipmentOffer(response http.ResponseWriter, request *http.Request) {
 	_, actor, ok := handlers.authorize(response, request, admin.PermissionOrdersEdit)
 	if !ok {

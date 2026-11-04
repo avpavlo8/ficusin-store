@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AdminOrderEditor, type OrderReviewState, type OrderView } from "./AdminOrderEditor";
-import { orderStatuses, paymentLabels, statusLabels } from "./adminShared";
+import { orderStatuses, statusLabels } from "./adminShared";
 import type { Order } from "./adminTypes";
 import "./styles/admin-order-workspace.css";
 
@@ -12,6 +12,12 @@ type Props = {
   onStatusChange: (order: Order, status: string) => Promise<void>;
   registerBeforeLeave?: (guard: () => Promise<boolean>) => () => void;
 };
+
+const urgentReasons = [
+  "Проверить отправление СДЭК",
+  "СДЭК ожидает повторной попытки",
+  "Уточнить результат оплаты",
+];
 
 const dateFormat = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
@@ -121,24 +127,10 @@ export function AdminOrderWorkspace({
       });
     // Сначала то, что остановилось с ошибкой (СДЭК, оплата): это срочнее
     // обычных шагов вроде расчёта доставки.
-    const urgent = [
-      "Проверить отправление СДЭК",
-      "СДЭК ожидает повторной попытки",
-      "Уточнить результат оплаты",
-    ];
     return result.sort(
-      (a, b) => Number(urgent.includes(b.title)) - Number(urgent.includes(a.title)),
+      (a, b) => Number(urgentReasons.includes(b.title)) - Number(urgentReasons.includes(a.title)),
     );
   }, [order, review, closed]);
-  const paymentLabel =
-    order.status === "cancelled" &&
-    ["pending", "manager_confirmation", "payment_provider_pending", "on_delivery"].includes(
-      order.paymentStatus,
-    )
-      ? "Оплата не требуется"
-      : order.paymentStatus === "partially_paid"
-        ? "Частично оплачен"
-        : paymentLabels[order.paymentStatus] || order.paymentStatus;
 
   const changeStatus = async (status: string) => {
     setChangingStatus(true);
@@ -149,64 +141,67 @@ export function AdminOrderWorkspace({
     }
   };
 
-  // Путь заказа: где он сейчас и что впереди. Отменённый заказ путь не
-  // показывает — вместо него одна понятная плашка.
-  const path = ["new", "confirmed", "assembling", "ready", "shipped", "completed"];
-  const step = path.indexOf(order.status);
+  // Следующий шаг заказа — главная зелёная кнопка под составом.
   const next = nextStep(order);
 
+  // Что требует внимания (СДЭК, оплата, коробки) — короткими строками над
+  // составом. Без длинных подсказок: заголовок и кнопка «Сделать».
   const nowBlock =
     order.status === "cancelled" ? (
       <section className="order-now is-muted" aria-label="Что нужно сделать">
         <h2>Заказ отменён</h2>
-        <p>Ничего делать не нужно. Состав и оплата сохранены для истории.</p>
       </section>
     ) : reasons.length > 0 ? (
       <section className="order-now" aria-label="Что нужно сделать">
-        <span className="order-now-label">Что сделать сейчас</span>
-        <h2>{reasons[0].title}</h2>
-        <p>{reasons[0].text}</p>
-        <div className="order-now-actions">
-          {reasons[0].view && (
-            <button
-              type="button"
-              className="ws-button primary"
-              onClick={() => setView(reasons[0].view!)}
-            >
-              Сделать
-            </button>
-          )}
-          {order.phone && (
-            <a className="ws-button" href={`tel:${order.phone}`}>
-              Позвонить покупателю
-            </a>
-          )}
-        </div>
-        {reasons.length > 1 && (
-          <ul className="order-now-more">
-            {reasons.slice(1).map((reason) => (
-              <li key={reason.title}>
-                <span>{reason.title}</span>
-                {reason.view && (
-                  <button
-                    type="button"
-                    className="ws-link-button"
-                    onClick={() => setView(reason.view!)}
-                  >
-                    Сделать
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        <ul className="order-now-more">
+          {reasons.map((reason) => (
+            <li key={reason.title}>
+              <span>
+                {reason.title}
+                {/* Ошибку СДЭК или ЮKassa показываем словами сервера: без неё не понять, что делать. */}
+                {urgentReasons.includes(reason.title) && <small>{reason.text}</small>}
+              </span>
+              {reason.view && (
+                <button
+                  type="button"
+                  className="ws-link-button"
+                  onClick={() => setView(reason.view!)}
+                >
+                  Сделать
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       </section>
-    ) : next ? (
-      <section className="order-now" aria-label="Что нужно сделать">
-        <span className="order-now-label">Что сделать сейчас</span>
-        <h2>{next.title}</h2>
-        <p>{next.text}</p>
-        <div className="order-now-actions">
+    ) : null;
+
+  const canCancel = !["cancelled", "completed", "shipped"].includes(order.status);
+  const cancelOrder = () => {
+    if (!window.confirm(`Отменить заказ ${order.orderNumber}? Покупатель получит уведомление.`))
+      return;
+    void changeStatus("cancelled");
+  };
+  const renderActions = (editTarget: OrderView | null) =>
+    closed ? null : (
+      <div className="order-actions">
+        {canCancel && (
+          <button
+            type="button"
+            className="ws-button order-cancel"
+            disabled={changingStatus || dirty}
+            onClick={cancelOrder}
+          >
+            Отменить заказ
+          </button>
+        )}
+        <span className="order-actions-gap" />
+        {editTarget && (
+          <button type="button" className="ws-button" onClick={() => setView(editTarget)}>
+            Изменить заказ
+          </button>
+        )}
+        {next && (
           <button
             type="button"
             className="ws-button primary"
@@ -215,19 +210,15 @@ export function AdminOrderWorkspace({
           >
             {changingStatus ? "Сохраняем…" : next.action}
           </button>
-          {order.phone && (
-            <a className="ws-button" href={`tel:${order.phone}`}>
-              Позвонить покупателю
-            </a>
-          )}
-        </div>
-      </section>
-    ) : null;
+        )}
+      </div>
+    );
 
   const statusControl = (
-    <label className="order-status-control">
-      Статус вручную
+    <section className="order-status-card">
+      <label htmlFor={`order-status-${order.id}`}>Статус заказа</label>
       <select
+        id={`order-status-${order.id}`}
         aria-label={`Статус заказа ${order.orderNumber}`}
         value={order.status}
         disabled={closed || changingStatus || dirty}
@@ -239,7 +230,8 @@ export function AdminOrderWorkspace({
           </option>
         ))}
       </select>
-    </label>
+      {changingStatus && <small role="status">Обновляем статус…</small>}
+    </section>
   );
 
   return (
@@ -255,26 +247,7 @@ export function AdminOrderWorkspace({
         </div>
         <p>
           <time dateTime={order.createdAt}>{dateFormat.format(new Date(order.createdAt))}</time>
-          {" · "}
-          <span className="order-payment-state" data-paid={order.paymentStatus === "paid"}>
-            {paymentLabel}
-          </span>
         </p>
-        {order.status !== "cancelled" && view === "summary" && (
-          <ol className="order-path" aria-label="Путь заказа">
-            {path.map((status, index) => (
-              <li
-                key={status}
-                data-state={index < step ? "done" : index === step ? "current" : "next"}
-                aria-current={index === step ? "step" : undefined}
-              >
-                <span aria-hidden="true" />
-                {statusLabels[status]}
-              </li>
-            ))}
-          </ol>
-        )}
-        {changingStatus && <p role="status">Обновляем статус…</p>}
       </header>
       <AdminOrderEditor
         canRefund={canRefund}
@@ -289,6 +262,7 @@ export function AdminOrderWorkspace({
         onViewChange={setView}
         nowBlock={nowBlock}
         statusControl={statusControl}
+        renderActions={renderActions}
       />
     </div>
   );

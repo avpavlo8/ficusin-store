@@ -17,6 +17,7 @@ var orderStatusWording = map[string]string{
 	// delivery they were told a person would price has now been priced.
 	"delivery_priced": "Доставка по заказу %s рассчитана — можно оплатить",
 	"shipment_offer":  "Товар по заказу %s поступил — предложение отправки готово",
+	"payment_link":    "Новая ссылка на оплату заказа %s — прежняя больше не действует",
 }
 
 func (service *Service) NotifyOrderStatus(

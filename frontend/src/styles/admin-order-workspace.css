@@ -24,20 +24,6 @@
   font-weight: 650;
 }
 
-.order-customer-comment {
-  white-space: pre-wrap;
-}
-.order-payment-state {
-  width: fit-content;
-  padding: 4px 0;
-  color: #7d4f12;
-  font-size: 12px;
-  font-weight: 600;
-}
-.order-payment-state[data-paid="true"] {
-  color: #1f6b4a;
-}
-
 #order-composition {
   scroll-margin-top: 20px;
 }

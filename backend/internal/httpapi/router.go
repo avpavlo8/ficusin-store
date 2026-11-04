@@ -251,6 +251,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/refunds/{refundID}/resolve", adminAPI.resolveRefund)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/settlement-receipt", adminAPI.settlePaymentReceipt)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link", adminAPI.createOrderPaymentLink)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link/renew", adminAPI.renewOrderPaymentLink)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/recover", adminAPI.recoverUnknownPayment)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/resolve", adminAPI.resolveUnknownPayment)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/dismiss", adminAPI.dismissUnknownPayment)

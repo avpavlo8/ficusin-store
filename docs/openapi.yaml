@@ -1946,6 +1946,53 @@ paths:
           required: true
           schema:
             type: string
+  /admin/orders/{id}/payment-link/renew:
+    post:
+      operationId: post_admin_orders_id_payment_link_renew
+      responses:
+        "200":
+          description: Previous link retired, new link created and sent to the buyer
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - confirmationUrl
+                properties:
+                  confirmationUrl:
+                    type: string
+                  payment:
+                    $ref: "#/components/schemas/payment.Balance"
+                  notice:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                      push:
+                        type: string
+        "401":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ValidationError"
+      x-source: backend/internal/httpapi/admin_order_adjustments.go#renewOrderPaymentLink
+      tags:
+        - Administration
+      security:
+        - Session: []
+      x-permissions:
+        - orders.edit
+      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+        the operation: orders.edit."
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
   /admin/orders/{id}/payments/{paymentID}/dismiss:
     post:
       operationId: post_admin_orders_id_payments_paymentID_dismiss

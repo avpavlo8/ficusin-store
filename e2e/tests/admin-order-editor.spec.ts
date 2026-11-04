@@ -186,6 +186,11 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
           payment: { total: 2970, paid: 0, refunded: 0, netPaid: 0, due: 2970, overpaid: 0, ready: true, paymentStatus: "pending" },
         });
       }
+      if (path === "/api/v1/admin/orders/30/payment-link/renew" && init?.method === "POST") {
+        const w = window as typeof window & { __renewCalls?: number };
+        w.__renewCalls = (w.__renewCalls || 0) + 1;
+        return json({ confirmationUrl: "https://pay.example.test/new", notice: { email: "queued", push: "sent" } });
+      }
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
@@ -213,7 +218,7 @@ test("@desktop скидка в рублях и процентах сохраня
  await expect(editor.getByText("Оплата и возвраты",{exact:true})).toHaveCount(0);
  // Просмотр без полей ввода; правка состава — отдельным режимом.
  await expect(editor.getByRole("textbox")).toHaveCount(0);
- await page.getByRole("region",{name:"Что собрать"}).getByRole("button",{name:"Изменить состав",exact:true}).click();
+ await page.getByRole("button",{name:"Изменить заказ",exact:true}).click();
  await editor.getByRole("combobox",{name:"Добавить товар в заказ"}).fill("1003");
  await editor.getByRole("option",{name:/Аглаонема/}).click();
  await editor.getByRole("button",{name:"Добавить",exact:true}).click();
@@ -404,10 +409,11 @@ test("@desktop число коробок ограничено числом по�
  await expect(packing.getByRole("button",{name:"Добавить коробку",exact:true})).toBeVisible();
  // Состав меняется в своём режиме: вернулись к заказу и открыли «Состав».
  await page.getByRole("button",{name:"К заказу",exact:true}).click();
- await page.getByRole("region",{name:"Что собрать"}).getByRole("button",{name:"Изменить состав",exact:true}).click();
+ await page.getByRole("button",{name:"Изменить заказ",exact:true}).click();
  await page.getByRole("button",{name:"Удалить",exact:true}).last().click();
  await page.getByRole("button",{name:"Сохранить изменения",exact:true}).click();
- await page.getByRole("region",{name:"Кому и куда"}).getByRole("button",{name:"Коробки и доставка",exact:true}).click();
+ await page.getByRole("button",{name:"Изменить заказ",exact:true}).click();
+ await page.getByRole("navigation",{name:"Что изменить"}).getByRole("button",{name:"Коробки и доставка",exact:true}).click();
  await expect(packing.getByRole("button",{name:"Добавить коробку",exact:true})).toHaveCount(0);
 });
 
@@ -668,4 +674,29 @@ test("@desktop @phone числовые поля без стрелок сохра
   await discount.fill("12,5");
   await page.getByRole("button", { name: "Сохранить изменения", exact: true }).click();
   expect(await state.savedEdit()).toMatchObject({ items: [{ sku: "1001", quantity: 2 }, { sku: "1002", quantity: 1 }], discount: { type: "fixed", value: 12.5 } });
+});
+
+test("@desktop страница заказа: состав, кнопки под ним, новая ссылка на оплату и копирование контактов", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await mockOrderEditor(page);
+  await page.goto("/admin?section=orders&order=30");
+  const items = page.getByRole("region", { name: "Состав заказа" });
+  await expect(items).toContainText("Азалия D9");
+  await expect(items.getByRole("button", { name: "Отменить заказ", exact: true })).toBeVisible();
+  await expect(items.getByRole("button", { name: "Изменить заказ", exact: true })).toBeVisible();
+  await expect(items.getByRole("button", { name: "Подтвердить заказ", exact: true })).toBeVisible();
+
+  const aside = page.getByRole("complementary", { name: "Итог заказа" });
+  await expect(aside.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveValue("new");
+  await expect(aside).toContainText("Не оплачен");
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await aside.getByRole("button", { name: "Создать новую ссылку на оплату", exact: true }).click();
+  await expect(aside.getByRole("status")).toContainText("прежняя больше не действует");
+  await expect(aside.getByRole("status")).toContainText("Письмо со ссылкой отправлено");
+  expect(await page.evaluate(() => (window as typeof window & { __renewCalls?: number }).__renewCalls)).toBe(1);
+
+  await aside.getByRole("button", { name: "Скопировать телефон: +79156230887", exact: true }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("+79156230887");
+  await expect(aside.getByRole("link", { name: "Написать в чат", exact: true })).toHaveAttribute("href", /section=chat/);
 });
