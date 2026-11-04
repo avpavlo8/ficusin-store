@@ -674,7 +674,37 @@ export function Products({
   return (
     <div className="catalog-workspace">
       <div className="catalog-page-heading">
-        <PageHeading title="Товары" />
+        {/* Связи с каналами нужны редко и в основном владельцу, поэтому они
+          спрятаны за одну вкладку: по умолчанию сотрудник видит только
+          «Карточки» и «Отзывы», а не шесть равноправных вкладок. */}
+        <nav className="admin-product-link-tabs" aria-label="Что показать">
+          {(
+            [
+              { id: "catalog", label: "Карточки" },
+              { id: "reviews", label: "Отзывы" },
+              { id: "saby", label: "Связи с каналами" },
+            ] as const
+          ).map((x) => {
+            const active =
+              x.id === "saby" ? ["saby", "wb", "ozon", "avito"].includes(view) : view === x.id;
+            return (
+              <button
+                type="button"
+                key={x.id}
+                aria-current={active ? "page" : undefined}
+                className={active ? "active" : ""}
+                onClick={() => {
+                  if (active) return;
+                  setView(x.id);
+                  setSelected([]);
+                  setConfirmation(null);
+                }}
+              >
+                {x.label}
+              </button>
+            );
+          })}
+        </nav>
         {can("products.manage") && (
           <div>
             <button type="button" className="admin-action" onClick={() => setImporting(true)}>
@@ -686,37 +716,6 @@ export function Products({
           </div>
         )}
       </div>
-      {/* Связи с каналами нужны редко и в основном владельцу, поэтому они
-          спрятаны за одну вкладку: по умолчанию сотрудник видит только
-          «Товары» и «Отзывы», а не шесть равноправных вкладок. */}
-      <nav className="admin-product-link-tabs" aria-label="Что показать">
-        {(
-          [
-            { id: "catalog", label: "Товары" },
-            { id: "reviews", label: "Отзывы" },
-            { id: "saby", label: "Связи с каналами" },
-          ] as const
-        ).map((x) => {
-          const active =
-            x.id === "saby" ? ["saby", "wb", "ozon", "avito"].includes(view) : view === x.id;
-          return (
-            <button
-              type="button"
-              key={x.id}
-              aria-current={active ? "page" : undefined}
-              className={active ? "active" : ""}
-              onClick={() => {
-                if (active) return;
-                setView(x.id);
-                setSelected([]);
-                setConfirmation(null);
-              }}
-            >
-              {x.label}
-            </button>
-          );
-        })}
-      </nav>
       {["saby", "wb", "ozon", "avito"].includes(view) && (
         <nav className="catalog-channel-switch" aria-label="Канал">
           {(
