@@ -154,6 +154,10 @@ func TestProductCreationAtomicAndIdempotentOnLiveDatabase(t *testing.T) {
 	if len(results[0].Results) != 3 {
 		t.Fatalf("missing test channel cards %+v", results[0].Results)
 	}
+	if _, err := repo.DeleteDraftProducts(ctx, actor, []int64{product.ID}); err == nil {
+		t.Fatal("created external-channel history must require archival instead of draft deletion")
+	}
+
 	media, err := repo.ListProductMedia(ctx, product.ID)
 	if err != nil || len(media) != 1 || media[0].URL != "/api/v1/product-creation-photos/"+input.Photos[0] {
 		t.Fatalf("photo %v %v", media, err)
