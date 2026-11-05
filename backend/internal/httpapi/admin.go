@@ -740,7 +740,6 @@ func permissionsFor(role string) []string {
 		admin.PermissionProcurementEdit, admin.PermissionIntegrationsEdit,
 		admin.PermissionAnalyticsRead, admin.PermissionProductsManage, admin.PermissionDelete,
 		admin.PermissionReturnsRead, admin.PermissionReturnsEdit, admin.PermissionReturnsReceipt, admin.PermissionReturnsDelete,
-		admin.PermissionFinanceRead, admin.PermissionFinanceEdit,
 	}
 	result := make([]string, 0, len(all))
 	for _, permission := range all {

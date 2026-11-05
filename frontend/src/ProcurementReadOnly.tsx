@@ -48,11 +48,7 @@ export default function ProcurementReadOnly({ onError }: { onError: (message: st
   return (
     <>
       <div className="procurement-page-heading">
-        <PageHeading
-          eyebrow="Поставки"
-          title="Закупки"
-          text="Состав заказов поставщикам и состояние поступления"
-        />
+        <PageHeading title="Закупки" text="Состав заказов поставщикам и состояние поступления" />
         <button onClick={() => void load()}>Обновить</button>
       </div>
       <p className="procurement-note">

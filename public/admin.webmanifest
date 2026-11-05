@@ -1,0 +1,51 @@
+{
+  "id": "/admin",
+  "name": "Фикусин — управление",
+  "short_name": "Управление",
+  "description": "Заказы, закупки и каталог Фикусина. Приложение для сотрудников.",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#f8f5ee",
+  "theme_color": "#244734",
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/assets/brand/admin-v1/app-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/brand/admin-v1/app-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/brand/admin-v1/app-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Заказы",
+      "url": "/admin?section=orders"
+    },
+    {
+      "name": "Закупки",
+      "url": "/admin?section=procurement"
+    },
+    {
+      "name": "Каталог",
+      "url": "/admin?section=products"
+    }
+  ]
+}

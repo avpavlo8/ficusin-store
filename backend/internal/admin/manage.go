@@ -602,6 +602,7 @@ func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, a
 	if err = tx.QueryRow(ctx, `
 		SELECT COUNT(*) FROM products p
 		WHERE p.id = ANY($1::bigint[]) AND p.status = 'draft'
+		AND NOT EXISTS(SELECT 1 FROM product_variants v JOIN catalog_saby_exports e ON e.variant_id=v.id WHERE v.product_id=p.id AND (e.state IN ('queued','checking','verifying','unknown') OR e.attempted_at IS NOT NULL OR e.remote_id<>''))
 		AND NOT EXISTS (
 			SELECT 1 FROM product_variants pv
 			JOIN order_items oi ON oi.variant_id = pv.id
@@ -611,7 +612,7 @@ func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, a
 		return 0, fmt.Errorf("validate draft products: %w", err)
 	}
 	if safeCount != len(ids) {
-		return 0, fmt.Errorf("%w: удалять можно только непроданные черновики", ErrInvalidInput)
+		return 0, fmt.Errorf("%w: удалять можно только непроданные черновики без отправки в СБИС; остальные можно архивировать", ErrInvalidInput)
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM products WHERE id = ANY($1::bigint[])`, ids)
 	if err != nil {

@@ -21,13 +21,23 @@ async function setup(page: Page) {
   await page.route("**/api/v1/admin/analytics?days=*", route => route.fulfill({ json: analytics }));
 }
 
+// Приветствие зависит от времени суток.
+const greeting = /^(Доброе утро|Добрый день|Добрый вечер|Доброй ночи), /;
+
 test("@desktop @phone workspace preserves real navigation and filters recent orders", async ({ page }) => {
   await setup(page);
   await page.goto("/admin");
-  await expect(page.getByRole("heading", { name: "Всё растёт." })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("button")).toHaveCount(10);
-  await expect(page.getByRole("button", { name: "Маркетплейсы", exact: true })).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Склад", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: greeting })).toBeVisible();
+  // На телефоне все разделы — в листе «Ещё», на компьютере — в боковом меню.
+  const phone = (page.viewportSize()?.width ?? 1280) <= 760;
+  if (phone) await page.getByRole("button", { name: "Ещё", exact: true }).click();
+  const menu = page.getByRole("navigation", { name: phone ? "Все разделы управления" : "Разделы управления" });
+  // Девять разделов: «Финансы» удалены владельцем.
+  await expect(menu.getByRole("link")).toHaveCount(9);
+  await expect(menu.getByRole("link", { name: "Маркетплейсы", exact: true })).toHaveCount(1);
+  await expect(menu.getByRole("link", { name: "Склад", exact: true })).toHaveCount(0);
+  await expect(menu.getByRole("link", { name: "Финансы", exact: true })).toHaveCount(0);
+  if (phone) await page.getByRole("button", { name: "Закрыть", exact: true }).click();
   await page.getByRole("button", { name: "В работе", exact: true }).click();
   await expect(page.getByText("TEST-NEW", { exact: true })).toBeVisible();
   await expect(page.getByText("TEST-CANCELLED", { exact: true })).toHaveCount(0);
@@ -111,7 +121,7 @@ test("@desktop search opens permitted sections by keyboard", async ({ page }) =>
   await page.getByRole("searchbox", { name: "Найти раздел" }).fill("Клиенты");
   await page.getByRole("searchbox", { name: "Найти раздел" }).press("Enter");
   await expect(page.getByRole("heading", { name: "Клиенты", exact: true })).toBeVisible();
-  await expect(page.getByRole("navigation").getByRole("button", { name: "Клиенты", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("link", { name: "Клиенты", exact: true })).toHaveAttribute("aria-current", "page");
 });
 
 test("@desktop restricted role has no inaccessible shortcuts or analytics requests", async ({ page }) => {
@@ -120,11 +130,33 @@ test("@desktop restricted role has no inaccessible shortcuts or analytics reques
   let analyticsRequests = 0;
   page.on("request", request => { if (request.url().includes("/admin/analytics")) analyticsRequests++; });
   await page.goto("/admin");
-  await expect(page.getByRole("heading", { name: "Всё растёт." })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("button")).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "Настройки", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: greeting })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("link", { name: "Настройки", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Открыть заказы" })).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Найти раздел" }).fill("Настройки");
   await expect(page.getByText("Раздел не найден")).toBeVisible();
   expect(analyticsRequests).toBe(0);
 });
+
+for (const width of [390, 768, 1024, 1280]) {
+  test(`@desktop переписка читаема на ${width} px`, async ({page}) => {
+    await page.setViewportSize({width,height:1024});
+    await setup(page);
+    await page.route("**/api/v1/admin/dashboard",route=>route.fulfill({json:{...dashboard,permissions:[...dashboard.permissions,"chat.manage"]}}));
+    await page.route("**/api/v1/admin/chat?*",route=>route.fulfill({json:{items:[{id:1,name:"Александр",status:"open",preview:"Нужна помощь",unread:0,updatedAt:"2026-11-04T19:00:00Z",order:{id:1,number:"0002-1",status:"new"}}],hasMore:false}}));
+    await page.route("**/api/v1/admin/chat/1**",route=>route.fulfill({json:{id:1,status:"open",customerReadId:0,staffReadId:0,hasMore:false,consentRequired:false,messages:[]}}));
+    await page.goto("/admin?section=chat");
+    await page.getByRole("button",{name:/Александр.*Нужна помощь/}).click();
+    const heading=page.getByRole("heading",{name:"Александр",exact:true});
+    await expect(heading).toBeVisible();
+    expect((await heading.boundingBox())!.height).toBeLessThan(45);
+    const input=await page.getByRole("textbox",{name:"Сообщение",exact:true}).boundingBox();
+    expect(input!.width).toBeGreaterThan(180);
+    expect(input!.x+input!.width).toBeLessThanOrEqual(width);
+    if(width<=1200){
+      await page.getByRole("button",{name:"К перепискам",exact:true}).click();
+      await expect(page.getByRole("searchbox",{name:"Найти переписку",exact:true})).toBeVisible();
+    }
+  });
+}

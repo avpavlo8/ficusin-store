@@ -10,7 +10,7 @@
   white-space: normal;
   text-align: left;
   padding: 10px;
-  color: #59665d;
+  color: #585d67;
   line-height: 1.5;
 }
 .admin-dialog table.procurement-unified-prices th,
@@ -41,7 +41,7 @@
   .admin-dialog table.procurement-unified-prices tr {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    border-bottom: 1px solid #d9dfd6;
+    border-bottom: 1px solid #d9dadc;
   }
   .admin-dialog table.procurement-unified-prices td {
     display: block;
@@ -70,7 +70,7 @@
     content: attr(data-label);
     display: block;
     margin-bottom: 5px;
-    color: #59665d;
+    color: #585d67;
     font-size: 12px;
     line-height: 1.4;
   }

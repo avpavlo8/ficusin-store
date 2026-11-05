@@ -49,9 +49,8 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
   return (
     <>
       <PageHeading
-        eyebrow="Интеграции"
         title="Маркетплейсы"
-        text="Карточки, продажи и очередь обновлений из локальной базы."
+        text="Что отправилось на Ozon, Wildberries и в СБИС и что требует внимания."
       />
       <div className="integration-channel-grid">
         {(["ozon", "wb", "saby"] as const).map((channel) => {
@@ -146,7 +145,14 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
                       <span className={`sync-status sync-${item.status}`}>
                         {statusName(item.status)}
                       </span>
-                      {item.lastError && <small className="sync-error">{item.lastError}</small>}
+                      {/* Текст ошибки — для разработчика: прячем под «Подробнее»,
+                          чтобы таблица читалась, а детали оставались под рукой. */}
+                      {item.lastError && (
+                        <details className="sync-error">
+                          <summary>Подробнее</summary>
+                          <small>{item.lastError}</small>
+                        </details>
+                      )}
                     </td>
                     <td>
                       <small>Попытка: {when(item.lastAttemptAt)}</small>

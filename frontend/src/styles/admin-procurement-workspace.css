@@ -20,10 +20,10 @@
   min-height: 40px;
   max-width: 100%;
   padding: 9px 14px;
-  border: 1px solid #d9d9ce;
+  border: 1px solid #d1d3d6;
   border-radius: 10px;
-  background: #fffdf8;
-  color: #355143;
+  background: #fbfbfc;
+  color: #3f4247;
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -50,8 +50,8 @@
     .procurement-receiving-dialog
   )
   button:hover:not(:disabled) {
-  background: #f0f2eb;
-  border-color: #b6c2b5;
+  background: #eeeeef;
+  border-color: #b7bac0;
 }
 .admin-page
   :is(
@@ -82,7 +82,7 @@
     .procurement-receiving-dialog
   )
   :is(button, input, select, textarea, summary, a):focus-visible {
-  outline: 2px solid #956047;
+  outline: 2px solid #7d4f12;
   outline-offset: 3px;
 }
 .admin-page
@@ -98,9 +98,9 @@
     .procurement-receiving-dialog
   )
   :is(button.primary, button.admin-primary) {
-  background: #355143 !important;
-  border-color: #355143 !important;
-  color: #fffdf8 !important;
+  background: #3f4247 !important;
+  border-color: #3f4247 !important;
+  color: #fbfbfc !important;
   box-shadow: none !important;
 }
 .admin-page
@@ -116,8 +116,8 @@
     .procurement-receiving-dialog
   )
   :is(button.primary, button.admin-primary):hover:not(:disabled) {
-  background: #254233 !important;
-  border-color: #254233 !important;
+  background: #175037 !important;
+  border-color: #175037 !important;
 }
 .admin-page
   :is(
@@ -136,7 +136,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #575b50;
+  color: #4f535c;
   font-size: 26px;
   font-weight: 400;
 }
@@ -152,10 +152,10 @@
   width: 100%;
   min-height: 42px;
   padding: 10px 12px;
-  border: 1px solid #d4d5c9;
+  border: 1px solid #ccced2;
   border-radius: 9px;
-  background: #fffef9;
-  color: #343a31;
+  background: #fcfcfc;
+  color: #323439;
   font: inherit;
   font-size: 14px;
   box-sizing: border-box;
@@ -169,7 +169,7 @@
 .admin-page .procurement-receiving-dialog form > .dialog-actions {
   margin: 0;
   padding: 16px 24px;
-  border-top: 1px solid #e4e3d9;
+  border-top: 1px solid #dddee0;
   flex: none;
 }
 .admin-page .procurement-receiving-dialog form > .procurement-receiving-body {
@@ -192,7 +192,7 @@
   padding: 0 0 12px;
   gap: 4px;
   border: 0;
-  border-bottom: 1px solid #dddcd1;
+  border-bottom: 1px solid #d5d6d9;
   border-radius: 0;
   background: transparent;
 }
@@ -202,11 +202,11 @@
   font-size: 14px;
   border: 0;
   border-radius: 9px;
-  color: #686d61;
+  color: #5f646f;
 }
 .admin-page .procurement-tabs button.active {
-  color: #294b38;
-  background: #e8ede3;
+  color: #1a5a3e;
+  background: #e7e8e9;
   box-shadow: none;
 }
 .admin-page .procurement-tabs button span {
@@ -229,7 +229,7 @@
 .admin-page .procurement-content .admin-table th {
   padding: 14px 16px;
   letter-spacing: 0.045em;
-  color: #6c7464;
+  color: #636975;
 }
 .admin-page .procurement-content .admin-table td {
   padding: 16px;
@@ -243,15 +243,15 @@
 }
 .admin-page .procurement-section-details {
   margin: 12px 0;
-  border-top: 1px solid #dddcd1;
-  border-bottom: 1px solid #dddcd1;
+  border-top: 1px solid #d5d6d9;
+  border-bottom: 1px solid #d5d6d9;
 }
 .admin-page .procurement-section-details > summary {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 16px 2px;
-  color: #485344;
+  color: #464a51;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -262,7 +262,7 @@
   margin-left: auto;
   font-size: 20px;
   font-weight: 400;
-  color: #65725e;
+  color: #606570;
 }
 .admin-page .procurement-section-details[open] > summary::after {
   content: "−";
@@ -270,7 +270,7 @@
 .admin-page .procurement-section-details > summary span {
   font-size: 12px;
   font-weight: 500;
-  color: #737a6b;
+  color: #696f7c;
 }
 .admin-page .procurement-section-details .procurement-block {
   padding-top: 8px;
@@ -280,8 +280,8 @@
 }
 .admin-page .procurement-summary-links button {
   border: 0;
-  background: #f4ece2;
-  color: #7e4a2b;
+  background: #eaebec;
+  color: #7d4f12;
 }
 .admin-page .procurement-order-dialog > header {
   padding: 16px 24px;
@@ -295,11 +295,11 @@
 .admin-page .procurement-order-summary {
   gap: 10px 24px;
   padding-bottom: 20px;
-  color: #6b7263;
+  color: #626873;
   font-size: 14px;
 }
 .admin-page .procurement-order-summary > strong {
-  color: #355143;
+  color: #3f4247;
   font-weight: 600;
 }
 .admin-page .procurement-order-summary > strong:last-child {
@@ -308,9 +308,9 @@
 }
 .admin-page .procurement-cost-details {
   margin: 0 0 20px;
-  border: 1px solid #dcded2;
+  border: 1px solid #d6d7da;
   border-radius: 12px;
-  background: #fafbf6;
+  background: #f8f8f9;
 }
 .admin-page .procurement-cost-details > summary {
   display: flex;
@@ -318,14 +318,14 @@
   align-items: center;
   gap: 8px 24px;
   padding: 14px 16px;
-  color: #46533f;
+  color: #44474e;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
 .admin-page .procurement-cost-details > summary span {
   margin-left: auto;
-  color: #737c69;
+  color: #696f7c;
   font-size: 13px;
   font-weight: 400;
 }
@@ -347,7 +347,7 @@
   margin: 0;
   font-size: 12px;
   font-weight: 500;
-  color: #606d55;
+  color: #5a5f68;
 }
 .admin-page .procurement-costs .procurement-inline-upload {
   position: relative;
@@ -356,24 +356,24 @@
   justify-content: center;
   min-height: 42px;
   padding: 10px 14px;
-  border: 1px solid #d9d9ce;
+  border: 1px solid #d1d3d6;
   border-radius: 10px;
-  background: #fffdf8;
-  color: #355143;
+  background: #fbfbfc;
+  color: #3f4247;
   cursor: pointer;
   font-size: 13px;
 }
 .admin-page .procurement-checklist {
   border: 0;
   border-radius: 10px;
-  background: #f5f6ef;
-  color: #46533f;
+  background: #f2f2f3;
+  color: #44474e;
   font-size: 14px;
 }
 .admin-page .procurement-checklist.blocked {
-  border: 1px solid #e4c5aa;
-  background: #fff6eb;
-  color: #854c29;
+  border: 1px solid #f1cd9d;
+  background: #f4f5f6;
+  color: #7d4f12;
 }
 .admin-page .procurement-checklist ul {
   padding-left: 20px;
@@ -382,7 +382,7 @@
 .admin-page .procurement-order-body .admin-table-wrap {
   max-height: none;
   overflow: auto;
-  border-color: #e1e2d7;
+  border-color: #dbdcde;
   border-radius: 12px;
 }
 .admin-page .procurement-order-body .procurement-lines {
@@ -392,7 +392,7 @@
 }
 .admin-page .procurement-order-body .procurement-lines th {
   padding: 14px 12px;
-  color: #6e7867;
+  color: #666c79;
   font-size: 11px;
   letter-spacing: 0.035em;
 }
@@ -403,7 +403,7 @@
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
-  color: #7a8171;
+  color: #6e7584;
 }
 .admin-page .procurement-order-body .procurement-lines td {
   padding: 16px 12px;
@@ -424,7 +424,7 @@
 }
 .admin-page .procurement-order-dialog .procurement-lines small {
   font-size: 12px;
-  color: #7a8171;
+  color: #6e7584;
   line-height: 1.5;
 }
 .admin-page .procurement-lines td > strong {
@@ -432,7 +432,7 @@
 }
 .admin-page .procurement-reconciliation-matched {
   background: transparent;
-  color: #7a8171;
+  color: #6e7584;
   font-size: 12px;
   font-weight: 400;
 }
@@ -454,15 +454,15 @@
 .admin-page .procurement-row-more > summary {
   padding: 7px 10px;
   border-radius: 8px;
-  color: #78816f;
+  color: #6e7582;
   font-size: 13px;
   cursor: pointer;
   list-style: none;
   text-align: center;
 }
 .admin-page .procurement-row-more > summary:hover {
-  background: #edf0e7;
-  color: #355143;
+  background: #ebebec;
+  color: #3f4247;
 }
 .admin-page .procurement-row-more > div {
   display: grid;
@@ -482,7 +482,7 @@
   margin: 20px 0;
 }
 .admin-page .procurement-receipt-actions > span {
-  color: #7a6852;
+  color: #5e636e;
   font-size: 13px;
 }
 .admin-page .procurement-order-final {
@@ -511,8 +511,8 @@
   display: none;
 }
 .admin-page .procurement-receiving-total {
-  background: #edf0e7;
-  color: #465b3c;
+  background: #ebebec;
+  color: #464a51;
 }
 .admin-page .procurement-match-dialog .procurement-match-actions {
   gap: 8px;
@@ -531,8 +531,8 @@
   font-size: 26px;
 }
 .admin-page .procurement-content .procurement-calculator-result button {
-  background: #f4f5ef;
-  color: #355143;
+  background: #f1f2f3;
+  color: #3f4247;
 }
 @media (max-width: 1200px) {
   .admin-page .procurement-order-dialog .procurement-costs {
@@ -646,7 +646,7 @@
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 12px;
     padding: 16px;
-    border-bottom: 1px solid #dedfd4;
+    border-bottom: 1px solid #d8d9db;
   }
   .admin-page .procurement-order-body .procurement-order-lines > tbody > tr > td {
     display: block;
@@ -671,7 +671,7 @@
   .admin-page .procurement-order-lines > tbody > tr > td:nth-child(2) > strong {
     font-size: 13px;
     font-weight: 400;
-    color: #767f6c;
+    color: #6b7280;
   }
   .admin-page .procurement-order-lines > tbody > tr > td:nth-child(3) {
     display: flex;
@@ -682,7 +682,7 @@
   .admin-page .procurement-order-lines > tbody > tr > td:nth-child(n + 4):not(:last-child)::before {
     display: block;
     margin-bottom: 4px;
-    color: #7a8171;
+    color: #6e7584;
     font-size: 11px;
   }
   .admin-page .procurement-order-lines > tbody > tr > td:nth-child(4)::before {
@@ -721,7 +721,7 @@
     grid-template-columns: 1fr 1fr;
   }
   .admin-page .procurement-order-lines .procurement-row-mismatch {
-    background: #fff5eb;
+    background: #f4f5f6;
   }
 }
 .admin-page .procurement-row-more .sr-only {
@@ -774,25 +774,25 @@
   gap: 6px;
   margin: 0 0 18px;
   padding: 0 0 14px;
-  border-bottom: 1px solid #dddcd1;
+  border-bottom: 1px solid #d5d6d9;
 }
 .admin-page .procurement-line-tabs button {
   min-height: 42px;
   padding: 10px 13px;
   border-color: transparent;
   background: transparent;
-  color: #68715f;
+  color: #606570;
   font-size: 13px;
   white-space: nowrap;
 }
 .admin-page .procurement-line-tabs button[aria-selected="true"] {
-  background: #355143;
-  border-color: #355143;
-  color: #fffdf8;
+  background: #3f4247;
+  border-color: #3f4247;
+  color: #fbfbfc;
 }
 .admin-page .procurement-line-tabs button[aria-selected="true"]:hover {
-  background: #294535;
-  border-color: #294535;
+  background: #19553b;
+  border-color: #19553b;
 }
 .admin-page .procurement-line-tabs button span {
   display: inline-flex;
@@ -801,8 +801,8 @@
   min-width: 22px;
   padding: 2px 6px;
   border-radius: 6px;
-  background: #edf0e7;
-  color: #536348;
+  background: #ebebec;
+  color: #4f535c;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -812,7 +812,7 @@
 }
 .admin-page .procurement-line-empty {
   padding: 24px 0;
-  color: #737a6b;
+  color: #696f7c;
   font-size: 14px;
 }
 @media (max-width: 800px) {

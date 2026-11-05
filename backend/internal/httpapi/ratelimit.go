@@ -24,6 +24,16 @@ type rateLimiter struct {
 	sweptAt time.Time
 }
 
+// The private staging environment uses simulated calls and repeated browser
+// checks. Keep the production anti-abuse threshold, including the default.
+func newCallRateLimiter(environment string) *rateLimiter {
+	limit := 5
+	if environment == "staging" {
+		limit = 100
+	}
+	return newRateLimiter(limit, 10*time.Minute)
+}
+
 func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 	return &rateLimiter{
 		hits:    make(map[string][]time.Time),

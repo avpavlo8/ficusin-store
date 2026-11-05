@@ -1,0 +1,2912 @@
+/* Админка, направление «А · спокойный рабочий инструмент».
+
+   Почему отдельный файл: раньше каждый раздел дорисовывал свои кнопки,
+   вкладки и таблицы, и в 15 файлах накопилось около 1100 цветов,
+   прописанных вручную. Здесь — единый словарь: токены и базовые элементы,
+   которыми пользуются все разделы. Подключается после admin-workspace.css,
+   правила начинаются с .admin-page, чтобы перебивать старые одноклассовые.
+
+   Кто пользуется: сотрудники без технического образования, с компьютера
+   и с телефона (приложение «Управление» — та же страница). Отсюда правила:
+   крупные зоны нажатия (44px), поля 16px на телефоне (iOS не увеличивает
+   страницу при вводе), один акцентный цвет для главного действия. */
+
+.admin-page {
+  /* «Лёгкая» админка (4.11.2026): белый, холодные серые, один насыщенный
+     зелёный акцент, янтарный для «нужно сделать». Бежевого и красного нет. */
+  --ws-bg: #ffffff;
+  --ws-panel: #ffffff;
+  --ws-side: #fafafb;
+  --ws-soft: #f3f4f6;
+  --ws-field: #f3f4f6;
+  --ws-line: #e8e9ec;
+  --ws-line-soft: #eef0f2;
+  --ws-ink: #0e1013;
+  --ws-text: #41464e;
+  /* #676c75 на белом — 5.3:1, подписи читаются и мелким кеглем. */
+  --ws-muted: #676c75;
+  --ws-green: #11804f;
+  --ws-green-dark: #0b6a40;
+  --ws-green-soft: #e6f4ec;
+  --ws-rust: #a23d04;
+  --ws-rust-soft: #f7ece6;
+  /* Терракота кнопки «В корзину» на витрине — для важного и «Отменить». */
+  --ws-terracotta: #af4305;
+  --ws-terracotta-dark: #963904;
+  --ws-terracotta-soft: rgba(175, 67, 5, 0.1);
+  --ws-blue-soft: #e8effa;
+  --ws-blue: #1d4ed8;
+  --ws-warn-soft: #fff3dc;
+  --ws-warn: #8a5100;
+  --ws-radius: 12px;
+  --ws-radius-sm: 10px;
+  --ws-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --ws-sidebar: 232px;
+  --ws-topbar: 56px;
+  --ws-tabbar: 64px;
+  /* Старые переменные разделов указывают на новую палитру. */
+  --workspace-paper: var(--ws-bg);
+  --workspace-line: var(--ws-line);
+  --workspace-ink: var(--ws-ink);
+  --workspace-muted: var(--ws-muted);
+  --workspace-green: var(--ws-green);
+  --workspace-rust: var(--ws-rust);
+  --line: var(--ws-line);
+  --green: var(--ws-green);
+  /* Общие переменные сайта (кремовый, бумажный, шалфей) внутри админки
+     тоже нейтральные: ими пользуются старые стили разделов. */
+  --cream: #f3f4f6;
+  --paper: #ffffff;
+  --sage: #9aa0a8;
+  --muted: var(--ws-muted);
+  --ink: var(--ws-ink);
+  --green-dark: var(--ws-green-dark);
+  margin: 0;
+  min-height: 100vh;
+  background: var(--ws-bg);
+  color: var(--ws-ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Каркас ---------- */
+
+.admin-page.ws-shell {
+  display: grid;
+  grid-template-columns: var(--ws-sidebar) minmax(0, 1fr);
+}
+.admin-page .ws-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.admin-page .workspace-body {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 28px 48px;
+  outline: none;
+}
+.admin-page.ws-loading {
+  display: grid;
+  place-content: center;
+  gap: 24px;
+  justify-items: center;
+}
+
+.admin-page .ws-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+  padding: 18px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow-y: auto;
+  background: var(--ws-side);
+  border-right: 1px solid var(--ws-line);
+}
+.admin-page .ws-brand {
+  display: block;
+  padding: 0 10px;
+  color: var(--ws-green);
+}
+.admin-page .ws-brand svg,
+.admin-page .ws-brand img {
+  height: 30px;
+  width: auto;
+}
+.admin-page .ws-sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.admin-page .ws-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.admin-page .ws-nav-group > p {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  color: var(--ws-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.admin-page .ws-nav-link {
+  min-height: 36px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
+  color: var(--ws-ink);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.admin-page .ws-nav-link svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ws-muted);
+}
+.admin-page .ws-nav-link:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+.admin-page .ws-nav-link[aria-current="page"] {
+  background: var(--ws-panel);
+  box-shadow: 0 0 0 1px var(--ws-line);
+  color: var(--ws-green-dark);
+  font-weight: 600;
+}
+.admin-page .ws-nav-link[aria-current="page"] svg {
+  color: var(--ws-green);
+}
+.admin-page .ws-count {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--ws-rust);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.admin-page .ws-sidebar-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ws-line);
+}
+.admin-page .ws-profile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--ws-radius-sm);
+  color: var(--ws-ink);
+  text-decoration: none;
+}
+.admin-page .ws-profile:hover {
+  background: rgba(255, 255, 255, 0.6);
+}
+.admin-page .ws-profile strong,
+.admin-page .ws-profile small {
+  display: block;
+}
+.admin-page .ws-profile small {
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .ws-avatar {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ws-green);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+}
+.admin-page .ws-store-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  color: var(--ws-muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.admin-page .ws-store-link svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-page .ws-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  height: var(--ws-topbar);
+  box-sizing: border-box;
+  padding: 0 28px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(248, 248, 248, 0.94);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--ws-line);
+}
+.admin-page .ws-topbar-brand {
+  display: none;
+  color: var(--ws-green);
+}
+.admin-page .ws-topbar-brand svg,
+.admin-page .ws-topbar-brand img {
+  height: 24px;
+  width: auto;
+}
+.admin-page .ws-topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.admin-page .ws-search {
+  position: relative;
+  margin-left: auto;
+  width: 280px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+  color: var(--ws-muted);
+}
+.admin-page .ws-search svg {
+  width: 16px;
+  height: 16px;
+}
+.admin-page .ws-topbar .ws-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ws-ink);
+  font-size: 14px;
+}
+.admin-page .ws-search-results {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  padding: 6px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  box-shadow: 0 12px 32px rgba(33, 34, 37, 0.12);
+}
+.admin-page .ws-search-results button {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ws-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.admin-page .ws-search-results button:hover,
+.admin-page .ws-search-results button:focus-visible {
+  background: var(--ws-soft);
+}
+.admin-page .ws-search-results button svg:last-child {
+  margin-left: auto;
+}
+.admin-page .ws-search-results p {
+  margin: 8px;
+  color: var(--ws-muted);
+}
+
+/* Нижняя панель и «Ещё» — только на телефоне. */
+.admin-page .ws-tabbar {
+  display: none;
+}
+.admin-page .ws-more {
+  margin: auto 0 0;
+  width: 100%;
+  max-width: none;
+  max-height: 85vh;
+  padding: 0;
+  border: 0;
+  border-radius: 18px 18px 0 0;
+  background: var(--ws-bg);
+  color: var(--ws-ink);
+}
+.admin-page .ws-more::backdrop {
+  background: rgba(20, 21, 22, 0.4);
+}
+.admin-page .ws-more-sheet {
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.admin-page .ws-more-sheet header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  font-size: 17px;
+}
+.admin-page .ws-more-sheet header button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  font-size: 26px;
+  color: var(--ws-muted);
+}
+.admin-page .ws-more-sheet nav {
+  display: grid;
+  gap: 16px;
+}
+.admin-page .ws-more-sheet .ws-nav-link {
+  min-height: 48px;
+  font-size: 16px;
+}
+
+/* ---------- Заголовки и текст ---------- */
+
+/* Журнальная антиква остаётся витрине. В рабочем инструменте заголовок —
+   короткая подпись экрана, а не обложка: так на первый экран помещается
+   работа, а не оформление. */
+.admin-page .ws-main h1,
+.admin-page .ws-main h2,
+.admin-page .ws-main h3 {
+  font-family: inherit;
+  letter-spacing: 0;
+  color: inherit;
+}
+.admin-page .ws-main h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+.admin-page .ws-main h2 {
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.admin-page .ws-main h3 {
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.admin-page .ws-main .eyebrow {
+  color: var(--ws-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.admin-page .ws-main .admin-hint,
+.admin-page .ws-main small {
+  color: var(--ws-muted);
+}
+.admin-page .ws-main .admin-hint {
+  font-size: 13px;
+}
+
+/* ---------- Кнопки ---------- */
+
+.admin-page
+  .ws-main
+  :is(.admin-action, .secondary-button, .admin-primary, button.primary, .ws-button) {
+  min-height: 38px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font: inherit;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+.admin-page .ws-main :is(.admin-action, .secondary-button, .ws-button):hover:not(:disabled) {
+  border-color: #c9cbce;
+  background: #f7f7f7;
+}
+.admin-page .ws-main :is(.admin-primary, button.primary, .ws-button.primary) {
+  border-color: var(--ws-green);
+  background: var(--ws-green);
+  color: #ffffff;
+}
+.admin-page .ws-main :is(.admin-primary, button.primary, .ws-button.primary):hover:not(:disabled) {
+  border-color: var(--ws-green-dark);
+  background: var(--ws-green-dark);
+}
+.admin-page .ws-main :is(.admin-action, .secondary-button, button).danger {
+  border-color: #f4d7b2;
+  background: var(--ws-panel);
+  color: var(--ws-rust);
+}
+.admin-page
+  .ws-main
+  :is(.admin-action, .secondary-button, .admin-primary, button.primary, .ws-button):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-page .ws-main :is(.text-button, .workspace-text-button, .table-action) {
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ws-green);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.admin-page .ws-main :is(.text-button, .workspace-text-button, .table-action):hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.admin-page .ws-main :focus-visible {
+  outline: 2px solid var(--ws-green);
+  outline-offset: 2px;
+}
+
+/* ---------- Поля ---------- */
+
+.admin-page
+  .ws-main
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+    select,
+    textarea
+  ) {
+  min-height: 38px;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font: inherit;
+  font-size: 14px;
+  box-shadow: none;
+}
+.admin-page .ws-main :where(input, select, textarea):focus {
+  border-color: var(--ws-green);
+  outline: 2px solid rgba(26, 88, 61, 0.15);
+  outline-offset: 0;
+}
+.admin-page .ws-main input[type="checkbox"],
+.admin-page .ws-main input[type="radio"] {
+  accent-color: var(--ws-green);
+}
+.admin-page .ws-main .admin-form-grid label,
+.admin-page .ws-main .admin-field-label {
+  color: var(--ws-text);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+/* ---------- Блоки, таблицы, состояния ---------- */
+
+.admin-page .ws-main :is(.admin-block, .workspace-panel) {
+  padding: 18px 20px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  box-shadow: none;
+}
+.admin-page .ws-main .admin-block-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-page .ws-main .admin-block-heading h3,
+.admin-page .ws-main .admin-block > h3 {
+  margin: 0;
+}
+
+.admin-page .ws-main .workspace-scroll-hint {
+  display: none;
+}
+.admin-page .ws-main .admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  box-shadow: none;
+}
+.admin-page .ws-main .admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.admin-page .ws-main .admin-table th {
+  padding: 10px 12px;
+  background: transparent;
+  border-bottom: 1px solid var(--ws-line);
+  color: var(--ws-muted);
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  white-space: nowrap;
+}
+.admin-page .ws-main .admin-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ws-line-soft);
+  vertical-align: top;
+}
+.admin-page .ws-main .admin-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.admin-page .ws-main .admin-table td small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.admin-page .ws-main .workspace-state {
+  padding: 40px 20px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  border: 1px dashed var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: transparent;
+  text-align: center;
+}
+.admin-page .ws-main .workspace-state strong {
+  font-size: 15px;
+}
+.admin-page .ws-main .workspace-state p {
+  margin: 0;
+  color: var(--ws-muted);
+}
+
+/* Статусы: цвет различается и по яркости, а не только по оттенку. */
+.admin-page .ws-main .workspace-status,
+.admin-page .ws-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #e9e9ea;
+  color: var(--ws-text);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-page .ws-main .workspace-status[data-status="new"],
+.admin-page .ws-pill[data-tone="attention"] {
+  background: var(--ws-rust-soft);
+  color: #965f16;
+}
+.admin-page .ws-main .workspace-status:is([data-status="paid"], [data-status="confirmed"]),
+.admin-page .ws-pill[data-tone="ok"] {
+  background: var(--ws-green-soft);
+  color: #1b5f41;
+}
+.admin-page
+  .ws-main
+  .workspace-status:is(
+    [data-status="packed"],
+    [data-status="assembling"],
+    [data-status="processing"]
+  ),
+.admin-page .ws-pill[data-tone="progress"] {
+  background: var(--ws-blue-soft);
+  color: var(--ws-blue);
+}
+.admin-page .ws-main .workspace-status[data-status="cancelled"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ws-line);
+  color: var(--ws-muted);
+}
+
+.admin-page .ws-main .admin-flag {
+  color: #965f16;
+}
+.admin-page .admin-message.error {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #f4d8b3;
+  border-radius: var(--ws-radius);
+  background: var(--ws-rust-soft);
+  color: #774b11;
+}
+.admin-page .admin-message.error button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* ---------- Вкладки ---------- */
+
+/* Один вид вкладок на всю админку: сегменты на светлой подложке.
+   Раньше одни и те же уровни навигации выглядели как подчёркивания,
+   зелёные плашки и жирный текст. */
+
+.admin-page .ws-main .workspace-catalog-nav::after,
+.admin-page
+  .ws-main
+  :is(
+    .orders-status-tabs,
+    .workspace-catalog-nav,
+    .catalog-work-views,
+    .catalog-channel-switch,
+    .procurement-tabs
+  ) {
+  margin: 0 0 16px;
+  padding: 3px;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  border: 0;
+  border-radius: 9px;
+  background: var(--ws-soft);
+  scrollbar-width: none;
+}
+.admin-page
+  .ws-main
+  :is(.orders-status-tabs, .workspace-catalog-nav, .catalog-work-views, .catalog-channel-switch)
+  > :is(a, button) {
+  min-height: 32px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ws-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: none;
+}
+.admin-page
+  .ws-main
+  :is(.orders-status-tabs, .workspace-catalog-nav, .catalog-work-views, .catalog-channel-switch)
+  > :is(a, button):is([aria-current="page"], [aria-selected="true"], .active) {
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font-weight: 600;
+  box-shadow: var(--ws-shadow);
+}
+.admin-page .ws-main .orders-status-tabs > a span {
+  color: var(--ws-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.admin-page .ws-main .orders-status-tabs::after {
+  content: none;
+}
+
+/* ---------- Окно (боковая панель поверх списка) ---------- */
+
+@keyframes ws-drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+/* Карточка «просмотр»: подпись слева, значение справа, «Изменить» в углу. */
+
+.admin-page .ws-edit-head {
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.admin-page .ws-back {
+  min-height: 36px;
+  padding: 0 10px 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: transparent;
+  color: var(--ws-green);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-page .ws-back:hover {
+  background: var(--ws-soft);
+}
+
+/* ---------- Планшет и телефон ---------- */
+
+@media (max-width: 1100px) {
+  .admin-page {
+    --ws-sidebar: 200px;
+  }
+  .admin-page .workspace-body {
+    padding: 16px 20px 40px;
+  }
+  .admin-page .ws-search {
+    width: 220px;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-page.ws-shell {
+    display: block;
+    padding-bottom: calc(var(--ws-tabbar) + env(safe-area-inset-bottom));
+  }
+  .admin-page .ws-sidebar,
+  .admin-page .ws-search {
+    display: none;
+  }
+  .admin-page .ws-topbar {
+    padding: 0 16px;
+    padding-top: env(safe-area-inset-top);
+    height: calc(var(--ws-topbar) + env(safe-area-inset-top));
+  }
+  .admin-page .ws-topbar-brand {
+    display: block;
+  }
+  .admin-page .ws-topbar-profile {
+    margin-left: auto;
+  }
+  .admin-page .workspace-body {
+    padding: 14px 16px 24px;
+  }
+  .admin-page .ws-tabbar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 40;
+    height: calc(var(--ws-tabbar) + env(safe-area-inset-bottom));
+    padding: 0 4px env(safe-area-inset-bottom);
+    box-sizing: border-box;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    border-top: 1px solid var(--ws-line);
+    background: rgba(248, 248, 248, 0.97);
+    backdrop-filter: blur(8px);
+  }
+  .admin-page .ws-tabbar .ws-nav-link {
+    position: relative;
+    min-height: var(--ws-tabbar);
+    padding: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    color: var(--ws-muted);
+    font-size: 11px;
+    font-weight: 550;
+  }
+  .admin-page .ws-tabbar .ws-nav-link svg {
+    width: 22px;
+    height: 22px;
+  }
+  .admin-page .ws-tabbar .ws-nav-link[aria-current="page"] {
+    background: transparent;
+    box-shadow: none;
+    color: var(--ws-green-dark);
+  }
+  .admin-page .ws-tabbar .ws-count {
+    position: absolute;
+    top: 6px;
+    left: calc(50% + 6px);
+    margin: 0;
+  }
+  .admin-page .ws-main h1 {
+    font-size: 20px;
+  }
+  /* 16px: меньший шрифт в поле заставляет iPhone увеличивать страницу. */
+  .admin-page
+    .ws-main
+    :where(
+      input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+      select,
+      textarea
+    ) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .admin-page
+    .ws-main
+    :is(.admin-action, .secondary-button, .admin-primary, button.primary, .ws-button) {
+    min-height: 44px;
+  }
+  .admin-page .ws-main .workspace-scroll-hint {
+    display: block;
+    font-size: 12px;
+    color: var(--ws-muted);
+  }
+}
+@keyframes ws-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+/* Установка приложения живёт внизу меню, а не в шапке: это разовое
+   действие, ему не место рядом с ежедневной работой. */
+.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install > summary {
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--ws-green);
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+}
+.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install > summary::-webkit-details-marker {
+  display: none;
+}
+.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install-panel {
+  position: static;
+  width: auto;
+  margin: 4px 0 8px;
+  padding: 14px;
+  box-shadow: none;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+}
+
+/* Шапка: на компьютере название раздела уже есть в заголовке страницы. */
+@media (min-width: 761px) {
+  .admin-page .ws-topbar-title {
+    display: none;
+  }
+}
+
+/* ---------- Заказы ---------- */
+
+.admin-page .orders-list-heading {
+  margin-bottom: 16px;
+}
+.admin-page .ws-main .orders-search input {
+  flex: 1;
+  max-width: 420px;
+  border-color: var(--ws-line);
+}
+.admin-page .orders-list-page .admin-table tr.clickable {
+  cursor: pointer;
+}
+.admin-page .orders-list-page .admin-table tr.clickable:hover td {
+  background: #f6f6f7;
+}
+.admin-page .orders-list-page .admin-table tr[aria-selected="true"] td {
+  background: #ededee;
+}
+.admin-page .orders-list-page .admin-table tr[aria-selected="true"] td:first-child {
+  box-shadow: inset 3px 0 0 var(--ws-green);
+}
+.admin-page .orders-number-link {
+  color: var(--ws-ink);
+  font-weight: 650;
+  text-decoration: none;
+}
+.admin-page .order-drawer-title {
+  margin: 0;
+  font-size: 17px;
+}
+
+@media (max-width: 760px) {
+  /* Таблица заказов на телефоне — список карточек: горизонтальная
+     прокрутка таблицы пальцем неудобна и прячет сумму и статус. */
+  .admin-page .orders-list-page .workspace-scroll-hint,
+  .admin-page .orders-list-page .admin-table thead {
+    display: none;
+  }
+  .admin-page .orders-list-page .admin-table,
+  .admin-page .orders-list-page .admin-table tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .admin-page .orders-list-page .admin-table tr {
+    padding: 12px 14px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+    border-bottom: 1px solid var(--ws-line-soft);
+  }
+  .admin-page .orders-list-page .admin-table td {
+    padding: 0;
+    border: 0;
+  }
+  .admin-page .orders-list-page .admin-table td:nth-child(2) {
+    grid-column: 1;
+  }
+  .admin-page .orders-list-page .admin-table td:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+  .admin-page .orders-list-page .admin-table td:nth-child(4) {
+    grid-row: 1;
+    grid-column: 2;
+    text-align: right;
+  }
+  .admin-page .orders-list-page .admin-table td:nth-child(5) {
+    grid-row: 2;
+    grid-column: 2;
+    text-align: right;
+  }
+  .admin-page .orders-list-page .admin-table td a[href^="mailto"],
+  .admin-page .orders-list-page .admin-table td:nth-child(2) small,
+  .admin-page .orders-list-page .admin-table td:nth-child(3) small:not(.admin-flag) {
+    display: none;
+  }
+}
+
+/* ---------- Заголовок экрана и общие списки ---------- */
+
+.admin-page .ws-main .ws-page-heading {
+  margin: 0 0 16px;
+}
+.admin-page .ws-main .ws-page-heading p {
+  margin: 4px 0 0;
+  color: var(--ws-muted);
+}
+.admin-page .ws-checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-page .ws-checklist li {
+  padding: 10px 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--ws-line-soft);
+}
+.admin-page .ws-checklist li:last-child {
+  border-bottom: 0;
+}
+.admin-page .ws-checklist strong {
+  color: #965f16;
+}
+
+/* ---------- Каталог ---------- */
+
+/* Канал выбирается вторым, меньшим переключателем — только когда
+   открыта вкладка «Связи с каналами». */
+.admin-page .ws-main .catalog-channel-switch {
+  margin-top: -8px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--ws-line);
+}
+.admin-page .ws-main .catalog-page-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.admin-page .ws-main .catalog-page-heading > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- Меню «Ещё» ---------- */
+
+.admin-page .ws-more-menu {
+  position: relative;
+  flex: none;
+}
+.admin-page .ws-more-menu > summary {
+  min-height: 38px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font-weight: 550;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.admin-page .ws-more-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.admin-page .ws-more-menu > summary::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+.admin-page .ws-more-menu[data-active] > summary {
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font-weight: 600;
+  box-shadow: var(--ws-shadow);
+}
+.admin-page .ws-more-menu-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  padding: 6px;
+  display: grid;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  box-shadow: 0 12px 32px rgba(33, 34, 37, 0.12);
+}
+.admin-page .ws-main .ws-more-menu-list > :is(button, a) {
+  min-height: 40px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ws-ink);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: none;
+  cursor: pointer;
+}
+.admin-page .ws-main .ws-more-menu-list > :is(button, a):hover:not(:disabled),
+.admin-page .ws-main .ws-more-menu-list > :is(button, a).active {
+  background: var(--ws-soft);
+}
+.admin-page .ws-main .ws-more-menu-list > button:disabled {
+  opacity: 0.5;
+}
+/* Внутри вкладок «Ещё» выглядит как ещё одна вкладка. */
+.admin-page .ws-main .procurement-tabs {
+  overflow: visible;
+}
+.admin-page .ws-main .procurement-tabs .ws-more-menu > summary {
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--ws-text);
+  font-weight: 500;
+}
+.admin-page .ws-main .procurement-tabs .ws-more-menu[data-active] > summary {
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+  font-weight: 600;
+}
+.admin-page .ws-main .procurement-tabs .ws-more-menu-list {
+  left: 0;
+  right: auto;
+}
+.admin-page .ws-main .procurement-page-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-page .ws-main .procurement-inline-actions {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 760px) {
+  .admin-page .ws-main .procurement-tabs {
+    overflow-x: auto;
+  }
+  .admin-page .ws-more-menu-list {
+    position: fixed;
+    inset: auto 8px calc(var(--ws-tabbar) + 8px + env(safe-area-inset-bottom)) 8px;
+    top: auto;
+  }
+  .admin-page .ws-main .ws-more-menu-list > :is(button, a) {
+    min-height: 48px;
+    font-size: 16px;
+  }
+}
+.admin-page .ws-edit-note {
+  margin: -6px 0 12px;
+  color: var(--ws-muted);
+}
+
+/* В таблицах поля компактнее: строка с ценой, валютой и количеством
+   должна оставаться одной строкой таблицы, а не карточкой. */
+@media (min-width: 761px) {
+  .admin-page .ws-main table :where(input:not([type="checkbox"], [type="radio"]), select) {
+    min-height: 32px;
+    padding: 4px 8px;
+  }
+}
+/* Текстовым блокам — спокойный межстрочный интервал; таблицам и полям
+   оставляем плотный, иначе строки плана закупки вырастают вдвое. */
+
+.admin-page .procurement-plan-table td small {
+  line-height: 1.2;
+}
+
+/* =========================================================================
+   «Лёгкий» стиль в духе Ozon Seller (решение владельца 4.11.2026).
+   Блок стоит в конце файла намеренно: он перекрывает более ранние правила
+   той же специфичности, не трогая логику разметки.
+   ========================================================================= */
+
+.admin-page .workspace-body {
+  max-width: 1280px;
+  padding: 24px 32px 56px;
+}
+
+/* Логотип: знак и подпись обычным шрифтом. Антиква — для витрины. */
+.admin-page .ws-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ws-ink);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.admin-page .ws-mark .ficusin-logo {
+  display: block;
+  width: auto;
+  height: 26px;
+}
+.admin-page .ws-mark small {
+  padding-left: 10px;
+  border-left: 1px solid var(--ws-line);
+  color: var(--ws-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Меню */
+.admin-page .ws-sidebar {
+  padding: 20px 12px 14px;
+  background: var(--ws-side);
+  border-right-color: var(--ws-line);
+}
+.admin-page .ws-nav-group > p {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+.admin-page .ws-nav-link {
+  min-height: 38px;
+  font-size: 14px;
+  color: #16191d;
+}
+.admin-page .ws-nav-link:hover {
+  background: #f0f1f4;
+}
+.admin-page .ws-nav-link[aria-current="page"] {
+  background: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.08),
+    0 0 0 1px var(--ws-line);
+  color: var(--ws-ink);
+}
+.admin-page .ws-count {
+  background: var(--ws-green);
+}
+.admin-page .ws-topbar {
+  background: rgba(255, 255, 255, 0.95);
+}
+
+/* Заголовки: крупный жирный гротеск, как у Ozon. */
+.admin-page .ws-main h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.admin-page .ws-main h2 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.admin-page .ws-main .eyebrow {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Кнопки: вторичные — серая заливка без рамки, главная — зелёная. */
+.admin-page
+  .ws-main
+  :is(.admin-action, .secondary-button, .admin-primary, button.primary, .ws-button) {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: #f0f1f4;
+  font-weight: 600;
+}
+.admin-page .ws-main :is(.admin-action, .secondary-button, .ws-button):hover:not(:disabled) {
+  background: #e6e8ec;
+}
+.admin-page .ws-main :is(.admin-primary, button.primary, .ws-button.primary) {
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .ws-main :is(.admin-primary, button.primary, .ws-button.primary):hover:not(:disabled) {
+  background: var(--ws-green-dark);
+}
+.admin-page .ws-main :is(.admin-action, .secondary-button, button).danger {
+  background: #f0f1f4;
+  color: var(--ws-text);
+}
+.admin-page .ws-more-menu > summary {
+  min-height: 40px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: #f0f1f4;
+  font-weight: 600;
+}
+
+/* Поля: серая заливка без рамки; при вводе — белое поле с зелёной обводкой. */
+.admin-page
+  .ws-main
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+    select,
+    textarea
+  ) {
+  min-height: 42px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-field);
+}
+.admin-page .ws-main :where(input, select, textarea):focus {
+  border-color: var(--ws-green);
+  background: #fff;
+  outline: 3px solid rgba(17, 128, 79, 0.14);
+}
+.admin-page .ws-main :where(input, textarea)::placeholder {
+  color: #8a8f98;
+}
+
+/* Вкладки: подчёркивание и счётчик в сером «чипе». */
+.admin-page
+  .ws-main
+  :is(
+    .orders-status-tabs,
+    .workspace-catalog-nav,
+    .catalog-work-views,
+    .catalog-channel-switch,
+    .procurement-tabs
+  ) {
+  width: 100%;
+  padding: 0;
+  gap: 24px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 0 -1px 0 var(--ws-line);
+}
+.admin-page
+  .ws-main
+  :is(
+    .orders-status-tabs,
+    .workspace-catalog-nav,
+    .catalog-work-views,
+    .catalog-channel-switch,
+    .procurement-tabs
+  )
+  > :is(a, button, .ws-more-menu > summary) {
+  min-height: 40px;
+  padding: 0 0 2px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ws-text);
+  font-weight: 500;
+}
+.admin-page .ws-main .procurement-tabs .ws-more-menu > summary {
+  min-height: 40px;
+  padding: 0 0 2px;
+  background: transparent;
+}
+.admin-page
+  .ws-main
+  :is(
+    .orders-status-tabs,
+    .workspace-catalog-nav,
+    .catalog-work-views,
+    .catalog-channel-switch,
+    .procurement-tabs
+  )
+  > :is(a, button):is([aria-current="page"], [aria-selected="true"], .active),
+.admin-page .ws-main .procurement-tabs .ws-more-menu[data-active] > summary {
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--ws-green);
+  color: var(--ws-ink);
+  font-weight: 600;
+}
+.admin-page .ws-main .orders-status-tabs > a span,
+.admin-page .ws-main :is(.procurement-tabs, .catalog-work-views) > button span {
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: #f0f1f4;
+  color: var(--ws-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+/* Второй уровень (каналы в каталоге) — небольшие «таблетки». */
+.admin-page .ws-main .catalog-channel-switch {
+  width: fit-content;
+  gap: 6px;
+  box-shadow: none;
+  margin-top: 0;
+}
+.admin-page .ws-main .catalog-channel-switch > button {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #f0f1f4;
+}
+.admin-page .ws-main .catalog-channel-switch > button.active {
+  box-shadow: none;
+  background: var(--ws-ink);
+  color: #fff;
+}
+
+/* Таблицы: без внешней рамки, шапка на светло-серой подложке. */
+.admin-page .ws-main .admin-table-wrap {
+  border: 0;
+  border-radius: 0;
+}
+.admin-page .ws-main .admin-table thead th {
+  background: #f6f7f9;
+  border-bottom: 0;
+}
+.admin-page .ws-main .admin-table thead th:first-child {
+  border-radius: 10px 0 0 10px;
+}
+.admin-page .ws-main .admin-table thead th:last-child {
+  border-radius: 0 10px 10px 0;
+}
+
+/* Карточки и плашки */
+.admin-page .ws-main :is(.admin-block, .workspace-panel) {
+  border-color: var(--ws-line);
+  border-radius: var(--ws-radius);
+}
+
+.admin-page .ws-pill[data-tone="attention"],
+.admin-page .ws-main .workspace-status[data-status="new"] {
+  background: var(--ws-warn-soft);
+  color: var(--ws-warn);
+}
+.admin-page .ws-main .admin-flag,
+.admin-page .admin-message.error {
+  border-color: #f2d8a7;
+  background: var(--ws-warn-soft);
+  color: #5c3a00;
+}
+
+/* ---------- Заказ: отдельная страница ---------- */
+
+.admin-page .ws-link-button {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ws-green);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-page .ws-link-button:hover {
+  color: var(--ws-green-dark);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.admin-page .ws-main a.ws-button {
+  color: var(--ws-ink);
+}
+.admin-page .ws-main a.ws-button.primary {
+  color: #fff;
+}
+.admin-page .order-page-back {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: var(--ws-muted);
+  font-size: 14px;
+  text-decoration: none;
+}
+.admin-page .order-page-back:hover {
+  color: var(--ws-ink);
+}
+.admin-page .order-page-head {
+  margin-bottom: 20px;
+}
+.admin-page .order-page-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.admin-page .ws-main .order-page-title h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.admin-page .order-page-head > p {
+  margin: 6px 0 0;
+  color: var(--ws-muted);
+}
+.admin-page .order-page-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 32px;
+  align-items: start;
+}
+.admin-page .order-page-main {
+  display: grid;
+  gap: 28px;
+  min-width: 0;
+}
+.admin-page .order-now {
+  padding: 12px 16px;
+  border-radius: var(--ws-radius);
+  background: var(--ws-rust-soft);
+  color: var(--ws-rust);
+}
+.admin-page .order-now.is-muted {
+  background: var(--ws-soft);
+  color: var(--ws-muted);
+}
+.admin-page .ws-main .order-now h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.admin-page .order-now-more {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  font-weight: 600;
+}
+.admin-page .order-now-more li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.admin-page .order-section-head {
+  margin-bottom: 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.admin-page .ws-main .order-section-head h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+.admin-page .order-section-head > span {
+  color: var(--ws-muted);
+}
+.admin-page .order-section-head > :last-child:not(h3):not(span) {
+  margin-left: auto;
+}
+.admin-page .order-pick-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-page .order-pick-list li {
+  padding: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--ws-line-soft);
+}
+.admin-page .order-item-photo {
+  width: 48px;
+  height: 56px;
+  flex: none;
+  border-radius: 8px;
+  background: #eef0f2
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23a3a8b0' stroke-width='1.5'%3E%3Cpath d='M5 19c0-8 5-13 14-14-1 9-6 14-14 14Z'/%3E%3Cpath d='M5 19 13 11'/%3E%3C/svg%3E")
+    center / 20px no-repeat;
+}
+.admin-page .order-item-name {
+  flex: 1;
+  min-width: 0;
+}
+.admin-page .order-item-name strong,
+.admin-page .order-item-name small {
+  display: block;
+}
+.admin-page .order-item-name small {
+  margin-top: 2px;
+  color: var(--ws-muted);
+  font-size: 13px;
+}
+.admin-page .order-item-qty {
+  min-width: 110px;
+  text-align: right;
+  color: var(--ws-text);
+  white-space: nowrap;
+}
+.admin-page .order-item-sum {
+  width: 96px;
+  text-align: right;
+}
+.admin-page .order-muted {
+  color: var(--ws-muted);
+}
+.admin-page .order-page-aside {
+  position: sticky;
+  top: calc(var(--ws-topbar) + 16px);
+  display: grid;
+  gap: 12px;
+}
+.admin-page .order-total-card,
+.admin-page .order-aside-actions {
+  padding: 18px 20px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+}
+.admin-page .order-total-card {
+  display: grid;
+  gap: 10px;
+}
+.admin-page .order-total-card > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.admin-page .order-total-card > div > span:first-child {
+  color: var(--ws-muted);
+}
+.admin-page .order-total-card .order-total-sum {
+  padding-top: 10px;
+  border-top: 1px solid var(--ws-line);
+  font-size: 20px;
+  font-weight: 700;
+}
+.admin-page .order-total-card .order-total-sum span:first-child {
+  color: var(--ws-ink);
+}
+.admin-page .order-aside-actions {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+.admin-page .order-total-payment {
+  align-items: center;
+}
+.admin-page .order-pay-pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--ws-soft);
+  color: var(--ws-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.admin-page .order-pay-pill[data-tone="ok"] {
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+}
+.admin-page .order-pay-pill[data-tone="attention"] {
+  background: var(--ws-terracotta-soft);
+  color: var(--ws-rust);
+}
+.admin-page .ws-main .order-renew-link {
+  width: 100%;
+}
+.admin-page .order-renew-notice {
+  margin: 0;
+  color: var(--ws-green-dark);
+  font-size: 13px;
+}
+/* Статус — светло-зелёный выпадающий список с текущим статусом. */
+.admin-page .order-status-card {
+  padding: 16px 20px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+}
+.admin-page .order-status-card label {
+  color: var(--ws-muted);
+  font-size: 13px;
+}
+.admin-page .ws-main .order-status-card select {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background-color: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+  font-weight: 600;
+}
+.admin-page .order-status-card small {
+  color: var(--ws-muted);
+}
+/* Под составом: «Отменить» слева, «Изменить» и «Подтвердить» справа. */
+.admin-page .order-actions {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.admin-page .order-actions-gap {
+  flex: 1;
+}
+.admin-page .ws-main .order-actions .order-cancel {
+  background: var(--ws-terracotta);
+  color: #fff;
+}
+.admin-page .ws-main .order-actions .order-cancel:hover:not(:disabled) {
+  background: var(--ws-terracotta-dark);
+}
+/* Контакты: каждое значение копируется по нажатию. */
+.admin-page .order-contacts {
+  padding: 18px 20px;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+}
+.admin-page .order-contacts-label {
+  margin-top: 8px;
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .order-contacts-label:first-child {
+  margin-top: 0;
+}
+.admin-page .order-copy {
+  margin: 0 -8px;
+  padding: 6px 8px;
+  min-height: 36px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ws-ink);
+  font: inherit;
+  text-align: left;
+  cursor: copy;
+  overflow-wrap: anywhere;
+}
+.admin-page .order-copy:hover,
+.admin-page .order-copy:focus-visible {
+  background: var(--ws-soft);
+}
+.admin-page .order-copy-mark {
+  flex: none;
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .order-contacts-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+.admin-page .order-contacts-actions .ws-button {
+  flex: 1;
+}
+/* Позвонить — только на телефоне: с компьютера звонок не набрать. */
+@media (hover: hover) and (pointer: fine) {
+  .admin-page .order-contacts-actions .order-call {
+    display: none;
+  }
+}
+.admin-page .order-edit-switch {
+  margin: 0 0 16px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  width: fit-content;
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-soft);
+}
+.admin-page .order-edit-switch button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ws-text);
+  font: inherit;
+  font-weight: 600;
+}
+.admin-page .order-edit-switch button[aria-current="page"] {
+  background: #fff;
+  color: var(--ws-ink);
+  box-shadow: var(--ws-shadow);
+}
+/* Режим правки блока — та же страница, без правой колонки. */
+.admin-page .admin-order-editor[data-view] {
+  max-width: 760px;
+}
+
+@media (max-width: 1000px) {
+  .admin-page .order-page-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-page .order-page-aside {
+    position: static;
+  }
+}
+@media (max-width: 760px) {
+  .admin-page .order-pick-list li {
+    flex-wrap: wrap;
+  }
+  .admin-page .order-item-name {
+    flex-basis: calc(100% - 62px);
+  }
+  .admin-page .order-item-qty {
+    margin-left: 62px;
+    flex: 1;
+    text-align: left;
+    color: var(--ws-muted);
+    font-weight: 500;
+  }
+  .admin-page .order-actions .ws-button {
+    flex: 1 1 100%;
+  }
+  .admin-page .order-actions-gap {
+    display: none;
+  }
+  .admin-page .ws-main .order-page-title h2 {
+    font-size: 22px;
+  }
+  .admin-page .order-item-sum {
+    width: auto;
+  }
+}
+
+/* Старые правила панели инструментов и таблиц задавали тёплые фоны и линии. */
+.admin-page .ws-main .admin-toolbar :where(input, select) {
+  border-color: transparent;
+  background: var(--ws-field);
+}
+.admin-page .ws-main .admin-table :is(tr, th, td) {
+  border-color: var(--ws-line-soft);
+}
+.admin-page .ws-main :is(.orders-number-link, .catalog-product-name) {
+  color: var(--ws-ink);
+  text-decoration: none;
+  font-weight: 650;
+}
+.admin-page .ws-main :is(.orders-number-link, .catalog-product-name):hover {
+  color: var(--ws-green);
+}
+@media (max-width: 760px) {
+  .admin-page .ws-topbar .ws-mark small {
+    display: none;
+  }
+  .admin-page .ws-topbar .ws-mark .ficusin-logo {
+    height: 22px;
+  }
+}
+
+/* ---------- Редактор товара: страница с шагами ----------
+   Раньше — модальное окно с вертикальным меню. Теперь, как у Ozon Seller,
+   редактор занимает всю рабочую область рядом с меню: шаги сверху, поля в
+   одну колонку, справа фото и подсказка, кнопки внизу. Семантика диалога
+   сохранена: Esc и «Закрыть» по-прежнему возвращают к списку. */
+.admin-page .admin-dialog.product-editor-dialog {
+  position: fixed;
+  inset: 0 0 0 var(--ws-sidebar) !important;
+  width: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  transform: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: #fff !important;
+  /* Выше затемнения диалога (111), иначе оно перехватывает клики. */
+  z-index: 112;
+}
+.admin-page .product-editor-dialog > header {
+  width: min(100%, 1060px);
+  box-sizing: border-box;
+  padding: 28px 32px 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+.admin-page .product-editor-dialog > header h2 {
+  font-family: inherit !important;
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.015em;
+}
+.admin-page .product-editor-dialog .catalog-editor-topline {
+  width: min(100%, 1060px);
+  box-sizing: border-box;
+  padding: 4px 32px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ws-muted);
+  justify-content: flex-start;
+}
+.admin-page .product-editor-dialog .catalog-editor-topline a {
+  color: var(--ws-green);
+}
+.admin-page .product-editor-dialog .product-editor-shell {
+  width: min(100%, 1060px);
+  box-sizing: border-box;
+  padding: 0 32px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-areas:
+    "nav nav"
+    "content cover"
+    "content note"
+    "content .";
+  grid-template-rows: auto auto auto 1fr;
+  column-gap: 40px;
+  overflow-y: auto;
+}
+.admin-page .product-editor-dialog .product-editor-aside {
+  display: contents;
+}
+.admin-page .product-editor-dialog .product-editor-nav {
+  grid-area: nav;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 18px 0 8px;
+  padding: 0 0 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  background: #fff;
+}
+.admin-page .product-editor-dialog .product-editor-nav button {
+  width: auto;
+  min-height: 40px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ws-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.admin-page .product-editor-dialog .product-editor-step {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #f0f1f4;
+  color: var(--ws-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.admin-page .product-editor-dialog .product-editor-nav .active {
+  background: transparent;
+  color: var(--ws-ink);
+  font-weight: 600;
+}
+.admin-page .product-editor-dialog .product-editor-nav .active .product-editor-step {
+  background: var(--ws-ink);
+  color: #fff;
+}
+.admin-page .product-editor-dialog .product-editor-cover {
+  grid-area: cover;
+  max-width: none;
+  margin: 24px 0 12px;
+  padding: 16px;
+  border-radius: var(--ws-radius);
+  background: var(--ws-side);
+  box-shadow: inset 0 0 0 1px var(--ws-line-soft);
+}
+.admin-page .product-editor-dialog .product-editor-cover img {
+  height: 220px;
+  border-radius: 10px;
+}
+.admin-page .product-editor-dialog .catalog-source-note {
+  grid-area: note;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--ws-radius);
+  background: var(--ws-warn-soft);
+  color: #5c3a00;
+  font-size: 13px;
+}
+.admin-page .product-editor-dialog .product-editor-content {
+  grid-area: content;
+  padding: 16px 0 32px;
+  overflow: visible;
+}
+.admin-page .product-editor-dialog .editor-section > header h3 {
+  font-size: 20px;
+  font-weight: 700;
+}
+.admin-page .product-editor-dialog .editor-section > header p {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+}
+.admin-page
+  .product-editor-dialog
+  .admin-form-grid
+  :is(input:not([type="checkbox"]), select, textarea) {
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-field);
+  color: var(--ws-ink);
+}
+.admin-page .product-editor-dialog .admin-form-grid :is(input, select, textarea):focus {
+  border-color: var(--ws-green);
+  background: #fff;
+  outline: 3px solid rgba(17, 128, 79, 0.14);
+}
+.admin-page .product-editor-dialog .admin-form-grid label {
+  color: var(--ws-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.admin-page .product-editor-dialog .product-editor-footer {
+  width: min(100%, 1060px);
+  box-sizing: border-box;
+  margin-top: auto;
+  padding: 14px 32px;
+  border-top: 1px solid var(--ws-line);
+  background: #fff;
+}
+.admin-page .product-editor-dialog .product-editor-footer .dialog-actions button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: var(--ws-radius-sm);
+  background: #f0f1f4;
+  color: var(--ws-ink);
+  font-weight: 600;
+}
+.admin-page .product-editor-dialog .product-editor-footer .dialog-actions button.primary {
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .product-editor-dialog .product-editor-footer .dialog-actions button:disabled {
+  opacity: 0.45;
+}
+
+@media (max-width: 1100px) {
+  .admin-page .admin-dialog.product-editor-dialog {
+    left: 200px !important;
+  }
+}
+@media (max-width: 900px) {
+  .admin-page .product-editor-dialog .product-editor-shell {
+    grid-template-columns: 1fr;
+    grid-template-areas: "nav" "content" "note";
+  }
+  .admin-page .product-editor-dialog .product-editor-cover {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .admin-page .admin-dialog.product-editor-dialog {
+    left: 0 !important;
+  }
+  .admin-page .product-editor-dialog > header,
+  .admin-page .product-editor-dialog .catalog-editor-topline,
+  .admin-page .product-editor-dialog .product-editor-shell,
+  .admin-page .product-editor-dialog .product-editor-footer {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  .admin-page .product-editor-dialog > header h2 {
+    font-size: 22px !important;
+  }
+  .admin-page .product-editor-dialog .product-editor-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .admin-page .product-editor-dialog .product-editor-nav button {
+    flex: none;
+  }
+}
+
+/* Главные действия разделов — одним зелёным, как и вся админка. */
+.admin-page .ws-main :is(.returns-create, .workspace-primary) {
+  border-color: var(--ws-green);
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .ws-main :is(.returns-create, .workspace-primary):hover {
+  background: var(--ws-green-dark);
+}
+/* Прокручивается колонка с полями, а шаги, фото и кнопки стоят на месте. */
+.admin-page .product-editor-dialog .product-editor-shell {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.admin-page .product-editor-dialog .product-editor-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+/* На широком мониторе рабочая область по центру, как у Ozon Seller,
+   а не прижата к меню с пустотой справа. */
+.admin-page .workspace-body {
+  width: 100%;
+  max-width: 1360px;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+/* Редактор товара: на всю высоту, содержимое по центру рабочей области,
+   меню слева остаётся видимым и доступным. */
+.admin-page .admin-dialog.product-editor-dialog {
+  height: auto !important;
+  align-items: center;
+}
+.admin-page
+  .product-editor-dialog
+  > :is(header, .catalog-editor-topline, .product-editor-shell, .product-editor-footer) {
+  margin-inline: auto;
+}
+.admin-page
+  .product-editor-dialog
+  :is(.product-editor-content, .catalog-editor-fields, .editor-section) {
+  background: transparent;
+}
+.admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
+  left: var(--ws-sidebar);
+  background: transparent;
+}
+@media (max-width: 1100px) {
+  .admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
+    left: 200px;
+  }
+}
+@media (max-width: 760px) {
+  .admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
+    left: 0;
+  }
+}
+
+/* Метки статуса товара: нейтральная, зелёная «опубликован», серая «архив». */
+.admin-page .ws-main .admin-pill {
+  background: #f0f1f4;
+  color: var(--ws-text);
+  font-weight: 600;
+}
+.admin-page .ws-main .admin-pill.published {
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+}
+.admin-page .ws-main .admin-pill.archived {
+  background: #f0f1f4;
+  color: var(--ws-muted);
+}
+.admin-page .ws-main :is(.catalog-product-cell, .catalog-photo-empty) img,
+.admin-page .ws-main .catalog-photo-empty {
+  background-color: #f3f4f6;
+}
+
+/* Фокус переводится на окно редактора программно — рамка не нужна. */
+.admin-page .admin-dialog:focus {
+  outline: none;
+}
+.admin-page .product-editor-dialog .product-editor-cover > * {
+  border-color: var(--ws-line) !important;
+}
+/* Цифры на обзоре — тем же гротеском, что и весь интерфейс. */
+.admin-page .ws-main :is(.workspace-metrics strong, .workspace-revenue strong) {
+  font-family: inherit;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Высота полей редактора задана в пикселях, а не через шрифт: на разных
+   системах шрифт разный, и поле «плавало» относительно переключателя рядом. */
+.admin-page
+  .product-editor-dialog
+  .admin-form-grid
+  :is(input:not([type="checkbox"]):not([type="radio"]), select) {
+  min-height: 44px;
+  padding: 10px 12px;
+  line-height: 22px;
+}
+.admin-page .ws-main .procurement-inline-actions .admin-primary {
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .product-editor-dialog .product-editor-cover,
+.admin-page .product-editor-dialog .product-editor-cover * {
+  border-color: var(--ws-line) !important;
+}
+.admin-page .order-now-more small {
+  display: block;
+  margin-top: 2px;
+  color: var(--ws-text);
+  font-weight: 400;
+}
+
+.admin-page .order-payment-link {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Чат: как в Telegram, в цветах Фикусина ---------- */
+
+.admin-page .ws-chat {
+  --chat-blue: var(--ws-green);
+  --chat-blue-dark: var(--ws-green-dark);
+  --chat-bg: #eef2ef;
+  --chat-text: var(--ws-ink);
+  --chat-muted: var(--ws-muted);
+  --chat-line: var(--ws-line);
+  font-family: inherit;
+}
+/* Чат занимает всю рабочую область, как окно мессенджера. */
+.admin-page .workspace-body:has(> .ws-chat),
+.admin-page .workspace-body:has(> * > .ws-chat) {
+  max-width: none;
+  padding: 0;
+}
+.admin-page .ws-chat .admin-chat-layout {
+  height: calc(100dvh - var(--ws-topbar));
+  grid-template-columns: 360px minmax(0, 1fr);
+  border: 0;
+  border-radius: 0;
+}
+.admin-page .ws-chat .admin-chat-inbox {
+  padding: 14px 10px 0;
+  gap: 10px;
+  border-right: 1px solid var(--ws-line);
+}
+.admin-page .ws-chat-search {
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.admin-page .ws-chat-search label {
+  flex: 1;
+  height: 40px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 20px;
+  background: var(--ws-soft);
+  color: var(--ws-muted);
+}
+.admin-page .ws-main .ws-chat-search input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+}
+.admin-page .ws-main .ws-chat .chat-composer-bar textarea {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.admin-page .ws-chat-filters {
+  padding: 0 6px;
+  display: flex;
+  gap: 18px;
+  border-bottom: 1px solid var(--ws-line-soft);
+}
+.admin-page .ws-chat-filters button {
+  margin-bottom: -1px;
+  padding: 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ws-muted);
+  font: inherit;
+  cursor: pointer;
+}
+.admin-page .ws-chat-filters button[aria-pressed="true"] {
+  border-bottom-color: var(--ws-green);
+  color: var(--ws-green-dark);
+  font-weight: 600;
+}
+.admin-page .ws-chat-filters b {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ws-green);
+  color: #fff;
+  font-size: 11px;
+}
+.admin-page .ws-chat .admin-chat-list {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  overflow: auto;
+}
+.admin-page .ws-chat .admin-chat-item {
+  padding: 9px 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ws-ink);
+  font: inherit;
+}
+.admin-page .ws-chat .admin-chat-item:hover {
+  background: var(--ws-soft);
+}
+.admin-page .ws-chat .admin-chat-item.active {
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .ws-chat .ws-chat-avatar {
+  justify-content: center;
+}
+.admin-page .ws-chat-avatar {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+}
+.admin-page .ws-chat-avatar[data-size="small"] {
+  width: 40px;
+  height: 40px;
+  font-size: 14px;
+}
+.admin-page .ws-chat-item-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+.admin-page .ws-chat-item-body > span {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.admin-page .ws-chat .admin-chat-item strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.admin-page .ws-chat .admin-chat-item time,
+.admin-page .ws-chat .admin-chat-item small,
+.admin-page .ws-chat-preview {
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .ws-chat-preview {
+  overflow: hidden;
+  font-size: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.admin-page .ws-chat .admin-chat-item b {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 999px;
+  background: var(--ws-green);
+  color: #fff;
+  font-size: 12px;
+}
+.admin-page .ws-chat .admin-chat-item.active :is(time, small, .ws-chat-preview) {
+  color: rgba(255, 255, 255, 0.85);
+}
+.admin-page .ws-chat .admin-chat-item.active b {
+  background: #fff;
+  color: var(--ws-green-dark);
+}
+.admin-page .ws-chat-head {
+  min-height: 60px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--ws-line-soft);
+  background: #fff;
+}
+.admin-page .ws-main .ws-chat-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.admin-page .ws-chat-head p {
+  margin: 0;
+  color: var(--ws-muted);
+  font-size: 13px;
+}
+.admin-page .ws-chat-head > div {
+  flex: 1;
+  min-width: 0;
+}
+.admin-page .ws-chat-order {
+  height: 34px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  border-radius: 17px;
+  background: var(--ws-soft);
+  color: var(--ws-ink);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.admin-page .ws-chat .chat-resolve {
+  margin-left: 0;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 17px;
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-page .ws-chat .chat-resolve[data-closed="true"] {
+  background: var(--ws-soft);
+  color: var(--ws-ink);
+}
+.admin-page .ws-chat .chat-thread {
+  background: #eef2ef
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120' fill='none' stroke='%2311804f' stroke-opacity='.07' stroke-width='1.4'%3E%3Cpath d='M20 50c0-16 10-26 28-28-2 18-12 28-28 28Z'/%3E%3Cpath d='M20 50 36 34'/%3E%3Cpath d='M80 100c0-12 8-20 22-22-2 14-9 22-22 22Z'/%3E%3Cpath d='M80 100l12-12'/%3E%3Ccircle cx='92' cy='30' r='3'/%3E%3C/svg%3E");
+}
+.admin-page .ws-chat .chat-messages {
+  padding: 16px max(24px, calc((100% - 760px) / 2));
+}
+.admin-page .ws-chat .chat-message {
+  max-width: 72%;
+  padding: 8px 12px 6px;
+  border-radius: 16px 16px 16px 4px;
+  box-shadow: 0 1px 1px rgba(16, 24, 40, 0.08);
+}
+.admin-page .ws-chat .chat-message-own {
+  background: #dff3e6;
+  border-radius: 16px 16px 4px 16px;
+}
+.admin-page .ws-chat .chat-message-own .chat-message-meta,
+.admin-page .ws-chat .chat-receipt {
+  color: #3d7656;
+}
+.admin-page .ws-chat .chat-date {
+  background: rgba(14, 16, 19, 0.06);
+  color: var(--ws-text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.admin-page .ws-chat .chat-context-link {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--ws-green);
+  border-radius: 8px;
+  background: #f3f6f4;
+  color: var(--ws-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.admin-page .ws-chat .chat-compose {
+  padding: 10px max(16px, calc((100% - 792px) / 2)) 14px;
+}
+.admin-page .ws-chat .chat-composer-bar {
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.1);
+}
+.admin-page .ws-chat .chat-send {
+  background: var(--ws-green);
+}
+.admin-page .ws-chat .chat-send:hover {
+  background: var(--ws-green-dark);
+}
+.admin-page .ws-chat .chat-compose-icon:hover {
+  color: var(--ws-green-dark);
+  background: var(--ws-green-soft);
+}
+@media (max-width: 1200px) {
+  .admin-page .ws-chat .admin-chat-layout {
+    display: flex;
+  }
+  .admin-page .ws-chat .admin-chat-inbox {
+    flex: 1;
+    border-right: 0;
+  }
+  .admin-page .ws-chat .admin-chat-detail,
+  .admin-page .ws-chat .admin-chat-selected .admin-chat-inbox {
+    display: none;
+  }
+  .admin-page .ws-chat .admin-chat-selected .admin-chat-detail {
+    display: flex;
+    flex: 1;
+  }
+  .admin-page .ws-chat .admin-chat-back {
+    width: 40px;
+    height: 44px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--ws-green);
+    text-decoration: none;
+  }
+  .admin-page .ws-chat-head {
+    flex-wrap: wrap;
+  }
+  .admin-page .ws-chat-order {
+    max-width: 100%;
+    height: auto;
+    min-height: 34px;
+    white-space: normal;
+  }
+}
+@media (max-width: 760px) {
+  .admin-page .ws-chat .admin-chat-layout {
+    height: calc(100dvh - var(--ws-topbar) - var(--ws-tabbar));
+  }
+  .admin-page .ws-chat .admin-chat-back {
+    width: 32px;
+    height: 40px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--ws-green);
+    text-decoration: none;
+  }
+  .admin-page .ws-chat-head {
+    flex-wrap: nowrap;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+  .admin-page .ws-chat-order {
+    display: none;
+  }
+  .admin-page .ws-chat .chat-messages {
+    padding: 12px;
+  }
+  .admin-page .ws-chat .chat-message {
+    max-width: 86%;
+  }
+  .admin-page .ws-chat .chat-compose {
+    padding: 6px 10px 10px;
+  }
+}
+
+/* ---------- Список товаров: как в Ozon Seller ---------- */
+
+.admin-page .ws-main .catalog-page-heading {
+  margin: 4px 0 18px;
+  align-items: center;
+}
+.admin-page .ws-main .catalog-page-heading h1 {
+  margin: 0;
+  color: var(--ws-ink);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.admin-page .ws-main .catalog-page-heading > div:last-child {
+  align-items: center;
+}
+.admin-page .ws-main .catalog-status-tabs {
+  margin: 0 0 16px;
+  display: flex;
+  gap: 24px;
+  overflow-x: auto;
+  box-shadow: inset 0 -1px 0 var(--ws-line);
+  scrollbar-width: none;
+}
+.admin-page .ws-main .catalog-status-tabs button {
+  min-height: 42px;
+  padding: 0 0 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--ws-text);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.admin-page .ws-main .catalog-status-tabs button span {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--ws-soft);
+  color: var(--ws-muted);
+  font-size: 12px;
+}
+.admin-page .ws-main .catalog-status-tabs button[aria-current="page"] {
+  color: var(--ws-ink);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--ws-green);
+}
+.admin-page .ws-main .catalog-toolbar-search {
+  margin: 0 0 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+.admin-page .ws-main .catalog-toolbar-search > label {
+  flex: 1 1 320px;
+  height: 44px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-field);
+  color: var(--ws-muted);
+}
+.admin-page .ws-main .catalog-toolbar-search > label input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  font: inherit;
+}
+.admin-page .ws-main .catalog-filters {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.admin-page .ws-main .catalog-filters > summary {
+  height: 44px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-soft);
+  color: var(--ws-ink);
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+.admin-page .ws-main .catalog-filters > summary::-webkit-details-marker {
+  display: none;
+}
+.admin-page .ws-main .catalog-filters > summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin: -3px 0 0 4px;
+  border-right: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(45deg);
+}
+.admin-page .ws-main .catalog-filters-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(560px, calc(100vw - 32px));
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: #fff;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.12);
+}
+.admin-page .ws-main .catalog-filters-panel .catalog-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.admin-page .ws-main .catalog-filters-caption {
+  color: var(--ws-muted);
+  font-size: 13px;
+}
+.admin-page .ws-main .catalog-filters-panel .admin-readiness-counters {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+}
+.admin-page .ws-main .catalog-toolbar-search > .text-button {
+  height: 44px;
+}
+@media (min-width: 701px) {
+  .admin-page .ws-main table.products {
+    min-width: 980px;
+  }
+}
+.admin-page .ws-main table.products th {
+  color: var(--ws-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.admin-page .ws-main table.products td {
+  padding: 12px 10px;
+  vertical-align: middle;
+}
+.admin-page .ws-main table.products th:nth-child(1) {
+  width: 44px;
+}
+.admin-page .ws-main table.products th:nth-child(2) {
+  width: 72px;
+}
+.admin-page .ws-main table.products th:nth-child(3) {
+  width: auto;
+}
+.admin-page .ws-main table.products th:nth-child(4) {
+  width: 130px;
+}
+.admin-page .ws-main table.products th:nth-child(5) {
+  width: 120px;
+}
+.admin-page .ws-main table.products th:nth-child(6) {
+  width: 100px;
+}
+.admin-page .ws-main table.products th:nth-child(7) {
+  width: 150px;
+}
+.admin-page .ws-main table.products th:nth-child(8) {
+  width: 84px;
+}
+.admin-page .ws-main .catalog-photo-cell img,
+.admin-page .ws-main .catalog-photo-empty {
+  width: 48px;
+  height: 56px;
+  display: block;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.admin-page .ws-main .catalog-photo-empty {
+  border: 0;
+  background: #eef0f2
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23a3a8b0' stroke-width='1.5'%3E%3Cpath d='M5 19c0-8 5-13 14-14-1 9-6 14-14 14Z'/%3E%3Cpath d='M5 19 13 11'/%3E%3C/svg%3E")
+    center / 20px no-repeat;
+}
+.admin-page .ws-main .catalog-product-cell .catalog-product-name {
+  color: var(--ws-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.admin-page .ws-main .catalog-product-cell > :is(a, strong, small) {
+  display: block;
+}
+.admin-page .ws-main .catalog-product-cell small {
+  margin-top: 2px;
+  color: var(--ws-muted);
+  font-size: 13px;
+}
+.admin-page .ws-main .catalog-product-cell .catalog-task {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ws-rust);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.admin-page .ws-main .catalog-product-cell .catalog-task:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.admin-page .ws-main .catalog-price-cell {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.admin-page .ws-main table.products td[data-empty] {
+  color: var(--ws-muted);
+}
+.admin-page .ws-main .catalog-channels-cell {
+  color: var(--ws-text);
+}
+.admin-page .ws-main .catalog-actions-cell {
+  white-space: nowrap;
+  text-align: right;
+}
+.admin-page .ws-main .catalog-icon-button {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ws-muted);
+  cursor: pointer;
+}
+.admin-page .ws-main .catalog-icon-button:hover {
+  background: var(--ws-soft);
+  color: var(--ws-ink);
+}
+@media (max-width: 700px) {
+  .admin-page .ws-main .catalog-page-heading {
+    flex-direction: row;
+    align-items: center;
+  }
+  .admin-page .ws-main .catalog-page-heading h1 {
+    width: 100%;
+    font-size: 24px;
+    text-align: left;
+  }
+  .admin-page .ws-main .catalog-page-heading > div:last-child {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+  .admin-page .ws-main .catalog-page-heading > div:last-child > button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: 14px;
+  }
+  .admin-page .ws-main .catalog-toolbar-search {
+    margin-top: 0;
+    flex-wrap: nowrap;
+  }
+  .admin-page .ws-main .catalog-toolbar-search > label {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .admin-page .ws-main table.products td {
+    border: 0;
+  }
+  .admin-page .ws-main .catalog-filters-panel {
+    position: fixed;
+    top: auto;
+    right: 8px;
+    bottom: calc(var(--ws-tabbar) + 8px);
+    left: 8px;
+    width: auto;
+  }
+  .admin-page .ws-main .catalog-filters-panel .admin-readiness-counters {
+    display: flex;
+  }
+  /* Строка товара на телефоне: фото, название и цена, ниже статус и наличие. */
+  .admin-page .ws-main table.products tr {
+    grid-template-columns: 24px 48px minmax(0, 1fr) auto;
+    gap: 6px 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--ws-line);
+  }
+  .admin-page .ws-main table.products td {
+    padding: 0;
+  }
+  .admin-page .ws-main table.products td[data-label]::before {
+    display: none;
+  }
+  .admin-page .ws-main table.products .catalog-check {
+    grid-column: 1;
+    grid-row: 1 / 3;
+  }
+  .admin-page .ws-main table.products .catalog-photo-cell {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+  .admin-page .ws-main table.products .catalog-product-cell {
+    min-width: 0;
+    grid-column: 3 / -1;
+  }
+  .admin-page .ws-main table.products td:nth-child(4) {
+    grid-column: 3;
+  }
+  .admin-page .ws-main table.products .catalog-price-cell {
+    grid-column: 4;
+    grid-row: 2;
+    text-align: right;
+  }
+  .admin-page .ws-main table.products td:nth-child(6) {
+    grid-column: 3;
+    font-size: 13px;
+  }
+  .admin-page .ws-main table.products :is(.catalog-channels-cell, .catalog-actions-cell) {
+    display: none;
+  }
+}

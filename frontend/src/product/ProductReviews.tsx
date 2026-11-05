@@ -3,14 +3,6 @@ import type { ProductReview } from "./types";
 import { stars } from "./types";
 
 const ratingLabels = ["", "Плохо", "Есть проблемы", "Нормально", "Хорошо", "Отлично"];
-const filePayload = (file: File) =>
-  new Promise<{ contentType: string; data: string }>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () =>
-      resolve({ contentType: file.type, data: String(reader.result).split(",")[1] || "" });
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
 
 export function ReviewComposer({
   slug,
@@ -91,7 +83,9 @@ export function ReviewComposer({
     setSending(true);
     setNotice("");
     try {
-      const photos = await Promise.all(media.map(filePayload));
+      const photos = media.length
+        ? await Promise.all(media.map((await import("./review-files")).filePayload))
+        : [];
       const response = await fetch(`/api/v1/products/${encodeURIComponent(slug)}/reviews`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

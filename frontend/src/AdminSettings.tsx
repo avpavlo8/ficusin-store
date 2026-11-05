@@ -38,11 +38,7 @@ export function Settings({ onError }: { onError: (value: string) => void }) {
 
   return (
     <>
-      <PageHeading
-        eyebrow="Магазин"
-        title="Настройки"
-        text="Действуют сразу, перезапуск не нужен"
-      />
+      <PageHeading title="Настройки" text="Действуют сразу, перезапуск не нужен" />
       <div className="admin-settings">
         {definitions.map((definition) => (
           <label

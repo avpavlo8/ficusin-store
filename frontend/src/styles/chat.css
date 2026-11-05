@@ -528,16 +528,6 @@
   border-radius: 99px;
   font-size: 10px;
 }
-.admin-chat-title h1 {
-  margin-bottom: 8px;
-  font-size: 30px;
-  font-weight: 400;
-}
-.admin-chat-title > p {
-  color: #536777;
-  font-size: 13px;
-  margin-bottom: 24px;
-}
 .admin-chat-layout {
   display: grid;
   grid-template-columns: minmax(220px, 0.65fr) minmax(0, 1.35fr);
@@ -553,29 +543,6 @@
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--chat-line);
-}
-.admin-chat-filters {
-  padding: 16px;
-  display: grid;
-  gap: 12px;
-  border-bottom: 1px solid var(--chat-line);
-}
-.admin-chat-filters label {
-  display: grid;
-  gap: 6px;
-  font-size: 12px;
-}
-.admin-chat-filters input,
-.admin-chat-filters select {
-  width: 100%;
-  min-width: 0;
-  min-height: 40px;
-  padding: 8px;
-  border: 1px solid var(--chat-line);
-  border-radius: 6px;
-  background: #f4f6f8;
-  color: var(--chat-text);
-  font: inherit;
 }
 .admin-chat-list {
   overflow: auto;
@@ -1165,8 +1132,4 @@ body.account-chat-mobile .chat-composer-bar textarea {
   color: #20669b;
   cursor: pointer;
   text-decoration: underline;
-}
-.admin-chat-title .chat-notifications {
-  width: fit-content;
-  margin: 0 0 16px;
 }

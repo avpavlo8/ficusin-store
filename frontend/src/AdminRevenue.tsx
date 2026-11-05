@@ -96,8 +96,8 @@ export function AdminRevenue({ onOpen }: { onOpen: () => void }) {
                 >
                   <defs>
                     <linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#648361" stopOpacity=".24" />
-                      <stop offset="100%" stopColor="#648361" stopOpacity=".02" />
+                      <stop offset="0%" stopColor="#686f7c" stopOpacity=".24" />
+                      <stop offset="100%" stopColor="#686f7c" stopOpacity=".02" />
                     </linearGradient>
                   </defs>
                   {[32, 90, 148].map((y) => (
@@ -107,7 +107,7 @@ export function AdminRevenue({ onOpen }: { onOpen: () => void }) {
                       x2="656"
                       y1={y}
                       y2={y}
-                      stroke="#e7e1d6"
+                      stroke="#fce2c1"
                       strokeDasharray="3 4"
                     />
                   ))}
@@ -120,7 +120,7 @@ export function AdminRevenue({ onOpen }: { onOpen: () => void }) {
                   <polyline
                     points={line}
                     fill="none"
-                    stroke="#2b4c39"
+                    stroke="#1b5c40"
                     strokeWidth="2.5"
                     strokeLinejoin="round"
                   />
@@ -130,8 +130,8 @@ export function AdminRevenue({ onOpen }: { onOpen: () => void }) {
                       cx={x}
                       cy={y}
                       r={rows.length > 10 ? 2 : 3.5}
-                      fill="#f9f6ef"
-                      stroke="#2b4c39"
+                      fill="#f4f4f4"
+                      stroke="#1b5c40"
                       strokeWidth="2"
                     >
                       <title>

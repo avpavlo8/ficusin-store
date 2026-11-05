@@ -28,6 +28,7 @@ type readinessChecker interface {
 }
 
 type Dependencies struct {
+	Environment      string
 	Catalog          catalogRepository
 	Auth             authService
 	Orders           orderRepository
@@ -35,6 +36,7 @@ type Dependencies struct {
 	CDEK             cdekService
 	Admin            adminRepository
 	Saby             sabySyncService
+	CatalogExport    catalogExportService
 	Push             pushService
 	Chat             *chat.Store
 	Cart             cartStore
@@ -86,6 +88,8 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		dependencies.Refunds,
 	)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
+	mux.HandleFunc("GET /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, false))
+	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, true))
 	if dependencies.Avito != nil {
 		mux.HandleFunc("GET /api/v1/admin/avito", avitoListHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("POST /api/v1/admin/avito/import", avitoImportHandler(adminAPI, dependencies.Avito))
@@ -121,7 +125,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /api/v1/admin/chat/{id}/photos/{messageID}", chatAPI.serve)
 		mux.HandleFunc("GET /api/v1/admin/chat/{id}/attachments/{messageID}", chatAPI.serve)
 	}
-	callLimiter := newRateLimiter(5, 10*time.Minute)
+	callLimiter := newCallRateLimiter(dependencies.Environment)
 	verifyCallLimiter := newRateLimiter(120, time.Minute)
 	orderLimiter := newRateLimiter(10, time.Hour)
 	suggestLimiter := newRateLimiter(60, time.Minute)
@@ -247,6 +251,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/refunds/{refundID}/resolve", adminAPI.resolveRefund)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/settlement-receipt", adminAPI.settlePaymentReceipt)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link", adminAPI.createOrderPaymentLink)
+	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payment-link/renew", adminAPI.renewOrderPaymentLink)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/recover", adminAPI.recoverUnknownPayment)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/resolve", adminAPI.resolveUnknownPayment)
 	mux.HandleFunc("POST /api/v1/admin/orders/{id}/payments/{paymentID}/dismiss", adminAPI.dismissUnknownPayment)
@@ -257,18 +262,6 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/discount-plants/{id}/photo", adminAPI.discountPlantPhoto)
 	mux.HandleFunc("GET /api/v1/admin/returns/{id}", adminAPI.marketplaceReturn)
 	mux.HandleFunc("GET /api/v1/admin/returns", adminAPI.marketplaceReturns)
-	mux.HandleFunc("GET /api/v1/admin/finance", adminAPI.financeOverview)
-	mux.HandleFunc("POST /api/v1/admin/finance/imports/preview", adminAPI.previewFinanceImport)
-	mux.HandleFunc("POST /api/v1/admin/finance/imports/{id}/confirm", adminAPI.confirmFinanceImport)
-	mux.HandleFunc("PATCH /api/v1/admin/finance/transactions/{id}", adminAPI.classifyFinanceTransaction)
-	mux.HandleFunc("POST /api/v1/admin/finance/cash", adminAPI.createFinanceCash)
-	mux.HandleFunc("POST /api/v1/admin/finance/cash/reconcile", adminAPI.reconcileFinanceCash)
-	mux.HandleFunc("GET /api/v1/admin/finance/pnl", adminAPI.financePnL)
-	mux.HandleFunc("PUT /api/v1/admin/finance/tax", adminAPI.saveFinanceTax)
-	mux.HandleFunc("POST /api/v1/admin/finance/marketplace-adjustments", adminAPI.createMarketplaceAdjustment)
-	mux.HandleFunc("GET /api/v1/admin/finance/supplier-account", adminAPI.supplierAccount)
-	mux.HandleFunc("POST /api/v1/admin/finance/supplier-account/operations", adminAPI.createSupplierAccountOperation)
-	mux.HandleFunc("POST /api/v1/admin/finance/supplier-account/reconcile", adminAPI.reconcileSupplierAccount)
 	mux.HandleFunc("GET /api/v1/admin/returns/products", adminAPI.returnProducts)
 	mux.HandleFunc("GET /api/v1/admin/returns/documents", adminAPI.returnDocuments)
 	mux.HandleFunc("POST /api/v1/admin/returns/receipt-batch", adminAPI.returnReceiptBatch)

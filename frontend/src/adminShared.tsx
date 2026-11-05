@@ -71,7 +71,8 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     headers,
   });
   if (response.status === 401) {
-    window.location.assign("/login?returnTo=/admin");
+    const returnTo = window.location.pathname + window.location.search;
+    window.location.assign(`/login?returnTo=${encodeURIComponent(returnTo)}`);
     throw new Error("Требуется вход");
   }
   if (response.status === 403) throw new Error("Недостаточно прав для этого действия");
@@ -99,23 +100,14 @@ export function selectZeroNumberInput(event: React.SyntheticEvent<HTMLElement>) 
     input.select();
 }
 
-// Shares the account page's heading block so both areas read identically.
-export function PageHeading({
-  eyebrow,
-  title,
-  text,
-}: {
-  eyebrow: string;
-  title: string;
-  text: string;
-}) {
+// Заголовок экрана: название и, если нужно, одна строка простыми словами
+// о том, что здесь делают. Надзаголовки («Интеграции», «CRM») убраны:
+// раздел и так подписан в меню, а лишние слова сотрудник не читает.
+export function PageHeading({ title, text }: { title: string; text?: string }) {
   return (
-    <div className="account-title">
-      <div>
-        <p className="eyebrow">{eyebrow}</p>
-        <h2>{title}</h2>
-        <p className="account-title-note">{text}</p>
-      </div>
+    <div className="ws-page-heading">
+      <h1>{title}</h1>
+      {text && <p>{text}</p>}
     </div>
   );
 }

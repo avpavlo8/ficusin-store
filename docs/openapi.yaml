@@ -1662,273 +1662,6 @@ paths:
         - Session: []
       x-permissions:
         - dashboard.read
-  /admin/finance:
-    get:
-      operationId: get_admin_finance
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#financeOverview
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.read."
-  /admin/finance/cash:
-    post:
-      operationId: post_admin_finance_cash
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#createFinanceCash
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.FinanceCashInput"
-  /admin/finance/cash/reconcile:
-    post:
-      operationId: post_admin_finance_cash_reconcile
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#reconcileFinanceCash
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.FinanceReconciliation"
-  /admin/finance/imports/{id}/confirm:
-    post:
-      operationId: post_admin_finance_imports_id_confirm
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#confirmFinanceImport
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-  /admin/finance/imports/preview:
-    post:
-      operationId: post_admin_finance_imports_preview
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#previewFinanceImport
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-  /admin/finance/marketplace-adjustments:
-    post:
-      operationId: post_admin_finance_marketplace_adjustments
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#createMarketplaceAdjustment
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.MarketplaceAdjustmentInput"
-  /admin/finance/pnl:
-    get:
-      operationId: get_admin_finance_pnl
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#financePnL
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.read."
-      parameters:
-        - in: query
-          name: from
-          schema:
-            type: string
-        - in: query
-          name: to
-          schema:
-            type: string
-  /admin/finance/supplier-account:
-    get:
-      operationId: get_admin_finance_supplier_account
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#supplierAccount
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.read."
-  /admin/finance/supplier-account/operations:
-    post:
-      operationId: post_admin_finance_supplier_account_operations
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#createSupplierAccountOperation
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.SupplierAccountInput"
-  /admin/finance/supplier-account/reconcile:
-    post:
-      operationId: post_admin_finance_supplier_account_reconcile
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#reconcileSupplierAccount
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.SupplierReconciliationInput"
-  /admin/finance/tax:
-    put:
-      operationId: put_admin_finance_tax
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#saveFinanceTax
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.TaxPeriodInput"
-  /admin/finance/transactions/{id}:
-    patch:
-      operationId: patch_admin_finance_transactions_id
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/finance.go#classifyFinanceTransaction
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - finance.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: finance.edit."
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.FinanceClassification"
   /admin/operations:
     get:
       operationId: get_admin_operations
@@ -2199,6 +1932,53 @@ paths:
         "503":
           $ref: "#/components/responses/ValidationError"
       x-source: backend/internal/httpapi/admin_order_adjustments.go#createOrderPaymentLink
+      tags:
+        - Administration
+      security:
+        - Session: []
+      x-permissions:
+        - orders.edit
+      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+        the operation: orders.edit."
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+  /admin/orders/{id}/payment-link/renew:
+    post:
+      operationId: post_admin_orders_id_payment_link_renew
+      responses:
+        "200":
+          description: Previous link retired, new link created and sent to the buyer
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - confirmationUrl
+                properties:
+                  confirmationUrl:
+                    type: string
+                  payment:
+                    $ref: "#/components/schemas/payment.Balance"
+                  notice:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                      push:
+                        type: string
+        "401":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ValidationError"
+      x-source: backend/internal/httpapi/admin_order_adjustments.go#renewOrderPaymentLink
       tags:
         - Administration
       security:
@@ -5119,6 +4899,59 @@ paths:
           required: true
           schema:
             type: string
+  /admin/variants/{variantId}/saby-export:
+    get:
+      operationId: get_admin_variant_saby_export
+      summary: Preview saved site data and Saby export state (owner only)
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.read]
+      x-source: backend/internal/httpapi/admin_catalog_export.go#catalogExportHandler
+      parameters:
+        - in: path
+          name: variantId
+          required: true
+          schema: {type: integer}
+      responses:
+        "200":
+          description: Saved site values and durable export state; no external requests or writes.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/catalogsync.View"}
+        default:
+          $ref: "#/components/responses/ValidationError"
+    post:
+      operationId: post_admin_variant_saby_export
+      summary: Queue an explicit Saby catalogue write or request read-only reconciliation (owner only)
+      description: Requires the current preview fingerprint. Unchanged confirmed payloads are not sent again. Unknown remote results permit only read-only reconciliation. Does not publish the site card or create inventory.
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.manage]
+      x-source: backend/internal/httpapi/admin_catalog_export.go#catalogExportHandler
+      parameters:
+        - in: path
+          name: variantId
+          required: true
+          schema: {type: integer}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fingerprint: {type: string}
+                checkOnly: {type: boolean, default: false}
+      responses:
+        2XX:
+          description: Queued or already confirmed; check the returned state. A queued request is not a confirmed Saby write.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/catalogsync.View"}
+        default:
+          $ref: "#/components/responses/ValidationError"
   /admin/variants/{variantId}/saby-link:
     post:
       operationId: post_admin_variants_variantId_saby_link
@@ -7229,8 +7062,43 @@ components:
         tariffCode:
           type: integer
       type: object
+    catalogsync.View:
+      type: object
+      required: [configured, state, message, snapshot, fingerprint, dirty, validation]
+      properties:
+        configured: {type: boolean}
+        state:
+          type: string
+          enum: [idle, queued, checking, verifying, unknown, synced, error]
+        message: {type: string}
+        fingerprint: {type: string}
+        dirty: {type: boolean}
+        validation: {type: string}
+        verifiedAt: {type: string, format: date-time}
+        snapshot:
+          type: object
+          required: [variantId, productId, sku, name, potCm, heightCm, priceMinor, sabyId, code, article, lookupName]
+          properties:
+            variantId: {type: integer}
+            productId: {type: integer}
+            sku: {type: string}
+            name: {type: string}
+            potCm: {type: number}
+            heightCm: {type: number}
+            priceMinor: {type: integer, description: Price in integer kopecks.}
+            sabyId: {type: string}
+            code: {type: string}
+            article: {type: string}
+            lookupName: {type: string}
     admin.ProductCreate:
       properties:
+        variantAttributes:
+          type: object
+          additionalProperties: false
+          description: Initial site-owned measurements for the first SKU; decimal values are preserved.
+          properties:
+            pot_diameter_cm: {type: number, exclusiveMinimum: 0, maximum: 500}
+            height_cm: {type: number, exclusiveMinimum: 0, maximum: 3000}
         attributes:
           additionalProperties: {}
           type: object

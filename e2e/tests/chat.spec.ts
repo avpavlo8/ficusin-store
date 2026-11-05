@@ -242,3 +242,21 @@ for (const device of ['@desktop', '@phone']) {
     await expect(dialog.getByText('Сообщение 100', { exact: true })).toHaveCount(1);
   });
 }
+
+test('chat launcher stays visible while browsing and opens from the first screen @desktop @phone', async ({page}) => {
+  await mockApi(page);
+  await page.goto('/');
+  const launcher=page.getByRole('button',{name:'Написать нам',exact:true});
+  await expect(launcher).toBeVisible();
+  const initialBox=await launcher.boundingBox();
+  expect(initialBox!.y).toBeGreaterThanOrEqual(0);
+  expect(initialBox!.y+initialBox!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await page.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));
+  await expect.poll(async()=>Math.round((await launcher.boundingBox())!.y)).toBe(Math.round(initialBox!.y));
+  if(page.viewportSize()!.width<=850){
+    const nav=await page.locator('.tab-bar').boundingBox();
+    expect((await launcher.boundingBox())!.y+initialBox!.height).toBeLessThan(nav!.y);
+  }
+  await launcher.click();
+  await expect(page.getByRole('dialog',{name:'Быстрый чат с Фикусином'})).toBeVisible();
+});

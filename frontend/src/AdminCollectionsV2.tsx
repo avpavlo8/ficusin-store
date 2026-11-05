@@ -1048,7 +1048,6 @@ export function CollectionsV2({
   return (
     <>
       <PageHeading
-        eyebrow="Витрина"
         title="Подборки"
         text="Ручной состав или автоматический подбор по характеристикам"
       />

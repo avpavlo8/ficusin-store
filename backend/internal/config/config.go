@@ -8,25 +8,27 @@ import (
 )
 
 type Config struct {
-	HTTP             HTTP
-	Database         Database
-	Auth             Auth
-	SMS              SMS
-	MigrationsDir    string
-	TelegramChatID   string
-	TelegramBotToken string
-	YandexSuggestKey string
-	MetrikaMPToken   string
-	DaDataAPIKey     string
-	AdminEmails      []string
-	CDEK             CDEK
-	Push             Push
-	Payments         Payments
-	SiteURL          string
-	Mail             Mail
-	Photos           Photos
-	Marketplaces     Marketplaces
-	Saby             Saby
+	Environment        string
+	StagingAccessToken string
+	HTTP               HTTP
+	Database           Database
+	Auth               Auth
+	SMS                SMS
+	MigrationsDir      string
+	TelegramChatID     string
+	TelegramBotToken   string
+	YandexSuggestKey   string
+	MetrikaMPToken     string
+	DaDataAPIKey       string
+	AdminEmails        []string
+	CDEK               CDEK
+	Push               Push
+	Payments           Payments
+	SiteURL            string
+	Mail               Mail
+	Photos             Photos
+	Marketplaces       Marketplaces
+	Saby               Saby
 }
 
 // Marketplaces holds seller API credentials. Empty credentials keep the
@@ -117,6 +119,8 @@ type Database struct {
 	URL       string
 	CA        string
 	VerifyTLS bool
+	// Zero keeps the production pool limit. Preview shares cluster capacity.
+	MaxConnections int32
 }
 
 type Auth struct {
@@ -143,7 +147,7 @@ func Load() (Config, error) {
 		return Config{}, errors.New("DATABASE_URL is not set")
 	}
 
-	return Config{
+	cfg := Config{
 		HTTP: HTTP{
 			Address:   ":" + port,
 			StaticDir: strings.TrimSpace(os.Getenv("STATIC_DIR")),
@@ -217,7 +221,8 @@ func Load() (Config, error) {
 			PrivateKey: strings.TrimSpace(os.Getenv("VAPID_PRIVATE_KEY")),
 			Subject:    defaultString(os.Getenv("VAPID_SUBJECT"), "mailto:info@ficusin.ru"),
 		},
-	}, nil
+	}
+	return configureEnvironment(cfg)
 }
 
 func splitList(value string) []string {

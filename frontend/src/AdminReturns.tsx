@@ -28,9 +28,7 @@ export function AdminReturns({
   can,
   onError,
   registerBeforeLeave,
-  canFinance = false,
 }: {
-  canFinance?: boolean;
   can: (permission: string) => boolean;
   onError: (message: string) => void;
   registerBeforeLeave?: (flush: () => Promise<boolean>) => () => void;
@@ -293,8 +291,7 @@ export function AdminReturns({
     <div className={`returns-workspace ${mobileOpen ? "is-detail-open" : ""}`}>
       <div className="returns-heading">
         <div>
-          <p className="return-eyebrow">Приёмка и забота о растениях</p>
-          <h2>Возвраты растений</h2>
+          <h1>Возвраты</h1>
           <p>Примите растения, оцените состояние и оформите дальнейшие действия.</p>
         </div>
         <div className="returns-heading-actions">
@@ -703,7 +700,6 @@ export function AdminReturns({
                 <ReturnDetails
                   key={selected.id}
                   item={selected}
-                  canFinance={canFinance}
                   canEdit={can("returns.edit")}
                   canReceipt={can("returns.receipt.create")}
                   onSaved={saved}

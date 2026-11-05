@@ -120,9 +120,8 @@ export function Analytics({ onError }: { onError: (message: string) => void }) {
       )}
       <div className="analytics-heading-row">
         <PageHeading
-          eyebrow="Продажи без повторов"
           title="Аналитика продаж"
-          text="Подтверждённые события сайта, СБИС, Ozon и Wildberries в московском времени"
+          text="Продажи всех каналов без повторов, по московскому времени."
         />
         <div className="analytics-controls">
           <label>

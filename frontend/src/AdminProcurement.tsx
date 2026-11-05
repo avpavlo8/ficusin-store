@@ -27,6 +27,7 @@ import {
   ProcurementCostCalculator,
   type ProcurementCalculatorDraft,
 } from "./ProcurementCostCalculator";
+import { WorkspaceMore } from "./WorkspaceUI";
 import { PageHeading, api } from "./adminShared";
 import type {
   IntegrationHealth,
@@ -411,7 +412,7 @@ export function Procurement({
   if (!data)
     return (
       <>
-        <PageHeading eyebrow="Снабжение" title="Закупки" text="Загружаем данные закупок…" />
+        <PageHeading title="Закупки" text="Загружаем данные закупок…" />
       </>
     );
   const activeSuppliers = data.suppliers.filter((item) => item.active !== false);
@@ -528,7 +529,7 @@ export function Procurement({
   return (
     <>
       <div className="procurement-page-heading">
-        <PageHeading eyebrow="Снабжение" title="Закупки" text="" />
+        <PageHeading title="Закупки" />
         <div className="procurement-inline-actions">
           <button
             className="admin-primary"
@@ -537,23 +538,25 @@ export function Procurement({
           >
             Собрать заказ
           </button>
-          <button
-            className="secondary-button"
-            disabled={activeSuppliers.length === 0}
-            onClick={() => setUploadDialog(true)}
-          >
-            Загрузить инвойс
-          </button>
-          <button className="secondary-button" onClick={() => setSupplierDialog(true)}>
-            Поставщики
-          </button>
-          <button
-            className="secondary-button"
-            disabled={activeSuppliers.length === 0}
-            onClick={() => setOrderDialog(true)}
-          >
-            Создать без плана
-          </button>
+          <WorkspaceMore label="Ещё действия">
+            <button
+              type="button"
+              disabled={activeSuppliers.length === 0}
+              onClick={() => setUploadDialog(true)}
+            >
+              Загрузить инвойс
+            </button>
+            <button
+              type="button"
+              disabled={activeSuppliers.length === 0}
+              onClick={() => setOrderDialog(true)}
+            >
+              Создать заказ без плана
+            </button>
+            <button type="button" onClick={() => setSupplierDialog(true)}>
+              Поставщики
+            </button>
+          </WorkspaceMore>
         </div>
       </div>
       {data.summary.unresolvedAliases > 0 && (
@@ -582,16 +585,27 @@ export function Procurement({
 
       <div className="procurement-workspace">
         <nav className="procurement-tabs" aria-label="Разделы закупок">
+          {/* Пять ежедневных вкладок на виду, остальное — в «Ещё». */}
           {renderTab("orders", "Закупки")}
-          {renderTab("drafts", "Планы ", drafts.length)}
-          {renderTab("calculator", "Калькулятор")}
           {renderTab("recommendations", "Что заказать")}
-          {renderTab("products", "Товары")}
-          {renderTab("unlinkedSales", "Продажи без товара")}
+          {renderTab("drafts", "Планы ", drafts.length)}
           {renderTab("requests", "Под заказ ", data.summary.openRequests)}
           {renderTab("availability", "Проверить наличие ", data.summary.availabilityChecks)}
-          {canIntegrations && renderTab("integrations", "Интеграции")}
-          {canIntegrations && renderTab("settings", "Формула цены")}
+          <WorkspaceMore
+            active={[
+              "calculator",
+              "products",
+              "unlinkedSales",
+              "integrations",
+              "settings",
+            ].includes(view)}
+          >
+            {renderTab("calculator", "Калькулятор цены")}
+            {renderTab("products", "Товары поставщиков")}
+            {renderTab("unlinkedSales", "Продажи без товара")}
+            {canIntegrations && renderTab("integrations", "Интеграции")}
+            {canIntegrations && renderTab("settings", "Формула цены")}
+          </WorkspaceMore>
         </nav>
         <div className="procurement-content">
           <div hidden={view !== "calculator"}>

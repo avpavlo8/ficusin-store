@@ -13,9 +13,9 @@
   right: 0;
   max-height: 320px;
   overflow-y: auto;
-  border: 1px solid var(--workspace-line, #ded8cc);
+  border: 1px solid var(--workspace-line, #d3d4d7);
   border-radius: 8px;
-  background: #fffdf8;
+  background: #fbfbfc;
   box-shadow: 0 8px 20px #24473418;
 }
 .admin-product-search-menu button {
@@ -26,10 +26,10 @@
   padding: 12px 14px;
   background: transparent;
   text-align: left;
-  color: #244734;
+  color: #185339;
 }
 .admin-product-search-menu button[aria-selected="true"] {
-  background: #edf2e8;
+  background: #ecedee;
 }
 .admin-product-search-menu strong,
 .admin-product-search-menu small {
@@ -38,11 +38,11 @@
 }
 .admin-product-search-menu small {
   margin-top: 3px;
-  color: var(--order-muted, #747b6d);
+  color: var(--order-muted, #6a717e);
 }
 .admin-product-search-menu p {
   margin: 0;
   padding: 12px 14px;
-  color: var(--order-muted, #747b6d);
+  color: var(--order-muted, #6a717e);
   font-size: 13px;
 }

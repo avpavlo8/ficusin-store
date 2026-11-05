@@ -9,7 +9,7 @@
   border: 0;
   border-radius: 0;
   padding: 0 390px 0 0;
-  background: var(--workspace-paper, #f8f5ee);
+  background: var(--workspace-paper, #f3f3f3);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -17,23 +17,26 @@
 .admin-page .procurement-plan-fullscreen > header {
   min-height: 96px;
   padding: 20px 28px 16px;
-  border-bottom: 1px solid #ddd5c8;
-  background: #fbf8f1;
+  border-bottom: 1px solid #f4d7b1;
+  background: #f6f6f6;
 }
 .admin-page .procurement-plan-fullscreen > header h2 {
   margin: 4px 0 0;
-  color: #252a25;
+  color: #25272a;
   font:
-    400 27px/1 Georgia,
-    serif;
+    400 27px/1 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .admin-page .procurement-plan-close {
   width: 38px;
   height: 38px;
   padding: 0;
-  border: 1px solid #d8d0c3;
+  border: 1px solid #cbcdd0;
   border-radius: 50%;
-  background: #fffdf8;
+  background: #fbfbfc;
   font-size: 22px;
 }
 .admin-page .procurement-plan-settings {
@@ -41,12 +44,12 @@
   display: grid;
   grid-template-columns: 1.4fr 0.7fr 1fr 1fr;
   gap: 12px;
-  border-bottom: 1px solid #ddd5c8;
+  border-bottom: 1px solid #f4d7b1;
 }
 .admin-page .procurement-plan-settings label {
   display: grid;
   gap: 6px;
-  color: #545a52;
+  color: #50545c;
   font-size: 11px;
   font-weight: 700;
 }
@@ -67,26 +70,26 @@
 .admin-page .procurement-plan-tools button {
   height: 36px;
   padding: 0 13px;
-  border: 1px solid #d4ccbe;
+  border: 1px solid #c6c8cc;
   border-radius: 9px;
-  background: #fffdf8;
+  background: #fbfbfc;
   font-weight: 700;
 }
 .admin-page .procurement-plan-tools > span {
   margin-left: auto;
-  color: #777c72;
+  color: #6d7481;
 }
 .admin-page .procurement-plan-tools button.admin-primary,
 .admin-page .procurement-recommendation-list button.admin-primary {
-  background: #b65f42;
-  color: #fffaf0;
+  background: #7d4f12;
+  color: #f7f7f8;
 }
 .admin-page .procurement-plan-table-wrap {
   flex: 1 1 0;
   min-height: 220px;
   max-height: none;
   margin: 0 28px;
-  border: 1px solid #dcd5c8;
+  border: 1px solid #f4d7b0;
   border-radius: 12px;
   overflow: auto;
   box-shadow: none;
@@ -100,7 +103,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  background: #e6e2d8;
+  background: #dddee1;
 }
 .admin-page .procurement-plan-table th {
   padding: 11px 10px;
@@ -150,7 +153,7 @@
 .admin-page .procurement-plan-table td > small {
   display: block;
   margin-top: 4px;
-  color: #788078;
+  color: #717887;
   font-size: 10px;
 }
 .admin-page .procurement-product-meta {
@@ -164,14 +167,14 @@
   margin: 0;
 }
 .admin-page .procurement-plan-table .procurement-stock-note {
-  color: #777d75;
+  color: #6e7584;
   font-size: 10px;
 }
 .admin-page .procurement-plan-table .procurement-row-touched td {
-  background: #f1e5dc;
+  background: #e5e6e8;
 }
 .admin-page .procurement-plan-table .procurement-row-touched td:first-child {
-  box-shadow: inset 4px 0 #b65f42;
+  box-shadow: inset 4px 0 #7d4f12;
 }
 .admin-page .procurement-plan-table .procurement-cost-cell {
   overflow-wrap: normal;
@@ -201,8 +204,8 @@
   max-width: 100%;
   padding: 3px 5px;
   border-radius: 999px;
-  background: #f4e6db;
-  color: #94583f !important;
+  background: #e6e7e9;
+  color: #7d4f12 !important;
   font-size: 9px;
   font-weight: 800;
 }
@@ -212,8 +215,8 @@
   padding: 0;
   border: 0;
   border-radius: 8px;
-  background: #f6e8e3;
-  color: #b65f42;
+  background: #ececed;
+  color: #7d4f12;
   font-size: 17px;
 }
 .admin-page .procurement-plan-fullscreen > .admin-hint {
@@ -221,22 +224,22 @@
   padding: 11px 13px;
   border: 0;
   border-radius: 9px;
-  background: #ebe7dd;
-  color: #747a70;
+  background: #e2e3e6;
+  color: #6b727f;
   font-size: 11px;
 }
 .admin-page .procurement-plan-fullscreen button:focus-visible,
 .admin-page .procurement-plan-fullscreen input:focus-visible,
 .admin-page .procurement-plan-fullscreen select:focus-visible {
-  outline: 2px solid #b65f42;
+  outline: 2px solid #7d4f12;
   outline-offset: 2px;
 }
 .admin-page .procurement-plan-footer {
   min-height: 96px;
   margin-top: auto;
   padding: 14px 28px;
-  border-top: 1px solid #ddd5c8;
-  background: #fbf8f1;
+  border-top: 1px solid #f4d7b1;
+  background: #f6f6f6;
 }
 .admin-page .procurement-plan-total {
   margin-right: auto;
@@ -246,7 +249,7 @@
 }
 .admin-page .procurement-plan-total span,
 .admin-page .procurement-plan-total small {
-  color: #777c72;
+  color: #6d7481;
   font-size: 11px;
 }
 .admin-page .procurement-plan-total strong {
@@ -266,10 +269,10 @@
   display: flex;
   flex-direction: column;
   border: 0;
-  border-left: 1px solid #ddd5c8;
+  border-left: 1px solid #f4d7b1;
   border-radius: 0;
-  background: #fffdf8;
-  box-shadow: -18px 0 45px rgba(52, 53, 47, 0.09);
+  background: #fbfbfc;
+  box-shadow: -18px 0 45px rgba(47, 49, 53, 0.09);
 }
 .admin-page .procurement-recommendation-drawer > header {
   padding: 22px 22px 16px;
@@ -277,26 +280,29 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  border-bottom: 1px solid #ddd5c8;
+  border-bottom: 1px solid #f4d7b1;
 }
 .admin-page .procurement-recommendation-drawer > header h3 {
   margin: 3px 0 0;
   font:
-    400 23px/1.15 Georgia,
-    serif;
+    400 23px/1.15 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 .admin-page .procurement-recommendation-drawer > header small {
   display: block;
   margin-top: 6px;
-  color: #7a8078;
+  color: #717887;
   font-size: 10px;
 }
 .admin-page .procurement-saby-search {
   padding: 14px 18px 12px;
   display: grid;
   gap: 6px;
-  border-bottom: 1px solid #e8e1d5;
-  color: #646b64;
+  border-bottom: 1px solid #dcdee1;
+  color: #5f6570;
   font-size: 11px;
   font-weight: 700;
 }
@@ -304,14 +310,14 @@
   width: 100%;
   height: 40px;
   padding: 0 12px;
-  border: 1px solid #d8d0c3;
+  border: 1px solid #cbcdd0;
   border-radius: 9px;
-  background: #fff;
+  background: #ffffff;
   font-size: 13px;
   font-weight: 400;
 }
 .admin-page .procurement-saby-search small {
-  color: #858a82;
+  color: #7b8291;
   font-size: 9px;
   font-weight: 400;
 }
@@ -327,7 +333,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
-  border-bottom: 1px solid #e9e3d9;
+  border-bottom: 1px solid #dfe0e3;
 }
 .admin-page .procurement-recommendation-list article > div {
   min-width: 0;
@@ -340,14 +346,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;
-  color: #777d75;
+  color: #6e7584;
   font-size: 10px;
 }
 .admin-page .procurement-recommendation-metrics span:first-child {
   padding: 3px 6px;
   border-radius: 5px;
-  background: #f0ede5;
-  color: #5e675f;
+  background: #eaeaeb;
+  color: #5b606a;
 }
 .admin-page .procurement-saby-result > div {
   min-width: 0;
@@ -361,22 +367,22 @@
 .admin-page .procurement-saby-title > span {
   padding: 3px 6px;
   border-radius: 999px;
-  background: #f3dfd2;
-  color: #985038;
+  background: #e0e2e5;
+  color: #7d4f12;
   font-size: 9px;
   font-weight: 700;
 }
 .admin-page .procurement-saby-code {
   display: block;
   margin-top: 5px;
-  color: #985038;
+  color: #7d4f12;
   font-size: 12px;
   letter-spacing: 0.02em;
 }
 .admin-page .procurement-channel-sales {
   display: block;
   margin-top: 6px;
-  color: #7b8179;
+  color: #727988;
   font-size: 9px;
 }
 .admin-page .procurement-recommendation-list button {
@@ -395,9 +401,9 @@
   width: 100%;
   min-height: 36px;
   padding: 8px;
-  border: 1px solid #d8d0c3;
+  border: 1px solid #cbcdd0;
   border-radius: 8px;
-  background: #fff;
+  background: #ffffff;
 }
 .admin-page .procurement-availability-editor > textarea {
   grid-column: 1/-1;
@@ -406,13 +412,13 @@
 .admin-page .procurement-availability-editor > label {
   display: grid;
   gap: 4px;
-  color: #71786f;
+  color: #6a707d;
   font-size: 10px;
 }
 .admin-page .procurement-availability-editor > label input {
   height: 36px;
   padding: 0 8px;
-  border: 1px solid #d8d0c3;
+  border: 1px solid #cbcdd0;
   border-radius: 8px;
 }
 .admin-page .procurement-availability-editor .procurement-inline-actions {
@@ -421,7 +427,7 @@
 .admin-page .admin-table input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #b65f42;
+  accent-color: #7d4f12;
 }
 @media (max-width: 900px) {
   .admin-page .admin-dialog.procurement-plan-fullscreen {
@@ -469,20 +475,20 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #8b8a80;
+  background: #7b8290;
   content: "";
   flex: 0 0 auto;
 }
 .procurement-reconciliation-matched::before {
-  background: #a55b40;
+  background: #7d4f12;
 }
 .procurement-reconciliation-changed::before,
 .procurement-reconciliation-missing::before,
 .procurement-reconciliation-added::before {
-  background: #b9472e;
+  background: #7d4f12;
 }
 .procurement-reconciliation-excluded::before {
-  background: #77746b;
+  background: #686e7a;
 }
 
 /* Saby catalogue mirror: Saby owns the tree, Ficusin adds channel links. */
@@ -499,9 +505,9 @@
   min-height: 420px;
   max-height: 70vh;
   padding: 8px;
-  border: 1px solid #ded8cc;
+  border: 1px solid #d3d4d7;
   border-radius: 10px;
-  background: #f5f2ea;
+  background: #efeff0;
   overflow: auto;
 }
 .admin-page .procurement-folder-row {
@@ -515,35 +521,35 @@
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: #4d3e37;
+  color: #3e4146;
   text-align: left;
   font-size: 11px;
   font-weight: 700;
 }
 .admin-page .procurement-folder-row:hover {
-  background: #ece8de;
+  background: #e3e4e7;
 }
 .admin-page .procurement-folder-row.active {
-  background: #edd8cb;
-  color: #945038;
+  background: #d9dbdf;
+  color: #7d4f12;
 }
 .admin-page .procurement-folder-row small {
-  color: #7c8279;
+  color: #727a89;
   font-size: 9px;
   font-weight: 600;
 }
 .admin-page .procurement-folder-row.active small {
-  color: #9c6a56;
+  color: #7d4f12;
 }
 .admin-page .procurement-folder-toggle {
   width: 18px;
-  color: #8c6a5b;
+  color: #6a707d;
   text-align: center;
   font-size: 12px;
 }
 .admin-page .procurement-folder-row.root {
   margin-bottom: 5px;
-  border-bottom: 1px solid #ddd7cb;
+  border-bottom: 1px solid #d2d3d6;
   border-radius: 7px;
 }
 .admin-page .procurement-folder-tree > .admin-hint {
@@ -561,9 +567,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border: 1px solid #e2dcd1;
+  border: 1px solid #d6d8dc;
   border-radius: 9px;
-  background: #fbf8f1;
+  background: #f6f6f6;
 }
 .admin-page .procurement-folder-caption strong {
   font-size: 12px;
@@ -571,7 +577,7 @@
 .admin-page .procurement-folder-caption button {
   border: 0;
   background: transparent;
-  color: #9e553b;
+  color: #7d4f12;
   font-size: 10px;
   font-weight: 700;
 }
@@ -581,7 +587,7 @@
 }
 .admin-page .procurement-directory td > small {
   margin-top: 4px;
-  color: #7c8279;
+  color: #727a89;
 }
 .admin-page .procurement-directory td .table-action {
   margin-top: 7px;

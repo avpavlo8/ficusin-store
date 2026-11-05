@@ -38,8 +38,6 @@ const (
 	PermissionProcurementEdit  = "procurement.edit"
 	PermissionIntegrationsEdit = "integrations.edit"
 	PermissionAnalyticsRead    = "analytics.read"
-	PermissionFinanceRead      = "finance.read"
-	PermissionFinanceEdit      = "finance.edit"
 )
 
 var ErrForbidden = errors.New("admin action is forbidden")
@@ -288,6 +286,7 @@ type ProductUpdate struct {
 
 // ProductCreate — карточка, заведённая в магазине с нуля.
 type ProductCreate struct {
+	VariantAttributes  map[string]any `json:"variantAttributes"`
 	Name               string         `json:"name"`
 	LatinName          string         `json:"latinName"`
 	ShortDescription   string         `json:"shortDescription"`

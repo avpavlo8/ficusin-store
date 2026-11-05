@@ -4,14 +4,14 @@
    высоте справа, а светлая часть слева естественно продолжается фоном. */
 .admin-page .account-content::before {
   height: 300px;
-  background-color: #eee4d4;
+  background-color: #dfe0e3;
   background-image:
     linear-gradient(
       90deg,
-      #eee4d4 0%,
-      rgba(238, 228, 212, 0.96) 30%,
-      rgba(238, 228, 212, 0.28) 62%,
-      rgba(238, 228, 212, 0) 78%
+      #dfe0e3 0%,
+      rgba(223, 224, 227, 0.96) 30%,
+      rgba(223, 224, 227, 0.28) 62%,
+      rgba(223, 224, 227, 0) 78%
     ),
     url("/assets/redesign/admin-workspace-v1.webp");
   background-size:
@@ -30,17 +30,17 @@
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  border-top: 1px solid #eadfce;
-  color: #697169;
+  border-top: 1px solid #d9dbdf;
+  color: #646a76;
   font-size: 13px;
 }
 .admin-order-draft-total strong {
-  color: #294326;
+  color: #185138;
   font-size: 18px;
 }
 .admin-order-draft-total small {
   margin-right: auto;
-  color: #8b918a;
+  color: #848a97;
 }
 
 @media (max-width: 900px) {

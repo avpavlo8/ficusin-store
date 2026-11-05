@@ -53,11 +53,7 @@ export function Customers({
   const openCard = (customer: Customer) => setEditing(customer);
   return (
     <>
-      <PageHeading
-        eyebrow="CRM"
-        title="Клиенты"
-        text="Профили, покупки, адреса, скидки и доступ сотрудников"
-      />
+      <PageHeading title="Клиенты" text="Покупатели, их заказы и скидки, доступ сотрудников." />
       <div className="admin-toolbar">
         <input
           aria-label="Поиск клиентов"
@@ -129,7 +125,9 @@ export function Customers({
                     <span className="admin-pill">
                       {customer.accountType === "wholesale" ? "Опт" : "Розница"}
                     </span>
-                    <small>{customer.wholesaleStatus}</small>
+                    <small>
+                      {wholesaleLabels[customer.wholesaleStatus] || customer.wholesaleStatus}
+                    </small>
                   </td>
                   <td>
                     <strong>{roleLabel(customer.adminRole)}</strong>
@@ -381,3 +379,12 @@ export function CustomerDialog({
 }
 
 export { Orders } from "./AdminOrders";
+
+// Статус оптовой заявки хранится кодом; в списке показываем те же
+// подписи, что в форме.
+const wholesaleLabels: Record<string, string> = {
+  not_requested: "Не запрашивал",
+  pending: "На проверке",
+  approved: "Одобрен",
+  rejected: "Отклонён",
+};

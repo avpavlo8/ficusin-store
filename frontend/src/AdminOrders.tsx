@@ -115,8 +115,7 @@ export function Orders({
       document
         .querySelector<HTMLElement>(".admin-order-workspace h1, .admin-order-workspace h2")
         ?.focus();
-      if (!next.orderId) heading.current?.focus();
-      window.scrollTo({ top: 0 });
+      if (!next.orderId && !navigationRef.current.orderId) heading.current?.focus();
     });
   };
 
@@ -214,31 +213,20 @@ export function Orders({
 
   const selected = items.find((order) => String(order.id) === navigation.orderId);
   const listNavigation = { ...navigation, orderId: "" };
-  const back = (
-    <a
-      className="orders-back-link"
-      href={ordersUrl(listNavigation)}
-      onClick={(event) => follow(event, listNavigation)}
-    >
-      <svg
-        viewBox="0 0 24 24"
-        width="18"
-        height="18"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        aria-hidden="true"
-      >
-        <path d="m14 6-6 6 6 6M8 12h12" />
-      </svg>
-      К заказам
-    </a>
-  );
 
+  // Заказ открывается отдельной страницей, как карточка в кабинете продавца
+  // Ozon: на ней достаточно места для пути заказа, «что сделать сейчас» и
+  // итога справа. «К заказам» возвращает в ту же очередь с тем же поиском.
   if (navigation.orderId)
     return (
-      <>
-        {back}
+      <section className="order-page">
+        <a
+          className="order-page-back"
+          href={ordersUrl(listNavigation)}
+          onClick={(event) => follow(event, listNavigation)}
+        >
+          <span aria-hidden="true">← </span>К заказам
+        </a>
         {loading ? (
           <WorkspaceState kind="loading" title="Загружаем заказ…" />
         ) : loadError ? (
@@ -259,10 +247,10 @@ export function Orders({
           <WorkspaceState
             kind="empty"
             title="Заказ не найден"
-            detail="Проверьте ссылку или вернитесь к списку заказов."
+            detail="Возможно, ссылка устарела. Вернитесь к списку и найдите заказ поиском."
           />
         )}
-      </>
+      </section>
     );
 
   const query = navigation.query.trim().toLocaleLowerCase("ru-RU");
@@ -280,7 +268,6 @@ export function Orders({
         <h1 ref={heading} tabIndex={-1}>
           Заказы
         </h1>
-        <p>Откройте номер заказа, чтобы перейти к управлению.</p>
       </header>
       <nav className="orders-status-tabs" aria-label="Статусы заказов">
         {filters.map((filter) => {
@@ -352,7 +339,14 @@ export function Orders({
             {visible.map((order) => {
               const next = { ...navigation, orderId: String(order.id) };
               return (
-                <tr key={order.id}>
+                <tr
+                  key={order.id}
+                  className="clickable"
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest("a, button")) return;
+                    void navigate(next);
+                  }}
+                >
                   <td>
                     <a
                       className="orders-number-link"

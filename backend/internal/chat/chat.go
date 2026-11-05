@@ -73,6 +73,15 @@ type Summary struct {
 	Preview   string    `json:"preview"`
 	Unread    int       `json:"unread"`
 	UpdatedAt time.Time `json:"updatedAt"`
+	// Order — последний заказ покупателя: из переписки сотрудник открывает
+	// его одним нажатием. У гостей без аккаунта заказа нет.
+	Order *OrderRef `json:"order,omitempty"`
+}
+
+type OrderRef struct {
+	ID     int64  `json:"id"`
+	Number string `json:"number"`
+	Status string `json:"status"`
 }
 type Store struct{ pool *pgxpool.Pool }
 
@@ -356,7 +365,7 @@ func (s *Store) Photo(ctx context.Context, threadID, messageID int64) (string, [
 	return kind, data, err
 }
 func (s *Store) List(ctx context.Context, status, query string, offset int) ([]Summary, error) {
-	rows, err := s.pool.Query(ctx, `SELECT c.id,COALESCE(NULLIF(u.full_name,''),'Посетитель №'||c.id),c.status,COALESCE(NULLIF(LEFT(m.body,160),''),NULLIF(m.attachment_name,''),'Фотография'),(SELECT COUNT(*) FROM support_messages WHERE conversation_id=c.id AND sender='customer' AND id>c.staff_read_id),c.updated_at FROM support_conversations c LEFT JOIN customers u ON u.id=c.customer_id LEFT JOIN LATERAL(SELECT body,attachment_name FROM support_messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1)m ON true WHERE ($1='' OR c.status=$1) AND ($2='' OR COALESCE(u.full_name,'') ILIKE '%'||$2||'%' OR EXISTS(SELECT 1 FROM support_messages WHERE conversation_id=c.id AND body ILIKE '%'||$2||'%') OR c.id::text=$2) ORDER BY c.updated_at DESC,c.id DESC LIMIT 51 OFFSET $3`, status, query, offset)
+	rows, err := s.pool.Query(ctx, `SELECT c.id,COALESCE(NULLIF(u.full_name,''),'Посетитель №'||c.id),c.status,COALESCE(NULLIF(LEFT(m.body,160),''),NULLIF(m.attachment_name,''),'Фотография'),(SELECT COUNT(*) FROM support_messages WHERE conversation_id=c.id AND sender='customer' AND id>c.staff_read_id),c.updated_at,o.id,o.order_number,o.status FROM support_conversations c LEFT JOIN customers u ON u.id=c.customer_id LEFT JOIN LATERAL(SELECT body,attachment_name FROM support_messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1)m ON true LEFT JOIN LATERAL(SELECT id,order_number,status FROM orders WHERE c.customer_id IS NOT NULL AND customer_id=c.customer_id ORDER BY id DESC LIMIT 1)o ON true WHERE ($1='' OR c.status=$1) AND ($2='' OR COALESCE(u.full_name,'') ILIKE '%'||$2||'%' OR EXISTS(SELECT 1 FROM support_messages WHERE conversation_id=c.id AND body ILIKE '%'||$2||'%') OR c.id::text=$2) ORDER BY c.updated_at DESC,c.id DESC LIMIT 51 OFFSET $3`, status, query, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -364,8 +373,13 @@ func (s *Store) List(ctx context.Context, status, query string, offset int) ([]S
 	out := []Summary{}
 	for rows.Next() {
 		var item Summary
-		if err := rows.Scan(&item.ID, &item.Name, &item.Status, &item.Preview, &item.Unread, &item.UpdatedAt); err != nil {
+		var orderID *int64
+		var orderNumber, orderStatus *string
+		if err := rows.Scan(&item.ID, &item.Name, &item.Status, &item.Preview, &item.Unread, &item.UpdatedAt, &orderID, &orderNumber, &orderStatus); err != nil {
 			return nil, err
+		}
+		if orderID != nil && orderNumber != nil && orderStatus != nil {
+			item.Order = &OrderRef{ID: *orderID, Number: *orderNumber, Status: *orderStatus}
 		}
 		out = append(out, item)
 	}
