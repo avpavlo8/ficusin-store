@@ -12,7 +12,7 @@ const categories = [{ id: 1, parentId: null, name: 'Растения', slug: 'pl
 async function setup(page: Page, timeoutAfterFinish = false) {
   await mockApi(page, owner);
   let creations = 0;
-  let draft: any = { id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', revision: 0, simulation: true, data: {}, photos: [], results: [] };
+  let draft: any = { id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', revision: 0, simulation: true, data: { step: 0, name: '', latinName: '', description: '', categoryId: 0, priceMinor: 0, wholesaleMinQty: 1, potCm: 0, heightCm: 0, photos: null, attributes: null, variantAttributes: null, wb: { enabled: false, values: null }, ozon: { enabled: false, values: null } }, photos: [], results: [] };
   await page.route('**/api/v1/admin/dashboard', route => route.fulfill({ json: { user: { fullName: 'Александр' }, role: 'owner', permissions: ['products.read', 'products.manage', 'products.edit'], dashboard: { products: 0, variants: 0, orders: 0, customers: 0, wholesalePending: 0, recentOrders: [] } } }));
   await page.route('**/api/v1/admin/products', route => route.fulfill({ json: { products: [] } }));
   await page.route('**/api/v1/admin/categories', route => route.fulfill({ json: { categories } }));
@@ -47,6 +47,7 @@ async function baseSteps(page: Page) {
   await form.getByLabel('Категория сайта', { exact: true }).selectOption('1');
   await form.getByLabel('Освещение *', { exact: true }).selectOption('diffused');
   await next(page);
+  await expect(form.getByLabel('Минимальное количество для опта, шт', { exact: true })).toHaveValue('1');
   await form.getByLabel('Цена на сайте, ₽', { exact: true }).fill('1490.99');
   await form.getByLabel('Диаметр горшка, см', { exact: true }).fill('11.3');
   await form.getByLabel('Высота растения, см', { exact: true }).fill('40');

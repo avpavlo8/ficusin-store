@@ -59,6 +59,10 @@ func TestProductCreationAtomicAndIdempotentOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if draft.Data.WholesaleMinQty != 1 {
+		t.Fatalf("new draft minimum quantity %d, want 1", draft.Data.WholesaleMinQty)
+	}
+
 	again, err := repo.NewProductCreation(ctx, actor)
 	if err != nil || again.ID != draft.ID {
 		t.Fatalf("resume %+v %v", again, err)

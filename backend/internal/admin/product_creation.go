@@ -142,7 +142,7 @@ func (r *PostgresRepository) NewProductCreation(ctx context.Context, actor Actor
 	if err := r.creationAccess(ctx, actor); err != nil {
 		return CreationDraft{}, err
 	}
-	_, err := r.pool.Exec(ctx, `INSERT INTO product_creation_drafts(id,customer_id) VALUES($1,$2) ON CONFLICT(customer_id) WHERE product_id IS NULL DO NOTHING`, creationID(), actor.CustomerID)
+	_, err := r.pool.Exec(ctx, `INSERT INTO product_creation_drafts(id,customer_id,data) VALUES($1,$2,'{"wholesaleMinQty":1}') ON CONFLICT(customer_id) WHERE product_id IS NULL DO NOTHING`, creationID(), actor.CustomerID)
 	if err != nil {
 		return CreationDraft{}, err
 	}
