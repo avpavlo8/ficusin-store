@@ -1216,3 +1216,15 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await expect(calc.getByLabel('Диаметр горшка, см')).toHaveCount(0);
  await expect(calc.getByLabel('Наценка, %')).toBeEnabled();
 });
+
+for (const width of [320, 390, 768]) {
+  test(`@desktop кнопка закупки помещается на ${width} px`, async ({page}) => {
+    await page.setViewportSize({width,height:844});
+    await mockProcurement(page);
+    await page.goto("/admin?section=procurement");
+    await page.getByRole("button",{name:"Что заказать",exact:true}).click();
+    const button=await page.getByRole("button",{name:"Сформировать заказ",exact:true}).boundingBox();
+    expect(button!.x).toBeGreaterThanOrEqual(0);
+    expect(button!.x+button!.width).toBeLessThanOrEqual(width);
+  });
+}

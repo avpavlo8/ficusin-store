@@ -534,6 +534,7 @@
 }
 .admin-page .ws-main .admin-block-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -2199,6 +2200,13 @@
   font-weight: 400;
 }
 
+.admin-page .order-payment-link {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- Чат: как в Telegram, в цветах Фикусина ---------- */
 
 .admin-page .ws-chat {
@@ -2496,6 +2504,43 @@
   color: var(--ws-green-dark);
   background: var(--ws-green-soft);
 }
+@media (max-width: 1200px) {
+  .admin-page .ws-chat .admin-chat-layout {
+    display: flex;
+  }
+  .admin-page .ws-chat .admin-chat-inbox {
+    flex: 1;
+    border-right: 0;
+  }
+  .admin-page .ws-chat .admin-chat-detail,
+  .admin-page .ws-chat .admin-chat-selected .admin-chat-inbox {
+    display: none;
+  }
+  .admin-page .ws-chat .admin-chat-selected .admin-chat-detail {
+    display: flex;
+    flex: 1;
+  }
+  .admin-page .ws-chat .admin-chat-back {
+    width: 40px;
+    height: 44px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--ws-green);
+    text-decoration: none;
+  }
+  .admin-page .ws-chat-head {
+    flex-wrap: wrap;
+  }
+  .admin-page .ws-chat-order {
+    max-width: 100%;
+    height: auto;
+    min-height: 34px;
+    white-space: normal;
+  }
+}
 @media (max-width: 760px) {
   .admin-page .ws-chat .admin-chat-layout {
     height: calc(100dvh - var(--ws-topbar) - var(--ws-tabbar));
@@ -2671,6 +2716,11 @@
 }
 .admin-page .ws-main .catalog-toolbar-search > .text-button {
   height: 44px;
+}
+@media (min-width: 701px) {
+  .admin-page .ws-main table.products {
+    min-width: 980px;
+  }
 }
 .admin-page .ws-main table.products th {
   color: var(--ws-muted);

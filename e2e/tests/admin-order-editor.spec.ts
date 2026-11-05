@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { owner } from "./helpers";
 
-async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination" | "prepared", dimensionsKnown = false, refundRole?: "owner" | "manager") {
+async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination" | "prepared", dimensionsKnown = false, refundRole?: "owner" | "manager", linkNotice = {email:"queued",push:"sent"}) {
   const dimensions = dimensionsKnown ? { packageLengthCm: 20, packageWidthCm: 20, packageHeightCm: 40, packageWeightGrams: 700 } : {};
   const order = {
     id: 30,
@@ -47,7 +47,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
     }] : [],
   };
 
-  await page.addInitScript(({ user, order, adjustment, packingMode, refundRole }) => {
+  await page.addInitScript(({ user, order, adjustment, packingMode, refundRole, linkNotice }) => {
     const originalFetch = window.fetch.bind(window);
     const json = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), {
       status, headers: { "Content-Type": "application/json" },
@@ -189,12 +189,12 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       if (path === "/api/v1/admin/orders/30/payment-link/renew" && init?.method === "POST") {
         const w = window as typeof window & { __renewCalls?: number };
         w.__renewCalls = (w.__renewCalls || 0) + 1;
-        return json({ confirmationUrl: "https://pay.example.test/new", notice: { email: "queued", push: "sent" } });
+        return json({ confirmationUrl: "https://pay.example.test/new", notice: linkNotice });
       }
       if (path.startsWith("/api/v1/")) return json({});
       return originalFetch(input, init);
     };
-  }, { user: owner.user, order, adjustment, packingMode, refundRole });
+  }, { user: owner.user, order, adjustment, packingMode, refundRole, linkNotice });
 
   return {
     savedEdit: async () => page.evaluate(() => (window as typeof window & {
@@ -693,10 +693,42 @@ test("@desktop страница заказа: состав, кнопки под 
   page.once("dialog", (dialog) => dialog.accept());
   await aside.getByRole("button", { name: "Создать новую ссылку на оплату", exact: true }).click();
   await expect(aside.getByRole("status")).toContainText("прежняя больше не действует");
-  await expect(aside.getByRole("status")).toContainText("Письмо со ссылкой отправлено");
+  await expect(aside.getByRole("status")).toContainText("Письмо со ссылкой добавлено в очередь");
   expect(await page.evaluate(() => (window as typeof window & { __renewCalls?: number }).__renewCalls)).toBe(1);
 
   await aside.getByRole("button", { name: "Скопировать телефон: +79156230887", exact: true }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("+79156230887");
   await expect(aside.getByRole("link", { name: "Написать в чат", exact: true })).toHaveAttribute("href", /section=chat/);
 });
+
+test("@desktop @phone черновик коробки сохраняется при возврате к заказу", async ({ page }) => {
+  await mockOrderEditor(page, false, "success");
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
+  const field = page.getByRole("textbox", { name: "Длина коробки, см", exact:true });
+  await field.fill("47");
+  await page.getByRole("button", { name:"К заказу", exact:true }).click();
+  await page.getByRole("button", { name:"Изменить заказ", exact:true }).click();
+  await page.getByRole("button", { name:"Коробки и доставка", exact:true }).click();
+  await expect(field).toHaveValue("47");
+});
+test("@desktop @phone подготовленный заказ сразу открывает управление упаковкой", async ({ page }) => {
+  await mockOrderEditor(page, false, "prepared");
+  await page.goto("/admin?section=orders&order=30");
+  await expect(page.getByRole("heading",{name:"Состав заказа",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Изменить заказ",exact:true}).click();
+  await expect(page.getByRole("button",{name:"Вернуть на редактирование",exact:true})).toBeVisible();
+});
+
+for (const email of ["no_email", "disabled", "failed"]) {
+  test(`@desktop новая ссылка доступна для передачи вручную: ${email}`, async ({page, context}) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await mockOrderEditor(page,false,undefined,false,undefined,{email,push:"guest"});
+    await page.goto("/admin?section=orders&order=30");
+    page.once("dialog", dialog => dialog.accept());
+    await page.getByRole("button",{name:"Создать новую ссылку на оплату",exact:true}).click();
+    await expect(page.getByRole("link",{name:"Открыть ссылку на оплату",exact:true})).toHaveAttribute("href","https://pay.example.test/new");
+    await expect(page.getByRole("status")).toContainText("передайте ссылку покупателю сами");
+    await page.getByRole("button",{name:"Скопировать ссылку на оплату: https://pay.example.test/new",exact:true}).click();
+    expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe("https://pay.example.test/new");
+  });
+}

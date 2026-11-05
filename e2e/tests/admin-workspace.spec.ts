@@ -138,3 +138,25 @@ test("@desktop restricted role has no inaccessible shortcuts or analytics reques
   await expect(page.getByText("Раздел не найден")).toBeVisible();
   expect(analyticsRequests).toBe(0);
 });
+
+for (const width of [390, 768, 1024, 1280]) {
+  test(`@desktop переписка читаема на ${width} px`, async ({page}) => {
+    await page.setViewportSize({width,height:1024});
+    await setup(page);
+    await page.route("**/api/v1/admin/dashboard",route=>route.fulfill({json:{...dashboard,permissions:[...dashboard.permissions,"chat.manage"]}}));
+    await page.route("**/api/v1/admin/chat?*",route=>route.fulfill({json:{items:[{id:1,name:"Александр",status:"open",preview:"Нужна помощь",unread:0,updatedAt:"2026-11-04T19:00:00Z",order:{id:1,number:"0002-1",status:"new"}}],hasMore:false}}));
+    await page.route("**/api/v1/admin/chat/1**",route=>route.fulfill({json:{id:1,status:"open",customerReadId:0,staffReadId:0,hasMore:false,consentRequired:false,messages:[]}}));
+    await page.goto("/admin?section=chat");
+    await page.getByRole("button",{name:/Александр.*Нужна помощь/}).click();
+    const heading=page.getByRole("heading",{name:"Александр",exact:true});
+    await expect(heading).toBeVisible();
+    expect((await heading.boundingBox())!.height).toBeLessThan(45);
+    const input=await page.getByRole("textbox",{name:"Сообщение",exact:true}).boundingBox();
+    expect(input!.width).toBeGreaterThan(180);
+    expect(input!.x+input!.width).toBeLessThanOrEqual(width);
+    if(width<=1200){
+      await page.getByRole("button",{name:"К перепискам",exact:true}).click();
+      await expect(page.getByRole("searchbox",{name:"Найти переписку",exact:true})).toBeVisible();
+    }
+  });
+}

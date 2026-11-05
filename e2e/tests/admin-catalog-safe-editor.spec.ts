@@ -301,3 +301,15 @@ test('@desktop @phone late catalog snapshot cannot remove a newly created draft'
  await dialog.getByRole('button',{name:'Основное',exact:true}).click();
  await expect(dialog.getByLabel('Название',{exact:true})).toHaveValue('Новый фикус после задержки');
 });
+
+for (const width of [768, 1024, 1280]) {
+  test(`@desktop колонка товара читаема на ${width} px`, async ({page}) => {
+    await page.setViewportSize({width,height:1024});
+    await fixture(page); await open(page);
+    const column=page.locator("table.products th").nth(2);
+    expect((await column.boundingBox())!.width).toBeGreaterThanOrEqual(260);
+    const row=page.locator("table.products tbody tr").first();
+    expect((await row.boundingBox())!.height).toBeLessThan(250);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  });
+}

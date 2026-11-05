@@ -187,14 +187,17 @@ export function AdminOrderEditor({
   const [busy, setBusy] = useState(false);
   const [renewing, setRenewing] = useState(false);
   const [renewNotice, setRenewNotice] = useState("");
+  const [renewURL, setRenewURL] = useState("");
   const [saving, setSaving] = useState(false);
   const [packingBoxesReady, setPackingBoxesReady] = useState(false);
   const [packingDirty, setPackingDirty] = useState(false);
   const [packingFrozen, setPackingFrozen] = useState(false);
+  const [packingLoaded, setPackingLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [saved, setSaved] = useState(false);
   const readOnly = ["cancelled", "completed", "shipped"].includes(order.status);
-  const compositionReadOnly = readOnly || packingFrozen;
+  const packingLoading = order.deliveryMethod === "cdek" && !readOnly && !packingLoaded;
+  const compositionReadOnly = readOnly || packingFrozen || packingLoading;
   const formDisabled = busy || disabled || compositionReadOnly;
 
   const [refundAmount, setRefundAmount] = useState("");
@@ -306,17 +309,21 @@ export function AdminOrderEditor({
       return;
     setRenewing(true);
     setRenewNotice("");
+    setRenewURL("");
     try {
-      const result = await api<{ notice?: { email: string; push: string } }>(
-        `/api/v1/admin/orders/${order.id}/payment-link/renew`,
-        { method: "POST", body: "{}" },
-      );
+      const result = await api<{
+        confirmationUrl: string;
+        notice?: { email: string; push: string };
+      }>(`/api/v1/admin/orders/${order.id}/payment-link/renew`, { method: "POST", body: "{}" });
+      setRenewURL(result.confirmationUrl);
       const email =
         result.notice?.email === "queued"
-          ? "Письмо со ссылкой отправлено покупателю."
+          ? "Письмо со ссылкой добавлено в очередь отправки."
           : result.notice?.email === "no_email"
             ? "У заказа нет почты — передайте ссылку покупателю сами."
-            : "Почта сейчас не настроена — передайте ссылку покупателю сами.";
+            : result.notice?.email === "failed"
+              ? "Не удалось отправить письмо — передайте ссылку покупателю сами."
+              : "Почта сейчас не настроена — передайте ссылку покупателю сами.";
       const push = result.notice?.push === "sent" ? " Уведомление тоже ушло." : "";
       setRenewNotice(`Новая ссылка создана, прежняя больше не действует. ${email}${push}`);
       await refreshMoney().catch(() => {});
@@ -517,6 +524,8 @@ export function AdminOrderEditor({
       setDiscountValue(result.adjustment.discountValue ?? 0);
       setPayment(result.payment);
       setSaved(true);
+      setRenewURL("");
+      setRenewNotice("");
       onSaved({ ...result.order, paymentStatus: result.payment.paymentStatus });
       // Сохранили — возвращаем к просмотру: сотрудник сразу видит итог.
       onViewChange?.("summary");
@@ -567,11 +576,13 @@ export function AdminOrderEditor({
   // Просмотр заказа: в центре — состав и три кнопки под ним, справа —
   // статус, деньги и контакты. Поля ввода появляются только после
   // «Изменить заказ».
-  const editTarget: OrderView | null = !compositionReadOnly
-    ? "items"
-    : canEditDelivery
-      ? "delivery"
-      : null;
+  const editTarget: OrderView | null = packingLoading
+    ? null
+    : !compositionReadOnly
+      ? "items"
+      : canEditDelivery
+        ? "delivery"
+        : null;
   const unpaid =
     !["cancelled", "completed"].includes(order.status) &&
     !["cash", "on_delivery", "invoice", "manager_confirmation"].includes(
@@ -593,8 +604,8 @@ export function AdminOrderEditor({
               ? { tone: "muted", text: "При получении" }
               : { tone: "attention", text: "Не оплачен" };
 
-  if (view === "summary")
-    return (
+  const summary =
+    view === "summary" ? (
       <div className="admin-order-editor order-page-grid">
         <div className="order-page-main">
           {nowBlock}
@@ -691,6 +702,19 @@ export function AdminOrderEditor({
                 {renewNotice}
               </p>
             )}
+            {renewURL && (
+              <div className="order-payment-link">
+                <a
+                  className="ws-link-button"
+                  href={renewURL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Открыть ссылку на оплату
+                </a>
+                <CopyField label="ссылку на оплату" value={renewURL} />
+              </div>
+            )}
             {(hasMoneyHistory || hasShipments) && (
               <div className="order-aside-actions">
                 {hasMoneyHistory && (
@@ -762,7 +786,7 @@ export function AdminOrderEditor({
           </section>
         </aside>
       </div>
-    );
+    ) : null;
 
   const viewTitles: Record<Exclude<OrderView, "summary">, string> = {
     items: "Изменить состав",
@@ -780,8 +804,8 @@ export function AdminOrderEditor({
     onViewChange?.("summary");
   };
 
-  return (
-    <div className="admin-order-editor" data-view={view}>
+  const editor = (
+    <div className={view === "summary" ? undefined : "admin-order-editor"} data-view={view}>
       <div className="ws-edit-head">
         <button type="button" className="ws-back" disabled={busy} onClick={backToSummary}>
           <svg
@@ -797,7 +821,7 @@ export function AdminOrderEditor({
           </svg>
           К заказу
         </button>
-        <h3>{viewTitles[view]}</h3>
+        <h3>{view !== "summary" ? viewTitles[view] : null}</h3>
       </div>
       {(view === "items" || view === "delivery") && !compositionReadOnly && canEditDelivery && (
         <nav className="order-edit-switch" aria-label="Что изменить">
@@ -1031,6 +1055,7 @@ export function AdminOrderEditor({
             onBusyChange={setBusy}
             onOrderUpdated={onSaved}
             onStateChange={(state) => {
+              setPackingLoaded(true);
               setPackingFrozen(!["draft", "cancelled", "stale"].includes(state.state));
               if (state.state !== "draft") void load();
             }}
@@ -1241,6 +1266,15 @@ export function AdminOrderEditor({
         </section>
       )}
     </div>
+  );
+
+  return (
+    <>
+      {summary}
+      {/* Keep packing mounted: it owns the box draft and reports whether
+          the prepared order is frozen even while its summary is visible. */}
+      <div hidden={view === "summary"}>{editor}</div>
+    </>
   );
 }
 
