@@ -19,7 +19,7 @@ test('@desktop @phone admin has independent app identity, install help and store
   const admin = await response.json();
   const store = await (await request.get('/manifest.webmanifest')).json();
   expect(admin.id).not.toBe(store.id);
-  expect(admin.start_url).toBe('/admin');
+  expect(admin.start_url).toBe('/admin?section=orders');
   expect(admin.scope).toBe('/admin');
   expect(admin.icons[0].src).not.toBe(store.icons[0].src);
   expect(admin.shortcuts.map((item: {url: string}) => item.url)).toEqual(['/admin?section=orders', '/admin?section=procurement', '/admin?section=products']);
@@ -58,4 +58,15 @@ test('@desktop admin session expiry preserves the selected section after login',
   await page.goto('/admin?section=procurement');
   await expect(page).toHaveURL(/\/login\?returnTo=%2Fadmin%3Fsection%3Dprocurement/);
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/admin.webmanifest?v=admin-v1');
+});
+
+test('@desktop @phone existing installed admin starts with new orders and preserves explicit routes', async ({ page }) => {
+  await setup(page);
+  await page.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: true }));
+  await page.route('**/api/v1/admin/orders', route => route.fulfill({ json: { orders: [] } }));
+  await page.goto('/admin');
+  await expect(page.getByRole('heading', { name: 'Заказы', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^Новые/ })).toHaveAttribute('aria-current', 'page');
+  await page.goto('/admin?section=dashboard');
+  await expect(page.locator('.admin-page')).toHaveAttribute('data-section', 'dashboard');
 });

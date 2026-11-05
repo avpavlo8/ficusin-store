@@ -181,6 +181,7 @@ export type Order = {
     sku: string;
     variantLabel: string;
     productName: string;
+    image?: string;
     unitPrice: number;
     quantity: number;
   }>;

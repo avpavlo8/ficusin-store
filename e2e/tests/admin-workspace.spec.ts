@@ -160,3 +160,45 @@ for (const width of [390, 768, 1024, 1280]) {
     }
   });
 }
+
+test('@phone chat composer stays above menu through scroll and keyboard pan', async ({ page }, info) => {
+  await page.addInitScript(() => {
+    const viewport = new EventTarget(); Object.assign(viewport, { height: innerHeight, offsetTop: 0 });
+    Object.defineProperty(window, 'visualViewport', { value: viewport });
+    (window as unknown as { panAdmin: (height: number, top: number) => void }).panAdmin = (height, top) => {
+      Object.assign(viewport, { height, offsetTop: top });
+      viewport.dispatchEvent(new Event('resize')); viewport.dispatchEvent(new Event('scroll'));
+    };
+  });
+  await setup(page);
+  await page.route('**/api/v1/admin/dashboard', route => route.fulfill({ json: { ...dashboard, permissions: [...dashboard.permissions, 'chat.manage'] } }));
+  await page.route('**/api/v1/admin/chat?*', route => route.fulfill({ json: { items: [{ id: 1, name: 'Посетитель №3', status: 'closed', preview: 'Вопрос', unread: 0, updatedAt: '2026-11-04T19:00:00Z' }], hasMore: false } }));
+  await page.route('**/api/v1/admin/chat/1**', route => route.fulfill({ json: { id: 1, status: 'closed', customerReadId: 0, staffReadId: 0, hasMore: false, consentRequired: false, messages: Array.from({ length: 25 }, (_, i) => ({ id: i + 1, sender: 'customer', text: 'Длинное сообщение покупателя о растении. '.repeat(6), createdAt: '2026-11-04T19:00:00Z', attachments: [] })) } }));
+  await page.goto('/admin?section=chat');
+  await page.getByRole('button', { name: /Посетитель №3.*Вопрос/ }).click();
+  const composer = page.locator('.ws-chat .chat-compose');
+  const menu = page.locator('.ws-tabbar');
+  const assertDocked = async () => {
+    const box = (await composer.boundingBox())!;
+    const nav = (await menu.boundingBox())!;
+    expect(Math.abs(box.y + box.height - nav.y)).toBeLessThanOrEqual(2);
+    expect(box.y).toBeGreaterThan(0);
+    const bottom = await page.evaluate(() => (visualViewport?.offsetTop || 0) + (visualViewport?.height || innerHeight));
+    expect(nav.y + nav.height).toBeLessThanOrEqual(bottom + 2);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+  };
+  await expect(composer).toBeVisible();
+  await page.evaluate(() => (window as unknown as { panAdmin: (height: number, top: number) => void }).panAdmin(innerHeight, 0));
+  await assertDocked();
+  await page.locator('.chat-messages').evaluate(el => { el.scrollTop = 0; });
+  await assertDocked();
+  await page.screenshot({ path: info.outputPath('chat-docked.png') });
+  await page.getByRole('textbox', { name: 'Сообщение', exact: true }).fill('Ответ покупателю\n'.repeat(8));
+  await page.evaluate(() => (window as unknown as { panAdmin: (height: number, top: number) => void }).panAdmin(460, 90));
+  await assertDocked();
+  await page.screenshot({ path: info.outputPath('chat-keyboard.png') });
+  await page.evaluate(() => (window as unknown as { panAdmin: (height: number, top: number) => void }).panAdmin(innerHeight, 0));
+  await assertDocked();
+  await menu.getByRole('link', { name: 'Заказы', exact: true }).click();
+  await expect(page.locator('body')).not.toHaveClass(/admin-chat-mobile/);
+});

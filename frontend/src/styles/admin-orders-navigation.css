@@ -66,3 +66,110 @@
     width: 100%;
   }
 }
+
+.orders-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.admin-page .orders-card {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid #e4e6ea;
+  border-radius: 16px;
+  color: var(--workspace-ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  -webkit-tap-highlight-color: rgba(24, 81, 56, 0.08);
+}
+.admin-page .orders-card:hover {
+  border-color: var(--workspace-green);
+}
+.admin-page .orders-card:focus-visible {
+  outline: 2px solid var(--workspace-green);
+  outline-offset: 3px;
+}
+.orders-card-status,
+.orders-card-customer,
+.orders-card-meta,
+.orders-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.orders-card-status .payment-state {
+  font-size: 13px;
+}
+.orders-card-products {
+  display: grid;
+  gap: 6px;
+}
+.orders-card-product {
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-radius: 12px;
+  background: #f5f6f8;
+}
+.orders-card-product img {
+  width: 64px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+.orders-card-product strong {
+  display: block;
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 550;
+}
+.orders-card-product div > span {
+  display: block;
+  margin-top: 5px;
+  color: #626977;
+  font-size: 13px;
+}
+.orders-card-quantity {
+  align-self: start;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #e9ecf0;
+  color: #515969;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.orders-card-customer,
+.orders-card-meta,
+.orders-card > small {
+  color: #626977;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.admin-page .orders-card .orders-number-link {
+  min-height: 0;
+  color: #515969;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.orders-card-footer strong {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 560px) {
+  .orders-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .admin-page .orders-card {
+    padding: 14px;
+  }
+}

@@ -852,7 +852,7 @@ export function StoreHeader({
       )}
       {showTabBar && (
         <>
-          <InstallHint />
+          {location.pathname !== "/" && <InstallHint />}
           <MobileTabBar
             user={user}
             favorites={favorites}

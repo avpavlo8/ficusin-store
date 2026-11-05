@@ -80,7 +80,7 @@ async function mockOrders(page: Page, confirmedUnpaid = false) {
   }, { user: owner.user, orders });
 }
 
-const orderLinks = (page: Page) => page.getByRole("link", { name: /^0001-\d+$/ });
+const orderLinks = (page: Page) => page.locator(".orders-card .orders-number-link");
 const statusLink = (page: Page, label: string) => page.getByRole("link", { name: new RegExp(`^${label}(?:\\s|[0-9]|$)`) });
 
 async function expectNoWrites(page: Page) {
@@ -199,3 +199,18 @@ test("@desktop подтвержденный неоплаченный остаё�
  await statusLink(page,"В работе").click();
  await expect(orderLinks(page)).toHaveText(["0001-53","0001-54","0001-55"]);
 });
+
+for (const target of ['.orders-card-customer', '.orders-card-product img', '.workspace-status', '.orders-card-footer']) {
+  test(`@desktop @phone order card opens from ${target} without other actions`, async ({ page }, info) => {
+    await mockOrders(page);
+    await page.goto('/admin?section=orders');
+    const card = page.locator('.orders-card').first();
+    await expect(card).toContainText('Аглаонема Мария');
+    await expect(card).toContainText('1 шт');
+    await expect(card.locator('a,button,input,select')).toHaveCount(0);
+    if (target === '.orders-card-product img') await page.screenshot({ path: info.outputPath('order-cards.png'), fullPage: true });
+    await card.locator(target).click();
+    await expect(page.getByRole('heading', { name: 'Заказ 0001-51', exact: true })).toBeVisible();
+    await expectNoWrites(page);
+  });
+}

@@ -1,4 +1,5 @@
 import { NumericInput } from "./NumericInput";
+import { HomeBenefits } from "./HomeBenefits";
 import { useEffect, useMemo, useState } from "react";
 import CheckoutHost from "./CheckoutHost";
 import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
@@ -1103,6 +1104,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           </div>
         </section>
       )}
+
+      {!searching && !landing && <HomeBenefits />}
 
       {!searching && landing?.type !== "category" && (
         <CollectionStrip

@@ -2910,3 +2910,43 @@
     display: none;
   }
 }
+
+/* Composer and menu share one visible frame, including Safari keyboard pan. */
+@media (max-width: 760px) {
+  body.admin-chat-mobile {
+    overflow: hidden;
+  }
+  body.admin-chat-mobile .admin-page.ws-shell {
+    position: fixed;
+    inset: var(--admin-chat-top, 0px) 0 auto;
+    height: var(--admin-chat-height, 100dvh);
+    min-height: 0;
+    padding-bottom: 0;
+    overflow: hidden;
+  }
+  body.admin-chat-mobile .admin-page .ws-main {
+    height: 100%;
+    min-height: 0;
+    padding-bottom: calc(var(--ws-tabbar) + env(safe-area-inset-bottom));
+    box-sizing: border-box;
+  }
+  body.admin-chat-mobile .admin-page .ws-topbar {
+    flex: none;
+  }
+  body.admin-chat-mobile .admin-page .workspace-body {
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  body.admin-chat-mobile .admin-page .ws-chat,
+  body.admin-chat-mobile .admin-page .ws-chat .admin-chat-layout {
+    height: 100%;
+    min-height: 0;
+  }
+  body.admin-chat-mobile .admin-page .ws-tabbar {
+    position: absolute;
+  }
+  body.admin-chat-mobile .admin-page .ws-chat .chat-compose {
+    padding: 8px 10px;
+  }
+}

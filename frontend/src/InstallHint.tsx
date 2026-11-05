@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   enablePush,
+  clearStoreInstallPrompt,
+  getStoreInstallPrompt,
   type InstallPromptEvent,
   isIOS,
   isStandalone,
@@ -14,9 +16,11 @@ function snoozed() {
   return document.cookie.split("; ").includes(`${SNOOZE}=1`);
 }
 
-export function InstallHint() {
-  const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(null);
-  const [mode, setMode] = useState<"install" | "notifications" | null>(null);
+export function InstallHint({ inline = false }: { inline?: boolean }) {
+  const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(getStoreInstallPrompt);
+  const [mode, setMode] = useState<"install" | "notifications" | null>(() =>
+    inline && !isStandalone() ? "install" : null,
+  );
   const [steps, setSteps] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -25,36 +29,50 @@ export function InstallHint() {
     // Permission already granted: reconnect the device automatically. The
     // system permission itself is requested only by an explicit button tap.
     void restoreDefaultPush().catch(() => undefined);
-    if (snoozed()) return;
+    if (!inline && snoozed()) return;
     let timer = 0;
+    let active = true;
+    const offerNotifications = () => {
+      if (!pushSupported() || Notification.permission !== "default" || pushPaused("orders")) return;
+      void fetch("/api/v1/push/key", { cache: "no-store" })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((config: { enabled?: boolean; publicKey?: string } | null) => {
+          if (active && config?.enabled && config.publicKey)
+            timer = window.setTimeout(() => setMode("notifications"), 6_000);
+        })
+        .catch(() => undefined);
+    };
     if (isStandalone()) {
-      if (pushSupported() && Notification.permission === "default" && !pushPaused("orders"))
-        timer = window.setTimeout(() => setMode("notifications"), 6_000);
+      offerNotifications();
     } else if (isIOS()) {
       timer = window.setTimeout(() => setMode("install"), 8_000);
     }
-    const onPrompt = (event: Event) => {
-      event.preventDefault();
-      setPromptEvent(event as InstallPromptEvent);
+    const onPrompt = () => {
+      setPromptEvent(getStoreInstallPrompt());
       setMode("install");
     };
     const onInstalled = () => {
+      window.clearTimeout(timer);
       setMode(null);
+      setPromptEvent(null);
+      offerNotifications();
       document.cookie = `${SNOOZE}=; Path=/; Max-Age=0; SameSite=Lax`;
     };
     const onPush = () => {
       if (pushSupported() && Notification.permission === "granted") setMode(null);
     };
-    window.addEventListener("beforeinstallprompt", onPrompt);
+    if (getStoreInstallPrompt() && !isStandalone()) timer = window.setTimeout(onPrompt, 0);
+    window.addEventListener("ficusin-install-ready", onPrompt);
     window.addEventListener("appinstalled", onInstalled);
     window.addEventListener("ficusin-chat-push-changed", onPush);
     return () => {
+      active = false;
       window.clearTimeout(timer);
-      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("ficusin-install-ready", onPrompt);
       window.removeEventListener("appinstalled", onInstalled);
       window.removeEventListener("ficusin-chat-push-changed", onPush);
     };
-  }, []);
+  }, [inline]);
 
   const dismiss = () => {
     document.cookie = `${SNOOZE}=1; Path=/; Max-Age=604800; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
@@ -74,8 +92,10 @@ export function InstallHint() {
       } else if (promptEvent) {
         await promptEvent.prompt();
         const choice = await promptEvent.userChoice;
+        clearStoreInstallPrompt();
+        setPromptEvent(null);
         if (choice.outcome === "accepted") setMode(null);
-        else dismiss();
+        else if (!inline) dismiss();
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Попробуйте ещё раз");
@@ -86,22 +106,30 @@ export function InstallHint() {
   if (!mode) return null;
   return (
     <aside
-      className="install-hint"
+      className={inline ? "home-install" : "install-hint"}
       aria-label={mode === "install" ? "Установить приложение Фикусин" : "Уведомления Фикусина"}
     >
       <img src="/assets/brand/graphite-v1/app-192-v2.png" alt="" />
       <div>
-        <strong>{mode === "install" ? "Фикусин как приложение" : "Оставайтесь на связи"}</strong>
+        <strong>{mode === "install" ? "Фикусин на экране «Домой»" : "Оставайтесь на связи"}</strong>
         <span>
           {mode === "install"
-            ? "Добавьте на экран «Домой» — чат и заказы всегда под рукой."
+            ? "Добавьте иконку, откройте Фикусин с неё и включите уведомления о заказах и сообщениях."
             : "Разрешите уведомления о новых сообщениях и вашем заказе."}
         </span>
         {steps && (
           <ol>
-            <li>Откройте меню «Поделиться» в браузере.</li>
-            <li>Выберите «На экран Домой» и нажмите «Добавить».</li>
-            <li>Откройте Фикусин с нового значка.</li>
+            <li>
+              {isIOS() ? "Откройте меню «Поделиться» в браузере." : "Откройте меню браузера."}
+            </li>
+            <li>
+              {isIOS()
+                ? "Выберите «На экран Домой» и нажмите «Добавить»."
+                : "Выберите «Установить приложение» или «Добавить на главный экран», если этот пункт доступен."}
+            </li>
+            <li>
+              Откройте Фикусин с нового значка и нажмите «Включить» в предложении об уведомлениях.
+            </li>
           </ol>
         )}
         {error && <span role="alert">{error}</span>}
@@ -117,13 +145,15 @@ export function InstallHint() {
                 ? "Свернуть"
                 : "Как установить"}
       </button>
-      <button
-        className="install-hint-close"
-        onClick={dismiss}
-        aria-label="Напомнить об установке позже"
-      >
-        ×
-      </button>
+      {!inline && (
+        <button
+          className="install-hint-close"
+          onClick={dismiss}
+          aria-label="Напомнить об установке позже"
+        >
+          ×
+        </button>
+      )}
     </aside>
   );
 }
