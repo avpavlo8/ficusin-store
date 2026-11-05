@@ -605,8 +605,7 @@ export function ProductCreationWizard({
       onClose={() => void close()}
     >
       <p className="creation-stage-note">
-        Стейджинг: сайт сохраняет тестовый черновик. СБИС, Wildberries и Ozon проверяются на
-        тестовых карточках — рабочие кабинеты не меняются.
+        Тестовый режим: рабочие СБИС, Wildberries и Ozon не меняются.
       </p>
       {draft?.product ? (
         <div className="creation-complete">
