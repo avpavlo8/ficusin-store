@@ -48,6 +48,13 @@ test('@desktop @phone product keeps care available in tabs, sorted sizes and com
   expect(card!.x).toBeGreaterThanOrEqual(rail!.x-1);
   await expect(page.locator('.pdp-related-side.prev')).toBeDisabled();
   await expect(page.locator('.floating-cart')).toHaveCount(0);
+  const chat=await page.locator('.chat-launcher').boundingBox();
+  expect(chat!.y).toBeGreaterThanOrEqual(0);
+  expect(chat!.y+chat!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  if(page.viewportSize()!.width<=850){
+    const purchase=await page.locator('.pdp-mobile-purchase').boundingBox();
+    expect(chat!.y+chat!.height).toBeLessThan(purchase!.y);
+  }
   if(page.viewportSize()!.width<=850) {
     await expect(page.locator('.pdp-mobile-purchase')).toBeVisible();
     const buy=await page.locator('.pdp-mobile-purchase').boundingBox();

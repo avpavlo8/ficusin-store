@@ -55,7 +55,7 @@ body.menu-open .chat-launcher,
 body.drawer-open .chat-launcher {
   display: none;
 }
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 850px), (max-height: 500px) and (pointer: coarse) {
   .chat-launcher {
     right: 16px;
     bottom: calc(96px + env(safe-area-inset-bottom));
@@ -78,7 +78,7 @@ body.drawer-open .chat-launcher {
   }
 }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 850px), (max-height: 500px) and (pointer: coarse) {
   body.quick-chat-open .tab-bar,
   body.quick-chat-open .install-hint {
     display: none;
@@ -90,7 +90,7 @@ body:has(.account-chat-page) .chat-launcher {
 body:has(.account-chat-page .chat-compose:focus-within) .chat-launcher {
   display: none;
 }
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 850px), (max-height: 500px) and (pointer: coarse) {
   body:has(.account-chat-page) .chat-launcher {
     bottom: 8px;
   }
@@ -108,11 +108,8 @@ body:has(.account-chat-page .chat-compose:focus-within) .chat-launcher {
   cursor: pointer;
 }
 
-/* A small help strip reserves its own space instead of covering page content. */
+/* Keep support available while browsing, above the storefront controls. */
 .chat-launcher {
-  position: static;
-  width: fit-content;
-  margin: 16px 24px 24px auto;
   background: #31482c;
   box-shadow: none;
 }
@@ -136,6 +133,12 @@ body:has(.auth-page) .chat-launcher {
 }
 @media (max-width: 850px) {
   .chat-launcher {
-    margin-bottom: calc(92px + env(safe-area-inset-bottom));
+    bottom: calc(var(--store-tab-height, 76px) + 16px);
+  }
+  body:has(.pdp-mobile-purchase) .chat-launcher {
+    bottom: calc(var(--store-tab-height, 76px) + 116px);
+  }
+  .quick-chat-open .chat-launcher {
+    display: none;
   }
 }
