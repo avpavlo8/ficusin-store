@@ -4,6 +4,7 @@ import ChatNotifications from "./ChatNotifications";
 import { apiJSON } from "./lib/api";
 import { chatRequest } from "./lib/chat-api";
 import { statusLabels } from "./adminShared";
+import { useAdminChatViewport } from "./useAdminChatViewport";
 
 type Summary = {
   id: number;
@@ -63,6 +64,7 @@ function listTime(value: string) {
   return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 export default function AdminChat() {
+  const viewport = useAdminChatViewport();
   const [items, setItems] = useState<Summary[]>([]);
   const [selected, setSelected] = useState<Summary | null>(() => {
     const id = Number(new URLSearchParams(location.search).get("conversation"));
@@ -136,7 +138,7 @@ export default function AdminChat() {
     ["closed", "Решённые"],
   ];
   return (
-    <section className="admin-chat telegram-chat ws-chat">
+    <section ref={viewport} className="admin-chat telegram-chat ws-chat">
       <h1 className="chat-sr-only">Чат с покупателями</h1>
       {error && (
         <div className="chat-error" role="alert">

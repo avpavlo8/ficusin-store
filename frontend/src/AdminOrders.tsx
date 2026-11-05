@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { api, money, paymentLabels, paymentMethodLabels, statusLabels } from "./adminShared";
 import { currentAdminSection } from "./adminNavigation";
-import { WorkspaceState, WorkspaceStatus, WorkspaceTable } from "./WorkspaceUI";
+import { WorkspaceState, WorkspaceStatus } from "./WorkspaceUI";
 import type { Order } from "./adminTypes";
 import "./styles/admin-orders-navigation.css";
 
@@ -325,90 +325,83 @@ export function Orders({
           }
         />
       ) : (
-        <WorkspaceTable label="Заказы">
-          <thead>
-            <tr>
-              <th>Заказ</th>
-              <th>Клиент</th>
-              <th>Получение</th>
-              <th>Сумма</th>
-              <th>Статус</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((order) => {
-              const next = { ...navigation, orderId: String(order.id) };
-              return (
-                <tr
-                  key={order.id}
-                  className="clickable"
-                  onClick={(event) => {
-                    if ((event.target as HTMLElement).closest("a, button")) return;
-                    void navigate(next);
-                  }}
-                >
-                  <td>
-                    <a
-                      className="orders-number-link"
-                      href={ordersUrl(next)}
-                      onClick={(event) => follow(event, next)}
-                    >
-                      {order.orderNumber}
-                    </a>
-                    <small>{new Date(order.createdAt).toLocaleString("ru-RU")}</small>
-                  </td>
-                  <td>
-                    <strong>{order.customerName}</strong>
-                    <a href={`tel:${order.phone}`}>{order.phone}</a>
-                    <small>{order.email}</small>
-                  </td>
-                  <td>
-                    <strong>{deliveryLabel(order.deliveryMethod)}</strong>
-                    <small>{order.address}</small>
-                    {order.trackNumber && <small>Трек: {order.trackNumber}</small>}
-                    {order.status !== "cancelled" && order.hasPreorder && (
-                      <small className="admin-flag">Нужно проверить наличие</small>
-                    )}
-                    {order.status !== "cancelled" && order.deliveryFeePending && (
-                      <small className="admin-flag">
-                        {order.repackRequested
-                          ? "Запрошена одна коробка"
-                          : "Доставка требует уточнения"}
-                      </small>
-                    )}
-                  </td>
-                  <td>
-                    <strong>{money.format(order.total)}</strong>
-                    <small
-                      className={
-                        order.paymentStatus === "paid"
-                          ? "payment-state paid"
-                          : order.status !== "cancelled" &&
-                              ["pending", "partially_paid"].includes(order.paymentStatus)
-                            ? "payment-state unpaid"
-                            : "payment-state"
-                      }
-                    >
-                      {paymentLabel(order)}
-                    </small>
-                    {order.status !== "cancelled" &&
-                      order.paymentMethod &&
-                      order.paymentMethod !== "online" && (
-                        <small className="admin-flag">
-                          {paymentMethodLabels[order.paymentMethod]}
-                        </small>
-                      )}
-                  </td>
-                  <td>
-                    <WorkspaceStatus status={order.status}>
-                      {statusLabels[order.status] || order.status}
-                    </WorkspaceStatus>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </WorkspaceTable>
+        <div className="orders-cards">
+          {visible.map((order) => {
+            const next = { ...navigation, orderId: String(order.id) };
+            return (
+              <a
+                className="orders-card"
+                key={order.id}
+                href={ordersUrl(next)}
+                aria-label={order.orderNumber}
+                onClick={(event) => follow(event, next)}
+              >
+                <div className="orders-card-status">
+                  <WorkspaceStatus status={order.status}>
+                    {statusLabels[order.status] || order.status}
+                  </WorkspaceStatus>
+                  <span
+                    className={
+                      order.paymentStatus === "paid" ? "payment-state paid" : "payment-state"
+                    }
+                  >
+                    {paymentLabel(order)}
+                  </span>
+                </div>
+                <div className="orders-card-products">
+                  {order.items.map((item, index) => (
+                    <div className="orders-card-product" key={index}>
+                      <img
+                        src={item.image || "/assets/product-photo-pending-graphite-v1.svg"}
+                        alt=""
+                        loading="lazy"
+                        onError={(event) => {
+                          event.currentTarget.onerror = null;
+                          event.currentTarget.src = "/assets/product-photo-pending-graphite-v1.svg";
+                        }}
+                      />
+                      <div>
+                        <strong>{item.productName}</strong>
+                        <span>{item.variantLabel || item.sku}</span>
+                      </div>
+                      <span className="orders-card-quantity">{item.quantity} шт</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="orders-card-customer">
+                  <span>{order.customerName}</span>
+                  <span>{order.phone}</span>
+                </div>
+                <div className="orders-card-meta">
+                  <span>{deliveryLabel(order.deliveryMethod)}</span>
+                  <time dateTime={order.createdAt}>
+                    {new Date(order.createdAt).toLocaleString("ru-RU")}
+                  </time>
+                </div>
+                <div className="orders-card-footer">
+                  <span className="orders-number-link">{order.orderNumber}</span>
+                  <strong>{money.format(order.total)}</strong>
+                </div>
+                {order.trackNumber && <small>Трек: {order.trackNumber}</small>}
+                {order.status !== "cancelled" && order.hasPreorder && (
+                  <small className="admin-flag">Нужно проверить наличие</small>
+                )}
+                {order.status !== "cancelled" && order.deliveryFeePending && (
+                  <small className="admin-flag">
+                    {order.repackRequested
+                      ? "Запрошена одна коробка"
+                      : "Доставка требует уточнения"}
+                  </small>
+                )}
+                {order.status !== "cancelled" &&
+                  order.paymentMethod &&
+                  order.paymentMethod !== "online" && (
+                    <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>
+                  )}
+              </a>
+            );
+          })}
+        </div>
       )}
     </section>
   );

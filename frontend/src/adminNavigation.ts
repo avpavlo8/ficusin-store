@@ -1,4 +1,5 @@
 import type { AdminData, Section } from "./adminTypes";
+import { isStandalone } from "./lib/pwa";
 export const sections: Array<{
   id: Section;
   label: string;
@@ -30,7 +31,9 @@ export function currentAdminSection(): Section {
     url.pathname.split("/")[2] ||
     url.hash.replace(/^#/, "");
   const alias = value === "catalog" ? "products" : value;
-  return sections.find((item) => item.id === alias)?.id || "dashboard";
+  return (
+    sections.find((item) => item.id === alias)?.id || (isStandalone() ? "orders" : "dashboard")
+  );
 }
 export function canOpenSection(data: AdminData, section: Section): boolean {
   const item = sections.find((item) => item.id === section);

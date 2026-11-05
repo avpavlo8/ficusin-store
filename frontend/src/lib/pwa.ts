@@ -6,6 +6,27 @@ export type InstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+let storeInstallPrompt: InstallPromptEvent | null = null;
+export const getStoreInstallPrompt = () => storeInstallPrompt;
+export function clearStoreInstallPrompt() {
+  storeInstallPrompt = null;
+}
+export function initializeStoreInstall() {
+  // Admin owns a separate manifest and installation prompt.
+  if (
+    document
+      .querySelector<HTMLLinkElement>('link[rel="manifest"]')
+      ?.href.includes("admin.webmanifest")
+  )
+    return;
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    storeInstallPrompt = event as InstallPromptEvent;
+    window.dispatchEvent(new Event("ficusin-install-ready"));
+  });
+  window.addEventListener("appinstalled", clearStoreInstallPrompt);
+}
+
 export function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   // Registering after load keeps the worker from competing with the first
@@ -28,7 +49,10 @@ export function isStandalone() {
 }
 
 export function isIOS() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  return (
+    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
 }
 
 // --- Push notifications -------------------------------------------------

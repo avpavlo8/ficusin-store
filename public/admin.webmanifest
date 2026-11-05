@@ -5,7 +5,7 @@
   "description": "Заказы, закупки и каталог Фикусина. Приложение для сотрудников.",
   "lang": "ru",
   "dir": "ltr",
-  "start_url": "/admin",
+  "start_url": "/admin?section=orders",
   "scope": "/admin",
   "display": "standalone",
   "background_color": "#f8f5ee",

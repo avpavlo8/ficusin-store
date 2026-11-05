@@ -166,6 +166,7 @@ type OrderItem struct {
 	SKU                string  `json:"sku"`
 	VariantLabel       string  `json:"variantLabel"`
 	ProductName        string  `json:"productName"`
+	Image              string  `json:"image"`
 	UnitPrice          float64 `json:"unitPrice"`
 	Quantity           int     `json:"quantity"`
 	PackageLengthCM    int     `json:"packageLengthCm"`
