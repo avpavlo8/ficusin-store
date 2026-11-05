@@ -400,7 +400,9 @@ export function Products({
         ? new URLSearchParams(location.search).get("tab")
         : "main") as ProductEditorSection,
   );
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(() =>
+    new URLSearchParams(location.search).has("creation"),
+  );
   const [importing, setImporting] = useState(false);
   const [merging, setMerging] = useState<Product[] | null>(null);
   const [publishedMerge, setPublishedMerge] = useState<Product[] | null>(null);
