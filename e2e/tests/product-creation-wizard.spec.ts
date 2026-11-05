@@ -46,6 +46,9 @@ async function baseSteps(page: Page) {
   await form.getByLabel('Описание', { exact: true }).fill('Растение для рассеянного света.');
   await form.getByLabel('Категория сайта', { exact: true }).selectOption('1');
   await form.getByLabel('Освещение *', { exact: true }).selectOption('diffused');
+  await expect(form.getByRole('button', { name: 'Далее', exact: true })).toBeEnabled();
+  await form.getByLabel('Категория сайта', { exact: true }).selectOption('1');
+  await expect(form.getByRole('button', { name: 'Далее', exact: true })).toBeEnabled();
   await next(page);
   await expect(form.getByLabel('Минимальное количество для опта, шт', { exact: true })).toHaveValue('1');
   await form.getByLabel('Цена на сайте, ₽', { exact: true }).fill('1490.99');

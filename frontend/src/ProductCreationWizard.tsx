@@ -716,9 +716,11 @@ export function ProductCreationWizard({
                           required
                           value={data.categoryId || ""}
                           onChange={(event) => {
+                            const nextCategory = Number(event.target.value);
+                            if (nextCategory === data.categoryId) return;
                             setSchemaReady(false);
                             setSchema([]);
-                            change("categoryId", Number(event.target.value));
+                            change("categoryId", nextCategory);
                           }}
                         >
                           <option value="">Выберите категорию</option>
