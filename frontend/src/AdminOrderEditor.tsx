@@ -1,13 +1,6 @@
 import { AdminOrderProductSearch } from "./AdminOrderProductSearch";
 import { NumericInput } from "./NumericInput";
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, money } from "./adminShared";
 import type { Order, Product } from "./adminTypes";
 import { AdminOrderPacking } from "./AdminOrderPacking";
@@ -15,12 +8,7 @@ import { AdminOrderPacking } from "./AdminOrderPacking";
 // Заказ показывается в одном из режимов. «summary» — только чтение, всё на
 // одном экране. Остальные — один блок правки, без соседних полей: сотрудник
 // нажал «Изменить» у состава и видит только состав.
-export type OrderView =
-  | "summary"
-  | "items"
-  | "delivery"
-  | "payment"
-  | "shipments";
+export type OrderView = "summary" | "items" | "delivery" | "payment" | "shipments";
 
 export type OrderReviewState = {
   hasPreorder: boolean;
@@ -195,9 +183,7 @@ export function AdminOrderEditor({
   const [products, setProducts] = useState<Product[]>([]);
   const [lines, setLines] = useState<Adjustment["items"]>([]);
   const [deliveryFee, setDeliveryFee] = useState(0);
-  const [discountType, setDiscountType] = useState<"fixed" | "percent">(
-    "fixed",
-  );
+  const [discountType, setDiscountType] = useState<"fixed" | "percent">("fixed");
   const [discountValue, setDiscountValue] = useState(0);
   const [addProduct, setAddProduct] = useState("");
   const [busy, setBusy] = useState(false);
@@ -212,15 +198,12 @@ export function AdminOrderEditor({
   const [loadError, setLoadError] = useState("");
   const [saved, setSaved] = useState(false);
   const readOnly = ["cancelled", "completed", "shipped"].includes(order.status);
-  const packingLoading =
-    order.deliveryMethod === "cdek" && !readOnly && !packingLoaded;
+  const packingLoading = order.deliveryMethod === "cdek" && !readOnly && !packingLoaded;
   const compositionReadOnly = readOnly || packingFrozen || packingLoading;
   const formDisabled = busy || disabled || compositionReadOnly;
 
   const [refundAmount, setRefundAmount] = useState("");
-  const [refundQuantities, setRefundQuantities] = useState<
-    Record<string, number>
-  >({});
+  const [refundQuantities, setRefundQuantities] = useState<Record<string, number>>({});
   const refundSelections = (payment.refundOptions ?? [])
     .map((item) => ({
       paymentId: item.paymentId,
@@ -231,22 +214,17 @@ export function AdminOrderEditor({
   const selectedMinor = (payment.refundOptions ?? []).reduce(
     (sum, item) =>
       sum +
-      Math.round(item.price * 100) *
-        (refundQuantities[`${item.paymentId}:${item.itemIndex}`] ?? 0),
+      Math.round(item.price * 100) * (refundQuantities[`${item.paymentId}:${item.itemIndex}`] ?? 0),
     0,
   );
-  const requestedRefund = refundSelections.length
-    ? selectedMinor / 100
-    : Number(refundAmount);
+  const requestedRefund = refundSelections.length ? selectedMinor / 100 : Number(refundAmount);
   const [refundReason, setRefundReason] = useState("");
   const [refundRequest, setRefundRequest] = useState<{
     signature: string;
     id: string;
   } | null>(null);
   const [refundMessage, setRefundMessage] = useState("");
-  const [refundProviderIDs, setRefundProviderIDs] = useState<
-    Record<number, string>
-  >({});
+  const [refundProviderIDs, setRefundProviderIDs] = useState<Record<number, string>>({});
   const [refundBusy, setRefundBusy] = useState(false);
   const refreshMoney = async () => {
     const state = await api<{ payment: PaymentBalance }>(
@@ -257,28 +235,16 @@ export function AdminOrderEditor({
   };
   const sendRefund = async () => {
     const amount = requestedRefund;
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0 ||
-      amount > payment.netPaid ||
-      !refundReason.trim()
-    )
+    if (!Number.isFinite(amount) || amount <= 0 || amount > payment.netPaid || !refundReason.trim())
       return;
-    if (
-      !window.confirm(
-        `Вернуть ${money.format(amount)} покупателю через ЮKassa?`,
-      )
-    )
-      return;
+    if (!window.confirm(`Вернуть ${money.format(amount)} покупателю через ЮKassa?`)) return;
     const signature = JSON.stringify({
       amount,
       reason: refundReason.trim(),
       selections: refundSelections,
     });
     const requestId =
-      refundRequest?.signature === signature
-        ? refundRequest.id
-        : crypto.randomUUID();
+      refundRequest?.signature === signature ? refundRequest.id : crypto.randomUUID();
     setRefundRequest({ signature, id: requestId });
     setRefundBusy(true);
     setRefundMessage("");
@@ -297,9 +263,7 @@ export function AdminOrderEditor({
       setRefundQuantities({});
       setRefundReason("");
       setRefundRequest(null);
-      setRefundMessage(
-        "Запрос принят. Результат возврата указан в истории ниже.",
-      );
+      setRefundMessage("Запрос принят. Результат возврата указан в истории ниже.");
     } catch (error) {
       onError((error as Error).message);
       await refreshMoney().catch(() => {});
@@ -322,21 +286,14 @@ export function AdminOrderEditor({
     }
   };
   const settleReceipt = async (paymentId: number) => {
-    if (
-      !window.confirm(
-        "Товар уже выдан покупателю? Сформировать чек зачёта предоплаты в ЮKassa?",
-      )
-    )
+    if (!window.confirm("Товар уже выдан покупателю? Сформировать чек зачёта предоплаты в ЮKassa?"))
       return;
     setRefundBusy(true);
     try {
-      await api(
-        `/api/v1/admin/orders/${order.id}/payments/${paymentId}/settlement-receipt`,
-        {
-          method: "POST",
-          body: JSON.stringify({ confirmed: true }),
-        },
-      );
+      await api(`/api/v1/admin/orders/${order.id}/payments/${paymentId}/settlement-receipt`, {
+        method: "POST",
+        body: JSON.stringify({ confirmed: true }),
+      });
       await refreshMoney();
     } catch (error) {
       onError((error as Error).message);
@@ -373,11 +330,8 @@ export function AdminOrderEditor({
             : result.notice?.email === "failed"
               ? "Не удалось отправить письмо — передайте ссылку покупателю сами."
               : "Почта сейчас не настроена — передайте ссылку покупателю сами.";
-      const push =
-        result.notice?.push === "sent" ? " Уведомление тоже ушло." : "";
-      setRenewNotice(
-        `Новая ссылка создана, прежняя больше не действует. ${email}${push}`,
-      );
+      const push = result.notice?.push === "sent" ? " Уведомление тоже ушло." : "";
+      setRenewNotice(`Новая ссылка создана, прежняя больше не действует. ${email}${push}`);
       await refreshMoney().catch(() => {});
     } catch (error) {
       onError((error as Error).message);
@@ -400,9 +354,7 @@ export function AdminOrderEditor({
       setDeliveryFee(state.order.deliveryFee);
       setDiscountType(state.order.discountType ?? "fixed");
       setDiscountValue(state.order.discountValue ?? 0);
-      setProducts(
-        catalog.products.filter((product) => product.status === "published"),
-      );
+      setProducts(catalog.products.filter((product) => product.status === "published"));
     } catch (error) {
       setLoadError((error as Error).message);
       onError((error as Error).message);
@@ -419,8 +371,7 @@ export function AdminOrderEditor({
   }, [products, lines]);
 
   const draftSubtotal = useMemo(
-    () =>
-      lines.reduce((total, line) => total + line.unitPrice * line.quantity, 0),
+    () => lines.reduce((total, line) => total + line.unitPrice * line.quantity, 0),
     [lines],
   );
   const grossMinor = Math.round(draftSubtotal * 100);
@@ -439,13 +390,10 @@ export function AdminOrderEditor({
   const compositionSaved = useMemo(() => {
     if (!adjustment || adjustment.items.length !== lines.length) return false;
     return adjustment.items.every(
-      (line, index) =>
-        line.sku === lines[index]?.sku &&
-        line.quantity === lines[index]?.quantity,
+      (line, index) => line.sku === lines[index]?.sku && line.quantity === lines[index]?.quantity,
     );
   }, [adjustment, lines]);
-  const deliverySaved =
-    !!adjustment && Math.abs(deliveryFee - adjustment.deliveryFee) < 0.005;
+  const deliverySaved = !!adjustment && Math.abs(deliveryFee - adjustment.deliveryFee) < 0.005;
   const hasUnsavedChanges =
     !!adjustment &&
     (!compositionSaved ||
@@ -463,9 +411,7 @@ export function AdminOrderEditor({
         }
         return (
           !hasAnyUnsavedChanges ||
-          window.confirm(
-            "В заказе есть несохранённые изменения. Уйти без сохранения?",
-          )
+          window.confirm("В заказе есть несохранённые изменения. Уйти без сохранения?")
         );
       }),
     [hasAnyUnsavedChanges, busy, registerBeforeLeave, onError],
@@ -608,17 +554,10 @@ export function AdminOrderEditor({
 
   if (!adjustment)
     return (
-      <div
-        className="order-workspace-loading"
-        role={loadError ? "alert" : "status"}
-      >
+      <div className="order-workspace-loading" role={loadError ? "alert" : "status"}>
         <p>{loadError || "Загружаем состав и оплату заказа…"}</p>
         {loadError ? (
-          <button
-            type="button"
-            className="admin-action"
-            onClick={() => void load()}
-          >
+          <button type="button" className="admin-action" onClick={() => void load()}>
             Попробовать снова
           </button>
         ) : (
@@ -629,16 +568,9 @@ export function AdminOrderEditor({
 
   const hasShipments = !!adjustment.shipmentOffers?.some(
     (offer) =>
-      ![
-        "draft",
-        "packaging_required",
-        "stale",
-        "cancelled",
-        "expired",
-      ].includes(offer.status),
+      !["draft", "packaging_required", "stale", "cancelled", "expired"].includes(offer.status),
   );
-  const hasMoneyHistory =
-    payment.paid > 0 || (payment.refunds ?? []).length > 0;
+  const hasMoneyHistory = payment.paid > 0 || (payment.refunds ?? []).length > 0;
   const canEditDelivery =
     !readOnly &&
     order.deliveryMethod !== "pickup" &&
@@ -652,10 +584,7 @@ export function AdminOrderEditor({
         : order.deliveryMethod === "courier"
           ? "Курьер"
           : order.deliveryMethod;
-  const itemCount = adjustment.items.reduce(
-    (sum, line) => sum + line.quantity,
-    0,
-  );
+  const itemCount = adjustment.items.reduce((sum, line) => sum + line.quantity, 0);
 
   // Просмотр заказа: в центре — состав и три кнопки под ним, справа —
   // статус, деньги и контакты. Поля ввода появляются только после
@@ -672,13 +601,9 @@ export function AdminOrderEditor({
     !["cash", "on_delivery", "invoice", "manager_confirmation"].includes(
       order.paymentMethod || "",
     ) &&
-    [
-      "pending",
-      "payment_provider_pending",
-      "partially_paid",
-      "failed",
-      "cancelled",
-    ].includes(order.paymentStatus);
+    ["pending", "payment_provider_pending", "partially_paid", "failed", "cancelled"].includes(
+      order.paymentStatus,
+    );
   const paymentPill =
     order.paymentStatus === "paid"
       ? { tone: "ok", text: "Оплачен" }
@@ -688,8 +613,7 @@ export function AdminOrderEditor({
           ? { tone: "attention", text: "Частично оплачен" }
           : order.status === "cancelled"
             ? { tone: "muted", text: "Не требуется" }
-            : order.paymentMethod === "on_delivery" ||
-                order.paymentMethod === "cash"
+            : order.paymentMethod === "on_delivery" || order.paymentMethod === "cash"
               ? { tone: "muted", text: "При получении" }
               : { tone: "attention", text: "Не оплачен" };
 
@@ -698,10 +622,7 @@ export function AdminOrderEditor({
       <div className="admin-order-editor order-page-grid">
         <div className="order-page-main">
           {nowBlock}
-          <section
-            className="order-section"
-            aria-labelledby="order-items-title"
-          >
+          <section className="order-section" aria-labelledby="order-items-title">
             <div className="order-section-head">
               <h3 id="order-items-title">Состав заказа</h3>
               {packingFrozen && <small>Упаковка подтверждена</small>}
@@ -713,9 +634,7 @@ export function AdminOrderEditor({
                   <span className="order-item-name">
                     <strong>{line.productName}</strong>
                     <small>
-                      {[line.variantLabel, `артикул ${line.sku}`]
-                        .filter(Boolean)
-                        .join(" · ")}
+                      {[line.variantLabel, `артикул ${line.sku}`].filter(Boolean).join(" · ")}
                     </small>
                   </span>
                   <span className="order-item-qty">
@@ -788,9 +707,7 @@ export function AdminOrderEditor({
                 disabled={busy || renewing}
                 onClick={() => void renewPaymentLink()}
               >
-                {renewing
-                  ? "Создаём ссылку…"
-                  : "Создать новую ссылку на оплату"}
+                {renewing ? "Создаём ссылку…" : "Создать новую ссылку на оплату"}
               </button>
             )}
             {renewNotice && (
@@ -819,9 +736,7 @@ export function AdminOrderEditor({
                     className="ws-link-button"
                     onClick={() => onViewChange?.("payment")}
                   >
-                    {canRefund
-                      ? "Оплата, возврат и чеки"
-                      : "Подробнее об оплате"}
+                    {canRefund ? "Оплата, возврат и чеки" : "Подробнее об оплате"}
                   </button>
                 )}
                 {hasShipments && (
@@ -837,24 +752,15 @@ export function AdminOrderEditor({
             )}
           </section>
 
-          <section
-            className="order-contacts"
-            aria-label="Покупатель и доставка"
-          >
+          <section className="order-contacts" aria-label="Покупатель и доставка">
             <span className="order-contacts-label">Покупатель</span>
-            <CopyField
-              label="имя"
-              value={order.customerName || ""}
-              empty="Имя не указано"
-            />
+            <CopyField label="имя" value={order.customerName || ""} empty="Имя не указано" />
             <CopyField label="телефон" value={order.phone} />
             <CopyField label="почту" value={order.email} />
             <span className="order-contacts-label">Доставка</span>
             <span>{deliveryLabel}</span>
             <CopyField label="адрес" value={order.address} />
-            {order.repackRequested && (
-              <span>Просьба: собрать в одну коробку</span>
-            )}
+            {order.repackRequested && <span>Просьба: собрать в одну коробку</span>}
             {order.deliveryMethod !== "pickup" && (
               <>
                 <span className="order-contacts-label">Трек-номер</span>
@@ -897,19 +803,14 @@ export function AdminOrderEditor({
 
   const viewTitles: Record<Exclude<OrderView, "summary">, string> = {
     items: "Изменить состав",
-    delivery:
-      order.deliveryMethod === "cdek"
-        ? "Коробки и доставка"
-        : "Стоимость доставки",
+    delivery: order.deliveryMethod === "cdek" ? "Коробки и доставка" : "Стоимость доставки",
     payment: "Оплата, возвраты и чеки",
     shipments: "Отправления",
   };
   const backToSummary = () => {
     if (
       hasUnsavedChanges &&
-      !window.confirm(
-        "Изменения не сохранены. Вернуться к заказу без сохранения?",
-      )
+      !window.confirm("Изменения не сохранены. Вернуться к заказу без сохранения?")
     )
       return;
     discardChanges();
@@ -917,17 +818,9 @@ export function AdminOrderEditor({
   };
 
   const editor = (
-    <div
-      className={view === "summary" ? undefined : "admin-order-editor"}
-      data-view={view}
-    >
+    <div className={view === "summary" ? undefined : "admin-order-editor"} data-view={view}>
       <div className="ws-edit-head">
-        <button
-          type="button"
-          className="ws-back"
-          disabled={busy}
-          onClick={backToSummary}
-        >
+        <button type="button" className="ws-back" disabled={busy} onClick={backToSummary}>
           <svg
             viewBox="0 0 24 24"
             width="18"
@@ -943,23 +836,21 @@ export function AdminOrderEditor({
         </button>
         <h3>{view !== "summary" ? viewTitles[view] : null}</h3>
       </div>
-      {(view === "items" || view === "delivery") &&
-        !compositionReadOnly &&
-        canEditDelivery && (
-          <nav className="order-edit-switch" aria-label="Что изменить">
-            {(["items", "delivery"] as const).map((target) => (
-              <button
-                key={target}
-                type="button"
-                aria-current={view === target ? "page" : undefined}
-                disabled={busy}
-                onClick={() => onViewChange?.(target)}
-              >
-                {target === "items" ? "Состав" : viewTitles.delivery}
-              </button>
-            ))}
-          </nav>
-        )}
+      {(view === "items" || view === "delivery") && !compositionReadOnly && canEditDelivery && (
+        <nav className="order-edit-switch" aria-label="Что изменить">
+          {(["items", "delivery"] as const).map((target) => (
+            <button
+              key={target}
+              type="button"
+              aria-current={view === target ? "page" : undefined}
+              disabled={busy}
+              onClick={() => onViewChange?.(target)}
+            >
+              {target === "items" ? "Состав" : viewTitles.delivery}
+            </button>
+          ))}
+        </nav>
+      )}
       {view === "delivery" && packingFrozen && (
         <p className="ws-edit-note">Упаковка подтверждена</p>
       )}
@@ -967,23 +858,19 @@ export function AdminOrderEditor({
         <section className="admin-block" aria-label="Оплата и возвраты">
           <h3>Оплата и возвраты</h3>
           <p>
-            Получено: {money.format(payment.paid)} · Возвращено:{" "}
-            {money.format(payment.refunded)}
+            Получено: {money.format(payment.paid)} · Возвращено: {money.format(payment.refunded)}
           </p>
           {payment.overpaid > 0 && (
             <p className="admin-flag">
-              Переплата: {money.format(payment.overpaid)}. Возврат подтверждает
-              владелец.
+              Переплата: {money.format(payment.overpaid)}. Возврат подтверждает владелец.
             </p>
           )}
           {refundMessage && <p role="status">{refundMessage}</p>}
           {(payment.fiscalTasks ?? []).map((task) => (
             <article key={`${task.paymentId}:${task.kind}`}>
               <strong>
-                {task.kind === "income"
-                  ? "Чек прихода"
-                  : "Чек зачёта предоплаты"}{" "}
-                · платёж №{task.paymentId}
+                {task.kind === "income" ? "Чек прихода" : "Чек зачёта предоплаты"} · платёж №
+                {task.paymentId}
               </strong>
               <p>
                 {(
@@ -996,8 +883,7 @@ export function AdminOrderEditor({
                     canceled: "Не зарегистрирован — нужна проверка в ЮKassa",
                     unknown: "Регистрация ЮKassa пока не подтверждена",
 
-                    legacy_unverified:
-                      "Исторический платёж: сверьте чек в ЮKassa",
+                    legacy_unverified: "Исторический платёж: сверьте чек в ЮKassa",
                   } as Record<string, string>
                 )[task.status] ?? "Требуется проверка"}
                 {task.reference ? ` · ${task.reference}` : ""}
@@ -1031,9 +917,7 @@ export function AdminOrderEditor({
                     }[refund.status] ?? refund.status)}
               </p>
               {refund.actorId && <small>Сотрудник № {refund.actorId}</small>}
-              {refund.providerId && (
-                <small> · ID ЮKassa: {refund.providerId}</small>
-              )}
+              {refund.providerId && <small> · ID ЮKassa: {refund.providerId}</small>}
               {refund.lastError && <p>{refund.lastError}</p>}
               {refund.needsReview && canRefund && (
                 <div className="admin-form-grid">
@@ -1052,9 +936,7 @@ export function AdminOrderEditor({
                   </label>
                   <button
                     type="button"
-                    disabled={
-                      refundBusy || !refundProviderIDs[refund.id]?.trim()
-                    }
+                    disabled={refundBusy || !refundProviderIDs[refund.id]?.trim()}
                     onClick={() => void resolveRefund(refund.id)}
                   >
                     Сверить с ЮKassa
@@ -1080,40 +962,32 @@ export function AdminOrderEditor({
           {canRefund && payment.netPaid > 0 && (
             <details>
               <summary>Вернуть деньги покупателю</summary>
-              {(payment.refunds ?? []).some(
-                (refund) => refund.status === "pending",
-              ) && <p>Новый возврат доступен после завершения предыдущего.</p>}
+              {(payment.refunds ?? []).some((refund) => refund.status === "pending") && (
+                <p>Новый возврат доступен после завершения предыдущего.</p>
+              )}
               {(payment.refundOptions ?? []).length > 0 && (
                 <fieldset>
                   <legend>Позиции исходных платежей</legend>
                   <p>
-                    Выберите возвращаемое количество. Цены взяты из сохранённых
-                    платежей, включая скидки. Доставка выбирается отдельно.
+                    Выберите возвращаемое количество. Цены взяты из сохранённых платежей, включая
+                    скидки. Доставка выбирается отдельно.
                   </p>
                   {payment.refundOptions!.map((item) => (
                     <label key={`${item.paymentId}:${item.itemIndex}`}>
-                      {item.name} · {money.format(item.price)} · платёж №
-                      {item.paymentId}
+                      {item.name} · {money.format(item.price)} · платёж №{item.paymentId}
                       <NumericInput
                         aria-label={`Вернуть: ${item.name}, платёж ${item.paymentId}`}
                         min="0"
                         max={item.quantity}
                         step="1"
-                        value={
-                          refundQuantities[
-                            `${item.paymentId}:${item.itemIndex}`
-                          ] ?? 0
-                        }
+                        value={refundQuantities[`${item.paymentId}:${item.itemIndex}`] ?? 0}
                         disabled={refundBusy}
                         onChange={(event) =>
                           setRefundQuantities((current) => ({
                             ...current,
                             [`${item.paymentId}:${item.itemIndex}`]: Math.max(
                               0,
-                              Math.min(
-                                item.quantity,
-                                Math.trunc(Number(event.target.value) || 0),
-                              ),
+                              Math.min(item.quantity, Math.trunc(Number(event.target.value) || 0)),
                             ),
                           }))
                         }
@@ -1129,9 +1003,7 @@ export function AdminOrderEditor({
                     min="0.01"
                     step="0.01"
                     max={payment.netPaid}
-                    value={
-                      refundSelections.length ? requestedRefund : refundAmount
-                    }
+                    value={refundSelections.length ? requestedRefund : refundAmount}
                     disabled={refundBusy || refundSelections.length > 0}
                     onChange={(event) => setRefundAmount(event.target.value)}
                   />
@@ -1156,9 +1028,7 @@ export function AdminOrderEditor({
                   requestedRefund <= 0 ||
                   requestedRefund > payment.netPaid ||
                   !refundReason.trim() ||
-                  (payment.refunds ?? []).some(
-                    (refund) => refund.status === "pending",
-                  )
+                  (payment.refunds ?? []).some((refund) => refund.status === "pending")
                 }
                 onClick={() => void sendRefund()}
               >
@@ -1166,16 +1036,12 @@ export function AdminOrderEditor({
               </button>
             </details>
           )}
-          {(payment.refunds ?? []).some(
-            (refund) => refund.status === "pending",
-          ) && (
+          {(payment.refunds ?? []).some((refund) => refund.status === "pending") && (
             <button
               type="button"
               disabled={refundBusy}
               onClick={() =>
-                void refreshMoney().catch((error) =>
-                  onError((error as Error).message),
-                )
+                void refreshMoney().catch((error) => onError((error as Error).message))
               }
             >
               Обновить статус возврата
@@ -1203,9 +1069,7 @@ export function AdminOrderEditor({
             onOrderUpdated={onSaved}
             onStateChange={(state) => {
               setPackingLoaded(true);
-              setPackingFrozen(
-                !["draft", "cancelled", "stale"].includes(state.state),
-              );
+              setPackingFrozen(!["draft", "cancelled", "stale"].includes(state.state));
               if (state.state !== "draft") void load();
             }}
           />
@@ -1235,9 +1099,7 @@ export function AdminOrderEditor({
                 max="100"
                 value={line.quantity}
                 disabled={formDisabled}
-                onChange={(event) =>
-                  changeQuantity(index, Number(event.target.value))
-                }
+                onChange={(event) => changeQuantity(index, Number(event.target.value))}
               />
               <strong>{money.format(line.unitPrice * line.quantity)}</strong>
               <button
@@ -1277,9 +1139,7 @@ export function AdminOrderEditor({
                 value={discountValue}
                 disabled={formDisabled || payment.paid > 0}
                 onChange={(event) => {
-                  setDiscountValue(
-                    Math.max(0, Number(event.target.value) || 0),
-                  );
+                  setDiscountValue(Math.max(0, Number(event.target.value) || 0));
                   compositionChanged();
                 }}
               />
@@ -1297,9 +1157,7 @@ export function AdminOrderEditor({
               <option value="fixed">₽</option>
               <option value="percent">%</option>
             </select>
-            {discountAmount > 0 && (
-              <strong>−{money.format(discountAmount)}</strong>
-            )}
+            {discountAmount > 0 && <strong>−{money.format(discountAmount)}</strong>}
           </div>
           <div className="admin-order-draft-total">
             <small>
@@ -1321,73 +1179,59 @@ export function AdminOrderEditor({
         </section>
       )}
 
-      {view === "delivery" &&
-        !["pickup", "cdek"].includes(order.deliveryMethod) && (
-          <section className="admin-block">
-            <h3>Стоимость доставки</h3>
-            <div className="admin-form-grid">
-              <label>
-                {adjustment.deliveryPayee === "carrier"
-                  ? "Стоимость доставки, справочно, ₽"
-                  : "Стоимость доставки, ₽"}
-                <NumericInput
-                  min="0"
-                  step="1"
-                  value={deliveryFee}
-                  disabled={formDisabled}
-                  onChange={(event) => {
-                    setDeliveryFee(Math.max(0, Number(event.target.value)));
-                    compositionChanged();
-                  }}
-                />
-              </label>
-            </div>
-            <small>
+      {view === "delivery" && !["pickup", "cdek"].includes(order.deliveryMethod) && (
+        <section className="admin-block">
+          <h3>Стоимость доставки</h3>
+          <div className="admin-form-grid">
+            <label>
               {adjustment.deliveryPayee === "carrier"
-                ? "Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений."
-                : "Стоимость доставки входит в сумму оплаты заказа."}
-            </small>
-            {order.deliveryMethod === "cdek" &&
-              adjustment.cdekCreateState === "unknown" && (
-                <p className="admin-flag">
-                  СДЭК не подтвердил создание. Система ищет заявку по номеру
-                  заказа без повторной отправки.
-                </p>
-              )}
-            {order.deliveryMethod === "cdek" &&
-              adjustment.cdekCreateState === "manual_review" && (
-                <p className="admin-flag">
-                  {adjustment.cdekLastError?.includes(
-                    "остатка растений недостаточно",
-                  )
-                    ? `Отправка оплаченного заказа ${adjustment.orderNumber} остановлена: остатка растений недостаточно. Проверьте наличие и решите вручную.`
-                    : `Проверьте заказ ${adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.`}
-                </p>
-              )}
-            {order.deliveryMethod === "cdek" && adjustment.cdekStatus && (
-              <small>
-                Статус СДЭК:{" "}
-                {adjustment.cdekStatusReason || adjustment.cdekStatus}
-              </small>
-            )}
-            {order.deliveryMethod === "cdek" &&
-              adjustment.cdekLastError &&
-              ["unknown", "manual_review", "retry"].includes(
-                adjustment.cdekCreateState,
-              ) &&
-              !(
-                adjustment.cdekCreateState === "manual_review" &&
-                adjustment.cdekLastError.includes(
-                  "остатка растений недостаточно",
-                )
-              ) && <small>{adjustment.cdekLastError}</small>}
-          </section>
-        )}
+                ? "Стоимость доставки, справочно, ₽"
+                : "Стоимость доставки, ₽"}
+              <NumericInput
+                min="0"
+                step="1"
+                value={deliveryFee}
+                disabled={formDisabled}
+                onChange={(event) => {
+                  setDeliveryFee(Math.max(0, Number(event.target.value)));
+                  compositionChanged();
+                }}
+              />
+            </label>
+          </div>
+          <small>
+            {adjustment.deliveryPayee === "carrier"
+              ? "Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений."
+              : "Стоимость доставки входит в сумму оплаты заказа."}
+          </small>
+          {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "unknown" && (
+            <p className="admin-flag">
+              СДЭК не подтвердил создание. Система ищет заявку по номеру заказа без повторной
+              отправки.
+            </p>
+          )}
+          {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && (
+            <p className="admin-flag">
+              {adjustment.cdekLastError?.includes("остатка растений недостаточно")
+                ? `Отправка оплаченного заказа ${adjustment.orderNumber} остановлена: остатка растений недостаточно. Проверьте наличие и решите вручную.`
+                : `Проверьте заказ ${adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.`}
+            </p>
+          )}
+          {order.deliveryMethod === "cdek" && adjustment.cdekStatus && (
+            <small>Статус СДЭК: {adjustment.cdekStatusReason || adjustment.cdekStatus}</small>
+          )}
+          {order.deliveryMethod === "cdek" &&
+            adjustment.cdekLastError &&
+            ["unknown", "manual_review", "retry"].includes(adjustment.cdekCreateState) &&
+            !(
+              adjustment.cdekCreateState === "manual_review" &&
+              adjustment.cdekLastError.includes("остатка растений недостаточно")
+            ) && <small>{adjustment.cdekLastError}</small>}
+        </section>
+      )}
 
       {["items", "delivery"].includes(view) &&
-        (hasUnsavedChanges ||
-          saved ||
-          (view === "items" && adjustment?.hasPreorder)) && (
+        (hasUnsavedChanges || saved || (view === "items" && adjustment?.hasPreorder)) && (
           <div className="dialog-actions order-editor-savebar">
             <span role="status">
               {packingFrozen
@@ -1403,26 +1247,15 @@ export function AdminOrderEditor({
                         : "Состав и стоимость сохраняются вместе"}
             </span>
             {hasUnsavedChanges && (
-              <button
-                type="button"
-                disabled={formDisabled}
-                onClick={discardChanges}
-              >
+              <button type="button" disabled={formDisabled} onClick={discardChanges}>
                 Отменить изменения
               </button>
             )}
             {!compositionReadOnly && (
-              <button
-                type="button"
-                className="primary"
-                disabled={formDisabled}
-                onClick={save}
-              >
+              <button type="button" className="primary" disabled={formDisabled} onClick={save}>
                 {saving
                   ? "Сохраняем…"
-                  : view === "items" &&
-                      adjustment?.hasPreorder &&
-                      !hasUnsavedChanges
+                  : view === "items" && adjustment?.hasPreorder && !hasUnsavedChanges
                     ? "Перепроверить наличие"
                     : "Сохранить изменения"}
               </button>
@@ -1433,9 +1266,7 @@ export function AdminOrderEditor({
       {view === "shipments" && hasShipments && (
         <section className="admin-block order-partial-shipments">
           {hasUnsavedChanges && (
-            <p className="admin-flag">
-              Сохраните изменения состава перед подготовкой отправки.
-            </p>
+            <p className="admin-flag">Сохраните изменения состава перед подготовкой отправки.</p>
           )}
           <Suspense fallback={<p>Готовим частичные отправки…</p>}>
             <ShipmentOffers
@@ -1481,8 +1312,7 @@ function CopyField({
   display?: string;
 }) {
   const [copied, setCopied] = useState(false);
-  if (!value)
-    return empty ? <span className="order-muted">{empty}</span> : null;
+  if (!value) return empty ? <span className="order-muted">{empty}</span> : null;
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(value);
