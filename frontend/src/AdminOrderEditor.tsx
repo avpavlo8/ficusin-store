@@ -1217,7 +1217,8 @@ export function AdminOrderEditor({
         </section>
       )}
 
-      {["items", "delivery"].includes(view) && (hasUnsavedChanges || saved) && (
+      {["items", "delivery"].includes(view) &&
+        (hasUnsavedChanges || saved || (view === "items" && adjustment?.hasPreorder)) && (
         <div className="dialog-actions order-editor-savebar">
           <span role="status">
             {packingFrozen
@@ -1226,9 +1227,11 @@ export function AdminOrderEditor({
                 ? "Редактирование состава закрыто для этого статуса"
                 : hasUnsavedChanges
                   ? "Есть несохранённые изменения"
-                  : saved
-                    ? "Изменения сохранены"
-                    : "Состав и стоимость сохраняются вместе"}
+                  : view === "items" && adjustment?.hasPreorder
+                    ? "Состав не менялся — можно перепроверить наличие"
+                    : saved
+                      ? "Изменения сохранены"
+                      : "Состав и стоимость сохраняются вместе"}
           </span>
           {hasUnsavedChanges && (
             <button type="button" disabled={formDisabled} onClick={discardChanges}>
@@ -1237,7 +1240,11 @@ export function AdminOrderEditor({
           )}
           {!compositionReadOnly && (
             <button type="button" className="primary" disabled={formDisabled} onClick={save}>
-              {saving ? "Сохраняем…" : "Сохранить изменения"}
+              {saving
+                ? "Сохраняем…"
+                : view === "items" && adjustment?.hasPreorder && !hasUnsavedChanges
+                  ? "Перепроверить наличие"
+                  : "Сохранить изменения"}
             </button>
           )}
         </div>
