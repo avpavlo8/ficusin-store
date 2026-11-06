@@ -132,7 +132,9 @@ type ShipmentOffer = {
   }>;
 };
 const ShipmentOffers = lazy(() =>
-  import("./AdminShipmentOfferBuilder").then((module) => ({ default: module.AdminShipmentOffers })),
+  import("./AdminShipmentOfferBuilder").then((module) => ({
+    default: module.AdminShipmentOffers,
+  })),
 );
 
 const emptyPayment: PaymentBalance = {
@@ -217,9 +219,10 @@ export function AdminOrderEditor({
   );
   const requestedRefund = refundSelections.length ? selectedMinor / 100 : Number(refundAmount);
   const [refundReason, setRefundReason] = useState("");
-  const [refundRequest, setRefundRequest] = useState<{ signature: string; id: string } | null>(
-    null,
-  );
+  const [refundRequest, setRefundRequest] = useState<{
+    signature: string;
+    id: string;
+  } | null>(null);
   const [refundMessage, setRefundMessage] = useState("");
   const [refundProviderIDs, setRefundProviderIDs] = useState<Record<number, string>>({});
   const [refundBusy, setRefundBusy] = useState(false);
@@ -314,7 +317,10 @@ export function AdminOrderEditor({
       const result = await api<{
         confirmationUrl: string;
         notice?: { email: string; push: string };
-      }>(`/api/v1/admin/orders/${order.id}/payment-link/renew`, { method: "POST", body: "{}" });
+      }>(`/api/v1/admin/orders/${order.id}/payment-link/renew`, {
+        method: "POST",
+        body: "{}",
+      });
       setRenewURL(result.confirmationUrl);
       const email =
         result.notice?.email === "queued"
@@ -509,14 +515,21 @@ export function AdminOrderEditor({
       // и указанную менеджером стоимость доставки. Отдельный флаг здесь
       // только создавал ложное состояние «менеджер сохранил, но не подтвердил».
       const body = {
-        items: lines.map((line) => ({ sku: line.sku, quantity: line.quantity })),
+        items: lines.map((line) => ({
+          sku: line.sku,
+          quantity: line.quantity,
+        })),
         ...(order.deliveryMethod === "cdek" ? {} : { deliveryFee }),
         discount: { type: discountType, value: discountValue },
       };
-      const result = await api<{ order: Order; adjustment: Adjustment; payment: PaymentBalance }>(
-        `/api/v1/admin/orders/${order.id}/contents`,
-        { method: "PATCH", body: JSON.stringify(body) },
-      );
+      const result = await api<{
+        order: Order;
+        adjustment: Adjustment;
+        payment: PaymentBalance;
+      }>(`/api/v1/admin/orders/${order.id}/contents`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
       setAdjustment(result.adjustment);
       setLines(result.adjustment.items);
       setDeliveryFee(result.adjustment.deliveryFee);
@@ -1217,31 +1230,38 @@ export function AdminOrderEditor({
         </section>
       )}
 
-      {["items", "delivery"].includes(view) && (hasUnsavedChanges || saved) && (
-        <div className="dialog-actions order-editor-savebar">
-          <span role="status">
-            {packingFrozen
-              ? "Упаковка подтверждена, состав и доставка зафиксированы"
-              : readOnly
-                ? "Редактирование состава закрыто для этого статуса"
-                : hasUnsavedChanges
-                  ? "Есть несохранённые изменения"
-                  : saved
-                    ? "Изменения сохранены"
-                    : "Состав и стоимость сохраняются вместе"}
-          </span>
-          {hasUnsavedChanges && (
-            <button type="button" disabled={formDisabled} onClick={discardChanges}>
-              Отменить изменения
-            </button>
-          )}
-          {!compositionReadOnly && (
-            <button type="button" className="primary" disabled={formDisabled} onClick={save}>
-              {saving ? "Сохраняем…" : "Сохранить изменения"}
-            </button>
-          )}
-        </div>
-      )}
+      {["items", "delivery"].includes(view) &&
+        (hasUnsavedChanges || saved || (view === "items" && adjustment?.hasPreorder)) && (
+          <div className="dialog-actions order-editor-savebar">
+            <span role="status">
+              {packingFrozen
+                ? "Упаковка подтверждена, состав и доставка зафиксированы"
+                : readOnly
+                  ? "Редактирование состава закрыто для этого статуса"
+                  : hasUnsavedChanges
+                    ? "Есть несохранённые изменения"
+                    : view === "items" && adjustment?.hasPreorder
+                      ? "Состав не менялся — можно перепроверить наличие"
+                      : saved
+                        ? "Изменения сохранены"
+                        : "Состав и стоимость сохраняются вместе"}
+            </span>
+            {hasUnsavedChanges && (
+              <button type="button" disabled={formDisabled} onClick={discardChanges}>
+                Отменить изменения
+              </button>
+            )}
+            {!compositionReadOnly && (
+              <button type="button" className="primary" disabled={formDisabled} onClick={save}>
+                {saving
+                  ? "Сохраняем…"
+                  : view === "items" && adjustment?.hasPreorder && !hasUnsavedChanges
+                    ? "Перепроверить наличие"
+                    : "Сохранить изменения"}
+              </button>
+            )}
+          </div>
+        )}
 
       {view === "shipments" && hasShipments && (
         <section className="admin-block order-partial-shipments">
