@@ -147,3 +147,21 @@ func TestSettlementReceiptRequiresExplicitConfirmation(t *testing.T) {
 		t.Fatal("obsolete own-till route still registered")
 	}
 }
+
+func TestAvailabilityRecheckKeepsPendingPayment(t *testing.T) {
+	repository := &adjustmentRepositoryStub{adminRepositoryStub: &adminRepositoryStub{}}
+	payments := &adjustmentPaymentsStub{}
+	dependencies := adminDependencies(repository, admin.RoleOwner, "owner@example.com")
+	dependencies.Refunds = payments
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), dependencies).ServeHTTP(response, adminRequest(http.MethodPatch, "/api/v1/admin/orders/7/contents", `{"recheckAvailability":true}`))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", response.Code, response.Body.String())
+	}
+	if len(payments.superseded) != 0 {
+		t.Fatal("stock recheck retired existing payment")
+	}
+	if len(repository.edits) != 1 || !repository.edits[0].RecheckAvailability || repository.edits[0].Items != nil {
+		t.Fatalf("unexpected edit: %+v", repository.edits)
+	}
+}

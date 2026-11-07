@@ -230,7 +230,7 @@ func (handlers adminHandlers) editOrderContents(response http.ResponseWriter, re
 		}
 	}
 	payments, hasPayments := handlers.payments.(adminOrderPaymentService)
-	if hasPayments {
+	if hasPayments && !edit.RecheckAvailability {
 		// Retire the old attempt under the same lock used for capture before
 		// editing. A late two-stage authorization is canceled; a legacy
 		// one-stage charge remains visible for reconciliation.
@@ -246,7 +246,11 @@ func (handlers adminHandlers) editOrderContents(response http.ResponseWriter, re
 	}
 	var balance payment.Balance
 	if hasPayments {
-		balance, err = payments.Reconcile(request.Context(), id)
+		if edit.RecheckAvailability {
+			balance, err = payments.BalanceForOrder(request.Context(), id)
+		} else {
+			balance, err = payments.Reconcile(request.Context(), id)
+		}
 		if err != nil {
 			handlers.failed(response, "reconcile edited order", err)
 			return

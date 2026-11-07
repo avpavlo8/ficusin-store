@@ -7017,6 +7017,9 @@ components:
       type: object
     admin.OrderEdit:
       properties:
+        recheckAvailability:
+          type: boolean
+          description: Recheck existing stock without changing items, prices, shipping or payment attempts. Must not be combined with other edit fields.
         deliveryFee:
           anyOf:
             - type: number
