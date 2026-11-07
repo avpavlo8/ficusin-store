@@ -37,7 +37,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
     deliveryFeePending: true,
     hasPreorder: false,
     status: "new",
-    items: [...order.items],
+    items: order.items.map((item, index) => ({ ...item, image: index === 0 ? "/assets/hero-monstera.webp" : "" })),
     cdekCreateState: stockShortage ? "manual_review" : "",
     cdekLastError: stockShortage ? "Оплаченный заказ: остатка растений недостаточно для отправки. Проверьте наличие и решите вручную." : "",
     shipmentOffers: stockShortage ? [{
@@ -732,3 +732,23 @@ for (const email of ["no_email", "disabled", "failed"]) {
     expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe("https://pay.example.test/new");
   });
 }
+
+
+test('@desktop @phone order detail renders product photo from detail API with missing-photo fallback', async ({ page }, info) => {
+  await mockOrderEditor(page);
+  await page.goto('/admin?section=orders&order=30');
+  const photos = page.locator('.order-pick-list img.order-item-photo');
+  await expect(photos).toHaveCount(2);
+  await expect(photos.first()).toHaveAttribute('src', '/assets/hero-monstera.webp');
+  await expect.poll(() => photos.first().evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect(photos.nth(1)).toHaveAttribute('src', '/assets/product-photo-pending-graphite-v1.svg');
+  await page.screenshot({ path: info.outputPath('order-detail-photo.png'), fullPage: true });
+});
+
+test('@phone order detail recovers from a broken photo without losing the order', async ({ page }) => {
+  await mockOrderEditor(page);
+  await page.route('**/assets/hero-monstera.webp', route => route.abort());
+  await page.goto('/admin?section=orders&order=30');
+  await expect(page.locator('.order-pick-list img').first()).toHaveAttribute('src', '/assets/product-photo-pending-graphite-v1.svg');
+  await expect(page.getByRole('heading', { name: 'Заказ 0001-30', exact: true })).toBeVisible();
+});

@@ -90,6 +90,7 @@ type Adjustment = {
     sku: string;
     variantLabel: string;
     productName: string;
+    image?: string;
     unitPrice: number;
     quantity: number;
     packageLengthCm: number;
@@ -630,7 +631,16 @@ export function AdminOrderEditor({
             <ul className="order-pick-list">
               {adjustment.items.map((line, index) => (
                 <li key={`${line.sku}-${index}`}>
-                  <span className="order-item-photo" aria-hidden="true" />
+                  <img
+                    className="order-item-photo"
+                    src={line.image || "/assets/product-photo-pending-graphite-v1.svg"}
+                    alt=""
+                    loading="lazy"
+                    onError={(event) => {
+                      event.currentTarget.onerror = null;
+                      event.currentTarget.src = "/assets/product-photo-pending-graphite-v1.svg";
+                    }}
+                  />
                   <span className="order-item-name">
                     <strong>{line.productName}</strong>
                     <small>

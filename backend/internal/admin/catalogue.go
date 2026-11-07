@@ -503,6 +503,10 @@ func (repository *PostgresRepository) MergeDraftProducts(ctx context.Context, ac
 		if _, err = tx.Exec(ctx, `UPDATE product_media SET product_id=$1 WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
 			return fmt.Errorf("move media: %w", err)
 		}
+		if _, err = tx.Exec(ctx, `UPDATE product_creation_drafts SET product_id=$1 WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
+			return fmt.Errorf("move creation history: %w", err)
+		}
+
 		if _, err = tx.Exec(ctx, `DELETE FROM products WHERE id=$1`, sourceID); err != nil {
 			return fmt.Errorf("delete merged draft: %w", err)
 		}

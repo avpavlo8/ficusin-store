@@ -1,0 +1,42 @@
+import { expect, test } from '@playwright/test';
+import { fillStagingCreationBase } from './creation-helpers';
+
+test('real staging wizard persists photos, validates Ozon-specific fields and creates all test cards once', async ({ page, context }, info) => {
+  const ready = await context.request.get('/api/v1/ready');
+  expect(ready.headers()['x-ficusin-environment']).toBe('staging');
+  const config = await (await context.request.get('/api/v1/admin/product-creations/options')).json();
+  expect(config.simulation).toBe(true);
+  await page.goto('/admin?section=products');
+  await page.getByRole('button', { name: 'Добавить товар', exact: true }).click();
+  await fillStagingCreationBase(page, context.request, `Проверка мастера ${info.project.name} ${Date.now()}`);
+  let form = page.getByRole('dialog');
+  await page.reload();
+  form = page.getByRole('dialog');
+  await expect(form.locator('.creation-fields h2')).toHaveText('Wildberries');
+  await form.getByRole('button', { name: 'Заполнить Wildberries', exact: true }).click();
+  await form.getByLabel('Категория Wildberries', { exact: true }).selectOption('STG-WB-PLANTS');
+  for (const [field, value] of [['Бренд', 'Тестовый бренд'], ['Вид растения', 'Аглаонема'], ['Комплектация', 'Растение в горшке']]) await form.getByLabel(`Wildberries: ${field}`, { exact: true }).fill(value);
+  await form.getByLabel('Wildberries: Страна производства', { exact: true }).selectOption('Нидерланды');
+  await form.getByRole('button', { name: 'Далее', exact: true }).click();
+  await form.getByRole('button', { name: 'Заполнить Ozon', exact: true }).click();
+  await form.getByLabel('Категория Ozon', { exact: true }).selectOption('STG-OZON-PLANTS');
+  await expect(form.getByLabel('Ozon: Бренд', { exact: true })).toHaveValue('Тестовый бренд');
+  await expect(form.getByLabel('Ozon: Код ТН ВЭД', { exact: true })).toBeEmpty();
+  await expect(form.getByRole('button', { name: 'Далее', exact: true })).toBeDisabled();
+  await form.getByLabel('Ozon: Код ТН ВЭД', { exact: true }).fill('0000000000');
+  await form.getByLabel('Ozon: НДС', { exact: true }).fill('Тестовая ставка');
+  await form.getByRole('button', { name: 'Далее', exact: true }).click();
+  const id = new URL(page.url()).searchParams.get('creation')!;
+  await form.getByRole('button', { name: 'Создать', exact: true }).click();
+  await expect(form.getByRole('heading', { name: 'Карточки созданы в стейджинге', exact: true })).toBeVisible();
+  const read = await (await context.request.get(`/api/v1/admin/product-creations/${id}`)).json();
+  expect(read.results).toHaveLength(3);
+  for (const result of read.results) { expect(result.state).toBe('simulated'); expect(result.externalId).toMatch(/^STG-/); }
+  expect(read.product.status).toBe('draft'); expect(read.product.stock).toBe(0);
+  const repeated = await context.request.post(`/api/v1/admin/product-creations/${id}/finish`, { data: { revision: read.revision }, headers: { Origin: process.env.FICUSIN_BASE_URL! } });
+  expect(repeated.ok()).toBeTruthy(); expect((await repeated.json()).product.id).toBe(read.product.id);
+  const media = await (await context.request.get(`/api/v1/admin/products/${read.product.id}/media`)).json();
+  expect(media.media).toHaveLength(1);
+  expect((await context.request.get(media.media[0].url)).headers()['content-type']).toContain('image/jpeg');
+  await page.screenshot({ path: info.outputPath('real-creation-result.png') });
+});

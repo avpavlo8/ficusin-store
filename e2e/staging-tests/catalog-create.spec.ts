@@ -1,3 +1,4 @@
+import { fillStagingCreationBase } from "./creation-helpers";
 import { expect, test } from "@playwright/test";
 
 test("real staging: draft, dimensions, seasonal boxes and outbound isolation", async ({
@@ -13,22 +14,16 @@ test("real staging: draft, dimensions, seasonal boxes and outbound isolation", a
     .click();
   let dialog = page.getByRole("dialog");
   const name = `Проверка стейджинга ${testInfo.project.name} ${Date.now()}`;
-  await dialog.getByLabel("Название товара", { exact: true }).fill(name);
-  await dialog.getByLabel("Диаметр горшка, см", { exact: true }).fill("11.3");
-  await dialog.getByLabel("Высота растения, см", { exact: true }).fill("40");
-  await dialog.getByLabel("Цена на сайте, ₽", { exact: true }).fill("1490.99");
-  const createdResponse = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/v1/admin/products",
-  );
-  await dialog
-    .getByRole("button", { name: "Создать карточку", exact: true })
-    .click();
+  await fillStagingCreationBase(page, context.request, name);
+  await dialog.getByRole("button", {name: "Пропустить Wildberries", exact: true}).click();
+  await dialog.getByRole("button", {name: "Пропустить Ozon", exact: true}).click();
+  const createdResponse = page.waitForResponse(response => response.request().method() === "POST" && new URL(response.url()).pathname.endsWith("/finish"));
+  await dialog.getByRole("button", {name: "Создать", exact: true}).click();
   const response = await createdResponse;
   expect(response.ok()).toBeTruthy();
   const { product } = await response.json();
   expect(product.status).toBe("draft");
+  await dialog.getByRole("button", {name: "Открыть карточку", exact: true}).click();
   dialog = page.getByRole("dialog");
   await expect(
     dialog.getByRole("button", { name: "Размеры и цены", exact: true }),
@@ -65,7 +60,7 @@ test("real staging: draft, dimensions, seasonal boxes and outbound isolation", a
   const panel = dialog.getByRole("region", { name: /^СБИС: артикул / });
   await expect(panel).toContainText("Тестовый контур.");
   await expect(
-    panel.getByRole("button", { name: "Создать в СБИС (тест)", exact: true }),
+    panel.getByRole("button", { name: /^(Создать|Обновить) в СБИС [(]тест[)]$/ }),
   ).toBeEnabled();
   await expect(panel).toContainText("11.3");
   await expect(panel).toContainText("40");
@@ -91,7 +86,7 @@ test("real staging: draft, dimensions, seasonal boxes and outbound isolation", a
   expect(before.configured).toBe(true);
   expect(before.simulation).toBe(true);
   await panel
-    .getByRole("button", { name: "Создать в СБИС (тест)", exact: true })
+    .getByRole("button", { name: /^(Создать|Обновить) в СБИС [(]тест[)]$/ })
     .click();
   // The durable queue deliberately verifies in a separate pass after 10 seconds.
   await expect(panel).toContainText("Тестовый прогон завершён", {

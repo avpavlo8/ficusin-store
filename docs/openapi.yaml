@@ -6284,6 +6284,164 @@ paths:
       x-source: backend/internal/httpapi/admin_refund_receipt.go#settlePaymentReceipt
       x-permissions:
         - payments.refund
+  /admin/product-creations/options:
+    get:
+      operationId: get__admin_product_creations_options
+      description: Staging-only product creation review. External channels are explicitly simulated and never contact live seller accounts.
+      x-source: backend/internal/httpapi/admin_product_creation.go#registerProductCreationRoutes
+      tags: [Administration]
+      security:
+        - Session: []
+      responses:
+        2XX:
+          description: Saved staging draft, validation options, photo, or idempotent creation result.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/product-creations:
+    post:
+      operationId: post__admin_product_creations
+      description: Staging-only product creation review. External channels are explicitly simulated and never contact live seller accounts.
+      x-source: backend/internal/httpapi/admin_product_creation.go#registerProductCreationRoutes
+      tags: [Administration]
+      security:
+        - Session: []
+      responses:
+        2XX:
+          description: Saved staging draft, validation options, photo, or idempotent creation result.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/product-creations/{draftId}:
+    get:
+      operationId: get__admin_product_creations_draftId_
+      description: Staging-only product creation review. External channels are explicitly simulated and never contact live seller accounts.
+      x-source: backend/internal/httpapi/admin_product_creation.go#registerProductCreationRoutes
+      tags: [Administration]
+      security:
+        - Session: []
+      parameters:
+        - in: path
+          name: draftId
+          required: true
+          schema: { type: string }
+      responses:
+        2XX:
+          description: Saved staging draft, validation options, photo, or idempotent creation result.
+        default:
+          $ref: "#/components/responses/ValidationError"
+    put:
+      operationId: put__admin_product_creations_draftId_
+      description: Staging-only product creation review. External channels are explicitly simulated and never contact live seller accounts.
+      x-source: backend/internal/httpapi/admin_product_creation.go#registerProductCreationRoutes
+      tags: [Administration]
+      security:
+        - Session: []
+      parameters:
+        - in: path
+          name: draftId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        2XX:
+          description: Saved staging draft, validation options, photo, or idempotent creation result.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/product-creations/{draftId}/photos:
+    post:
+      operationId: post__admin_product_creations_draftId_photos
+      description: Staging-only product creation review. External channels are explicitly simulated and never contact live seller accounts.
+      x-source: backend/internal/httpapi/admin_product_creation.go#registerProductCreationRoutes
+      tags: [Administration]
+      security:
+        - Session: []
+      parameters:
+        - in: path
+          name: draftId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        2XX:
+          description: Saved staging draft, validation options, photo, or idempotent creation result.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/product-creations/{draftId}/photos/{photoId}:
+    delete:
+      operationId: delete__admin_product_creations_draftId_photos_photoId_
+      description: Staging-only product creation review. External channels are explicitly simulated and never contact live seller accounts.
+      x-source: backend/internal/httpapi/admin_product_creation.go#registerProductCreationRoutes
+      tags: [Administration]
+      security:
+        - Session: []
+      parameters:
+        - in: path
+          name: draftId
+          required: true
+          schema: { type: string }
+        - in: path
+          name: photoId
+          required: true
+          schema: { type: string }
+      responses:
+        2XX:
+          description: Saved staging draft, validation options, photo, or idempotent creation result.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/product-creations/{draftId}/finish:
+    post:
+      operationId: post__admin_product_creations_draftId_finish
+      description: Staging-only product creation review. External channels are explicitly simulated and never contact live seller accounts.
+      x-source: backend/internal/httpapi/admin_product_creation.go#registerProductCreationRoutes
+      tags: [Administration]
+      security:
+        - Session: []
+      parameters:
+        - in: path
+          name: draftId
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        2XX:
+          description: Saved staging draft, validation options, photo, or idempotent creation result.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /product-creation-photos/{photoId}:
+    get:
+      operationId: get__product_creation_photos_photoId_
+      description: Staging-only product creation review. External channels are explicitly simulated and never contact live seller accounts.
+      x-source: backend/internal/httpapi/admin_product_creation.go#registerProductCreationRoutes
+      tags: [Administration]
+      security: []
+      parameters:
+        - in: path
+          name: photoId
+          required: true
+          schema: { type: string }
+      responses:
+        2XX:
+          description: Saved staging draft, validation options, photo, or idempotent creation result.
+        default:
+          $ref: "#/components/responses/ValidationError"
 components:
   responses:
     ValidationError:
