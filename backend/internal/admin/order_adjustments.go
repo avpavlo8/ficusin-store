@@ -28,6 +28,7 @@ func (line OrderEditLine) identity() string {
 }
 
 type OrderEdit struct {
+	RecheckAvailability bool `json:"recheckAvailability"`
 	// Items is the complete desired composition. nil means "do not change
 	// composition"; an explicitly empty array is rejected because an empty
 	// order must be cancelled instead of becoming a zero-ruble ghost.
@@ -106,18 +107,19 @@ func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, variantID int64, quan
 	// Use confirmed Saby stock: other warehouses and stale local values cannot
 	// turn a request into an immediately payable order. No reservation is made.
 	var available int
+	var fresh bool
 	if err := tx.QueryRow(ctx, `
-		SELECT COALESCE(SUM(GREATEST(i.available_qty-i.reserved_qty,0)),0)::INTEGER
+		SELECT COALESCE(SUM(GREATEST(i.available_qty-i.reserved_qty,0)),0)::INTEGER, COUNT(*)>0
 		FROM inventory i
 		JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 		JOIN product_variants v ON v.id=i.variant_id
 		JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
 		JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
 		WHERE i.variant_id=$1 AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
-	`, variantID).Scan(&available); err != nil {
+	`, variantID).Scan(&available, &fresh); err != nil {
 		return 0, false, err
 	}
-	return 0, available < quantity, nil
+	return 0, !fresh || available < quantity, nil
 }
 
 func currentAdminOrder(ctx context.Context, repository *PostgresRepository, id int64) (Order, error) {
@@ -168,6 +170,9 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	if !Can(actor.Role, PermissionOrdersEdit) {
 		return Order{}, ErrForbidden
 	}
+	if edit.RecheckAvailability && (edit.Items != nil || edit.DeliveryFee != nil || edit.Discount != nil) {
+		return Order{}, errors.New("проверка наличия не должна менять состав, скидку или доставку")
+	}
 	if edit.DeliveryFee != nil && (*edit.DeliveryFee < 0 || *edit.DeliveryFee > 100000) {
 		return Order{}, fmt.Errorf("стоимость доставки вне разумных пределов")
 	}
@@ -201,6 +206,66 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	}
 	if status == "cancelled" || status == "completed" || status == "shipped" {
 		return Order{}, fmt.Errorf("состав уже закрытого или отправленного заказа менять нельзя")
+	}
+	if edit.RecheckAvailability {
+		rows, err := tx.Query(ctx, `SELECT id,variant_id,quantity,reserved_qty FROM order_items WHERE order_id=$1 ORDER BY id FOR UPDATE`, id)
+		if err != nil {
+			return Order{}, err
+		}
+		type stockLine struct {
+			id                 int64
+			variant            *int64
+			quantity, reserved int
+		}
+		var lines []stockLine
+		for rows.Next() {
+			var line stockLine
+			if err := rows.Scan(&line.id, &line.variant, &line.quantity, &line.reserved); err != nil {
+				rows.Close()
+				return Order{}, err
+			}
+			lines = append(lines, line)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return Order{}, err
+		}
+		if len(lines) == 0 {
+			return Order{}, errors.New("заказ не содержит товаров")
+		}
+		hasPreorder := false
+		for _, line := range lines {
+			preorder := true
+			if line.variant != nil {
+				needed := line.quantity - line.reserved
+				if needed < 0 {
+					needed = 0
+				}
+				_, preorder, err = reserveVariantForEdit(ctx, tx, *line.variant, needed)
+				if err != nil {
+					return Order{}, err
+				}
+			}
+			hasPreorder = hasPreorder || preorder
+			if _, err = tx.Exec(ctx, `UPDATE order_items SET is_preorder=$2 WHERE id=$1`, line.id, boolToSmallInt(preorder)); err != nil {
+				return Order{}, err
+			}
+		}
+		if _, err = tx.Exec(ctx, `UPDATE orders SET has_preorder=$2 WHERE id=$1`, id, boolToSmallInt(hasPreorder)); err != nil {
+			return Order{}, err
+		}
+		if !hasPreorder {
+			if _, err = tx.Exec(ctx, `UPDATE procurement_requests SET status='cancelled',updated_at=CURRENT_TIMESTAMP WHERE customer_order_id=$1 AND kind='customer_order' AND status='open'`, id); err != nil {
+				return Order{}, err
+			}
+		}
+		if err = insertAudit(ctx, tx, actor, "order.availability.recheck", "order", fmt.Sprint(id), nil, map[string]any{"hasPreorder": hasPreorder}); err != nil {
+			return Order{}, err
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return Order{}, err
+		}
+		return currentAdminOrder(ctx, repository, id)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE shipment_offers SET status='stale',updated_at=CURRENT_TIMESTAMP WHERE order_id=$1 AND status IN ('draft','packaging_required','notifying','offered')`, id); err != nil {
 		return Order{}, err

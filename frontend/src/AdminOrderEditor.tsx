@@ -514,14 +514,17 @@ export function AdminOrderEditor({
       // действие «Сохранить изменения» одновременно подтверждает и состав,
       // и указанную менеджером стоимость доставки. Отдельный флаг здесь
       // только создавал ложное состояние «менеджер сохранил, но не подтвердил».
-      const body = {
-        items: lines.map((line) => ({
-          sku: line.sku,
-          quantity: line.quantity,
-        })),
-        ...(order.deliveryMethod === "cdek" ? {} : { deliveryFee }),
-        discount: { type: discountType, value: discountValue },
-      };
+      const body =
+        adjustment?.hasPreorder && !hasUnsavedChanges
+          ? { recheckAvailability: true }
+          : {
+              items: lines.map((line) => ({
+                sku: line.sku,
+                quantity: line.quantity,
+              })),
+              ...(order.deliveryMethod === "cdek" ? {} : { deliveryFee }),
+              discount: { type: discountType, value: discountValue },
+            };
       const result = await api<{
         order: Order;
         adjustment: Adjustment;
