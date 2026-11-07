@@ -161,7 +161,7 @@ for (const width of [390, 768, 1024, 1280]) {
   });
 }
 
-test('@phone chat composer stays above menu through scroll and keyboard pan', async ({ page }, info) => {
+test('@phone chat hides menu while typing and restores it after keyboard dismissal', async ({ page }, info) => {
   await page.addInitScript(() => {
     const viewport = new EventTarget(); Object.assign(viewport, { height: innerHeight, offsetTop: 0 });
     Object.defineProperty(window, 'visualViewport', { value: viewport });
@@ -180,11 +180,11 @@ test('@phone chat composer stays above menu through scroll and keyboard pan', as
   const menu = page.locator('.ws-tabbar');
   const assertDocked = async () => {
     const box = (await composer.boundingBox())!;
-    const nav = (await menu.boundingBox())!;
-    expect(Math.abs(box.y + box.height - nav.y)).toBeLessThanOrEqual(2);
-    expect(box.y).toBeGreaterThan(0);
+    const nav = await menu.boundingBox();
     const bottom = await page.evaluate(() => (visualViewport?.offsetTop || 0) + (visualViewport?.height || innerHeight));
-    expect(nav.y + nav.height).toBeLessThanOrEqual(bottom + 2);
+    expect(Math.abs(box.y + box.height - (nav?.y ?? bottom))).toBeLessThanOrEqual(2);
+    expect(box.y).toBeGreaterThan(0);
+    if (nav) expect(nav.y + nav.height).toBeLessThanOrEqual(bottom + 2);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
   };
   await expect(composer).toBeVisible();
@@ -194,10 +194,12 @@ test('@phone chat composer stays above menu through scroll and keyboard pan', as
   await assertDocked();
   await page.screenshot({ path: info.outputPath('chat-docked.png') });
   await page.getByRole('textbox', { name: 'Сообщение', exact: true }).fill('Ответ покупателю\n'.repeat(8));
+  await expect(menu).toBeHidden();
   await page.evaluate(() => (window as unknown as { panAdmin: (height: number, top: number) => void }).panAdmin(460, 90));
   await assertDocked();
   await page.screenshot({ path: info.outputPath('chat-keyboard.png') });
   await page.evaluate(() => (window as unknown as { panAdmin: (height: number, top: number) => void }).panAdmin(innerHeight, 0));
+  await expect(menu).toBeVisible();
   await assertDocked();
   await menu.getByRole('link', { name: 'Заказы', exact: true }).click();
   await expect(page.locator('body')).not.toHaveClass(/admin-chat-mobile/);
