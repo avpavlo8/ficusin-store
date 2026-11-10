@@ -287,7 +287,8 @@ test("@desktop незаполненные темы ухода и вопросы 
   await expect(page.getByRole("tab", { name: "Вопросы", exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: "Отзывы", exact: true }).click();
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
-  await expect(page.locator(".purchase-review-meta")).toContainText("Оставить первый отзыв");
+  await expect(page.locator(".purchase-review-meta")).toContainText("Пока нет отзывов");
+  await expect(page.locator("#reviews").getByRole("button", { name: "Написать отзыв" })).toBeVisible();
 });
 
 test("@desktop фотография открывается в полноэкранной галерее", async ({ page }) => {
