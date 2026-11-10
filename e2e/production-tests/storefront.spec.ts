@@ -151,18 +151,11 @@ test("production product 5 loads its optimized photo and review section", async 
   await expect(reviewMeta).toBeVisible();
   const reviewCountText = await reviewMeta.innerText();
   const reviewCount = Number(reviewCountText.match(/(\d+)\s*отзыв/)?.[1] || 0);
+  await page.locator(".pdp-summary").getByRole("button", { name: "Написать отзыв", exact: true }).click();
+  const composer = page.getByRole("dialog");
+  await expect(composer.getByLabel("Ваш отзыв", { exact: true })).toBeVisible();
+  await composer.getByRole("button", { name: "Закрыть", exact: true }).click();
   await reviewMeta.click();
-  if (reviewCount === 0) {
-    // With no customer reviews, the purchase panel opens the first-review form.
-    const composer = page.getByRole("dialog");
-    await expect(
-      composer.getByLabel("Ваш отзыв", { exact: true }),
-    ).toBeVisible();
-    await composer
-      .getByRole("button", { name: "Закрыть", exact: true })
-      .click();
-    await page.getByRole("tab", { name: "Отзывы", exact: true }).click();
-  }
   await expect(page.locator("#reviews")).toBeVisible();
   if (reviewCount > 0)
     await expect(page.locator("#reviews article").first()).toBeVisible();
