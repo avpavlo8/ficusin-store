@@ -56,6 +56,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [revision, setRevision] = useState(0);
 
   const [activeTab, setActiveTab] = useState<ProductTab>("about");
@@ -487,6 +488,8 @@ export default function ProductPage({ slug }: { slug: string }) {
               rating={product.rating}
               count={product.reviewsCount}
               onOpenReviews={openReviews}
+              open={reviewOpen}
+              onOpenChange={setReviewOpen}
             />
           }
           onVariant={(id) => {
@@ -629,7 +632,7 @@ export default function ProductPage({ slug }: { slug: string }) {
             id="pdp-panel-reviews"
             aria-labelledby="pdp-tab-reviews"
           >
-            <ProductReviews reviews={product.reviews} />
+            <ProductReviews reviews={product.reviews} onWriteReview={() => setReviewOpen(true)} />
           </div>
           {isPlant && hasPlantFAQ && (
             <div

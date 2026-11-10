@@ -9,15 +9,19 @@ export function ReviewComposer({
   rating,
   count,
   onOpenReviews,
+  open,
+  onOpenChange,
 }: {
   slug: string;
   rating: number;
   count: number;
   onOpenReviews: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [selected, setSelected] = useState(0);
+  const [selected, setSelected] = useState(5);
   const [hovered, setHovered] = useState(0);
-  const [open, setOpen] = useState(false);
+  const setOpen = onOpenChange;
   const [text, setText] = useState("");
   const [media, setMedia] = useState<File[]>([]);
   const [notice, setNotice] = useState("");
@@ -52,7 +56,7 @@ export function ReviewComposer({
       document.removeEventListener("keydown", key);
       document.body.classList.remove("modal-open");
     };
-  }, [open]);
+  }, [open, setOpen]);
   const choose = (value: number) => {
     setSelected(value);
     setHovered(0);
@@ -103,7 +107,7 @@ export function ReviewComposer({
       setSending(false);
     }
   };
-  const shown = hovered || selected || Math.round(rating);
+  const shown = hovered || Math.round(rating);
   return (
     <div className="purchase-review">
       {count > 0 && (
@@ -131,12 +135,11 @@ export function ReviewComposer({
           ))}
         </div>
       )}
-      <button
-        className="purchase-review-meta"
-        type="button"
-        onClick={() => (count ? onOpenReviews() : choose(5))}
-      >
-        {count ? `${rating.toFixed(1)} · ${count} отзывов` : "Оставить первый отзыв"}
+      <button className="purchase-review-meta" type="button" onClick={onOpenReviews}>
+        {count ? `${rating.toFixed(1)} · ${count} отзывов` : "Пока нет отзывов"}
+      </button>
+      <button className="review-write-button" type="button" onClick={() => choose(5)}>
+        Написать отзыв
       </button>
       {hovered > 0 && (
         <span className="purchase-review-hint">
@@ -168,7 +171,10 @@ export function ReviewComposer({
               <div>
                 <span>{stars(selected)}</span>
                 <h2 id="review-modal-title">{ratingLabels[selected]}</h2>
-                <p>Расскажите о растении и доставке</p>
+                <p>
+                  Расскажите о товаре и доставке. Отзыв доступен после выполнения заказа — войдите в
+                  аккаунт, с которого покупали.
+                </p>
               </div>
               <button type="button" onClick={() => setOpen(false)} aria-label="Закрыть">
                 ×
@@ -252,7 +258,13 @@ export function ReviewComposer({
   );
 }
 
-export function ProductReviews({ reviews }: { reviews: ProductReview[] }) {
+export function ProductReviews({
+  reviews,
+  onWriteReview,
+}: {
+  reviews: ProductReview[];
+  onWriteReview: () => void;
+}) {
   const [sort, setSort] = useState<"new" | "high" | "low">("new");
   const sorted = useMemo(
     () =>
@@ -272,16 +284,21 @@ export function ProductReviews({ reviews }: { reviews: ProductReview[] }) {
           <p className="eyebrow">Опыт покупателей</p>
           <h2>Отзывы покупателей</h2>
         </div>
-        {reviews.length > 1 && (
-          <label className="review-sort">
-            Сортировка
-            <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}>
-              <option value="new">Сначала новые</option>
-              <option value="high">С высокой оценкой</option>
-              <option value="low">С низкой оценкой</option>
-            </select>
-          </label>
-        )}
+        <div className="review-feed-actions">
+          <button className="review-write-button" type="button" onClick={onWriteReview}>
+            Написать отзыв
+          </button>
+          {reviews.length > 1 && (
+            <label className="review-sort">
+              Сортировка
+              <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}>
+                <option value="new">Сначала новые</option>
+                <option value="high">С высокой оценкой</option>
+                <option value="low">С низкой оценкой</option>
+              </select>
+            </label>
+          )}
+        </div>
       </header>
       <div className="review-feed">
         {sorted.length ? (
@@ -326,7 +343,7 @@ export function ProductReviews({ reviews }: { reviews: ProductReview[] }) {
         ) : (
           <div className="reviews-empty">
             <strong>Здесь пока тихо</strong>
-            <p>После получения заказа нажмите «Оставить первый отзыв» в блоке покупки.</p>
+            <p>Уже получили заказ? Поделитесь впечатлениями о товаре и доставке.</p>
           </div>
         )}
       </div>
