@@ -1337,6 +1337,96 @@ paths:
           name: status
           schema:
             type: string
+  /admin/products/{id}/media/copy:
+    post:
+      operationId: copy_products_media
+      x-source: backend/internal/httpapi/admin_variant_media.go#copyProductMediaHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.edit]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaId]
+              properties:
+                mediaId: { type: integer, minimum: 1 }
+      responses:
+        "201":
+          description: Copied media metadata within the same product
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/variants/{id}/media/copy:
+    post:
+      operationId: copy_variants_media
+      x-source: backend/internal/httpapi/admin_variant_media.go#copyVariantMediaHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.edit]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaId]
+              properties:
+                mediaId: { type: integer, minimum: 1 }
+      responses:
+        "201":
+          description: Copied media metadata within the same product
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/products/{id}/collections/{collectionId}:
+    put:
+      summary: Set one product membership in a manual collection
+      operationId: setProductCollectionMembership
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.edit]
+      x-source: backend/internal/httpapi/admin_product_collection.go#productCollectionHandler
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: collectionId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [included]
+              properties:
+                included: { type: boolean }
+      responses:
+        "200":
+          description: Membership saved
+        "400":
+          description: Invalid request or automatic collection
+        "403":
+          description: Permission denied
+        "404":
+          description: Product or collection not found
   /admin/collection-definitions:
     get:
       operationId: get_admin_collection_definitions

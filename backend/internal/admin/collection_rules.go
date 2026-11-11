@@ -325,3 +325,44 @@ func (repository *PostgresRepository) SetCollectionCover(ctx context.Context, ac
 	}
 	return CollectionDefinition{}, pgx.ErrNoRows
 }
+
+// SetProductCollectionMembership changes only one manual membership, preserving
+// other products and collection settings, even when editors save concurrently.
+func (repository *PostgresRepository) SetProductCollectionMembership(ctx context.Context, actor Actor, productID, collectionID int64, included bool) error {
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return ErrForbidden
+	}
+	if productID <= 0 || collectionID <= 0 {
+		return ErrInvalidInput
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var mode string
+	if err := tx.QueryRow(ctx, "SELECT mode FROM collections WHERE id=$1 FOR UPDATE", collectionID).Scan(&mode); err != nil {
+		return err
+	}
+	if mode != "manual" {
+		return fmt.Errorf("%w: состав этой подборки определяется автоматически", ErrInvalidInput)
+	}
+	var id int64
+	if err := tx.QueryRow(ctx, "SELECT id FROM products WHERE id=$1 FOR KEY SHARE", productID).Scan(&id); err != nil {
+		return err
+	}
+	if included {
+		_, err = tx.Exec(ctx, `INSERT INTO collection_products(collection_id,product_id,sort_order)
+   SELECT $1,$2,COALESCE(MAX(sort_order),-1)+1 FROM collection_products WHERE collection_id=$1
+   ON CONFLICT DO NOTHING`, collectionID, productID)
+	} else {
+		_, err = tx.Exec(ctx, "DELETE FROM collection_products WHERE collection_id=$1 AND product_id=$2", collectionID, productID)
+	}
+	if err != nil {
+		return err
+	}
+	if err := insertAudit(ctx, tx, actor, "collection.membership.updated", "collection", fmt.Sprint(collectionID), nil, map[string]any{"productId": productID, "included": included}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

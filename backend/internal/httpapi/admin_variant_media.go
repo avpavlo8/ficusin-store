@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -183,5 +184,81 @@ func primaryVariantMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
 			return
 		}
 		writeJSON(response, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+func copyVariantMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
+		if !ok {
+			return
+		}
+		variantID, ok := pathID(response, request)
+		if !ok {
+			return
+		}
+		var body struct {
+			MediaID int64 `json:"mediaId"`
+		}
+		request.Body = http.MaxBytesReader(response, request.Body, 1024)
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body.MediaID < 1 {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная фотография"})
+			return
+		}
+		provider, ok := adminAPI.repository.(interface {
+			CopyVariantMedia(context.Context, admin.Actor, int64, int64) (admin.ProductMedia, error)
+		})
+		if !ok {
+			adminAPI.failed(response, "variant media copy unavailable", errors.New("variant media copy unavailable"))
+			return
+		}
+		item, err := provider.CopyVariantMedia(request.Context(), actor, variantID, body.MediaID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(response, http.StatusNotFound, errorResponse{Error: "Фотография этого товара не найдена"})
+			return
+		}
+		if err != nil {
+			adminAPI.failed(response, "copy variant media", err)
+			return
+		}
+		writeJSON(response, http.StatusCreated, map[string]any{"media": item})
+	}
+}
+
+func copyProductMediaHandler(adminAPI adminHandlers) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
+		if !ok {
+			return
+		}
+		productID, ok := pathID(response, request)
+		if !ok {
+			return
+		}
+		var body struct {
+			MediaID int64 `json:"mediaId"`
+		}
+		request.Body = http.MaxBytesReader(response, request.Body, 1024)
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body.MediaID < 1 {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная фотография"})
+			return
+		}
+		provider, ok := adminAPI.repository.(interface {
+			CopyProductMedia(context.Context, admin.Actor, int64, int64) (admin.ProductMedia, error)
+		})
+		if !ok {
+			adminAPI.failed(response, "product media copy unavailable", errors.New("product media copy unavailable"))
+			return
+		}
+		item, err := provider.CopyProductMedia(request.Context(), actor, productID, body.MediaID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeJSON(response, http.StatusNotFound, errorResponse{Error: "Фотография этого товара не найдена"})
+			return
+		}
+		if err != nil {
+			adminAPI.failed(response, "copy product media", err)
+			return
+		}
+		writeJSON(response, http.StatusCreated, map[string]any{"media": item})
 	}
 }
