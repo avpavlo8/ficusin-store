@@ -151,7 +151,9 @@ test("production product 5 loads its optimized photo and review section", async 
   await expect(reviewMeta).toBeVisible();
   const reviewCountText = await reviewMeta.innerText();
   const reviewCount = Number(reviewCountText.match(/(\d+)\s*отзыв/)?.[1] || 0);
-  await page.locator(".pdp-summary").getByRole("button", { name: "Написать отзыв", exact: true }).click();
+  await expect(page.locator(".pdp-summary").getByRole("button", { name: "Написать отзыв", exact: true })).toHaveCount(0);
+  await reviewMeta.click();
+  await page.locator("#reviews").getByRole("button", { name: "Написать отзыв", exact: true }).click();
   const composer = page.getByRole("dialog");
   await expect(composer.getByLabel("Ваш отзыв", { exact: true })).toBeVisible();
   await composer.getByRole("button", { name: "Закрыть", exact: true }).click();

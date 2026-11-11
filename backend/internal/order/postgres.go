@@ -135,10 +135,11 @@ func (repository *PostgresRepository) DetailForCustomer(
 	}
 
 	rows, err := repository.pool.Query(ctx, `
-		SELECT product_name, unit_price::DOUBLE PRECISION, quantity
-		FROM order_items
-		WHERE order_id = $1
-		ORDER BY id
+		SELECT oi.product_name, oi.unit_price::DOUBLE PRECISION, oi.quantity, COALESCE(p.product_code::TEXT, '')
+		FROM order_items oi
+		LEFT JOIN products p ON p.id=oi.product_id AND p.status='published'
+		WHERE oi.order_id = $1
+		ORDER BY oi.id
 	`, orderID)
 	if err != nil {
 		return nil, fmt.Errorf("query order items: %w", err)
@@ -148,7 +149,7 @@ func (repository *PostgresRepository) DetailForCustomer(
 	detail.Items = make([]Item, 0)
 	for rows.Next() {
 		var item Item
-		if err := rows.Scan(&item.ProductName, &item.UnitPrice, &item.Quantity); err != nil {
+		if err := rows.Scan(&item.ProductName, &item.UnitPrice, &item.Quantity, &item.ProductSlug); err != nil {
 			return nil, fmt.Errorf("scan order item: %w", err)
 		}
 		detail.Items = append(detail.Items, item)

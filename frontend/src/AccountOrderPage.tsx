@@ -38,7 +38,7 @@ export type OrderDetail = {
   amountDue: number;
   paymentReady: boolean;
   createdAt: string;
-  items: Array<{ productName: string; unitPrice: number; quantity: number }>;
+  items: Array<{ productName: string; productSlug?: string; unitPrice: number; quantity: number }>;
   shipmentOffers: ShipmentOffer[];
 };
 
@@ -443,7 +443,18 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
                           role="row"
                           key={`${item.productName}-${index}`}
                         >
-                          <strong role="cell">{item.productName}</strong>
+                          <strong role="cell">
+                            {item.productName}
+                            {order.status === "completed" && item.productSlug && (
+                              <a
+                                className="review-write-button order-review-link"
+                                href={`/product/${encodeURIComponent(item.productSlug)}#write-review`}
+                                aria-label={`Оставить отзыв о товаре «${item.productName}»`}
+                              >
+                                Оставить отзыв
+                              </a>
+                            )}
+                          </strong>
                           <span role="cell">
                             <small>Цена: </small>
                             {money.format(item.unitPrice)}
