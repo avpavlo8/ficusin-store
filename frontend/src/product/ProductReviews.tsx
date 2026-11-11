@@ -20,7 +20,6 @@ export function ReviewComposer({
   onOpenChange: (open: boolean) => void;
 }) {
   const [selected, setSelected] = useState(5);
-  const [hovered, setHovered] = useState(0);
   const setOpen = onOpenChange;
   const [text, setText] = useState("");
   const [media, setMedia] = useState<File[]>([]);
@@ -57,13 +56,6 @@ export function ReviewComposer({
       document.body.classList.remove("modal-open");
     };
   }, [open, setOpen]);
-  const choose = (value: number) => {
-    setSelected(value);
-    setHovered(0);
-    setOpen(true);
-    setNotice("");
-    setSubmitted(false);
-  };
   const addMedia = (files: FileList | null) => {
     const accepted = Array.from(files || []).filter((file) =>
       ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"].includes(file.type),
@@ -107,45 +99,20 @@ export function ReviewComposer({
       setSending(false);
     }
   };
-  const shown = hovered || Math.round(rating);
   return (
     <div className="purchase-review">
       {count > 0 && (
-        <div
+        <span
           className="purchase-review-stars"
-          role="radiogroup"
-          aria-label="Поставить оценку"
-          onMouseLeave={() => setHovered(0)}
+          role="img"
+          aria-label={`Оценка ${rating.toFixed(1)} из 5`}
         >
-          {[1, 2, 3, 4, 5].map((value) => (
-            <button
-              type="button"
-              role="radio"
-              aria-checked={selected === value}
-              aria-label={`${value} из 5`}
-              className={value <= shown ? "active" : ""}
-              onMouseEnter={() => setHovered(value)}
-              onFocus={() => setHovered(value)}
-              onBlur={() => setHovered(0)}
-              onClick={() => choose(value)}
-              key={value}
-            >
-              ★
-            </button>
-          ))}
-        </div>
+          {stars(rating)}
+        </span>
       )}
       <button className="purchase-review-meta" type="button" onClick={onOpenReviews}>
         {count ? `${rating.toFixed(1)} · ${count} отзывов` : "Пока нет отзывов"}
       </button>
-      <button className="review-write-button" type="button" onClick={() => choose(5)}>
-        Написать отзыв
-      </button>
-      {hovered > 0 && (
-        <span className="purchase-review-hint">
-          {ratingLabels[hovered]} — нажмите, чтобы написать отзыв
-        </span>
-      )}
       {submitted && (
         <p className="review-submit-success" role="status">
           Спасибо за отзыв.
