@@ -128,9 +128,39 @@ export function CategoryPicker({
         autoComplete="off"
       />
       {open && (
-        <div className="category-picker-list" id={listId} aria-label="Варианты категорий">
+        <div
+          className="category-picker-list"
+          id={listId}
+          aria-label="Варианты категорий"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              input.current?.focus();
+              setQuery("");
+              setOpen(false);
+              return;
+            }
+            if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const buttons = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>("button"),
+            );
+            const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+            const next =
+              event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? buttons.length - 1
+                  : Math.max(
+                      0,
+                      Math.min(buttons.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)),
+                    );
+            buttons[next]?.focus();
+          }}
+        >
           <button
             type="button"
+            onMouseDown={(event) => event.preventDefault()}
             className={value ? "" : "active"}
             aria-pressed={!value}
             onClick={() => choose(undefined)}
@@ -154,6 +184,7 @@ export function CategoryPicker({
                   (hasChildren ? (
                     <button
                       type="button"
+                      onMouseDown={(event) => event.preventDefault()}
                       className="category-toggle"
                       aria-label={`${expanded.has(item.id) ? "Свернуть" : "Раскрыть"} ${item.name}`}
                       aria-expanded={expanded.has(item.id)}
@@ -166,6 +197,7 @@ export function CategoryPicker({
                   ))}
                 <button
                   type="button"
+                  onMouseDown={(event) => event.preventDefault()}
                   className={`${searchQuery ? "category-picker-match" : ""}${value === item.id ? " active" : ""}`}
                   aria-pressed={value === item.id}
                   onClick={() => choose(item.id)}

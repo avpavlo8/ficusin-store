@@ -32,6 +32,16 @@ export function variantGallery(draft: ProductCreationDraft, variantId: string): 
   return cover ? [cover, ...photos.filter((item) => !samePhoto(item, cover))] : photos;
 }
 
+// The shared cover is persisted once at product scope. It is part of each
+// displayed gallery, but must not be copied into every SKU during Save.
+export function variantMediaToPersist(
+  draft: ProductCreationDraft,
+  variantId: string,
+): DraftMedia[] {
+  const cover = commonCover(draft);
+  return variantGallery(draft, variantId).filter((photo) => !cover || !samePhoto(photo, cover));
+}
+
 export function replaceVariantGallery(
   draft: ProductCreationDraft,
   variantId: string,

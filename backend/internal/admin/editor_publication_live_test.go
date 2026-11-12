@@ -64,7 +64,13 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	_, e = pool.Exec(ctx, `INSERT INTO product_media(product_id,object_key,sort_order,is_primary) VALUES($1,'https://images.example.test/cover.jpg',0,1)`, p.ID)
+	// Old editors copied the shared cover into SKU rows. The publication
+	// snapshot must include each public photo once and retain own SKU photos.
+	_, e = pool.Exec(ctx, `INSERT INTO product_media(product_id,variant_id,object_key,sort_order,is_primary) VALUES
+	 ($1,$2,'https://images.example.test/own.jpg',0,1),
+	 ($1,NULL,'https://images.example.test/cover.jpg',0,1),
+	 ($1,$2,'https://images.example.test/cover.jpg',1,0),
+	 ($1,NULL,'https://images.example.test/own.jpg',1,0)`, p.ID, id)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -101,7 +107,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if e = pool.QueryRow(ctx, `SELECT payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel='ozon'`, id).Scan(&frozen); e != nil {
 		t.Fatal(e)
 	}
-	if len(frozen.Schema) == 0 || frozen.Packaging.Weight != 1250 || len(frozen.Images) != 1 {
+	if len(frozen.Schema) == 0 || frozen.Packaging.Weight != 1250 || len(frozen.Images) != 2 || frozen.Images[0] != "https://images.example.test/cover.jpg" || frozen.Images[1] != "https://images.example.test/own.jpg" {
 		t.Fatalf("snapshot incomplete: %+v", frozen)
 	}
 	for i := 0; i < 20; i++ {

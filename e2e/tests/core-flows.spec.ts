@@ -135,11 +135,17 @@ test.describe("уведомления о заказе", () => {
   test("@desktop запрет push объясняется без повторного запроса permission", async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(Notification, "permission", { configurable: true, get: () => "denied" });
+      Object.defineProperty(Notification, "requestPermission", { configurable: true, value: () => { document.body.dataset.permissionRequested = "yes"; return Promise.resolve("denied"); } });
     });
     await mockApi(page, owner);
     await page.route("**/api/v1/push/key", (route) => route.fulfill({ json: { enabled: true, publicKey: "unused" } }));
     await page.goto("/account/profile");
     await expect(page.getByText(/Уведомления запрещены в настройках браузера/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Включить" })).toBeDisabled();
+    for (const name of ["Уведомления о заказах", "Уведомления о сообщениях"]) {
+      const toggle = page.getByRole("switch", { name, exact: true });
+      await expect(toggle).toBeDisabled();
+      await expect(toggle).toHaveAttribute("aria-checked", "false");
+    }
+    await expect(page.locator("body")).not.toHaveAttribute("data-permission-requested", "yes");
   });
 });

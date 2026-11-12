@@ -24,6 +24,7 @@ import {
   appendGalleryMedia,
   replaceVariantGallery,
   variantGallery,
+  variantMediaToPersist,
   commonCover,
 } from "./galleryOrder";
 import { MarketplaceEditor } from "./MarketplaceEditor";
@@ -888,7 +889,7 @@ export function ProductCreationPage({
         if (!item.serverId || !item.mediaInitialized || item.archived || item.removePending)
           continue;
         const media = await syncGallery(
-          variantGallery(latest.current, item.id),
+          variantMediaToPersist(latest.current, item.id),
           serverVariantMedia.current.get(item.serverId) || [],
           `/api/v1/admin/variants/${item.serverId}/media`,
           "PATCH",

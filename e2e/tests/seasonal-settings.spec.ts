@@ -11,8 +11,10 @@ test('@desktop @phone owner selects and saves the packaging season',async({page}
    return route.fulfill({json:{definitions:[{key:'cdek.packaging_season',title:'Упаковка для расчёта СДЭК',kind:'select',note:'Выберите летние или зимние габариты для новых расчётов. Если выбранная упаковка не заполнена, доставку рассчитает менеджер. Вес общий для обоих вариантов. Сохранённые коробки заказов не меняются.',options:[{value:'summer',title:'Летняя упаковка'},{value:'winter',title:'Зимняя упаковка'}]}],values:{'cdek.packaging_season':season}}});
  });
  await page.goto('/admin?section=settings');
- const select=page.getByRole('combobox',{name:/Упаковка для расчёта СДЭК/});
+ const select=page.getByRole('combobox',{name:/Сезон упаковки/});
  await expect(select).toHaveValue('summer');
+ await expect(select.getByRole('option')).toHaveText(['Летняя упаковка','Зимняя упаковка']);
+ await expect(page.getByText(/Общий сезон для доставки сайта и расчётов WB\/Ozon/)).toBeVisible();
  await select.selectOption('winter');
  expect(writes).toEqual([]);
  await page.getByRole('button',{name:'Сохранить',exact:true}).click();

@@ -54,7 +54,7 @@ test("@desktop владелец открывает из PDP общий реда�
     if(path.endsWith('/categories'))return send({categories:[{id:1,parentId:null,name:'Растения',slug:'plants',sortOrder:1,productsCount:1}]});
     if(path.endsWith('/attributes'))return send({attributes:[]});
     if(path.endsWith('/variants'))return send({variants:[variant]});
-    if(path.endsWith('/media'))return send({media:[]});
+    if(path.endsWith('/media'))return send({media:path.includes('/products/')?[{id:7,productId:1,url:adminProduct.image,primary:true,sortOrder:0}]:[]});
     if(path.endsWith('/collection-definitions'))return send({collections:[]});
     if(path.endsWith('/catalog-editor/references'))return send({categories:[],folders:[]});
     if(path.endsWith('/editor-plan')){if(req.method()==='PUT')plan=req.postDataJSON().config;return send({config:plan,publications:[],links:{},barcodes:{},publicationMode:'disabled'});}
@@ -71,12 +71,12 @@ test("@desktop владелец открывает из PDP общий реда�
   await expect(editor.getByRole('heading',{name:'Аглаонема Мария',exact:true})).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(editor.getByRole('tab')).toHaveCount(3);
-  await editor.getByLabel('О растении',{exact:true}).fill('Новое описание из PDP');
+  await editor.getByRole('textbox',{name:'О растении',exact:true}).fill('Новое описание из PDP');
   await editor.getByRole('button',{name:'Сохранить',exact:true}).click();
   await expect(editor.locator('.editor-notice')).toContainText('Изменения товара сохранены');
   expect(update?.description).toBe('Новое описание из PDP');
   await page.reload();
-  await expect(editor.getByLabel('О растении',{exact:true})).toHaveValue('Новое описание из PDP');
+  await expect(editor.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Новое описание из PDP');
 });
 
 test("@desktop владелец управляет галереей товара из PDP", async ({ page }) => {

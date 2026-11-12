@@ -7,8 +7,11 @@ const schema=[{id:1,code:'light',name:'Освещение',dataType:'enum',unit:
 const effective=['length_cm','width_cm','height_cm','weight_grams'].map((code,i)=>({id:i+2,code:`package_${code}`,name:['Длина упаковки','Ширина упаковки','Высота упаковки','Вес упаковки'][i],unit:i===3?'г':'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:true}));
 effective.push(...['length_cm','width_cm','height_cm'].map((code,i)=>({id:20+i,code:`package_winter_${code}`,name:['Длина зимней упаковки','Ширина зимней упаковки','Высота зимней упаковки'][i],unit:'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:false})));
 const size=(id:number,pid:number,label:string)=>({id,productId:pid,sku:String(id),label,price:1490,stock:0,wholesaleMinQty:1,active:false,archived:false,sabyId:`fixture-saby-${id}`,attributes:{pot_diameter_cm:Number(label.slice(1)),height_cm:40,package_length_cm:20,package_width_cm:20,package_height_cm:50,package_weight_grams:1000},externalIds:[{provider:'saby',type:'id',externalId:`fixture-saby-${id}`}],images:[],stockSource:'saby'});
-async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=false,variantTasks=[] as string[]}={}){
+async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=false,sharedGalleryPhoto=false,variantTasks=[] as string[]}={}){
  let products=Array.from({length:total},(_,i)=>product(i+1));if(variantTasks.length)Object.assign(products[0],{variantTasks});const variants=new Map(products.map(p=>[p.id,[size(p.id*10,p.id,'D11'),size(p.id*10+1,p.id,'D17')]]));const updates:Array<Record<string,any>>=[],calls:string[]=[],plans=new Map<number,any>(),creations=new Map<string,any>(),mutations:Array<{path:string;method:string;body:any}>=[];let nextId=1000;
+ let nextMediaId=100000;
+ const media:Array<{id:number;productId:number;variantId?:number;url:string;primary:boolean;sortOrder:number}>=products.map(p=>({id:p.id*100,productId:p.id,url:p.image,primary:true,sortOrder:0}));
+ if(sharedGalleryPhoto)media.push({id:++nextMediaId,productId:1,url:'/assets/hero-monstera.webp?photo=own',primary:false,sortOrder:1});
  await page.route('**/api/v1/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname,method=req.method();calls.push(path);if(!['GET','HEAD'].includes(method)&&!path.endsWith('/pricing/preview'))mutations.push({path,method,body:req.postDataJSON()});const send=(body:unknown,status=200)=>route.fulfill({status,json:body});
  if(path==='/api/v1/auth/me')return send({user:{...owner.user,adminRole:'owner'}});
  if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role:'owner',permissions:['dashboard.read','products.read','products.edit','products.manage','products.sync','catalog.delete'],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
@@ -23,14 +26,22 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
  if(/\/categories\/\d+\/effective-attributes$/.test(path))return send({attributes:effective});
  const rows=path.match(/\/products\/(\d+)\/variants$/);if(rows)return send({variants:variants.get(Number(rows[1]))||[]});
  if(path.endsWith('/relationships'))return send({relationships:{mappings:[],suppliers:[],sales:[]}});
- if(path.endsWith('/price-proposals'))return send({proposals:[]});if(path.endsWith('/media'))return send({media:[]});
+ if(path.endsWith('/price-proposals'))return send({proposals:[]});
+ const mediaRoute=path.match(/\/(products|variants)\/(\d+)\/media(?:\/(copy|\d+)(?:\/(primary))?)?$/);
+ if(mediaRoute){const [,kind,rawId,action,primary]=mediaRoute;const id=Number(rawId);const belongs=(row:typeof media[number])=>kind==='products'?row.productId===id:row.variantId===id;
+  if(method==='GET')return send({media:media.filter(belongs)});
+  if(action==='copy'&&method==='POST'){const source=media.find(row=>row.id===req.postDataJSON().mediaId);const variant=[...variants.values()].flat().find(row=>row.id===id);if(!source||!variant||source.productId!==variant.productId)return send({error:'Фото не найдено'},404);const owned=media.filter(belongs);const copy={...source,id:++nextMediaId,variantId:id,primary:owned.length===0,sortOrder:owned.length};media.push(copy);return send({media:copy},201);}
+  if(primary){for(const row of media.filter(belongs))row.primary=row.id===Number(action);return send({ok:true});}
+  if(method==='DELETE'){const index=media.findIndex(row=>belongs(row)&&row.id===Number(action));if(index>=0)media.splice(index,1);return send({ok:true});}
+  return send({error:'Unmocked media mutation'},400);
+ }
  if(path==='/api/v1/admin/collection-definitions')return send({collections:[{id:1,title:'Для тёмной комнаты',slug:'shade',active:true,mode:'dynamic',rules:[{attribute:'light',operator:'eq',value:'diffused'}],products:[1],coverImage:'/assets/hero-monstera.webp',sortOrder:1}]});
  if(path.endsWith('/collection-definitions/preview'))return send({products:products.map(p=>p.id)});
  if(path==='/api/v1/admin/attributes')return send({attributes:schema.map(a=>({...a,active:true,options:[{code:'diffused',label:'Рассеянный свет',active:true}]}))});
  if(path==='/api/v1/admin/catalog-filters')return send({filters:[]});if(path.endsWith('/reviews'))return send({reviews:[]});
  if(path.endsWith('/products/publish'))return send({published:[1],blocked:[{productId:2,name:'Хлорофитум',reason:'Нет активного размера'}]});
  const update=path.match(/\/products\/(\d+)$/);if(update&&method==='PATCH'){const id=Number(update[1]),body=req.postDataJSON();updates.push({id,body});if(failSave)return send({error:'Ошибка сохранения'},500);for(const v of body.variants||[]){const current=variants.get(id)||[];const old=current.find(x=>x.id===v.id);if(old)Object.assign(old,v,{price:v.priceMinor/100,attributes:{...old.attributes,...v.attributes}});else current.push({...size(++nextId,id,v.label),...v,id:nextId,price:v.priceMinor/100});variants.set(id,current)}const i=products.findIndex(p=>p.id===id);const {variants:_,...patch}=body;products[i]={...products[i],...patch};return send({product:products[i]})}
- return send({});});return{updates,calls,variants,plans,mutations,creations};
+ return send({});});return{updates,calls,variants,plans,mutations,creations,media};
 }
 async function open(page:Page){await page.goto('/admin?section=products');await expect(page.locator('table.products tbody tr').first()).toBeVisible()}
 async function edit(page:Page){await page.getByRole('link',{name:'Аглаонема Мария',exact:true}).click();const editor=page.locator('.editor-page');await expect(editor.getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();return editor}
@@ -40,7 +51,7 @@ async function sabyFields(editor:ReturnType<Page['locator']>){
   await editor.getByRole('combobox',{name:label,exact:true}).click();await editor.locator('.editor-reference-options').getByRole('button',{name,exact:true}).click();
  }
 }
-async function chooseCategory(editor:ReturnType<Page['locator']>){await editor.getByRole('combobox',{name:'Найти категорию'}).fill('Аглаонемы');await editor.locator('.category-picker-list').getByRole('button',{name:'Аглаонемы',exact:true}).click();}
+async function chooseCategory(editor:ReturnType<Page['locator']>){await editor.getByRole('combobox',{name:'Найти категорию'}).fill('Аглаонемы');await editor.locator('.category-picker-list').getByRole('button',{name:'Растения / Аглаонемы',exact:true}).click();}
 async function saveEditor(editor:ReturnType<Page['locator']>){await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(editor.locator('.editor-notice')).toContainText('Изменения товара сохранены');}
 
 async function manualCollection(page:Page,fail=false){
@@ -112,6 +123,10 @@ test('@desktop follow-up collection rules use readable boolean and multi-select 
  await expect(choices.getByRole('checkbox')).toHaveCount(2);await expect(page.locator('.collection-editor-v2').getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();
 });
 
+test('@desktop @phone category picker supports keyboard selection after retaining pointer focus',async({page})=>{
+ await fixture(page);await open(page);await page.getByRole('button',{name:'Добавить товар',exact:true}).click();const e=page.locator('.editor-page');const search=e.getByRole('combobox',{name:'Найти категорию'});await search.fill('Аглаонемы');const option=e.locator('.category-picker-list').getByRole('button',{name:'Растения / Аглаонемы',exact:true});await expect(option).toBeVisible();await search.press('ArrowDown');await expect(e.locator('.category-picker-list').getByRole('button',{name:'Не указано',exact:true})).toBeFocused();await page.keyboard.press('ArrowDown');await expect(option).toBeFocused();await page.keyboard.press('Escape');await expect(e.locator('.category-picker-list')).toHaveCount(0);await expect(search).toBeFocused();await search.fill('Аглаонемы');await expect(option).toBeVisible();await search.press('ArrowDown');await page.keyboard.press('End');await expect(option).toBeFocused();await page.keyboard.press('Home');await expect(e.locator('.category-picker-list').getByRole('button',{name:'Не указано',exact:true})).toBeFocused();await page.keyboard.press('End');await page.keyboard.press('Enter');await expect(search).toHaveValue('Растения / Аглаонемы');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toBeVisible();
+});
+
 test('@desktop @phone creation destinations have native accessible checkboxes and stay near Save',async({page})=>{
  await fixture(page);await open(page);await page.getByRole('button',{name:'Добавить товар',exact:true}).click();const e=page.locator('.editor-page'),dest=e.getByRole('group',{name:'Где создать товар'});
  await expect(dest.getByLabel('Сайт',{exact:true})).toBeChecked();await expect(dest.getByLabel('СБИС',{exact:true})).toBeDisabled();
@@ -126,15 +141,15 @@ test('@desktop route editor has product, marketplace and FAQ tabs without obsole
 });
 
 test('@desktop unified product and two variant edits survive reload',async({page})=>{
- const f=await fixture(page);await open(page);let e=await edit(page);await e.getByLabel('О растении',{exact:true}).fill('Новое описание');await e.getByLabel('Диаметр горшка',{exact:true}).fill('13');await e.getByLabel('Вес, г',{exact:true}).fill('1250');
+ const f=await fixture(page);await open(page);let e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Новое описание');await e.getByLabel('Диаметр горшка',{exact:true}).fill('13');await e.getByLabel('Вес, г',{exact:true}).fill('1250');
  await e.locator('.editor-variant-card').getByRole('button',{name:/^D17/}).click();await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1990');await e.locator('.editor-variant-card').getByRole('button',{name:/^D13/}).click();await expect(e.getByLabel('Вес, г',{exact:true})).toHaveValue('1250');await saveEditor(e);
  expect(f.updates).toHaveLength(1);expect(f.updates[0].body.description).toBe('Новое описание');expect(f.updates[0].body.variants).toHaveLength(2);expect(f.variants.get(1)?.[0].attributes.package_weight_grams).toBe(1250);expect(f.variants.get(1)?.[1].price).toBe(1990);
- await page.reload();e=page.locator('.editor-page');await expect(e.getByLabel('О растении',{exact:true})).toHaveValue('Новое описание');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('13');await expect(e.getByLabel('Вес, г',{exact:true})).toHaveValue('1250');
+ await page.reload();e=page.locator('.editor-page');await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Новое описание');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('13');await expect(e.getByLabel('Вес, г',{exact:true})).toHaveValue('1250');
 });
 
 test('@desktop failed save preserves the draft across reload',async({page})=>{
- const f=await fixture(page,{failSave:true});await open(page);const e=await edit(page);await e.getByLabel('О растении',{exact:true}).fill('Ручной текст');await e.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(e.getByRole('alert')).toContainText('Ошибка сохранения');expect(f.plans.size).toBe(0);
- await page.reload();await expect(e.getByLabel('О растении',{exact:true})).toHaveValue('Ручной текст');await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Аглаонема Мария');
+ const f=await fixture(page,{failSave:true});await open(page);const e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Ручной текст');await e.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(e.getByRole('alert')).toContainText('Ошибка сохранения');expect(f.plans.size).toBe(0);
+ await page.reload();await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Ручной текст');await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Аглаонема Мария');
 });
 
 test('@desktop выделение сбрасывается при поиске и смене страницы',async({page})=>{await fixture(page,{total:65});await open(page);await page.getByLabel('Выбрать товары на странице').check();await expect(page.getByRole('region',{name:'Выбранные товары'})).toContainText('Выбрано: 50');await page.getByLabel('Поиск товаров').fill('Хлорофитум');await expect(page.getByRole('region',{name:'Выбранные товары'})).toHaveCount(0);await expect(page.locator('table.products tbody tr')).toHaveCount(1);await page.getByRole('button',{name:'Сбросить фильтры',exact:true}).click();await page.getByLabel('Выбрать Аглаонема Мария',{exact:true}).check();await page.getByRole('button',{name:'Далее →',exact:true}).click();await expect(page.locator('table.products tbody tr')).toHaveCount(15);await expect(page.getByRole('region',{name:'Выбранные товары'})).toHaveCount(0)});
@@ -159,7 +174,7 @@ test('@desktop a lost creation response survives reload and retries the persiste
 });
 
 test('@desktop closing route editor keeps the autosaved draft without a confirmation',async({page})=>{
- const f=await fixture(page);await open(page);const e=await edit(page);await e.getByLabel('О растении',{exact:true}).fill('Несохранённый текст');let dialogs=0;page.on('dialog',d=>{dialogs++;void d.dismiss()});await e.getByRole('button',{name:'Закрыть редактор',exact:true}).click();await expect(e).toHaveCount(0);await edit(page);await expect(e.getByLabel('О растении',{exact:true})).toHaveValue('Несохранённый текст');expect(dialogs).toBe(0);expect(f.updates).toHaveLength(0);
+ const f=await fixture(page);await open(page);const e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Несохранённый текст');let dialogs=0;page.on('dialog',d=>{dialogs++;void d.dismiss()});await e.getByRole('button',{name:'Закрыть редактор',exact:true}).click();await expect(e).toHaveCount(0);await edit(page);await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Несохранённый текст');expect(dialogs).toBe(0);expect(f.updates).toHaveLength(0);
 });
 
 test('@desktop required site price prevents a server write',async({page})=>{
@@ -177,7 +192,7 @@ test('@desktop категории учитывают вложенные това
 test('@desktop предпросмотр правил подборки показывает весь состав до сохранения',async({page})=>{const f=await fixture(page,{total:14});await page.goto('/admin?section=collections&collection=1');await expect(page.getByText('Подходит: 14 товаров',{exact:true})).toBeVisible();await expect(page.locator('.admin-collection-preview tbody tr')).toHaveCount(14);await expect(page.locator('.admin-collection-preview')).toContainText('1 · D11');await expect(page.locator('.admin-collection-preview')).toContainText('Освещение равно Рассеянный свет');expect(f.updates).toHaveLength(0)});
 
 test('@desktop browser Back leaves the editor and reopening restores its local draft',async({page})=>{
- const f=await fixture(page);await open(page);const e=await edit(page);await e.getByLabel('О растении',{exact:true}).fill('Сохранить черновик');await page.goBack();await expect(e).toHaveCount(0);await edit(page);await expect(e.getByLabel('О растении',{exact:true})).toHaveValue('Сохранить черновик');expect(f.updates).toHaveLength(0);
+ const f=await fixture(page);await open(page);const e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Сохранить черновик');await page.goBack();await expect(e).toHaveCount(0);await edit(page);await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Сохранить черновик');expect(f.updates).toHaveLength(0);
 });
 
 test('@desktop care warning bullets and FAQ rows save and survive reload',async({page})=>{
@@ -267,6 +282,14 @@ test('@desktop @phone поиск товара в подборку по разм�
  expect(writes).toHaveLength(0);
 });
 
+
+test('@desktop @phone Save persists the common cover once and copies only the inherited variant photograph',async({page})=>{
+ const f=await fixture(page,{sharedGalleryPhoto:true});await open(page);const e=await edit(page);await expect(e.locator('.editor-gallery img')).toHaveCount(2);await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1600');await saveEditor(e);
+ const copies=f.mutations.filter(r=>r.path.endsWith('/media/copy'));expect(copies).toHaveLength(2);expect(copies.map(r=>r.body.mediaId)).toEqual([100001,100001]);expect(f.media.filter(row=>row.productId===1&&row.url==='/assets/hero-monstera.webp')).toHaveLength(1);
+ for(const variantId of [10,11]){const own=f.media.filter(row=>row.variantId===variantId);expect(own).toHaveLength(1);expect(own[0].url).toBe('/assets/hero-monstera.webp?photo=own');}
+ const ids=f.media.map(row=>row.id);await saveEditor(e);expect(f.media.map(row=>row.id)).toEqual(ids);expect(f.mutations.filter(r=>r.path.endsWith('/media/copy'))).toHaveLength(2);
+ await page.reload();await expect(e.locator('.editor-gallery img')).toHaveCount(2);await e.locator('.editor-variant-card').getByRole('button',{name:/^D17/}).click();await expect(e.locator('.editor-gallery img')).toHaveCount(2);expect(f.media.filter(row=>row.variantId===10)).toHaveLength(1);
+});
 
 test('@desktop @phone seasonal packaging stays separate and survives reload',async({page})=>{
  const f=await fixture(page);await open(page);const e=await edit(page);

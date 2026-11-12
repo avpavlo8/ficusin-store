@@ -21,6 +21,16 @@ async function procurementTab(page: Page, name: string) {
 }
 
 
+async function openCalculatorSettings(page: Page) {
+  await page.goto("/admin?section=procurement&view=settings");
+  const settings=page.getByRole("link",{name:"Открыть настройки калькулятора в разделе «Настройки → Маркетплейсы»",exact:true});
+  await expect(settings).toHaveAttribute("href","/admin?section=settings&settingsTab=marketplaces");
+  await settings.click();
+  await expect(page).toHaveURL(/section=settings&settingsTab=marketplaces/);
+  await expect(page.getByRole("navigation",{name:"Разделы настроек"}).getByRole("button",{name:"Маркетплейсы",exact:true})).toHaveAttribute("aria-pressed","true");
+}
+
+
 test("@desktop @phone assortment waits for arrival and distributes into existing cards",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true,currency:"EUR"});
  await page.goto('/admin?section=procurement&order=4');
@@ -277,6 +287,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       }
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
+      if (path === "/api/v1/admin/settings") return json({ definitions: [], values: {} });
       if (path === "/api/v1/admin/procurement") return json(procurement);
       if(path === "/api/v1/admin/procurement/requests" && init?.method === "POST"){
         if(requestError) return Promise.resolve(new Response(JSON.stringify({error:requestError}),{status:503,headers:{"Content-Type":"application/json"}}));
@@ -605,9 +616,7 @@ test("@desktop invoice can be attached from the saved order", async ({ page }) =
 
 test("@desktop procurement shows one markup and clear rounding settings", async ({ page }) => {
   await mockProcurement(page);
-  await page.goto("/admin");
-  await openProcurementSection(page);
-  await procurementTab(page, "Формула цены");
+  await openCalculatorSettings(page);
 
   await expect(page.getByLabel("Стартовая наценка на себестоимость, %")).toHaveValue("110");
   await expect(page.getByLabel("Менять цену при отклонении более, %")).toHaveValue("10");
@@ -991,7 +1000,7 @@ test("@desktop @phone product pricing keeps market retail and Ozon FBS costs aft
 
 test("@desktop @phone pricing shows monthly costs and leaves unknown marketplace charges blank",async({page})=>{
  await mockProcurement(page);
- await page.goto("/admin?section=procurement&view=settings");
+ await openCalculatorSettings(page);
  await expect(page.getByLabel("Расходы в месяц, ₽",{exact:true})).toHaveValue("300000");
  const channels=page.locator("details.procurement-explanation").filter({has:page.locator("summary",{hasText:"FBS"})});
  await expect(channels).toHaveCount(2);
@@ -1090,8 +1099,7 @@ test("@desktop @phone dimension review keeps arithmetic blockers visible",async(
 
  test("@desktop unified settings show the active markup and hide retired rounding",async({page})=>{
  await mockProcurement(page,{unified:true});
- await page.goto('/admin?section=procurement');
- await procurementTab(page, "Формула цены");
+ await openCalculatorSettings(page);
  await expect(page.getByLabel('Заработок от себестоимости, %')).toHaveValue('60');
  await expect(page.getByLabel('Стартовая наценка на себестоимость, %')).toHaveCount(0);
  await expect(page.getByLabel('Округлять цены до ближайших 50 или 90')).toHaveCount(0);

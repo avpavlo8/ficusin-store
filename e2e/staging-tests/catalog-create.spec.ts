@@ -27,12 +27,14 @@ test("real staging: route editor draft, photos, seasonal boxes and outbound isol
   const name = `Проверка стейджинга ${testInfo.project.name} ${Date.now()}`;
   await editor.getByLabel("Название товара *", { exact: true }).fill(name);
   await editor.getByRole("combobox", { name: "Найти категорию" }).fill(category.name);
-  await editor.locator(".category-picker-list").getByRole("button", { name: category.name, exact: true }).click();
+  const categoryNames: string[] = [];
+  for (let item = category; item; item = categories.find((c: {id:number}) => c.id === item.parentId)) categoryNames.unshift(item.name);
+  await editor.locator(".category-picker-list").getByRole("button", { name: categoryNames.join(" / "), exact: true }).click();
   for (const [label, value] of [["Категория в СБИС", refs.categories[0]], ["Раздел в СБИС", refs.folders[0]]] as const) {
     await editor.getByRole("combobox", { name: label, exact: true }).click();
     await editor.locator(".editor-reference-options").getByRole("button", { name: value.name, exact: true }).click();
   }
-  await editor.getByLabel("О растении", { exact: true }).fill("Изолированная проверка нового редактора.");
+  await editor.getByRole("textbox", { name: "О растении", exact: true }).fill("Изолированная проверка нового редактора.");
   await editor.getByLabel("Диаметр горшка", { exact: true }).fill("11.3");
   await editor.getByLabel("Высота", { exact: true }).fill("40");
   await editor.getByLabel("Цена на сайте, ₽ *", { exact: true }).fill("1490.99");
@@ -83,6 +85,9 @@ test("real staging: route editor draft, photos, seasonal boxes and outbound isol
   const { media } = await mediaResponse.json();
   expect(media).toHaveLength(1);
   expect(media[0].primary).toBe(true);
+  const ownMediaResponse = await context.request.get(`/api/v1/admin/variants/${variants[0].id}/media`);
+  expect(ownMediaResponse.ok()).toBeTruthy();
+  expect((await ownMediaResponse.json()).media, "common cover is not duplicated as an owned variant photo").toEqual([]);
   const image = await context.request.get(media[0].url);
   expect(image.ok()).toBeTruthy();
   expect(image.headers()["content-type"]).toContain("image/");

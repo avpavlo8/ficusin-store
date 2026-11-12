@@ -213,7 +213,9 @@ export default function ProductPage({ slug }: { slug: string }) {
       const target = document.getElementById(linkedCareTarget.current);
       if (target && !target.closest("[hidden]")) {
         if (target instanceof HTMLDetailsElement) target.open = true;
-        target.scrollIntoView({ block: "start" });
+        // Deep links restore a position, rather than animate a gesture. WebKit
+        // can interrupt a smooth scroll while the product finishes mounting.
+        target.scrollIntoView({ block: "start", behavior: "instant" });
         linkedCareTarget.current = null;
       }
     };
@@ -234,7 +236,9 @@ export default function ProductPage({ slug }: { slug: string }) {
         document.getElementById(`pdp-panel-${activeTab}`);
       if (target && !target.closest("[hidden]")) {
         if (target instanceof HTMLDetailsElement) target.open = true;
-        target.scrollIntoView({ block: "start" });
+        // Deep links restore a position, rather than animate a gesture. WebKit
+        // can interrupt a smooth scroll while the product finishes mounting.
+        target.scrollIntoView({ block: "start", behavior: "instant" });
         linkedCareTarget.current = null;
       }
     });

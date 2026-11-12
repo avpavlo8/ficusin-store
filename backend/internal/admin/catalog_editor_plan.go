@@ -281,7 +281,8 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 			return EditorPlanView{}, err
 		}
 		images := []string{}
-		rows, e := tx.Query(ctx, `SELECT COALESCE(m.large_url,p.object_key) FROM product_media p LEFT JOIN media_mirror m ON m.source_url=p.object_key WHERE p.product_id=$1 AND (p.variant_id IS NULL OR p.variant_id=$2) ORDER BY p.is_primary DESC,p.sort_order,p.id`, productID, v.VariantID)
+		seenImages := map[string]bool{}
+		rows, e := tx.Query(ctx, `SELECT COALESCE(m.large_url,p.object_key) FROM product_media p LEFT JOIN media_mirror m ON m.source_url=p.object_key WHERE p.product_id=$1 AND (p.variant_id IS NULL OR p.variant_id=$2) ORDER BY (p.variant_id IS NULL AND p.is_primary<>0) DESC,p.is_primary DESC,p.sort_order,p.id`, productID, v.VariantID)
 		if e != nil {
 			return EditorPlanView{}, e
 		}
@@ -292,7 +293,8 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 				return EditorPlanView{}, e
 			}
 			parsed, parseErr := urlpkg.Parse(url)
-			if parseErr == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && !editorVideoURL(parsed.Path) {
+			if parseErr == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && !editorVideoURL(parsed.Path) && !seenImages[url] {
+				seenImages[url] = true
 				images = append(images, url)
 			}
 		}
