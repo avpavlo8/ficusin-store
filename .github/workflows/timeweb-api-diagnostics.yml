@@ -1,18 +1,13 @@
-name: Isolated staging storage modes
+name: Read-only encrypted account timing audit
 on:
   workflow_dispatch:
-    inputs:
-      apply:
-        description: Apply mock storage and publication modes only to existing app 280757
-        type: boolean
-        default: false
 permissions:
   contents: read
 concurrency:
-  group: isolated-staging-storage-modes-280757
+  group: customer-timing-readonly-20261112
   cancel-in-progress: false
 jobs:
-  staging-modes:
+  read-only-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -20,10 +15,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install database driver for read-only isolation verification
+      - name: Install driver
         run: python3 -m pip install 'psycopg[binary]==3.2.12'
-      - name: Verify isolated staging and inspect or apply only approved modes
+      - name: Read account timing in a read-only database session and encrypt result
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          APPLY_STAGING_MODES: ${{ inputs.apply }}
-        run: python3 scripts/timeweb-staging-storage-modes.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/customer-registration-readonly-audit.py | openssl cms -encrypt -binary -aes-256-cbc -outform DER -out /tmp/customer-timing-audit.enc scripts/customer-audit-recipient.pem
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-customer-timing-audit
+          path: /tmp/customer-timing-audit.enc
+          retention-days: 1
+          if-no-files-found: error
