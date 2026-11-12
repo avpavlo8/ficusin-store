@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { InstallHint } from "./InstallHint";
+import { InstallFirstVisit } from "./InstallFirstVisit";
 import { storeSession } from "./lib/store-session";
 
 export function HomeBenefits() {
@@ -38,7 +38,7 @@ export function HomeBenefits() {
         )}
         {signedIn === false && <a href="/login">Уже есть аккаунт? Войти</a>}
       </section>
-      <InstallHint inline />
+      <InstallFirstVisit />
     </div>
   );
 }

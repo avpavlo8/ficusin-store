@@ -58,13 +58,10 @@ for (const device of ['@desktop','@phone']) {
   });
 }
 
-test('iPhone offers installation with actionable steps and respects later dismissal @phone',async({page},info)=>{
-  await mockApi(page);await page.addInitScript(()=>{Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1'});Object.defineProperty(navigator,'standalone',{value:false});});
-  await page.clock.install();await page.goto('/favorites');
-  // Start advancing the installation timer after the React storefront has mounted.
-  await expect(page.locator('.favorites-page')).toBeVisible();await page.clock.fastForward(8100);
-  const invitation=page.getByRole('complementary',{name:'Установить приложение Фикусин',exact:true});await expect(invitation).toBeVisible();
-  await invitation.getByRole('button',{name:'Как установить',exact:true}).click();await expect(invitation).toContainText('Откройте меню «Поделиться»');await expect(invitation).toContainText('На экран Домой');expect(await horizontalOverflow(page)).toBe(0);
-  await page.screenshot({path:info.outputPath('install-invitation.png')});
-  await invitation.getByRole('button',{name:'Напомнить об установке позже',exact:true}).click();await page.reload();await page.clock.fastForward(10000);await expect(invitation).toHaveCount(0);
+test('iPhone first homepage installation offer has steps and respects dismissal @phone',async({page})=>{
+ await mockApi(page,undefined,{showInstallOffer:true});await page.addInitScript(()=>{Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1'});Object.defineProperty(navigator,'standalone',{value:false});});
+ await page.goto('/');const offer=page.getByRole('dialog',{name:'Фикусин на экране Домой'});await expect(offer).toBeVisible();
+ await offer.getByRole('button',{name:'Как установить',exact:true}).click();await expect(offer).toContainText('Откройте меню «Поделиться»');await expect(offer).toContainText('На экран Домой');expect(await horizontalOverflow(page)).toBe(0);
+ await offer.getByRole('button',{name:'Закрыть предложение установки'}).click();await page.reload();await expect(page.locator('.home-benefits')).toBeVisible();await expect(offer).toHaveCount(0);
+ await page.goto('/favorites');await expect(page.locator('.install-hint')).toHaveCount(0);
 });

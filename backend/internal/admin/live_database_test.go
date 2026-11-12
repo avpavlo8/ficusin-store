@@ -113,6 +113,53 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		t.Fatalf("завести строку заказа: %v", err)
 	}
 
+	t.Run("all order projections preserve common cover and storefront identity", func(t *testing.T) {
+		source := fmt.Sprintf("https://images.example.invalid/order-cover-%d.jpg", unique)
+		card := source + "?size=card"
+		large := source + "?size=large"
+		if _, err := pool.Exec(ctx, `INSERT INTO product_media(product_id,object_key,is_primary,sort_order) VALUES($1,$2,1,0)`, productID, source); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO product_media(product_id,variant_id,object_key,is_primary,sort_order) VALUES($1,$2,'https://images.example.invalid/variant.jpg',0,0)`, productID, smallVariant); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO media_mirror(source_url,card_url,large_url,attempts) VALUES($1,$2,$3,0)`, source, card, large); err != nil {
+			t.Fatal(err)
+		}
+		defer pool.Exec(ctx, `DELETE FROM media_mirror WHERE source_url=$1`, source)
+		repo := NewPostgresRepository(pool)
+		check := func(items []OrderItem) {
+			t.Helper()
+			if len(items) != 1 || items[0].Image != card || items[0].ImageFallback != large || items[0].ProductCode == "" {
+				t.Fatalf("missing or wrong media: %+v", items)
+			}
+		}
+		orders, err := repo.ListOrders(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, o := range orders {
+			if o.ID == orderID {
+				check(o.Items)
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("order missing")
+		}
+		current, err := currentAdminOrder(ctx, repo, orderID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(current.Items)
+		adjustment, err := repo.OrderAdjustment(ctx, orderID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(adjustment.Items)
+	})
+
 	t.Run("витрина исполняется и отдаёт SKU", func(t *testing.T) {
 		products, err := catalog.NewPostgresRepository(pool).ListAvailable(ctx)
 		if err != nil {

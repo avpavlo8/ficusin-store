@@ -275,7 +275,23 @@ export function PlantQuestions({ product }: { product: ProductDetail }) {
       <h2 id="plant-questions-title">Вопросы о растении</h2>
       {faq.map((item, index) => (
         <details key={`${item.question}-${index}`}>
-          <summary>{item.question}</summary>
+          <summary>
+            <span>{item.question}</span>
+            <svg
+              className="plant-question-chevron"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </summary>
           <p className="plant-copy">{item.answer}</p>
         </details>
       ))}

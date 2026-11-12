@@ -74,6 +74,7 @@
   align-items: start;
 }
 .admin-page .orders-card {
+  position: relative;
   min-width: 0;
   display: grid;
   gap: 12px;
@@ -172,4 +173,28 @@
   .admin-page .orders-card {
     padding: 14px;
   }
+}
+
+.orders-number-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+}
+.orders-card .order-product-link {
+  position: relative;
+  z-index: 1;
+}
+
+.orders-card-blockers {
+  margin: 0;
+  padding: 10px 12px 10px 26px;
+  border-radius: 8px;
+  background: #fff6e6;
+  color: #72501e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.orders-card-blockers li + li {
+  margin-top: 4px;
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/jackc/pgx/v5"
 )
@@ -131,6 +132,10 @@ func (h chatHandlers) fail(w http.ResponseWriter, err error) {
 		status = http.StatusBadRequest
 		message = "Проверьте сообщение: до 4000 символов, вложение до 20 МБ"
 	}
+	if errors.Is(err, fileassets.ErrUnavailable) {
+		status = http.StatusServiceUnavailable
+		message = "Хранилище файлов временно недоступно. Можно отправить текст, товар или заказ без файла"
+	}
 	if errors.Is(err, chat.ErrConsent) {
 		status = http.StatusBadRequest
 		message = "Подтвердите согласие на обработку данных для начала переписки"
@@ -144,13 +149,15 @@ func (h chatHandlers) serve(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	staff := strings.HasPrefix(r.URL.Path, "/api/v1/admin/")
 	var staffID, id int64
+	canOrders := false
 	who := chat.Identity{}
 	if staff {
-		user, _, ok := h.admin.authorize(w, r, admin.PermissionChat)
+		user, actor, ok := h.admin.authorize(w, r, admin.PermissionChat)
 		if !ok {
 			return
 		}
 		staffID = user.ID
+		canOrders = admin.Can(actor.Role, admin.PermissionOrdersRead)
 		if r.PathValue("id") != "" {
 			var ok bool
 			id, ok = pathID(w, r)
@@ -164,6 +171,19 @@ func (h chatHandlers) serve(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
+	}
+	if strings.HasSuffix(r.URL.Path, "/references") {
+		if staff && r.URL.Query().Get("kind") == "order" && !canOrders {
+			writeJSON(w, 403, errorResponse{Error: "Недостаточно прав для просмотра заказов"})
+			return
+		}
+		options, err := h.store.ReferenceOptions(r.Context(), who, staffID, id, canOrders, r.URL.Query().Get("kind"), r.URL.Query().Get("q"))
+		if err != nil {
+			h.fail(w, err)
+			return
+		}
+		writeJSON(w, 200, options)
+		return
 	}
 	if strings.HasSuffix(r.URL.Path, "/unread") {
 		if !staff {
@@ -224,6 +244,11 @@ func (h chatHandlers) serve(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, 429, errorResponse{Error: "Слишком много вложений. Подождите минуту"})
 			return
 		}
+		if staff && input.Reference != nil && input.Reference.Kind == "order" && !canOrders {
+			writeJSON(w, 403, errorResponse{Error: "Недостаточно прав для просмотра заказов"})
+			return
+		}
+		input.CanReferenceOrders = canOrders
 		input.ConsentVersion = chatConsentVersion
 		input.IP = clientIP(r)
 		input.Agent = string([]rune(r.UserAgent())[:min(500, len([]rune(r.UserAgent())))])
@@ -256,7 +281,11 @@ func (h chatHandlers) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		kind, name, attachmentKind, data, err := h.store.Attachment(r.Context(), id, messageID)
 		if err != nil {
-			http.NotFound(w, r)
+			if errors.Is(err, fileassets.ErrUnavailable) {
+				h.fail(w, err)
+			} else {
+				http.NotFound(w, r)
+			}
 			return
 		}
 		if strings.Contains(r.URL.Path, "/photos/") && attachmentKind != "image" {

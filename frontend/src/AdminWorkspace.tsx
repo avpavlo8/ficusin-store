@@ -1,10 +1,22 @@
+import "./styles/account-access.css";
 import { BrandLogo } from "./BrandLogo";
 import { useChatUnread } from "./lib/chat";
 import { mobilePrimarySections, sections } from "./adminNavigation";
 import { useRef, useState } from "react";
 import type { AdminData, Section } from "./adminTypes";
 import { roleLabel } from "./adminShared";
-import { AdminAppInstall } from "./AdminAppInstall";
+
+function WorkspaceAvatar({ user }: { user: AdminData["user"] }) {
+  const [failed, setFailed] = useState("");
+  const src = user.avatarUpdatedAt
+    ? `/api/v1/account/avatar?v=${encodeURIComponent(user.avatarUpdatedAt)}`
+    : "";
+  return src && failed !== src ? (
+    <img className="ws-avatar-image" src={src} alt="" onError={() => setFailed(src)} />
+  ) : (
+    <>{user.fullName.trim().charAt(0) || "Ф"}</>
+  );
+}
 
 type IconName = Section | "search" | "arrow" | "more";
 export function AdminIcon({ name }: { name: IconName }) {
@@ -133,23 +145,19 @@ export function WorkspaceSidebar({
         <a className="workspace-skip" href="#workspace-content">
           К содержимому
         </a>
-        <a className="ws-brand" href="/admin" aria-label="Фикусин — управление">
+        <div className="ws-brand">
           <WorkspaceMark />
-        </a>
+        </div>
         <nav aria-label="Разделы управления">{groupedLinks}</nav>
         <div className="ws-sidebar-bottom">
-          <AdminAppInstall />
           <a className="ws-profile" href="/account">
             <span className="ws-avatar" aria-hidden="true">
-              {data.user.fullName.trim().charAt(0) || "Ф"}
+              <WorkspaceAvatar user={data.user} />
             </span>
             <span>
               <strong>{data.user.fullName}</strong>
               <small>{roleLabel(data.role)}</small>
             </span>
-          </a>
-          <a className="ws-store-link" href="/">
-            Открыть магазин <AdminIcon name="arrow" />
           </a>
         </div>
       </aside>
@@ -190,10 +198,6 @@ export function WorkspaceSidebar({
             </button>
           </header>
           <nav aria-label="Все разделы управления">{groupedLinks}</nav>
-          <AdminAppInstall />
-          <a className="ws-store-link" href="/">
-            Открыть магазин <AdminIcon name="arrow" />
-          </a>
         </div>
       </dialog>
     </>
@@ -228,9 +232,9 @@ export function WorkspaceToolbar({
   };
   return (
     <header className="ws-topbar">
-      <a className="ws-topbar-brand" href="/admin" aria-label="Фикусин — управление">
+      <div className="ws-topbar-brand">
         <WorkspaceMark />
-      </a>
+      </div>
       <strong className="ws-topbar-title">
         {
           sections.find(
@@ -281,9 +285,6 @@ export function WorkspaceToolbar({
           </div>
         )}
       </div>
-      <a className="ws-avatar ws-topbar-profile" href="/account" aria-label="Личный кабинет">
-        {data.user.fullName.trim().charAt(0) || "Ф"}
-      </a>
     </header>
   );
 }
@@ -293,8 +294,12 @@ export function WorkspaceToolbar({
 export function WorkspaceMark() {
   return (
     <span className="ws-mark">
-      <BrandLogo />
-      <small>Управление</small>
+      <a href="/" aria-label="Фикусин — магазин">
+        <BrandLogo />
+      </a>
+      <small>
+        <a href="/admin">Управление</a>
+      </small>
     </span>
   );
 }

@@ -2,33 +2,41 @@ package config
 
 import (
 	"errors"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
 type Config struct {
-	Environment        string
-	StagingAccessToken string
-	HTTP               HTTP
-	Database           Database
-	Auth               Auth
-	SMS                SMS
-	MigrationsDir      string
-	TelegramChatID     string
-	TelegramBotToken   string
-	YandexSuggestKey   string
-	MetrikaMPToken     string
-	DaDataAPIKey       string
-	AdminEmails        []string
-	CDEK               CDEK
-	Push               Push
-	Payments           Payments
-	SiteURL            string
-	Mail               Mail
-	Photos             Photos
-	Marketplaces       Marketplaces
-	Saby               Saby
+	FileStorageMode        string
+	LocalPrivateFilesDir   string
+	StaticAssetsBaseURL    string
+	CatalogMarketplaces    Marketplaces
+	CatalogPublicationMode string
+	Environment            string
+	StagingAccessToken     string
+	HTTP                   HTTP
+	Database               Database
+	Auth                   Auth
+	SMS                    SMS
+	MigrationsDir          string
+	TelegramChatID         string
+	TelegramBotToken       string
+	YandexSuggestKey       string
+	MetrikaMPToken         string
+	DaDataAPIKey           string
+	AdminEmails            []string
+	CDEK                   CDEK
+	Push                   Push
+	Payments               Payments
+	SiteURL                string
+	Mail                   Mail
+	PrivatePhotos          Photos
+	Photos                 Photos
+	Marketplaces           Marketplaces
+	Saby                   Saby
 }
 
 // Marketplaces holds seller API credentials. Empty credentials keep the
@@ -149,7 +157,7 @@ func Load() (Config, error) {
 
 	cfg := Config{
 		HTTP: HTTP{
-			Address:   ":" + port,
+			Address:   defaultString(os.Getenv("HTTP_ADDRESS"), ":"+port),
 			StaticDir: strings.TrimSpace(os.Getenv("STATIC_DIR")),
 		},
 		Database: Database{
@@ -190,12 +198,24 @@ func Load() (Config, error) {
 			TaxSystem: intFromEnv("YOOKASSA_TAX_SYSTEM", 0),
 			VATCode:   intFromEnv("YOOKASSA_VAT_CODE", 1),
 		},
+		PrivatePhotos: Photos{
+			Endpoint:  defaultString(os.Getenv("PRIVATE_S3_ENDPOINT"), defaultString(os.Getenv("S3_ENDPOINT"), "https://s3.twcstorage.ru")),
+			Region:    defaultString(os.Getenv("PRIVATE_S3_REGION"), defaultString(os.Getenv("S3_REGION"), "ru-1")),
+			Bucket:    strings.TrimSpace(os.Getenv("PRIVATE_S3_BUCKET")),
+			AccessKey: defaultString(os.Getenv("PRIVATE_S3_ACCESS_KEY"), os.Getenv("S3_ACCESS_KEY")),
+			SecretKey: defaultString(os.Getenv("PRIVATE_S3_SECRET_KEY"), os.Getenv("S3_SECRET_KEY")),
+		},
 		Photos: Photos{
 			Endpoint:  defaultString(os.Getenv("S3_ENDPOINT"), "https://s3.twcstorage.ru"),
 			Region:    defaultString(os.Getenv("S3_REGION"), "ru-1"),
 			Bucket:    strings.TrimSpace(os.Getenv("S3_BUCKET")),
 			AccessKey: strings.TrimSpace(os.Getenv("S3_ACCESS_KEY")),
 			SecretKey: strings.TrimSpace(os.Getenv("S3_SECRET_KEY")),
+		},
+		CatalogMarketplaces: Marketplaces{
+			WBToken:      defaultString(os.Getenv("CATALOG_WB_API_TOKEN"), os.Getenv("WB_API_TOKEN")),
+			OzonClientID: defaultString(os.Getenv("CATALOG_OZON_CLIENT_ID"), os.Getenv("OZON_CLIENT_ID")),
+			OzonAPIKey:   defaultString(os.Getenv("CATALOG_OZON_API_KEY"), os.Getenv("OZON_API_KEY")),
 		},
 		Marketplaces: Marketplaces{
 			WBToken:           strings.TrimSpace(os.Getenv("WB_API_TOKEN")),
@@ -222,7 +242,44 @@ func Load() (Config, error) {
 			Subject:    defaultString(os.Getenv("VAPID_SUBJECT"), "mailto:info@ficusin.ru"),
 		},
 	}
-	return configureEnvironment(cfg)
+	if cfg.PrivatePhotos.Bucket != "" && cfg.PrivatePhotos.Bucket == cfg.Photos.Bucket && strings.TrimRight(cfg.PrivatePhotos.Endpoint, "/") == strings.TrimRight(cfg.Photos.Endpoint, "/") {
+		return Config{}, errors.New("PRIVATE_S3_BUCKET must differ from the public S3_BUCKET")
+	}
+	cfg.StaticAssetsBaseURL = strings.TrimRight(strings.TrimSpace(os.Getenv("STATIC_ASSETS_BASE_URL")), "/")
+	if cfg.StaticAssetsBaseURL != "" {
+		u, e := url.Parse(cfg.StaticAssetsBaseURL)
+		if e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return Config{}, errors.New("STATIC_ASSETS_BASE_URL must be an HTTPS bucket/release URL without credentials or query")
+		}
+	}
+	cfg.CatalogPublicationMode = defaultString(os.Getenv("CATALOG_PUBLICATION_MODE"), "disabled")
+	if cfg.CatalogPublicationMode != "disabled" && cfg.CatalogPublicationMode != "mock" && cfg.CatalogPublicationMode != "live" {
+		return Config{}, errors.New("CATALOG_PUBLICATION_MODE must be disabled, mock or live")
+	}
+	configured, err := configureEnvironment(cfg)
+	if err != nil {
+		return Config{}, err
+	}
+	if configured.CatalogPublicationMode == "live" && (configured.Environment != "production" || os.Getenv("CATALOG_PUBLICATION_LIVE_ENABLED") != "true") {
+		return Config{}, errors.New("live catalog publication requires production and CATALOG_PUBLICATION_LIVE_ENABLED=true")
+	}
+	configured.FileStorageMode = defaultString(os.Getenv("FILE_STORAGE_MODE"), "s3")
+	if configured.FileStorageMode != "s3" && configured.FileStorageMode != "mock" {
+		return Config{}, errors.New("FILE_STORAGE_MODE must be s3 or mock")
+	}
+	if configured.FileStorageMode == "mock" && configured.Environment != "staging" {
+		return Config{}, errors.New("FILE_STORAGE_MODE=mock is allowed only in isolated APP_ENV=staging")
+	}
+	configured.LocalPrivateFilesDir = strings.TrimSpace(os.Getenv("LOCAL_PRIVATE_FILES_DIR"))
+	if configured.LocalPrivateFilesDir != "" {
+		if configured.Environment != "development" || configured.CatalogPublicationMode != "mock" {
+			return Config{}, errors.New("LOCAL_PRIVATE_FILES_DIR is allowed only with APP_ENV=development and CATALOG_PUBLICATION_MODE=mock")
+		}
+		if !filepath.IsAbs(configured.LocalPrivateFilesDir) || filepath.Clean(configured.LocalPrivateFilesDir) == string(filepath.Separator) {
+			return Config{}, errors.New("LOCAL_PRIVATE_FILES_DIR must be a dedicated absolute directory")
+		}
+	}
+	return configured, nil
 }
 
 func splitList(value string) []string {

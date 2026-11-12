@@ -1,6 +1,9 @@
 package admin
 
-import "context"
+import (
+	"context"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
+)
 
 type DiscountPlant struct {
 	Description     string  `json:"description"`
@@ -35,6 +38,11 @@ func (r *PostgresRepository) DiscountPlants(ctx context.Context) ([]DiscountPlan
 func (r *PostgresRepository) DiscountPlantPhoto(ctx context.Context, id int64) (string, []byte, error) {
 	var mime string
 	var image []byte
-	err := r.pool.QueryRow(ctx, `SELECT f.content_type,f.image FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE r.id=$1 AND r.condition='restoring' AND r.discount_percent>0 AND r.deleted_at IS NULL AND f.deleted_at IS NULL ORDER BY f.id LIMIT 1`, id).Scan(&mime, &image)
+	var key string
+	err := r.pool.QueryRow(ctx, `SELECT f.content_type,f.image,COALESCE(f.object_key,'') FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE r.id=$1 AND r.condition='restoring' AND r.discount_percent>0 AND r.deleted_at IS NULL AND f.deleted_at IS NULL ORDER BY f.id LIMIT 1`, id).Scan(&mime, &image, &key)
+	if err != nil {
+		return "", nil, err
+	}
+	image, err = fileassets.Read(ctx, r.fileStorage, key, image)
 	return mime, image, err
 }

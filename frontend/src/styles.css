@@ -16,8 +16,6 @@
 @import "./styles/footer.css";
 @import "./styles/checkout.css";
 @import "./styles/header.css";
-@import "./styles/admin-orders.css";
-@import "./styles/admin-orders-fixes.css";
 @import "./styles/account-mobile-fix.css";
 
 .route-loading {

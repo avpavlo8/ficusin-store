@@ -44,7 +44,7 @@ func TestReceiptReadOnlyRecheckClosesOrderAndKeepsSourceHistory(t *testing.T) {
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_action_batches(procurement_order_id,kind,status,created_by) VALUES($1,'receipt','cancelled',$2) RETURNING id`, order, actor).Scan(&sourceBatch))
 	payload := fmt.Sprintf(`{"orderId":%d,"lines":[{"sabyId":"%s","quantity":2,"unitCost":150}]}`, order, nomID)
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_action_items(batch_id,procurement_order_line_id,channel,external_article,new_value,quantity,status,payload,external_operation_id,external_url,attempts,error_message) VALUES($1,$2,'saby_receipt',$3,0,2,'failed',$4,'77','https://ret.saby.ru/doc/11111111-1111-4111-8111-111111111111',5,'Historical readback failure') RETURNING id`, sourceBatch, line, fmt.Sprint(order), payload).Scan(&sourceItem))
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	// A changed quantity must not be reconciled against an older receipt.
 	_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET invoiced_qty=3 WHERE id=$1`, line)
 	must(err)

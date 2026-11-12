@@ -2920,3 +2920,7 @@
     font-size: 22px;
   }
 }
+
+.storefront-card.preorder .storefront-price em {
+  color: #96601d;
+}

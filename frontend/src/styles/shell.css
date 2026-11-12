@@ -245,45 +245,93 @@
 }
 .category-picker {
   position: relative;
-}
-.category-picker-toggle {
+  min-width: 0;
   width: 100%;
-  padding: 12px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+}
+.category-picker-search {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 8px;
   background: #fff;
   color: inherit;
-  text-align: left;
-  cursor: pointer;
+  font: inherit;
+}
+.category-picker-empty {
+  margin: 0;
+  padding: 12px;
+  color: #526052;
+  font-size: 13px;
 }
 .category-picker-list {
   max-height: 260px;
   margin-top: 6px;
   padding: 6px;
   display: grid;
+  gap: 4px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: #fff;
 }
 .category-picker-list button {
+  min-height: 40px;
   padding: 8px 12px;
   border: 0;
   border-radius: 7px;
   background: transparent;
-  color: #58645c;
+  color: #3f5045;
   text-align: left;
   font-size: 13px;
   cursor: pointer;
 }
-.category-picker-list button:hover,
-.category-picker-list button.active {
+.category-picker-list button.category-picker-match {
+  background: #edf4ee;
+  color: #254e34;
+}
+.category-picker-list button mark {
+  background: #c9dfb6;
+  color: #203c28;
+  font-weight: 700;
+  border-radius: 3px;
+}
+.category-picker-list button:hover {
   background: #edf2ec;
   color: var(--green);
+}
+.category-picker-list button.active {
+  background: #254e34;
+  color: #fff;
+  font-weight: 600;
+}
+.category-picker-list button.active mark {
+  background: #d3e9bf;
+  color: #203c28;
+}
+.category-picker-row > button:last-child {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.category-picker-row > button:last-child svg {
+  flex-shrink: 0;
+}
+.category-picker-list button.category-toggle {
+  width: 32px;
+  min-height: 36px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+.category-picker :is(button, input):focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
 }
 .admin-field {
   display: grid;
@@ -740,18 +788,6 @@ body.drawer-open {
     background: var(--green);
     color: #fff;
     font-size: 13px;
-  }
-  .install-hint-close {
-    grid-column: 3;
-    grid-row: 1;
-    align-self: start;
-    flex: none;
-    width: 30px;
-    height: 30px;
-    border: 0;
-    background: transparent;
-    color: #8b948d;
-    font-size: 21px;
   }
 }
 

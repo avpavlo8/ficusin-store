@@ -1287,3 +1287,103 @@
 .catalog-saby-actions {
   margin: 16px 0 8px;
 }
+
+.product-create-summary {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 20px;
+}
+.product-create-summary span,
+.product-create-stock-note {
+  font-size: 13px;
+  color: #526052;
+}
+.product-create-modes {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.product-create-modes button,
+.product-create-search button {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: #254e34;
+  cursor: pointer;
+}
+.product-create-modes button[aria-pressed="true"],
+.product-create-folders button[aria-pressed="true"] {
+  background: #254e34;
+  color: #fff;
+  border-color: #254e34;
+}
+.product-create-saby input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+}
+.product-create-folders {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+  margin: 6px 0 20px;
+}
+.product-create-folders:empty {
+  display: none;
+}
+.product-create-folders button {
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #edf4ee;
+  color: #254e34;
+  font: inherit;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.product-create-folders button small {
+  display: block;
+  margin-top: 4px;
+}
+.product-create-folders button:disabled {
+  background: #f2f3f1;
+  color: #626b64;
+  cursor: default;
+}
+.product-create-folders p {
+  font-size: 13px;
+  margin: 8px 0;
+}
+.product-create-stock {
+  max-width: 240px;
+  margin-bottom: 24px;
+}
+.product-create-search {
+  display: flex;
+  gap: 8px;
+}
+.product-create-saby :is(button, input):focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+@media (max-width: 480px) {
+  .product-create-modes {
+    display: grid;
+  }
+  .product-create-stock {
+    max-width: none;
+  }
+}

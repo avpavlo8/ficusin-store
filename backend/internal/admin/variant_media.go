@@ -158,3 +158,48 @@ func (repository *PostgresRepository) SetPrimaryVariantMedia(ctx context.Context
 	}
 	return tx.Commit(ctx)
 }
+
+// CopyVariantMedia gives a SKU its own media row while retaining the stored image.
+// Both rows belong to the same product; deleting or promoting one leaves the other intact.
+func (repository *PostgresRepository) CopyVariantMedia(ctx context.Context, actor Actor, variantID, mediaID int64) (ProductMedia, error) {
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return ProductMedia{}, ErrForbidden
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return ProductMedia{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var productID int64
+	if err := tx.QueryRow(ctx, "SELECT product_id FROM product_variants WHERE id=$1 FOR UPDATE", variantID).Scan(&productID); err != nil {
+		return ProductMedia{}, err
+	}
+	var source, alt string
+	if err := tx.QueryRow(ctx, "SELECT object_key, COALESCE(alt_text,'') FROM product_media WHERE id=$1 AND product_id=$2 FOR SHARE", mediaID, productID).Scan(&source, &alt); err != nil {
+		return ProductMedia{}, err
+	}
+	var id int64
+	if err := tx.QueryRow(ctx, `
+		INSERT INTO product_media(product_id,variant_id,object_key,alt_text,sort_order,is_primary)
+		SELECT $1,$2,$3,$4,COALESCE(MAX(sort_order),-1)+1,CASE WHEN COUNT(*)=0 THEN 1 ELSE 0 END
+		FROM product_media WHERE variant_id=$2 RETURNING id
+	`, productID, variantID, source, alt).Scan(&id); err != nil {
+		return ProductMedia{}, err
+	}
+	if err := insertAudit(ctx, tx, actor, "variant.media.copy", "variant", fmt.Sprint(variantID), nil, map[string]any{"mediaId": id, "sourceMediaId": mediaID}); err != nil {
+		return ProductMedia{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ProductMedia{}, err
+	}
+	items, err := repository.ListVariantMedia(ctx, variantID)
+	if err != nil {
+		return ProductMedia{}, err
+	}
+	for _, item := range items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return ProductMedia{}, pgx.ErrNoRows
+}

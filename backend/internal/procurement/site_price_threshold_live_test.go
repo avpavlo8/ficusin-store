@@ -25,7 +25,7 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	var threshold float64
 	if err := pool.QueryRow(ctx, `SELECT price_change_threshold::DOUBLE PRECISION FROM procurement_pricing_settings WHERE id=1`).Scan(&threshold); err != nil {
 		t.Fatal(err)

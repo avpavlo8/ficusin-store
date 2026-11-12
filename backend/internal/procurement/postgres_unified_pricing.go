@@ -24,11 +24,12 @@ func loadPricingPackages(ctx context.Context, db pricingReader, ids []int64) (ma
 		return result, nil
 	}
 	rows, err := db.Query(ctx, `SELECT v.id,p.catalog_section,
- jsonb_build_object('lengthCm',variant_numeric_attribute(v.id,'package_length_cm'),
- 'widthCm',variant_numeric_attribute(v.id,'package_width_cm'),
- 'heightCm',variant_numeric_attribute(v.id,'package_height_cm'),'source','PIM сайта'),
+ jsonb_build_object('lengthCm',shipping_package_dimension(v.id,'package_length_cm'),
+ 'widthCm',shipping_package_dimension(v.id,'package_width_cm'),
+ 'heightCm',shipping_package_dimension(v.id,'package_height_cm'),'source',CASE WHEN (SELECT value FROM settings WHERE key='cdek.packaging_season')='winter' THEN 'PIM сайта: зимняя упаковка' ELSE 'PIM сайта: летняя упаковка' END),
  wb.package_dimensions,oz.package_dimensions,e.dimensions,
  EXISTS(SELECT 1 FROM procurement_pricing_line_links x WHERE x.saby_id=d.saby_id AND x.requires_pim_package)
+ OR COALESCE((SELECT value='winter' FROM settings WHERE key='cdek.packaging_season'),FALSE)
 	 FROM product_variants v JOIN products p ON p.id=v.product_id
  LEFT JOIN canonical_product_directory d ON d.variant_id=v.id
  LEFT JOIN procurement_channel_products wb ON wb.channel='wb' AND wb.external_id=d.wb_nm_ids[1]

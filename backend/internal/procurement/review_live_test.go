@@ -30,7 +30,7 @@ func TestReviewLegacyPriceRepairRequiresExactAuditAndIsIdempotent(t *testing.T) 
 	if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, fmt.Sprintf("Legacy review %d", unique)).Scan(&supplier); err != nil {
 		t.Fatal(err)
 	}
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	actor := Actor{CustomerID: customer, Role: "owner"}
 	pot, height := 14.0, 40.0
 	type fixture struct {
@@ -124,7 +124,7 @@ func TestReviewFractionalPlanPricesSurviveDatabaseRoundTrip(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,balance) VALUES($1,$1,'Review fractional plant',0)`, saby); err != nil {
 		t.Fatal(err)
 	}
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	actor := Actor{CustomerID: customer, Role: "owner"}
 	pot, height := 12.5, 40.5
 	for _, price := range []float64{4.85, 4.25, 0.0001} {

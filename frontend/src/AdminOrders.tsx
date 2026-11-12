@@ -1,3 +1,5 @@
+import { OrderProductImage } from "./OrderProductImage";
+import { OrderProductLink } from "./OrderProductLink";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import { api, money, paymentLabels, paymentMethodLabels, statusLabels } from "./adminShared";
 import { currentAdminSection } from "./adminNavigation";
@@ -11,6 +13,7 @@ const AdminOrderWorkspace = lazy(() =>
 const filters = [
   { id: "new", label: "Новые", empty: "Новых заказов пока нет" },
   { id: "in_progress", label: "В работе", empty: "Заказов в работе пока нет" },
+  { id: "in_delivery", label: "В доставке", empty: "Заказов в доставке пока нет" },
   { id: "completed", label: "Завершённые", empty: "Завершённых заказов пока нет" },
   { id: "all", label: "Все", empty: "Заказов пока нет" },
   { id: "cancelled", label: "Отменённые", empty: "Отменённых заказов пока нет" },
@@ -39,13 +42,16 @@ function ordersUrl(nav: Navigation): string {
 
 function matchesFilter(order: Order, filter: Filter) {
   if (filter === "all") return true;
-  const unpaidConfirmed = order.status === "confirmed" && order.paymentStatus !== "paid";
-  if (filter === "new") return order.status === "new" || unpaidConfirmed;
-  if (filter === "in_progress")
-    return (
-      ["confirmed", "assembling", "ready", "shipped"].includes(order.status) && !unpaidConfirmed
-    );
-  return order.status === filter;
+  const queue =
+    order.workflow?.queue ||
+    (["shipped", "shipping"].includes(order.status)
+      ? "in_delivery"
+      : ["assembling", "ready"].includes(order.status)
+        ? "in_progress"
+        : ["new", "confirmed"].includes(order.status)
+          ? "new"
+          : order.status);
+  return queue === filter;
 }
 
 function paymentLabel(order: Order) {
@@ -128,21 +134,47 @@ export function Orders({
 
   useEffect(() => {
     let cancelled = false;
-    api<{ orders: Order[] }>("/api/v1/admin/orders")
-      .then((data) => {
-        if (!cancelled) setItems(data.orders);
-      })
-      .catch((error: Error) => {
+    let loaded = false;
+    let pending = false;
+    const controller = new AbortController();
+    const read = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const data = await api<{ orders: Order[] }>("/api/v1/admin/orders", {
+          signal: controller.signal,
+        });
         if (!cancelled) {
-          setLoadError(error.message);
-          onError(error.message);
+          setItems(data.orders);
+          setLoadError("");
+          loaded = true;
         }
-      })
-      .finally(() => {
+      } catch (error) {
+        if (!cancelled && !loaded) {
+          const message = (error as Error).message;
+          setLoadError(message);
+          onError(message);
+        }
+      } finally {
+        pending = false;
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+    const refresh = () => {
+      // Do not replace a composition being edited. The overview follows worker
+      // and carrier updates without requiring a manual page reload.
+      if (document.visibilityState === "visible" && !navigationRef.current.orderId) void read();
+    };
+    void read();
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       cancelled = true;
+      controller.abort();
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
     };
   }, [onError]);
 
@@ -329,13 +361,7 @@ export function Orders({
           {visible.map((order) => {
             const next = { ...navigation, orderId: String(order.id) };
             return (
-              <a
-                className="orders-card"
-                key={order.id}
-                href={ordersUrl(next)}
-                aria-label={order.orderNumber}
-                onClick={(event) => follow(event, next)}
-              >
+              <article className="orders-card" key={order.id}>
                 <div className="orders-card-status">
                   <WorkspaceStatus status={order.status}>
                     {statusLabels[order.status] || order.status}
@@ -351,17 +377,9 @@ export function Orders({
                 <div className="orders-card-products">
                   {order.items.map((item, index) => (
                     <div className="orders-card-product" key={index}>
-                      <img
-                        src={item.image || "/assets/product-photo-pending-graphite-v1.svg"}
-                        alt=""
-                        loading="lazy"
-                        onError={(event) => {
-                          event.currentTarget.onerror = null;
-                          event.currentTarget.src = "/assets/product-photo-pending-graphite-v1.svg";
-                        }}
-                      />
+                      <OrderProductImage item={item} />
                       <div>
-                        <strong>{item.productName}</strong>
+                        <OrderProductLink item={item} />
                         <span>{item.variantLabel || item.sku}</span>
                       </div>
                       <span className="orders-card-quantity">{item.quantity} шт</span>
@@ -379,14 +397,27 @@ export function Orders({
                   </time>
                 </div>
                 <div className="orders-card-footer">
-                  <span className="orders-number-link">{order.orderNumber}</span>
+                  <a
+                    className="orders-number-link"
+                    href={ordersUrl(next)}
+                    onClick={(event) => follow(event, next)}
+                  >
+                    {order.orderNumber}
+                  </a>
                   <strong>{money.format(order.total)}</strong>
                 </div>
                 {order.trackNumber && <small>Трек: {order.trackNumber}</small>}
-                {order.status !== "cancelled" && order.hasPreorder && (
+                {order.workflow?.queue === "new" && order.workflow.blockers.length > 0 && (
+                  <ul className="orders-card-blockers" aria-label="Почему заказ ещё не на сборке">
+                    {order.workflow.blockers.map((blocker, index) => (
+                      <li key={`${blocker.code}:${index}`}>{blocker.message}</li>
+                    ))}
+                  </ul>
+                )}
+                {!order.workflow && order.status !== "cancelled" && order.hasPreorder && (
                   <small className="admin-flag">Нужно проверить наличие</small>
                 )}
-                {order.status !== "cancelled" && order.deliveryFeePending && (
+                {!order.workflow && order.status !== "cancelled" && order.deliveryFeePending && (
                   <small className="admin-flag">
                     {order.repackRequested
                       ? "Запрошена одна коробка"
@@ -398,7 +429,7 @@ export function Orders({
                   order.paymentMethod !== "online" && (
                     <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>
                   )}
-              </a>
+              </article>
             );
           })}
         </div>

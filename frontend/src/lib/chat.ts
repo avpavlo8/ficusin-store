@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { apiJSON } from "./api";
 
+export type ChatReference = {
+  kind: "product" | "order";
+  id: string;
+  label: string;
+  image?: string;
+  number?: string;
+  status?: string;
+  available: boolean;
+};
 export type ChatMessage = {
+  reference?: ChatReference;
   id: number;
   sender: "customer" | "staff";
   text: string;

@@ -3,29 +3,32 @@ package admin
 import (
 	"context"
 	"fmt"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 )
 
 type OrderAdjustmentState struct {
-	ID                 int64           `json:"id"`
-	OrderNumber        string          `json:"orderNumber"`
-	Subtotal           float64         `json:"subtotal"`
-	DiscountType       string          `json:"discountType"`
-	DiscountValue      float64         `json:"discountValue"`
-	DiscountAmount     float64         `json:"discountAmount"`
-	DeliveryFee        float64         `json:"deliveryFee"`
-	DeliveryPayee      string          `json:"deliveryPayee"`
-	DeliveryFeePending bool            `json:"deliveryFeePending"`
-	HasPreorder        bool            `json:"hasPreorder"`
-	Status             string          `json:"status"`
-	DeliveryMethod     string          `json:"deliveryMethod"`
-	CDEKTariffCode     *int            `json:"cdekTariffCode,omitempty"`
-	CDEKCreateState    string          `json:"cdekCreateState"`
-	CDEKCancelState    string          `json:"cdekCancelState"`
-	CDEKStatus         string          `json:"cdekStatus"`
-	CDEKStatusReason   string          `json:"cdekStatusReason"`
-	CDEKLastError      string          `json:"cdekLastError"`
-	Items              []OrderItem     `json:"items"`
-	ShipmentOffers     []ShipmentOffer `json:"shipmentOffers"`
+	Workflow           orderworkflow.State `json:"workflow"`
+	ID                 int64               `json:"id"`
+	OrderNumber        string              `json:"orderNumber"`
+	Subtotal           float64             `json:"subtotal"`
+	DiscountType       string              `json:"discountType"`
+	DiscountValue      float64             `json:"discountValue"`
+	DiscountAmount     float64             `json:"discountAmount"`
+	DeliveryFee        float64             `json:"deliveryFee"`
+	DeliveryPayee      string              `json:"deliveryPayee"`
+	DeliveryFeePending bool                `json:"deliveryFeePending"`
+	HasPreorder        bool                `json:"hasPreorder"`
+	Status             string              `json:"status"`
+	DeliveryMethod     string              `json:"deliveryMethod"`
+	CDEKTariffCode     *int                `json:"cdekTariffCode,omitempty"`
+	CDEKCreateState    string              `json:"cdekCreateState"`
+	CDEKCancelState    string              `json:"cdekCancelState"`
+	CDEKStatus         string              `json:"cdekStatus"`
+	CDEKStatusReason   string              `json:"cdekStatusReason"`
+	CDEKLastError      string              `json:"cdekLastError"`
+	Items              []OrderItem         `json:"items"`
+	ShipmentOffers     []ShipmentOffer     `json:"shipmentOffers"`
 }
 
 func (repository *PostgresRepository) OrderAdjustment(ctx context.Context, id int64) (OrderAdjustmentState, error) {
@@ -41,7 +44,7 @@ func (repository *PostgresRepository) OrderAdjustment(ctx context.Context, id in
 	// Редактор правит SKU, а не карточку товара, поэтому состояние обязано
 	// нести sku и название варианта: иначе менеджер не видит, какой размер
 	// лежит в заказе, а сохранение уходит без идентичности строки.
-	rows, err := repository.pool.Query(ctx, `SELECT oi.id,COALESCE(oi.product_id,0),COALESCE(oi.sku,''),COALESCE(oi.variant_label,''),oi.product_name,oi.unit_price::DOUBLE PRECISION,oi.quantity,COALESCE((oi.variant_snapshot->>'packageLengthCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_length_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageWidthCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_width_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageHeightCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_height_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageWeightGrams')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_weight_grams'), 0)::INTEGER FROM order_items oi WHERE oi.order_id=$1 ORDER BY oi.id`, id)
+	rows, err := repository.pool.Query(ctx, `SELECT oi.id,COALESCE(oi.product_id,0),COALESCE((SELECT product_code::TEXT FROM products WHERE id=oi.product_id AND status='published'),''),COALESCE(oi.sku,''),COALESCE(oi.variant_label,''),oi.product_name,oi.unit_price::DOUBLE PRECISION,oi.quantity,COALESCE((oi.variant_snapshot->>'packageLengthCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_length_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageWidthCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_width_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageHeightCm')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_height_cm'), 0)::INTEGER,COALESCE((oi.variant_snapshot->>'packageWeightGrams')::INTEGER, variant_numeric_attribute(oi.variant_id, 'package_weight_grams'), 0)::INTEGER FROM order_items oi WHERE oi.order_id=$1 ORDER BY oi.id`, id)
 	if err != nil {
 		return state, fmt.Errorf("query order adjustment lines: %w", err)
 	}
@@ -49,7 +52,7 @@ func (repository *PostgresRepository) OrderAdjustment(ctx context.Context, id in
 	state.Items = []OrderItem{}
 	for rows.Next() {
 		var item OrderItem
-		if err := rows.Scan(&item.ID, &item.ProductID, &item.SKU, &item.VariantLabel, &item.ProductName, &item.UnitPrice, &item.Quantity, &item.PackageLengthCM, &item.PackageWidthCM, &item.PackageHeightCM, &item.PackageWeightGrams); err != nil {
+		if err := rows.Scan(&item.ID, &item.ProductID, &item.ProductCode, &item.SKU, &item.VariantLabel, &item.ProductName, &item.UnitPrice, &item.Quantity, &item.PackageLengthCM, &item.PackageWidthCM, &item.PackageHeightCM, &item.PackageWeightGrams); err != nil {
 			return state, err
 		}
 		state.Items = append(state.Items, item)
@@ -57,6 +60,24 @@ func (repository *PostgresRepository) OrderAdjustment(ctx context.Context, id in
 	if err := rows.Err(); err != nil {
 		return state, err
 	}
+	rows.Close()
+	pointers := make([]*OrderItem, len(state.Items))
+	for i := range state.Items {
+		pointers[i] = &state.Items[i]
+	}
+	if err = repository.hydrateOrderItemMedia(ctx, pointers); err != nil {
+		return state, err
+	}
+	if err = orderworkflow.Refresh(ctx, repository.pool, []int64{id}); err != nil {
+		return state, err
+	}
+	flows, readErr := orderworkflow.Read(ctx, repository.pool, []int64{id})
+	if readErr != nil {
+		return state, readErr
+	}
+	state.Workflow = flows[id]
+	state.Status = state.Workflow.Status
+	state.HasPreorder = !state.Workflow.StockConfirmed
 	state.ShipmentOffers, err = repository.ShipmentOffers(ctx, id)
 	return state, err
 }

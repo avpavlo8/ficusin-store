@@ -46,7 +46,7 @@ func TestStage13PartialSalesDoNotCountUnpaidPlants(t *testing.T) {
 	if _, err = pool.Exec(ctx, `INSERT INTO payments(order_id,shipment_offer_id,idempotence_key,amount,status,paid_at) VALUES($1,$2,$3,500,'paid','2041-09-10 12:00+03')`, orderID, offerID, prefix); err != nil {
 		t.Fatal(err)
 	}
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	date := time.Date(2041, 9, 10, 0, 0, 0, 0, time.UTC)
 	for i := 0; i < 2; i++ {
 		if _, err = store.RefreshSiteSales(ctx, date, date); err != nil {

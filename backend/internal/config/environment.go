@@ -39,6 +39,7 @@ func configureEnvironment(cfg Config) (Config, error) {
 	cfg.YandexSuggestKey, cfg.DaDataAPIKey, cfg.MetrikaMPToken = "", "", ""
 	cfg.CDEK, cfg.Payments, cfg.Mail, cfg.Push = CDEK{}, Payments{}, Mail{}, Push{}
 	cfg.Photos.AccessKey, cfg.Photos.SecretKey = "", ""
+	cfg.PrivatePhotos.AccessKey, cfg.PrivatePhotos.SecretKey = "", ""
 	cfg.Marketplaces, cfg.Saby = Marketplaces{}, Saby{}
 	return cfg, nil
 }

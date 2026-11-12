@@ -889,7 +889,7 @@
   color: #33724f !important;
 }
 .stock-out {
-  color: #9a4e3a !important;
+  color: #96601d !important;
 }
 .pdp-commerce-box {
   margin-top: 22px;
@@ -2523,4 +2523,9 @@
 
 .product-page .pdp-summary .related-card .latin {
   color: #71665b;
+}
+
+.product-page .pdp-price-row > .stock-out,
+.product-page .pdp-mobile-purchase .stock-out {
+  font-weight: 600;
 }

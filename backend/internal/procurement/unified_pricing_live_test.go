@@ -22,7 +22,7 @@ func TestUnifiedPreviewAndCalculationUseSameWeightedCostWithoutPublishing(t *tes
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	live, err := NewPostgresStore(pool).loadSettings(ctx)
+	live, err := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage()).loadSettings(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,9 +97,33 @@ func TestUnifiedPreviewAndCalculationUseSameWeightedCostWithoutPublishing(t *tes
 	}
 	boxes, err := loadPricingPackages(ctx, tx, []int64{variant})
 	must(err)
-	if boxes[variant].Liters() != 1 || boxes[variant].Source != "PIM сайта" {
+	if boxes[variant].Liters() != 1 || boxes[variant].Source != "PIM сайта: летняя упаковка" {
 		raw, _ := json.Marshal(boxes)
 		t.Fatalf("ignored PIM: %s", raw)
+	}
+	// Winter pricing must not reuse a summer box or seasonless marketplace evidence.
+	_, err = tx.Exec(ctx, `INSERT INTO settings(key,value) VALUES('cdek.packaging_season','winter') ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`)
+	must(err)
+	boxes, err = loadPricingPackages(ctx, tx, []int64{variant})
+	must(err)
+	if boxes[variant] != nil {
+		t.Fatal("winter pricing fell back to summer dimensions")
+	}
+	for _, code := range []string{"package_winter_length_cm", "package_winter_width_cm", "package_winter_height_cm"} {
+		_, err = tx.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value,source) SELECT $1,id,'20'::jsonb,'import' FROM attribute_definitions WHERE code=$2 ON CONFLICT(variant_id,attribute_id) DO UPDATE SET value=EXCLUDED.value`, variant, code)
+		must(err)
+	}
+	boxes, err = loadPricingPackages(ctx, tx, []int64{variant})
+	must(err)
+	if boxes[variant] == nil || boxes[variant].Liters() != 8 {
+		t.Fatal("winter pricing ignored winter dimensions")
+	}
+	_, err = tx.Exec(ctx, `UPDATE settings SET value='summer' WHERE key='cdek.packaging_season'`)
+	must(err)
+	boxes, err = loadPricingPackages(ctx, tx, []int64{variant})
+	must(err)
+	if boxes[variant] == nil || boxes[variant].Liters() != 1 {
+		t.Fatal("summer pricing did not restore summer dimensions")
 	}
 	_, err = tx.Exec(ctx, `UPDATE procurement_order_lines SET unit_cost_rub=NULL WHERE procurement_order_id=$1 AND unit_cost_rub=400`, order)
 	must(err)

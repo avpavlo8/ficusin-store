@@ -480,3 +480,15 @@ func TestMergeProductsRefusesMissingSources(t *testing.T) {
 		t.Fatalf("status=%d calls=%d", response.Code, len(repository.mergeRequests))
 	}
 }
+
+func TestCreateProductPassesPersistedDraftIdentity(t *testing.T) {
+	t.Parallel()
+	repository := &adminRepositoryStub{}
+	key := "00000000-0000-4000-8000-000000000001"
+	request := adminRequest(http.MethodPost, "/api/v1/admin/products", `{"name":"Retryable draft","creationId":"`+key+`","priceMinor":149000}`)
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+	if response.Code != http.StatusCreated || len(repository.createdProducts) != 1 || repository.createdProducts[0].CreationID != key {
+		t.Fatalf("draft identity lost: status=%d input=%+v", response.Code, repository.createdProducts)
+	}
+}

@@ -49,8 +49,13 @@ func spaFallback(
 	collections sitemapCollections,
 	analytics analyticsSettings,
 	configuredBase string,
+	assetBase ...string,
 ) http.Handler {
 	files := http.FileServer(http.Dir(staticDir))
+	assetFiles := files
+	if len(assetBase) > 0 && assetBase[0] != "" {
+		assetFiles = staticAssetProxy(assetBase[0], files)
+	}
 
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if strings.HasPrefix(request.URL.Path, "/api/") {
@@ -93,10 +98,20 @@ func spaFallback(
 			return
 		}
 
+		// Asset-only deployments need not retain a second copy inside the image.
+		// The local FileServer remains a rollback fallback, never a SPA fallback.
+		if len(assetBase) > 0 && assetBase[0] != "" && staticAssetPath(request.URL.Path) && staticAssetCanUseS3(request.URL.Path) {
+			assetFiles.ServeHTTP(response, request)
+			return
+		}
 		requestedPath := filepath.Join(staticDir, filepath.Clean(request.URL.Path))
 		if info, err := os.Stat(requestedPath); err == nil && !info.IsDir() {
 			setStaticCaching(response, request.URL.Path)
-			files.ServeHTTP(response, request)
+			if staticAssetCanUseS3(request.URL.Path) {
+				assetFiles.ServeHTTP(response, request)
+			} else {
+				files.ServeHTTP(response, request)
+			}
 			return
 		}
 

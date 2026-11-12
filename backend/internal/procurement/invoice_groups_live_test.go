@@ -23,7 +23,7 @@ func TestInvoiceGroupPreservesRowsQuantitiesAndAliasIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	saby := fmt.Sprintf("group-cactus-%d", unique)
 	must := func(err error) {

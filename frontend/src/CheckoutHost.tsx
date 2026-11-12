@@ -201,6 +201,7 @@ export default function CheckoutHost({
 
       {!checkoutPage && (
         <CartDrawer
+          guest={pricingReady && !user && !pricingError}
           open={cartOpen}
           lines={cartLines}
           subtotal={subtotal}

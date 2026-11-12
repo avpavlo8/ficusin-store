@@ -21,7 +21,7 @@ func TestStage04SalesLedgerOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("stage04-saby-%d", unique)
 	offer := fmt.Sprintf("stage04-offer-%d", unique)

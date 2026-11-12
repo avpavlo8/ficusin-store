@@ -794,6 +794,8 @@ type remoteError struct {
 	RateReset  time.Duration
 }
 
+func (err *remoteError) HTTPStatus() int { return err.Status }
+
 func (err *remoteError) RetryDelay() time.Duration { return err.RetryAfter }
 
 // RateLimitCause exposes the method, safe WB rate headers and an opaque request

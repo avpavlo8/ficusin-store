@@ -2,13 +2,26 @@ openapi: 3.1.0
 info:
   title: Ficusin Store API
   version: 1.2.0
-  description: All registered API routes, including optional integrations. Detailed commerce contracts
+  description:
+    All registered API routes, including optional integrations. Detailed commerce contracts
     preserve existing RUB JSON amounts; arithmetic uses integer kopecks. Routes, references and
     security declarations are checked in CI. Some backoffice responses intentionally leave their
     payload schema unspecified; source handlers are linked by x-source.
 servers:
   - url: /api/v1
 paths:
+  /staging/media/{key}:
+    get:
+      operationId: get_staging_media_key
+      x-source: backend/internal/httpapi/staging_media.go#stagingMediaHandler
+      tags: [Administration]
+      security: []
+      description: Explicit staging-only public image test provider. Requires the common staging environment gate. Accepts encoded products/ or collections/ keys only; never reads private mock objects. Production returns 404.
+      parameters:
+        - { in: path, name: key, required: true, schema: { type: string } }
+      responses:
+        2XX: { description: "Staging test image bytes, no-store." }
+        default: { $ref: "#/components/responses/ValidationError" }
   /account/avatar:
     delete:
       operationId: delete_account_avatar
@@ -36,7 +49,10 @@ paths:
         - Session: []
     put:
       operationId: put_account_avatar
+      x-file-storage: New files use verified private S3 objects; existing bytea and legacy review object keys remain readable. No database fallback for new uploads.
       responses:
+        "503":
+          $ref: "#/components/responses/PrivateFileStorageUnavailable"
         2XX:
           description: Successful response. Payload and business rules are implemented by the source handler.
         default:
@@ -72,6 +88,29 @@ paths:
   /account/orders:
     get:
       operationId: accountOrders
+      description: Without view, returns the latest 50 orders as before. With view, filters the complete owned history and returns full-history counts and pagination metadata.
+      parameters:
+        - in: query
+          name: view
+          schema:
+            type: string
+            enum: [work, completed, cancelled]
+          description: Work includes every status except completed and cancelled, including legacy active statuses.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 50
+          description: Page size when view is supplied.
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of matching orders to skip when view is supplied.
       responses:
         "200":
           description: Current customer's latest orders
@@ -86,6 +125,25 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/order.Summary"
+                  counts:
+                    description: Complete counts for the authenticated customer's history; present when view is supplied.
+                    type: object
+                    required: [work, completed, cancelled]
+                    properties:
+                      work:
+                        type: integer
+                        minimum: 0
+                      completed:
+                        type: integer
+                        minimum: 0
+                      cancelled:
+                        type: integer
+                        minimum: 0
+                  hasMore:
+                    type: boolean
+                    description: More matching orders follow this page; present when view is supplied.
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/ValidationError"
       x-source: backend/internal/httpapi/account.go#accountOrdersHandler
@@ -96,7 +154,8 @@ paths:
   /account/orders/{orderNumber}:
     get:
       operationId: accountOrderDetail
-      description: An order belonging to the authenticated customer. metrikaServer is true only if the
+      description:
+        An order belonging to the authenticated customer. metrikaServer is true only if the
         server owns paid conversion delivery for this order. Browser converters must then skip it
         even if the current integration is disabled.
       parameters:
@@ -220,7 +279,8 @@ paths:
         - Session: []
       x-permissions:
         - analytics.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: analytics.read."
       parameters:
         - in: query
@@ -234,7 +294,8 @@ paths:
   /admin/analytics/metrika:
     get:
       operationId: metrikaDeliveryStatus
-      description: Requires analytics.read. Counts by durable delivery status; credentials and customer
+      description:
+        Requires analytics.read. Counts by durable delivery status; credentials and customer
         identifiers are never exposed.
       responses:
         "200":
@@ -281,7 +342,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
     post:
       operationId: post_admin_attributes
@@ -297,7 +359,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       requestBody:
         required: true
@@ -320,7 +383,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -348,7 +412,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -377,7 +442,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
   /admin/avito/{itemID}/pause:
     put:
@@ -394,7 +460,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
       parameters:
         - in: path
@@ -428,7 +495,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
       parameters:
         - in: path
@@ -462,7 +530,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
   /admin/avito/products:
     get:
@@ -479,7 +548,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
       parameters:
         - in: query
@@ -501,7 +571,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
       requestBody:
         required: true
@@ -527,7 +598,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
   /admin/catalog-filters:
     get:
@@ -544,7 +616,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
     post:
       operationId: post_admin_catalog_filters
@@ -560,7 +633,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       requestBody:
         required: true
@@ -583,7 +657,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -611,7 +686,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -640,7 +716,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
   /admin/categories:
     get:
@@ -657,7 +734,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
     post:
       operationId: post_admin_categories
@@ -673,7 +751,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       requestBody:
         required: true
@@ -696,7 +775,8 @@ paths:
         - Session: []
       x-permissions:
         - catalog.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete."
       parameters:
         - in: path
@@ -718,7 +798,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       parameters:
         - in: path
@@ -747,7 +828,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -770,7 +852,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -803,7 +886,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -837,7 +921,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -848,7 +933,8 @@ paths:
   /admin/chat:
     get:
       operationId: supportInbox
-      description: Requires chat.manage. Filter by status, search q, paginate with offset; see
+      description:
+        Requires chat.manage. Filter by status, search q, paginate with offset; see
         docs/site-chat.md.
       responses:
         "200":
@@ -900,7 +986,8 @@ paths:
         - Session: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
       parameters:
         - in: path
@@ -942,7 +1029,8 @@ paths:
         - Session: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
       parameters:
         - in: path
@@ -973,7 +1061,8 @@ paths:
   /admin/chat/{id}/attachments/{messageID}:
     get:
       operationId: supportChatAttachment
-      description: Requires chat.manage. Same private content handling, Range support and security headers
+      description:
+        Requires chat.manage. Same private content handling, Range support and security headers
         as the customer attachment route; the message must belong to this thread.
       parameters:
         - in: path
@@ -1033,7 +1122,8 @@ paths:
   /admin/chat/{id}/messages:
     post:
       operationId: sendSupportChatMessage
-      description: Staff reply with text and/or one attachment. Requires chat.manage. Same attachment and
+      description:
+        Staff reply with text and/or one attachment. Requires chat.manage. Same attachment and
         JSON size limits as customer messages; no consent checkbox is required.
       parameters:
         - in: path
@@ -1094,7 +1184,8 @@ paths:
   /admin/chat/{id}/photos/{messageID}:
     get:
       operationId: supportChatPhoto
-      description: Backward-compatible private JPEG/PNG route requiring chat.manage. Same response
+      description:
+        Backward-compatible private JPEG/PNG route requiring chat.manage. Same response
         security headers as attachments; non-image attachments return 404.
       parameters:
         - in: path
@@ -1158,7 +1249,8 @@ paths:
         - Session: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
       parameters:
         - in: path
@@ -1260,7 +1352,8 @@ paths:
         - Session: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
   /admin/chat/notifications/state:
     post:
@@ -1297,7 +1390,8 @@ paths:
         - Session: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
   /admin/chat/unread:
     get:
@@ -1314,7 +1408,8 @@ paths:
         - Session: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
       parameters:
         - in: query
@@ -1337,6 +1432,96 @@ paths:
           name: status
           schema:
             type: string
+  /admin/products/{id}/media/copy:
+    post:
+      operationId: copy_products_media
+      x-source: backend/internal/httpapi/admin_variant_media.go#copyProductMediaHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.edit]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaId]
+              properties:
+                mediaId: { type: integer, minimum: 1 }
+      responses:
+        "201":
+          description: Copied media metadata within the same product
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/variants/{id}/media/copy:
+    post:
+      operationId: copy_variants_media
+      x-source: backend/internal/httpapi/admin_variant_media.go#copyVariantMediaHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.edit]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaId]
+              properties:
+                mediaId: { type: integer, minimum: 1 }
+      responses:
+        "201":
+          description: Copied media metadata within the same product
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/products/{id}/collections/{collectionId}:
+    put:
+      summary: Set one product membership in a manual collection
+      operationId: setProductCollectionMembership
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.edit]
+      x-source: backend/internal/httpapi/admin_product_collection.go#productCollectionHandler
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+        - name: collectionId
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [included]
+              properties:
+                included: { type: boolean }
+      responses:
+        "200":
+          description: Membership saved
+        "400":
+          description: Invalid request or automatic collection
+        "403":
+          description: Permission denied
+        "404":
+          description: Product or collection not found
   /admin/collection-definitions:
     get:
       operationId: get_admin_collection_definitions
@@ -1353,7 +1538,8 @@ paths:
       x-permissions:
         - products.edit
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit, products.read."
     post:
       operationId: post_admin_collection_definitions
@@ -1370,7 +1556,8 @@ paths:
       x-permissions:
         - products.edit
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit, products.read."
       requestBody:
         required: true
@@ -1394,7 +1581,8 @@ paths:
       x-permissions:
         - catalog.delete
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete, products.edit."
       parameters:
         - in: path
@@ -1423,7 +1611,8 @@ paths:
       x-permissions:
         - catalog.delete
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete, products.edit."
       parameters:
         - in: path
@@ -1452,7 +1641,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       parameters:
         - in: path
@@ -1475,7 +1665,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       requestBody:
         required: true
@@ -1498,7 +1689,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       requestBody:
         required: true
@@ -1526,7 +1718,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
   /admin/collections:
     get:
@@ -1543,7 +1736,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
   /admin/collections/{id}:
     patch:
@@ -1560,7 +1754,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       parameters:
         - in: path
@@ -1594,7 +1789,8 @@ paths:
         - Session: []
       x-permissions:
         - customers.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: customers.read."
       parameters:
         - in: query
@@ -1630,7 +1826,8 @@ paths:
         - customers.edit
         - discounts.edit
         - roles.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: customers.edit, discounts.edit, roles.edit."
       parameters:
         - in: path
@@ -1677,7 +1874,8 @@ paths:
         - Session: []
       x-permissions:
         - dashboard.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: dashboard.read."
   /admin/orders:
     get:
@@ -1694,8 +1892,7 @@ paths:
         - Session: []
       x-permissions:
         - orders.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: orders.read."
+      description: Requires orders.read. Items include productCode for published storefront links, image and imageFallback. Adjustment and mutation responses use the same cover projection so returning to the list preserves photos. Deleted products retain snapshot text. workflow exposes the shared server queue, status, readiness, stock/packaging confirmations, concrete blockers and allowed manual statuses. Paid orders advance to assembling only after fresh Saby stock and required packing/delivery checks. Cash pickup may be started manually before payment; payment is confirmed at handover. CDEK shipment/delivery milestones remain carrier-owned.
   /admin/orders/{id}:
     patch:
       operationId: patch_admin_orders_id
@@ -1712,7 +1909,8 @@ paths:
       x-permissions:
         - orders.edit
         - payments.refund
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit, payments.refund."
       parameters:
         - in: path
@@ -1754,7 +1952,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.read."
       parameters:
         - in: path
@@ -1777,7 +1976,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -1806,7 +2006,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.read."
       parameters:
         - in: path
@@ -1829,7 +2030,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -1858,7 +2060,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -1887,7 +2090,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -1938,7 +2142,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -1985,7 +2190,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -2008,7 +2214,8 @@ paths:
         - Session: []
       x-permissions:
         - payments.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: payments.manage."
       parameters:
         - in: path
@@ -2045,7 +2252,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -2073,7 +2281,8 @@ paths:
         - Session: []
       x-permissions:
         - payments.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: payments.manage."
       parameters:
         - in: path
@@ -2098,7 +2307,8 @@ paths:
   /admin/orders/{id}/refund:
     post:
       operationId: refundOrderAmount
-      description: Requires payments.refund (owner). Persists all split attempts before sending. A pending
+      description:
+        Requires payments.refund (owner). Persists all split attempts before sending. A pending
         refund is not a successful refund; read the adjustment balance for history and fiscal tasks.
       parameters:
         - in: path
@@ -2129,7 +2339,8 @@ paths:
                 selections:
                   type: array
                   maxItems: 1000
-                  description: Exact original payment line indexes and quantities. The server validates prices, remaining
+                  description:
+                    Exact original payment line indexes and quantities. The server validates prices, remaining
                     units and the total in kopecks.
                   items:
                     $ref: "#/components/schemas/payment.RefundSelection"
@@ -2159,7 +2370,8 @@ paths:
   /admin/orders/{id}/refunds/{refundID}/resolve:
     post:
       operationId: resolveUnknownRefund
-      description: Requires payments.refund. Fetches the supplied refund ID from YooKassa and verifies its
+      description:
+        Requires payments.refund. Fetches the supplied refund ID from YooKassa and verifies its
         payment and amount. Never creates another provider refund.
       parameters:
         - in: path
@@ -2221,7 +2433,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -2250,7 +2463,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -2279,7 +2493,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       parameters:
         - in: path
@@ -2302,7 +2517,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       parameters:
         - in: path
@@ -2325,7 +2541,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -2348,7 +2565,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
   /admin/procurement/aliases/{id}:
     patch:
@@ -2365,7 +2583,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2394,7 +2613,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -2417,7 +2637,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2440,7 +2661,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2463,7 +2685,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2474,7 +2697,10 @@ paths:
   /admin/procurement/documents:
     post:
       operationId: post_admin_procurement_documents
+      x-file-storage: New files use verified private S3 objects; existing bytea and legacy review object keys remain readable. No database fallback for new uploads.
       responses:
+        "503":
+          $ref: "#/components/responses/PrivateFileStorageUnavailable"
         2XX:
           description: Successful response. Payload and business rules are implemented by the source handler.
         default:
@@ -2486,7 +2712,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
   /admin/procurement/documents/{id}/source.pdf:
     get:
@@ -2503,7 +2730,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
       parameters:
         - in: path
@@ -2526,7 +2754,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -2549,7 +2778,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
       parameters:
         - in: path
@@ -2572,7 +2802,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
       parameters:
         - in: path
@@ -2595,7 +2826,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
       parameters:
         - in: query
@@ -2617,7 +2849,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
       requestBody:
         required: true
@@ -2647,7 +2880,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2676,7 +2910,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -2699,7 +2934,8 @@ paths:
         - Session: []
       x-permissions:
         - catalog.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete."
       parameters:
         - in: path
@@ -2721,7 +2957,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
       parameters:
         - in: path
@@ -2744,7 +2981,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2780,7 +3018,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2809,7 +3048,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2832,7 +3072,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2897,7 +3138,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2926,7 +3168,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
     post:
       operationId: post_admin_procurement_plan_drafts
@@ -2942,7 +3185,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
   /admin/procurement/plan-drafts/{id}:
     delete:
@@ -2959,7 +3203,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -2981,7 +3226,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -3003,7 +3249,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -3026,7 +3273,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3049,7 +3297,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
     get:
       operationId: get_admin_procurement_plans_draft
@@ -3065,7 +3314,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
     put:
       operationId: put_admin_procurement_plans_draft
@@ -3081,7 +3331,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3106,7 +3357,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3129,7 +3381,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
       requestBody:
         required: true
@@ -3152,7 +3405,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
       parameters:
         - in: query
@@ -3189,7 +3443,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3212,7 +3467,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3240,7 +3496,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3263,7 +3520,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -3292,7 +3550,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3322,7 +3581,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3345,7 +3605,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
       parameters:
         - in: query
@@ -3367,7 +3628,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.read."
       parameters:
         - in: query
@@ -3393,7 +3655,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
       requestBody:
         required: true
@@ -3416,7 +3679,8 @@ paths:
         - Session: []
       x-permissions:
         - integrations.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: integrations.edit."
       requestBody:
         required: true
@@ -3439,7 +3703,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       requestBody:
         required: true
@@ -3462,7 +3727,8 @@ paths:
         - Session: []
       x-permissions:
         - catalog.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete."
       parameters:
         - in: path
@@ -3484,7 +3750,8 @@ paths:
         - Session: []
       x-permissions:
         - procurement.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
       parameters:
         - in: path
@@ -3513,7 +3780,8 @@ paths:
         - Session: []
       x-permissions:
         - catalog.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete."
       requestBody:
         required: true
@@ -3535,7 +3803,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
     post:
       operationId: post_admin_products
@@ -3551,7 +3820,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       requestBody:
         required: true
@@ -3559,6 +3829,159 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.ProductCreate"
+  /admin/products/{id}/editor-plan:
+    get:
+      operationId: get_admin_products_id_editor_plan
+      x-source: backend/internal/httpapi/admin_editor_plan.go#editorPlanHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.read]
+      description: Shared marketplace content, channel-specific categories and typed attributes, verified external IDs and resumable publication status. publicationMode is disabled, mock or live. links maps variant IDs to established channel identifiers. Each channel accepts its own optional article and replaceLink flag. Legacy shared article remains a fallback. An explicit changed channel article resolves an existing seller card or creates a replacement, preserving the previous remote card. Occupied links are rejected before writes. Creation checkboxes never disable established links; updates preserve remote fields and queue the latest pending snapshot. Mock dictionaries and IDs are isolated from live integration data.
+      responses:
+        2XX:
+          description: Editor settings or references returned successfully.
+        default:
+          $ref: "#/components/responses/ValidationError"
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+    put:
+      operationId: put_admin_products_id_editor_plan
+      x-source: backend/internal/httpapi/admin_editor_plan.go#editorPlanHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.manage]
+      description: Shared marketplace content, channel-specific categories and typed attributes, verified external IDs and resumable publication status. publicationMode is disabled, mock or live. links maps variant IDs to established channel identifiers. Each channel accepts its own optional article and replaceLink flag. Legacy shared article remains a fallback. An explicit changed channel article resolves an existing seller card or creates a replacement, preserving the previous remote card. Occupied links are rejected before writes. Creation checkboxes never disable established links; updates preserve remote fields and queue the latest pending snapshot. Mock dictionaries and IDs are isolated from live integration data.
+      responses:
+        2XX:
+          description: Editor settings or references returned successfully.
+        default:
+          $ref: "#/components/responses/ValidationError"
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [config]
+              properties:
+                submit: { type: boolean, default: false }
+                config:
+                  type: object
+                  required: [variants]
+                  properties:
+                    variants:
+                      type: array
+                      maxItems: 100
+                      items:
+                        type: object
+                        required: [variantId, saby, marketplace]
+                        properties:
+                          variantId: { type: integer }
+                          saby: { type: object, additionalProperties: true }
+                          marketplace:
+                            { type: object, additionalProperties: true }
+                          ozonPrice: { type: string }
+                          wbPrice: { type: string }
+  /admin/products/{id}/marketplace-cards:
+    get:
+      operationId: get_admin_products_id_marketplace_cards
+      x-source: backend/internal/httpapi/admin_marketplace_cards.go#editorMarketplaceCardsHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [products.read]
+      description: Read existing WB/Ozon cards using established variant links. Returns per-channel cards and errors, resolved categories and typed attribute values. Does not create, update or bind a remote product. The editor fills missing fields while preserving local draft changes. Marketplace contentFromMarketplace=true preserves explicit imported content, including an empty existing-card description. Optional channel and article parameters look up an exact seller article without changing links; found=false means a new card can be prepared.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - {
+            in: query,
+            name: variantId,
+            required: true,
+            schema: { type: integer, minimum: 1 },
+          }
+        - { in: query, name: channel, schema: { type: string, enum: [wb, ozon] } }
+        - { in: query, name: article, schema: { type: string, maxLength: 500 } }
+      responses:
+        2XX:
+          {
+            description: Existing marketplace cards and per-channel load errors.,
+          }
+        default: { $ref: "#/components/responses/ValidationError" }
+  /admin/products/{id}/editor-publications/{channel}/retry:
+    post:
+      operationId: post_admin_products_id_editor_publications_channel_retry
+      x-source: backend/internal/httpapi/admin_editor_plan.go#editorPublicationRetryHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [products.manage]
+      description: Resume a failed publication from its durable receipt. An uncertain create is reconciled by article and barcode and is never blindly resubmitted. Mock IDs remain isolated from working integrations.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer } }
+        - {
+            in: path,
+            name: channel,
+            required: true,
+            schema: { type: string, enum: [wb, ozon] },
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variantId]
+              properties:
+                variantId: { type: integer, minimum: 1 }
+      responses:
+        2XX:
+          {
+            description: Publication queued for a safe retry or reconciliation.,
+          }
+        default: { $ref: "#/components/responses/ValidationError" }
+  /admin/catalog-editor/references:
+    get:
+      operationId: get_admin_catalog_editor_references
+      x-source: backend/internal/httpapi/admin_editor_plan.go#editorReferencesHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.read]
+      description: Shared catalog channel content and channel-specific categories, links and test-publication status. Dictionary requests use read-only vendor APIs and a 24-hour cache.
+      parameters:
+        - {
+            in: query,
+            name: channel,
+            required: true,
+            schema: { type: string, enum: [wb, ozon, saby] },
+          }
+        - {
+            in: query,
+            name: kind,
+            schema:
+              {
+                type: string,
+                enum: [categories, attributes, values, brand, tnved, existing],
+              },
+          }
+        - { in: query, name: category, schema: { type: integer } }
+        - { in: query, name: typeId, schema: { type: integer } }
+        - { in: query, name: attribute, schema: { type: integer } }
+        - { in: query, name: q, schema: { type: string } }
+        - { in: query, name: cursor, schema: { type: string } }
+      responses:
+        2XX:
+          description: Editor settings or references returned successfully.
+        default:
+          $ref: "#/components/responses/ValidationError"
   /admin/products/{id}:
     patch:
       operationId: patch_admin_products_id
@@ -3574,8 +3997,31 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.edit."
+      description: >-
+        Requires products.edit. The owner can submit variants with {id, remove: true}
+        without other variant fields. Within the same transaction, unlinked variants are
+        deleted; variants with stock, reservations, orders, Saby links or historical
+        references are archived. Removing the last active variant makes a published
+        product a draft. A removal can be cancelled locally before Save.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              properties:
+                variants:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                    properties:
+                      id:
+                        type: integer
+                      remove:
+                        type: boolean
+                        description: Owner-only deletion or archival after checking current links.
       parameters:
         - in: path
           name: id
@@ -3597,7 +4043,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -3619,7 +4066,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       parameters:
         - in: path
@@ -3642,7 +4090,8 @@ paths:
         - Session: []
       x-permissions:
         - catalog.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete."
       parameters:
         - in: path
@@ -3670,7 +4119,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       parameters:
         - in: path
@@ -3698,7 +4148,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -3722,7 +4173,8 @@ paths:
       x-permissions:
         - products.manage
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage, products.read."
       parameters:
         - in: path
@@ -3745,7 +4197,8 @@ paths:
       x-permissions:
         - products.manage
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage, products.read."
       parameters:
         - in: path
@@ -3774,7 +4227,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       requestBody:
         required: true
@@ -3797,7 +4251,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
   /admin/products/merge:
     post:
@@ -3814,7 +4269,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       requestBody:
         required: true
@@ -3837,7 +4293,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       requestBody:
         required: true
@@ -3860,7 +4317,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       requestBody:
         required: true
@@ -3883,7 +4341,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       requestBody:
         required: true
@@ -3906,7 +4365,8 @@ paths:
         - Session: []
       x-permissions:
         - products.sync
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.sync."
   /admin/return-photos/{id}:
     get:
@@ -3923,7 +4383,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.read."
       parameters:
         - in: path
@@ -3946,7 +4407,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.delete."
       requestBody:
         required: true
@@ -3977,7 +4439,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.read."
       parameters:
         - in: query
@@ -4006,7 +4469,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
       requestBody:
         required: true
@@ -4029,7 +4493,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.read."
       parameters:
         - in: path
@@ -4051,7 +4516,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
       parameters:
         - in: path
@@ -4068,7 +4534,10 @@ paths:
   /admin/returns/{id}/photos:
     post:
       operationId: post_admin_returns_id_photos
+      x-file-storage: New files use verified private S3 objects; existing bytea and legacy review object keys remain readable. No database fallback for new uploads.
       responses:
+        "503":
+          $ref: "#/components/responses/PrivateFileStorageUnavailable"
         2XX:
           description: Successful response. Payload and business rules are implemented by the source handler.
         default:
@@ -4080,7 +4549,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
       parameters:
         - in: path
@@ -4103,7 +4573,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
       parameters:
         - in: path
@@ -4131,7 +4602,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
       parameters:
         - in: path
@@ -4159,7 +4631,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.receipt.create
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.receipt.create."
       parameters:
         - in: path
@@ -4182,7 +4655,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.delete."
   /admin/returns/documents:
     get:
@@ -4199,7 +4673,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.read."
   /admin/returns/intake-draft:
     get:
@@ -4216,7 +4691,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
   /admin/returns/intakes/{intakeID}:
     get:
@@ -4233,7 +4709,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
       parameters:
         - in: path
@@ -4255,7 +4732,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
       parameters:
         - in: path
@@ -4283,7 +4761,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit."
       parameters:
         - in: path
@@ -4313,7 +4792,8 @@ paths:
       x-permissions:
         - returns.edit
         - returns.receipt.create
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit, returns.receipt.create."
       parameters:
         - in: path
@@ -4346,7 +4826,8 @@ paths:
       x-permissions:
         - returns.edit
         - returns.receipt.create
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.edit, returns.receipt.create."
       parameters:
         - in: path
@@ -4378,7 +4859,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.read."
       requestBody:
         required: true
@@ -4408,7 +4890,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.read."
       parameters:
         - in: query
@@ -4430,7 +4913,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.receipt.create
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.receipt.create."
       requestBody:
         required: true
@@ -4460,7 +4944,8 @@ paths:
         - Session: []
       x-permissions:
         - returns.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: returns.delete."
       requestBody:
         required: true
@@ -4492,7 +4977,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -4515,7 +5001,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
   /admin/reviews/{id}:
     patch:
@@ -4532,7 +5019,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       parameters:
         - in: path
@@ -4564,7 +5052,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: query
@@ -4584,7 +5073,8 @@ paths:
         - Administration
       security:
         - Session: []
-      description: Owner only. Read or change non-secret runtime settings; credentials remain in
+      description:
+        Owner only. Read or change non-secret runtime settings; credentials remain in
         environment variables. cdek.packaging_season accepts summer or winter (default summer).
         Its definition has kind select and options with value/title. The selection applies to
         new quotes; saved order packing stays unchanged. Missing seasonal dimensions require a manual quote.
@@ -4600,7 +5090,8 @@ paths:
         - Administration
       security:
         - Session: []
-      description: Owner only. Read or change non-secret runtime settings; credentials remain in
+      description:
+        Owner only. Read or change non-secret runtime settings; credentials remain in
         environment variables. cdek.packaging_season accepts summer or winter (default summer).
         Its definition has kind select and options with value/title. The selection applies to
         new quotes; saved order packing stays unchanged. Missing seasonal dimensions require a manual quote.
@@ -4630,7 +5121,8 @@ paths:
         - Session: []
       x-permissions:
         - orders.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: orders.edit."
       parameters:
         - in: path
@@ -4653,7 +5145,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -4675,7 +5168,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       parameters:
         - in: path
@@ -4698,7 +5192,8 @@ paths:
         - Session: []
       x-permissions:
         - catalog.delete
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete."
       parameters:
         - in: path
@@ -4726,7 +5221,8 @@ paths:
         - Session: []
       x-permissions:
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.edit."
       parameters:
         - in: path
@@ -4755,7 +5251,8 @@ paths:
       x-permissions:
         - catalog.delete
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete, products.edit."
       parameters:
         - in: path
@@ -4784,7 +5281,8 @@ paths:
       x-permissions:
         - catalog.delete
         - products.edit
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: catalog.delete, products.edit."
       parameters:
         - in: path
@@ -4813,7 +5311,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       parameters:
         - in: path
@@ -4836,7 +5335,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       parameters:
         - in: path
@@ -4859,7 +5359,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       parameters:
         - in: path
@@ -4891,7 +5392,8 @@ paths:
         - Session: []
       x-permissions:
         - products.read
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.read."
       parameters:
         - in: path
@@ -4912,13 +5414,13 @@ paths:
         - in: path
           name: variantId
           required: true
-          schema: {type: integer}
+          schema: { type: integer }
       responses:
         "200":
           description: Saved site values and durable export state; no external requests or writes.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/catalogsync.View"}
+              schema: { $ref: "#/components/schemas/catalogsync.View" }
         default:
           $ref: "#/components/responses/ValidationError"
     post:
@@ -4934,7 +5436,7 @@ paths:
         - in: path
           name: variantId
           required: true
-          schema: {type: integer}
+          schema: { type: integer }
       requestBody:
         required: true
         content:
@@ -4942,14 +5444,14 @@ paths:
             schema:
               type: object
               properties:
-                fingerprint: {type: string}
-                checkOnly: {type: boolean, default: false}
+                fingerprint: { type: string }
+                checkOnly: { type: boolean, default: false }
       responses:
         2XX:
           description: Queued or already confirmed; check the returned state. A queued request is not a confirmed Saby write.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/catalogsync.View"}
+              schema: { $ref: "#/components/schemas/catalogsync.View" }
         default:
           $ref: "#/components/responses/ValidationError"
   /admin/variants/{variantId}/saby-link:
@@ -4967,7 +5469,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       parameters:
         - in: path
@@ -4999,7 +5502,8 @@ paths:
         - Session: []
       x-permissions:
         - products.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: products.manage."
       parameters:
         - in: path
@@ -5119,12 +5623,14 @@ paths:
       tags:
         - Identity
       security: []
-      description: Creates a five-minute browser-bound challenge and sets ficusin_call_challenge
+      description:
+        Creates a five-minute browser-bound challenge and sets ficusin_call_challenge
         (HttpOnly, SameSite=Strict, Secure in production). No challenge secret in JSON.
   /auth/verify-code:
     post:
       operationId: verifyCall
-      description: Requires the ficusin_call_challenge cookie issued to the same browser by request-code.
+      description:
+        Requires the ficusin_call_challenge cookie issued to the same browser by request-code.
         Pending polling retains it; successful verification consumes the check and clears the
         cookie.
       requestBody:
@@ -5262,10 +5768,39 @@ paths:
       tags:
         - Storefront
       security: []
+  /chat/references:
+    get:
+      operationId: searchMyChatReferences
+      security: []
+      x-source: backend/internal/httpapi/chat.go#serve
+      tags: [Chat]
+      description: Read-only picker. Products are published catalogue entries. Orders are limited to the authenticated customer's own orders; guests receive loginRequired. Returns at most 30 entries without addresses or contact details.
+      parameters:
+        - { in: query, name: kind, required: true, schema: { type: string, enum: [product, order] } }
+        - { in: query, name: q, schema: { type: string, maxLength: 200 } }
+      responses:
+        2XX: { description: Picker entries and optional loginRequired. }
+        default: { $ref: "#/components/responses/ValidationError" }
+  /admin/chat/{id}/references:
+    get:
+      operationId: searchSupportChatReferences
+      x-source: backend/internal/httpapi/chat.go#serve
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [chat.manage]
+      description: Staff picker for an existing conversation. Product entries are public. Order entries additionally require orders.read and are restricted to the conversation customer's own orders, preventing disclosure to a different customer.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: kind, required: true, schema: { type: string, enum: [product, order] } }
+        - { in: query, name: q, schema: { type: string, maxLength: 200 } }
+      responses:
+        2XX: { description: Picker entries without customer contact details. }
+        default: { $ref: "#/components/responses/ValidationError" }
   /chat:
     get:
       operationId: readMyChat
-      description: Private guest/account human support thread. HttpOnly capability cookie for guests;
+      description:
+        Private guest/account human support thread. HttpOnly capability cookie for guests;
         customer history is bound on login. consentRequired is true only for a guest without a
         thread. Responses are no-store.
       parameters:
@@ -5276,7 +5811,8 @@ paths:
             minimum: 0
         - in: query
           name: after
-          description: Fetch messages newer than this ID, up to 50 per page. Takes precedence over before when
+          description:
+            Fetch messages newer than this ID, up to 50 per page. Takes precedence over before when
             positive.
           schema:
             type: integer
@@ -5311,7 +5847,8 @@ paths:
   /chat/attachments/{messageID}:
     get:
       operationId: myChatAttachment
-      description: Private attachment requiring access to the current guest/account thread. Validated
+      description:
+        Private attachment requiring access to the current guest/account thread. Validated
         JPEG/PNG and content-sniffed MP4/WebM are inline; all other files are forced
         application/octet-stream downloads. Responses use no-store, nosniff and CSP default-src
         'none'; sandbox. Byte ranges are served by http.ServeContent.
@@ -5363,7 +5900,8 @@ paths:
   /chat/messages:
     post:
       operationId: sendMyChatMessage
-      description: Send text and/or one private attachment. A guest's first message requires consent;
+      description:
+        Send text and/or one private attachment. A guest's first message requires consent;
         signed-in customers rely on registration consent without a new support_consents record.
         clientId deduplicates retries. JSON body is limited to 29 MiB. Customer limits per IP per
         application instance are 30 message attempts and 10 attachment attempts per minute.
@@ -5416,7 +5954,8 @@ paths:
   /chat/notifications:
     post:
       operationId: subscribeChatPush
-      description: Opt-in browser subscription for the current customer or guest. Requires configured
+      description:
+        Opt-in browser subscription for the current customer or guest. Requires configured
         VAPID. Text previews are delivered through the durable chat queue.
       requestBody:
         required: true
@@ -5486,7 +6025,8 @@ paths:
       security: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
   /chat/notifications/state:
     post:
@@ -5529,12 +6069,14 @@ paths:
       security: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
   /chat/photos/{messageID}:
     get:
       operationId: myChatPhoto
-      description: Backward-compatible private JPEG/PNG route. Same access and response security headers
+      description:
+        Backward-compatible private JPEG/PNG route. Same access and response security headers
         as the attachment route; non-image attachments return 404.
       parameters:
         - in: path
@@ -5597,7 +6139,8 @@ paths:
       security: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
       parameters:
         - in: query
@@ -5632,7 +6175,8 @@ paths:
       security: []
       x-permissions:
         - chat.manage
-      description: "Requires an authenticated administrator. Permission checks in the handler depend on
+      description:
+        "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: chat.manage."
       parameters:
         - in: query
@@ -5793,12 +6337,14 @@ paths:
       tags:
         - Storefront
       security: []
-      description: Public status only. Internal operations diagnostics are available to authorized staff
+      description:
+        Public status only. Internal operations diagnostics are available to authorized staff
         at /admin/operations.
   /integrations/saby/catalog:
     post:
       operationId: synchronizeSabyCatalog
-      description: Accepts the Saby catalogue/stock snapshot. Ficusin owns retail prices and content;
+      description:
+        Accepts the Saby catalogue/stock snapshot. Ficusin owns retail prices and content;
         configured Saby field ownership is respected. Requires signed GitHub Actions OIDC with
         immutable repository_id and repository_owner_id, main branch and authorized workflow. Does
         not create stock reservations.
@@ -5849,7 +6395,8 @@ paths:
         - Integrations
       security:
         - SabyOIDC: []
-      description: Accepts Saby sales facts with signed GitHub Actions OIDC and replay controls. Does not
+      description:
+        Accepts Saby sales facts with signed GitHub Actions OIDC and replay controls. Does not
         create retail orders, reserves or accounting documents.
   /operations/health:
     get:
@@ -5871,12 +6418,14 @@ paths:
       tags:
         - Storefront
       security: []
-      description: Public status only. Internal operations diagnostics are available to authorized staff
+      description:
+        Public status only. Internal operations diagnostics are available to authorized staff
         at /admin/operations.
   /orders:
     post:
       operationId: createOrder
-      description: Requires two independent explicit confirmations, consent and offerAccepted. A combined
+      description:
+        Requires two independent explicit confirmations, consent and offerAccepted. A combined
         legacy consent flag does not accept the offer.
       requestBody:
         required: true
@@ -5892,7 +6441,8 @@ paths:
                     metrikaClientId:
                       type: string
                       pattern: ^[0-9]{1,20}$
-                      description: Actual Yandex visit client ID; omitted when analytics are disabled or no counter cookie
+                      description:
+                        Actual Yandex visit client ID; omitted when analytics are disabled or no counter cookie
                         exists. Server ownership is determined by the backend.
                 cdek:
                   properties:
@@ -5954,7 +6504,8 @@ paths:
                 - offerAccepted
       responses:
         "201":
-          description: Order saved. New guests also receive guestPaymentToken for payment only; it must not be
+          description:
+            Order saved. New guests also receive guestPaymentToken for payment only; it must not be
             stored in localStorage or analytics.
           content:
             application/json:
@@ -5998,7 +6549,8 @@ paths:
   /payments/orders/{orderNumber}:
     post:
       operationId: startOwnedOrderPayment
-      description: Requires the order owner's session or the guest token issued at checkout. Guest tokens
+      description:
+        Requires the order owner's session or the guest token issued at checkout. Guest tokens
         stop working after phone-based account linking. Rate limited by IP and, after authorization,
         by order.
       parameters:
@@ -6128,7 +6680,10 @@ paths:
   /products/{slug}/reviews:
     post:
       operationId: post_products_slug_reviews
+      x-file-storage: New files use verified private S3 objects; existing bytea and legacy review object keys remain readable. No database fallback for new uploads.
       responses:
+        "503":
+          $ref: "#/components/responses/PrivateFileStorageUnavailable"
         2XX:
           description: Successful response. Payload and business rules are implemented by the source handler.
         default:
@@ -6144,7 +6699,8 @@ paths:
           required: true
           schema:
             type: string
-      description: Authenticated customer only. Requires a completed purchase of this product; rejects
+      description:
+        Authenticated customer only. Requires a completed purchase of this product; rejects
         duplicate reviews. Media and content are validated by the server.
   /push/key:
     get:
@@ -6217,7 +6773,8 @@ paths:
       tags:
         - Storefront
       security: []
-      description: Public status only. Internal operations diagnostics are available to authorized staff
+      description:
+        Public status only. Internal operations diagnostics are available to authorized staff
         at /admin/operations.
   /review-photos/{id}:
     get:
@@ -6240,7 +6797,8 @@ paths:
   /admin/orders/{id}/payments/{paymentID}/settlement-receipt:
     post:
       operationId: settlePaymentReceipt
-      description: Owner confirms actual delivery and creation of a prepayment settlement receipt in YooKassa.
+      description:
+        Owner confirms actual delivery and creation of a prepayment settlement receipt in YooKassa.
         Exact composition, actor and key are persisted before POST. Known receipt IDs use GET only.
         Workers never create receipts.
       parameters:
@@ -6286,6 +6844,15 @@ paths:
         - payments.refund
 components:
   responses:
+    PrivateFileStorageUnavailable:
+      description: Private object storage is not configured or available. No new file reference is committed; text-only operations remain available.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string }
     ValidationError:
       description: Request cannot be completed
       content:
@@ -6293,11 +6860,32 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    ChatReferenceInput:
+      type: object
+      required: [kind, id]
+      additionalProperties: false
+      description: Only identity is accepted. The server resolves the title and checks product visibility/order ownership inside the send transaction.
+      properties:
+        kind: { type: string, enum: [product, order] }
+        id: { type: string, pattern: "^[1-9][0-9]*$", maxLength: 19, description: Published product_code for products, internal order ID for orders. }
+    ChatReference:
+      type: object
+      required: [kind, id, label, available]
+      description: Server-created snapshot. available is rechecked when messages are read; removed/archived products render as an unavailable card. No contact, address or payment-token fields are included.
+      properties:
+        kind: { type: string, enum: [product, order] }
+        id: { type: string }
+        label: { type: string }
+        image: { type: string }
+        number: { type: string }
+        status: { type: string }
+        available: { type: boolean }
     ChatMessageInput:
       type: object
       required:
         - clientId
-      description: Text must be nonempty after trimming unless an attachment or legacy image is supplied.
+      description:
+        Text must be nonempty after trimming unless an attachment, legacy image or product/order reference is supplied. Binary uploads require configured private S3 storage; attachment URLs retain authorization and old database files remain readable.
         attachment and image are mutually exclusive. Context URLs must start with /product/, /care/
         or /account/orders/ and may not contain CR, LF or backslash.
       properties:
@@ -6308,6 +6896,8 @@ components:
         text:
           type: string
           maxLength: 4000
+        reference:
+          $ref: "#/components/schemas/ChatReferenceInput"
         attachment:
           type: object
           required:
@@ -6322,14 +6912,16 @@ components:
             data:
               type: string
               maxLength: 29360128
-              description: Standard base64 without a data URL prefix. Decoded size must be 1 byte to 20 MiB.
+              description:
+                Standard base64 without a data URL prefix. Decoded size must be 1 byte to 20 MiB.
                 Content-sniffed JPEG/PNG must decode successfully and be at most 2 MiB and 16
                 million pixels. Content-sniffed MP4/WebM are inline video; all other bytes are
                 forced downloads.
         image:
           type: string
           deprecated: true
-          description: Legacy JPEG/PNG data URL; decoded size at most 2 MiB and 16 million pixels. Cannot be
+          description:
+            Legacy JPEG/PNG data URL; decoded size at most 2 MiB and 16 million pixels. Cannot be
             combined with attachment.
         consent:
           type: boolean
@@ -6357,6 +6949,8 @@ components:
           enum:
             - customer
             - staff
+        reference:
+          $ref: "#/components/schemas/ChatReference"
         text:
           type: string
         contextUrl:
@@ -6412,7 +7006,8 @@ components:
           type: boolean
         consentRequired:
           type: boolean
-          description: True only when a guest without an existing thread must consent before sending. False
+          description:
+            True only when a guest without an existing thread must consent before sending. False
             for signed-in customers and staff.
     Error:
       type: object
@@ -6454,7 +7049,8 @@ components:
           type: integer
         heightCm:
           type: number
-          description: Confirmed positive height of the default variant displayed in the catalog; omitted when
+          description:
+            Confirmed positive height of the default variant displayed in the catalog; omitted when
             unknown.
         filterAttributes:
           type: array
@@ -6500,7 +7096,8 @@ components:
         - badge
         - filterable
         - showInCharacteristics
-      description: value is the stable technical value. displayValue comes from attribute_options; unknown
+      description:
+        value is the stable technical value. displayValue comes from attribute_options; unknown
         codes fall back to the unchanged value.
       properties:
         code:
@@ -6656,7 +7253,8 @@ components:
         lifetimeSpendMinor:
           type: integer
           format: int64
-          description: Сумма выполненных заказов в копейках. Кабинет считает по ней, сколько осталось до
+          description:
+            Сумма выполненных заказов в копейках. Кабинет считает по ней, сколько осталось до
             следующей ступени скидки.
     OrderSummary:
       type: object
@@ -7008,6 +7606,25 @@ components:
         targetProductId:
           type: integer
       type: object
+    OrderWorkflow:
+      type: object
+      required: [status, queue, readyForAssembly, stockConfirmed, packagingConfirmed, blockers, manualStatuses]
+      properties:
+        status: { type: string }
+        queue: { type: string, enum: [new, in_progress, in_delivery, completed, cancelled] }
+        readyForAssembly: { type: boolean }
+        stockConfirmed: { type: boolean }
+        packagingConfirmed: { type: boolean }
+        blockers:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code: { type: string }
+              message: { type: string }
+              view: { type: string, enum: [items, delivery, payment] }
+        manualStatuses: { type: array, items: { type: string } }
     admin.OrderDiscount:
       properties:
         type:
@@ -7064,41 +7681,60 @@ components:
       type: object
     catalogsync.View:
       type: object
-      required: [configured, state, message, snapshot, fingerprint, dirty, validation]
+      required:
+        [configured, state, message, snapshot, fingerprint, dirty, validation]
       properties:
-        configured: {type: boolean}
+        configured: { type: boolean }
         state:
           type: string
           enum: [idle, queued, checking, verifying, unknown, synced, error]
-        message: {type: string}
-        fingerprint: {type: string}
-        dirty: {type: boolean}
-        validation: {type: string}
-        verifiedAt: {type: string, format: date-time}
+        message: { type: string }
+        fingerprint: { type: string }
+        dirty: { type: boolean }
+        validation: { type: string }
+        verifiedAt: { type: string, format: date-time }
         snapshot:
           type: object
-          required: [variantId, productId, sku, name, potCm, heightCm, priceMinor, sabyId, code, article, lookupName]
+          required:
+            [
+              variantId,
+              productId,
+              sku,
+              name,
+              potCm,
+              heightCm,
+              priceMinor,
+              sabyId,
+              code,
+              article,
+              lookupName,
+            ]
           properties:
-            variantId: {type: integer}
-            productId: {type: integer}
-            sku: {type: string}
-            name: {type: string}
-            potCm: {type: number}
-            heightCm: {type: number}
-            priceMinor: {type: integer, description: Price in integer kopecks.}
-            sabyId: {type: string}
-            code: {type: string}
-            article: {type: string}
-            lookupName: {type: string}
+            variantId: { type: integer }
+            productId: { type: integer }
+            sku: { type: string }
+            name: { type: string }
+            potCm: { type: number }
+            heightCm: { type: number }
+            priceMinor:
+              { type: integer, description: Price in integer kopecks. }
+            sabyId: { type: string }
+            code: { type: string }
+            article: { type: string }
+            lookupName: { type: string }
     admin.ProductCreate:
       properties:
+        creationId:
+          type: string
+          pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          description: Optional persisted draft UUID, scoped to the authenticated administrator. Replays return the same product without creating another product, SKU, price or photo. The receipt commits atomically with creation; deleting the product leaves a tombstone. Omit for legacy non-idempotent clients.
         variantAttributes:
           type: object
-          additionalProperties: false
-          description: Initial site-owned measurements for the first SKU; decimal values are preserved.
+          additionalProperties: true
+          description: Initial category-scoped attributes for the first SKU, validated with the same schema as editing. Includes summer/winter packaging and weight; unknown attributes and invalid types are rejected. Decimal values are preserved.
           properties:
-            pot_diameter_cm: {type: number, exclusiveMinimum: 0, maximum: 500}
-            height_cm: {type: number, exclusiveMinimum: 0, maximum: 3000}
+            pot_diameter_cm: { type: number, exclusiveMinimum: 0, maximum: 500 }
+            height_cm: { type: number, exclusiveMinimum: 0, maximum: 3000 }
         attributes:
           additionalProperties: {}
           type: object
@@ -8267,7 +8903,8 @@ components:
       type: number
       multipleOf: 0.01
       maximum: 1000000000000
-      description: RUB with at most two decimal places. JSON remains in rubles; arithmetic uses integer
+      description:
+        RUB with at most two decimal places. JSON remains in rubles; arithmetic uses integer
         kopecks. Fractional per-unit procurement costs and rates are separate analytical values.
     Health:
       type: object

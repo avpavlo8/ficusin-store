@@ -94,9 +94,10 @@ export function CatalogProductCard({
           <strong
             aria-label={preorder ? `Ориентировочная цена: ${money(product.price)}` : undefined}
           >
+            {preorder && "≈ "}
             {money(product.price)}
           </strong>
-          {preorder && <em>Под заказ · цена ориентировочная</em>}
+          {preorder && <em>Под заказ</em>}
         </span>
         <span
           className="storefront-rating"

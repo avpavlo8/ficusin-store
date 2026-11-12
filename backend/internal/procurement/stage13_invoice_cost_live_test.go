@@ -36,7 +36,7 @@ func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 			t.Errorf("restore pricing mode: %v", restoreErr)
 		}
 	}()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("stage13-invoice-cost-%d", unique)
 	var productID, variantID, actorID, supplierID, orderID int64

@@ -4,13 +4,19 @@ import { StoreHeader, type HeaderMenuItem, useStoreUser } from "./StoreHeader";
 import { ProductGallery } from "./product/ProductGallery";
 import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { PlantAbout, PlantCareGuide, PlantQuestions } from "./product/PlantCareGuide";
-import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
 import { orderStorefrontCategories } from "./lib/category-order";
 import { track } from "./lib/analytics";
 import { useFavorites } from "./lib/favorites";
+
+const ProductReviews = lazy(() =>
+  import("./product/ProductReviews").then((module) => ({ default: module.ProductReviews })),
+);
+const ReviewComposer = lazy(() =>
+  import("./product/ProductReviews").then((module) => ({ default: module.ReviewComposer })),
+);
 
 const plantOnlyAttributeCodes = new Set([
   "plant_type",
@@ -482,12 +488,14 @@ export default function ProductPage({ slug }: { slug: string }) {
           inCart={Boolean(variant && cart[variant.sku])}
           relatedPlants={relatedPlants}
           reviewComposer={
-            <ReviewComposer
-              slug={slug}
-              rating={product.rating}
-              count={product.reviewsCount}
-              onOpenReviews={openReviews}
-            />
+            <Suspense fallback={<p role="status">Загружаем отзывы…</p>}>
+              <ReviewComposer
+                slug={slug}
+                rating={product.rating}
+                count={product.reviewsCount}
+                onOpenReviews={openReviews}
+              />
+            </Suspense>
           }
           onVariant={(id) => {
             const selected = product.variants.find((item) => item.id === id);
@@ -629,7 +637,9 @@ export default function ProductPage({ slug }: { slug: string }) {
             id="pdp-panel-reviews"
             aria-labelledby="pdp-tab-reviews"
           >
-            <ProductReviews reviews={product.reviews} />
+            <Suspense fallback={<p role="status">Загружаем отзывы…</p>}>
+              <ProductReviews reviews={product.reviews} />
+            </Suspense>
           </div>
           {isPlant && hasPlantFAQ && (
             <div
@@ -650,8 +660,17 @@ export default function ProductPage({ slug }: { slug: string }) {
             <span className="pdp-mobile-name" title={product.name}>
               {product.name}
             </span>
-            <strong>{money(variant.price)}</strong>
-            <small>{variant.stock > 0 ? "В наличии" : "Под заказ · цена ориентировочная"}</small>
+            <strong
+              aria-label={
+                variant.stock <= 0 ? `Ориентировочная цена: ${money(variant.price)}` : undefined
+              }
+            >
+              {variant.stock <= 0 && "≈ "}
+              {money(variant.price)}
+            </strong>
+            <small className={variant.stock <= 0 ? "stock-out" : undefined}>
+              {variant.stock > 0 ? "В наличии" : "Под заказ"}
+            </small>
           </div>
           {cart[variant.sku] ? (
             <a href="/cart">В корзину →</a>

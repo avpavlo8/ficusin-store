@@ -1,3 +1,4 @@
+import { GuestLoyaltyNotice } from "./GuestLoyaltyNotice";
 import type { Dispatch, FormEventHandler, SetStateAction } from "react";
 import { useState } from "react";
 import { OrderLamp } from "./OrderLamp";
@@ -19,6 +20,7 @@ export type CartLine = {
 };
 
 type CartDrawerProps = {
+  guest?: boolean;
   open: boolean;
   lines: CartLine[];
   subtotal: number;
@@ -162,6 +164,7 @@ export function CartDrawer({
   error = "",
   missingCount = 0,
   onRetry,
+  guest = false,
 }: CartDrawerProps) {
   const hasPreorder = lines.some((item) => item.stock !== undefined && item.stock < item.quantity);
   const cartQuantity = lines.reduce((sum, item) => sum + item.quantity, 0);
@@ -280,6 +283,7 @@ export function CartDrawer({
                 </p>
               </div>
             )}
+            {guest && !!lines.length && <GuestLoyaltyNotice />}
             {lineCards}
             {status === "ready" && !lines.length && !missingCount && (
               <div className="empty-cart">
@@ -841,6 +845,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           noValidate
         >
           <div className="checkout-form-main">
+            {!user && pricingReady && !pricingError && <GuestLoyaltyNotice />}
             <fieldset className="checkout-form-section checkout-contact-section">
               <legend>Контактные данные</legend>
               <p className="checkout-step-description">

@@ -47,7 +47,7 @@ func TestStage13ResolveAliasAllowsSabyItemWithoutStoreVariantOnLiveDatabase(t *t
 		t.Fatal(err)
 	}
 
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	if _, err := store.ResolveAlias(ctx, Actor{Role: "system"}, aliasID, AliasResolution{
 		MatchStatus: "confirmed", SabyID: sabyID,
 	}); err != nil {
@@ -159,7 +159,7 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 	if _, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET channel_costs='{"site":{"commissionRate":0,"acquiringRate":0,"packagingRub":0,"logisticsRub":0,"lossRub":0},"wb":{"commissionRate":0,"acquiringRate":0,"packagingRub":0,"logisticsRub":0,"lossRub":0}}'::JSONB WHERE id=$1`, lineID); err != nil {
 		t.Fatal(err)
 	}
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	detail, err := store.CalculateOrder(ctx, Actor{CustomerID: actorID, Role: "owner"}, orderID, CalculationInput{})
 	if err != nil {
 		t.Fatal(err)

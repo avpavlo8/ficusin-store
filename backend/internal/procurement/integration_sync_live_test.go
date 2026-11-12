@@ -21,7 +21,7 @@ func TestIntegrationCoordinatorLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	reset := func(channel, resource string) {
 		_, err := pool.Exec(ctx, `UPDATE procurement_integration_sync_state SET status='pending',priority='background',requested_generation=0,active_generation=0,completed_generation=0,lease_owner='',lease_until=NULL,last_attempt_at=NULL,last_success_at=NULL,next_attempt_at=CURRENT_TIMESTAMP,next_deep_at=CURRENT_TIMESTAMP+INTERVAL '1 day',cooldown_until=NULL,last_error='' WHERE channel=$1 AND resource=$2`, channel, resource)
 		if err != nil {
@@ -102,7 +102,7 @@ func TestIntegrationCoordinatorLive(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE procurement_integration_sync_state SET status='ok',next_attempt_at=CURRENT_TIMESTAMP+INTERVAL '1 hour',next_deep_at=CURRENT_TIMESTAMP+INTERVAL '1 day' WHERE channel='ozon' AND resource='catalog'`); err != nil {
 		t.Fatal(err)
 	}
-	restarted := NewPostgresStore(pool)
+	restarted := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	if claim, err := restarted.ClaimIntegrationSync(ctx, "ozon", "catalog", "after-restart", time.Minute); err != nil || claim != nil {
 		t.Fatalf("restart relaunched lane: %+v %v", claim, err)
 	}

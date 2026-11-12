@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"strings"
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
+	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -188,8 +189,11 @@ func (service *Service) Reconcile(ctx context.Context, orderID int64) (Balance, 
 		return Balance{}, err
 	}
 	balance := balanceFromState(state)
-	if _, err := service.pool.Exec(ctx, `UPDATE orders SET payment_status=$2,status=CASE WHEN $2='paid' AND status IN ('new','confirmed') AND delivery_fee_pending=0 AND has_preorder=0 THEN 'assembling' ELSE status END WHERE id=$1`, orderID, balance.PaymentStatus); err != nil {
+	if _, err := service.pool.Exec(ctx, `UPDATE orders SET payment_status=$2 WHERE id=$1`, orderID, balance.PaymentStatus); err != nil {
 		return Balance{}, fmt.Errorf("reconcile order payment status: %w", err)
+	}
+	if err = orderworkflow.Refresh(ctx, service.pool, []int64{orderID}); err != nil {
+		return Balance{}, err
 	}
 	balance.Issues, err = service.paymentIssues(ctx, orderID)
 	if err != nil {

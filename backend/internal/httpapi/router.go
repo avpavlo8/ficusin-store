@@ -28,39 +28,43 @@ type readinessChecker interface {
 }
 
 type Dependencies struct {
-	Environment      string
-	Catalog          catalogRepository
-	Auth             authService
-	Orders           orderRepository
-	OrderCreator     orderCreator
-	CDEK             cdekService
-	Admin            adminRepository
-	Saby             sabySyncService
-	CatalogExport    catalogExportService
-	Push             pushService
-	Chat             *chat.Store
-	Cart             cartStore
-	Packages         packageRepository
-	Collections      collectionRepository
-	Payments         paymentService
-	Settings         settingsService
-	Procurement      procurementService
-	Reviews          reviewStore
-	Refunds          refundService
-	ProductPhotos    productPhotoStorage
-	CookieSecure     bool
-	StaticDir        string
-	YandexSuggestKey string
-	DaDataAPIKey     string
-	Analytics        analyticsStore
-	SiteURL          string
-	Readiness        readinessChecker
-	Operations       operationsReader
-	Avito            avitoService
+	StagingMedia        stagingPublicMedia
+	StaticAssetsBaseURL string
+	EditorReferences    editorReferenceSource
+	Environment         string
+	Catalog             catalogRepository
+	Auth                authService
+	Orders              orderRepository
+	OrderCreator        orderCreator
+	CDEK                cdekService
+	Admin               adminRepository
+	Saby                sabySyncService
+	CatalogExport       catalogExportService
+	Push                pushService
+	Chat                *chat.Store
+	Cart                cartStore
+	Packages            packageRepository
+	Collections         collectionRepository
+	Payments            paymentService
+	Settings            settingsService
+	Procurement         procurementService
+	Reviews             reviewStore
+	Refunds             refundService
+	ProductPhotos       productPhotoStorage
+	CookieSecure        bool
+	StaticDir           string
+	YandexSuggestKey    string
+	DaDataAPIKey        string
+	Analytics           analyticsStore
+	SiteURL             string
+	Readiness           readinessChecker
+	Operations          operationsReader
+	Avito               avitoService
 }
 
 func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/staging/media/{key}", stagingMediaHandler(dependencies.Environment, dependencies.StagingMedia))
 	paymentStartLimit := newRateLimiter(30, time.Minute)
 	publicCache := newPublicJSONCache()
 	publicCatalog := dependencies.Catalog
@@ -87,6 +91,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		dependencies.Admin,
 		dependencies.Refunds,
 	)
+	mux.HandleFunc("GET /api/v1/admin/products/{id}/editor-plan", editorPlanHandler(adminAPI))
+	mux.HandleFunc("GET /api/v1/admin/products/{id}/marketplace-cards", editorMarketplaceCardsHandler(adminAPI, dependencies.EditorReferences))
+	mux.HandleFunc("PUT /api/v1/admin/products/{id}/editor-plan", editorPlanHandler(adminAPI))
+	mux.HandleFunc("POST /api/v1/admin/products/{id}/editor-publications/{channel}/retry", editorPublicationRetryHandler(adminAPI))
+	mux.HandleFunc("GET /api/v1/admin/catalog-editor/references", editorReferencesHandler(adminAPI, dependencies.EditorReferences))
+
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
 	mux.HandleFunc("GET /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, false))
 	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, true))
@@ -112,6 +122,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		chatLimiter := newRateLimiter(30, time.Minute)
 		mux.HandleFunc("GET /api/v1/chat", chatAPI.serve)
 		mux.HandleFunc("GET /api/v1/chat/unread", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/chat/references", chatAPI.serve)
 		mux.HandleFunc("POST /api/v1/chat/messages", chatLimiter.guard("Слишком много сообщений. Подождите минуту", chatAPI.serve))
 		mux.HandleFunc("POST /api/v1/chat/read", chatAPI.serve)
 		mux.HandleFunc("GET /api/v1/chat/photos/{messageID}", chatAPI.serve)
@@ -119,6 +130,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /api/v1/admin/chat", chatAPI.serve)
 		mux.HandleFunc("GET /api/v1/admin/chat/unread", chatAPI.serve)
 		mux.HandleFunc("GET /api/v1/admin/chat/{id}", chatAPI.serve)
+		mux.HandleFunc("GET /api/v1/admin/chat/{id}/references", chatAPI.serve)
 		mux.HandleFunc("PATCH /api/v1/admin/chat/{id}", chatAPI.serve)
 		mux.HandleFunc("POST /api/v1/admin/chat/{id}/messages", chatAPI.serve)
 		mux.HandleFunc("POST /api/v1/admin/chat/{id}/read", chatAPI.serve)
@@ -368,7 +380,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 			logger, mux, dependencies.StaticDir,
 			sitemapHandler(logger, publicCatalog, dependencies.Collections, dependencies.SiteURL), productFeedHandler(logger, feedRepository, dependencies.SiteURL), publicCatalog,
 			publicCatalog, dependencies.Collections,
-			analytics, dependencies.SiteURL,
+			analytics, dependencies.SiteURL, dependencies.StaticAssetsBaseURL,
 		)
 	}
 	handler = guardAdminPages(adminAPI, handler)

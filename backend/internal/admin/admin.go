@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
+	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 )
 
 const (
@@ -135,16 +136,17 @@ type CustomerUpdate struct {
 }
 
 type Order struct {
-	ID             int64  `json:"id"`
-	OrderNumber    string `json:"orderNumber"`
-	CustomerID     *int64 `json:"customerId"`
-	CustomerName   string `json:"customerName"`
-	Phone          string `json:"phone"`
-	Email          string `json:"email"`
-	Address        string `json:"address"`
-	Comment        string `json:"comment"`
-	DeliveryMethod string `json:"deliveryMethod"`
-	DeliveryPayee  string `json:"deliveryPayee"`
+	Workflow       orderworkflow.State `json:"workflow"`
+	ID             int64               `json:"id"`
+	OrderNumber    string              `json:"orderNumber"`
+	CustomerID     *int64              `json:"customerId"`
+	CustomerName   string              `json:"customerName"`
+	Phone          string              `json:"phone"`
+	Email          string              `json:"email"`
+	Address        string              `json:"address"`
+	Comment        string              `json:"comment"`
+	DeliveryMethod string              `json:"deliveryMethod"`
+	DeliveryPayee  string              `json:"deliveryPayee"`
 	// DeliveryFeePending marks an order whose delivery price the manager
 	// still has to work out — no box dimensions, CDEK unavailable, or the
 	// customer asked whether the plants fit into one box.
@@ -161,6 +163,8 @@ type Order struct {
 }
 
 type OrderItem struct {
+	ImageFallback      string  `json:"imageFallback,omitempty"`
+	ProductCode        string  `json:"productCode"`
 	ID                 int64   `json:"id"`
 	ProductID          int64   `json:"productId"`
 	SKU                string  `json:"sku"`
@@ -287,6 +291,7 @@ type ProductUpdate struct {
 
 // ProductCreate — карточка, заведённая в магазине с нуля.
 type ProductCreate struct {
+	CreationID         string         `json:"creationId,omitempty"`
 	VariantAttributes  map[string]any `json:"variantAttributes"`
 	Name               string         `json:"name"`
 	LatinName          string         `json:"latinName"`

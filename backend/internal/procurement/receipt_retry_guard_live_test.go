@@ -52,7 +52,7 @@ func TestFailedSabyReceiptCannotBeRetriedWithoutReconciliation(t *testing.T) {
 		VALUES($1,$2,'saby_receipt',$3,0,1,'failed','351')`, receiptBatchID, lineID, fmt.Sprint(orderID)); err != nil {
 		t.Fatal(err)
 	}
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	_, err = store.RetryBatch(ctx, Actor{CustomerID: actorID, Role: "owner"}, receiptBatchID, map[string]bool{"saby_receipt": true})
 	var userFacing *UserFacingError
 	if !errors.As(err, &userFacing) {

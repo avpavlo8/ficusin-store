@@ -36,7 +36,7 @@ export function AdminReturns({
   const [items, setItems] = useState<MarketplaceReturn[]>([]),
     [documents, setDocuments] = useState<ReturnIntake[]>([]),
     [archive, setArchive] = useState<Archive>({ items: [], documents: [] });
-  const [view, setView] = useState<View>("plants"),
+  const [view, setView] = useState<View>("documents"),
     [status, setStatus] = useState<Status>("all"),
     [selectedID, setSelectedID] = useState<number>();
   const [query, setQuery] = useState(""),

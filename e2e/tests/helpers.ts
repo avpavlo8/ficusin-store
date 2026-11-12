@@ -139,7 +139,9 @@ function cartFromRequest(raw: string | null): Record<string, number> | null {
   }
 }
 
-export async function mockApi(page: Page, session: Session = guest) {
+export async function mockApi(page: Page, session: Session = guest, options: { showInstallOffer?: boolean } = {}) {
+  // Unrelated flows represent a returning visitor; install-first-visit tests opt in.
+  if (!options.showInstallOffer) await page.addInitScript(() => localStorage.setItem("ficusin:install-offer-seen:v1", "1"));
   const context = page.context();
   await context.route("**/api/v1/**", (route) => route.fulfill({ json: {} }));
 

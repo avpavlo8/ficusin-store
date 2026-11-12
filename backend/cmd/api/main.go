@@ -19,9 +19,11 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogsync"
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
@@ -29,6 +31,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/avpavlo8/ficusin-store/backend/internal/operations"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
+	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/photos"
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
@@ -148,7 +151,33 @@ func main() {
 
 	catalogRepository := catalog.NewPostgresRepository(pool)
 	callChecker := integration.NewSMSRUClient(cfg.SMS.APIKey)
-	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker)
+	var stagingPublicFiles *fileassets.StagingPublicStorage
+	var privateStorage fileassets.Storage = photos.NewPrivateStorage(cfg.PrivatePhotos.Endpoint, cfg.PrivatePhotos.Region, cfg.PrivatePhotos.Bucket, cfg.PrivatePhotos.AccessKey, cfg.PrivatePhotos.SecretKey)
+	if cfg.LocalPrivateFilesDir != "" {
+		localFiles, localErr := fileassets.NewLocalPrivateStorage(cfg.LocalPrivateFilesDir)
+		if localErr != nil {
+			logger.Error("local private file emulator unavailable", "error", localErr)
+			os.Exit(1)
+		}
+		defer localFiles.Close()
+		privateStorage = localFiles
+		logger.Warn("development private-file emulator enabled; files stay local and are not uploaded to S3")
+	}
+	if cfg.FileStorageMode == "mock" {
+		stageFiles, fileErr := fileassets.NewStagingPrivateStorage(ctx, pool)
+		if fileErr != nil {
+			logger.Error("staging private file mock unavailable", "error", fileErr)
+			os.Exit(1)
+		}
+		privateStorage = stageFiles
+		stagingPublicFiles, fileErr = fileassets.NewStagingPublicStorage(ctx, pool, cfg.SiteURL)
+		if fileErr != nil {
+			logger.Error("staging public image mock unavailable", "error", fileErr)
+			os.Exit(1)
+		}
+		logger.Warn("explicit staging private-file mock enabled; test objects stay in the isolated staging database, external S3 is not contacted")
+	}
+	authService := auth.NewService(pool, cfg.Auth.SessionDays, callChecker).WithFileStorage(privateStorage)
 	orderRepository := order.NewPostgresRepository(pool)
 	cdekClient := integration.NewCDEKClient(cfg.CDEK.ClientID, cfg.CDEK.ClientSecret)
 	telegramClient, err := newTelegramNotifications(cfg)
@@ -177,7 +206,7 @@ func main() {
 	}
 	shippingWorker := order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger)
 	orderService.WithShipmentWake(shippingWorker.Wake)
-	adminRepository := admin.NewPostgresRepository(pool).WithNotifier(pushService).WithShipmentQuotes(cdekClient).WithPriceChannelsConfigured(map[string]bool{
+	adminRepository := admin.NewPostgresRepository(pool).WithFileStorage(privateStorage).WithNotifier(pushService).WithShipmentQuotes(cdekClient).WithPriceChannelsConfigured(map[string]bool{
 		"wb":    cfg.Marketplaces.WBToken != "",
 		"ozon":  cfg.Marketplaces.OzonClientID != "" && cfg.Marketplaces.OzonAPIKey != "",
 		"avito": cfg.Marketplaces.AvitoClientID != "" && cfg.Marketplaces.AvitoClientSecret != "",
@@ -195,7 +224,7 @@ func main() {
 	)
 	adminRepository.WithOrderPacking(shopSettings, cfg.Mail.Host != "" && cfg.Mail.From != "", paymentService.Configured(), shippingWorker.Wake)
 	sabyService := saby.NewService(pool, saby.NewOIDCVerifier())
-	procurementStore := procurement.NewPostgresStore(pool)
+	procurementStore := procurement.NewPostgresStore(pool).WithFileStorage(privateStorage)
 	marketplaceExecutor := integration.NewMarketplaceExecutor(
 		cfg.Marketplaces.WBToken, cfg.Marketplaces.OzonClientID, cfg.Marketplaces.OzonAPIKey,
 	).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
@@ -214,18 +243,46 @@ func main() {
 	}
 	catalogExportService := catalogsync.New(catalogsync.NewStore(pool), catalogProvider, logger)
 	go catalogExportService.Run(ctx)
+	go catalogeditor.RunPreview(ctx, pool, cfg.Environment, logger)
+	adminRepository.WithEditorPublicationMode(cfg.CatalogPublicationMode)
+	editorReferences := integration.NewMarketplaceExecutor(cfg.CatalogMarketplaces.WBToken, cfg.CatalogMarketplaces.OzonClientID, cfg.CatalogMarketplaces.OzonAPIKey).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
+	var editorPublisher *integration.CatalogPublisher
+	if cfg.CatalogPublicationMode == "mock" {
+		var err error
+		editorPublisher, err = integration.NewPersistentMockCatalog(ctx, pool)
+		if err != nil {
+			logger.Error("local marketplace emulator unavailable", "error", err)
+			os.Exit(1)
+		}
+		editorReferences = editorPublisher.Executor
+	}
+	if cfg.CatalogPublicationMode == "live" {
+		editorPublisher = &integration.CatalogPublisher{Executor: editorReferences}
+	}
+	if editorPublisher != nil {
+		go catalogeditor.RunPublisher(ctx, pool, editorPublisher, cfg.CatalogPublicationMode, logger)
+	}
+
 	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient, avitoService).
 		WithSabyCatalogSync(sabyService)
 	salesExecutor := integration.NewSalesExecutor(marketplaceExecutor, sabyProcurementClient)
 	procurementService := procurement.NewServiceWithExecutor(procurementStore, procurementExecutor)
 	photoStorage := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
+	var productPhotoStorage interface {
+		Configured() bool
+		Put(context.Context, string, []byte, string) error
+		PublicURL(string) string
+	} = photoStorage
+	if stagingPublicFiles != nil {
+		productPhotoStorage = stagingPublicFiles
+	}
 	analyticsStore := commerceanalytics.NewStore(pool)
 	metrikaWorker := analyticsStore.WithMetrika(cfg.MetrikaMPToken, cfg.SiteURL, func() string { return shopSettings.All()[settings.MetrikaID] })
 	go metrikaWorker.Run(ctx, logger)
 	operationsProbe := operations.NewProbe(pool).WithAlerts(telegramClient)
 	go avitoService.Run(ctx)
-	chatStore := chat.NewStore(pool)
+	chatStore := chat.NewStore(pool).WithFileStorage(privateStorage)
 	if pushService != nil {
 		for range 4 {
 			go chatStore.RunPush(ctx, pushService, logger)
@@ -233,35 +290,38 @@ func main() {
 	}
 
 	liveHandler.Swap(httpapi.NewRouter(logger, httpapi.Dependencies{
-		Environment:      cfg.Environment,
-		Catalog:          catalogRepository,
-		Auth:             authService,
-		Orders:           orderRepository,
-		OrderCreator:     orderService,
-		CDEK:             cdekClient,
-		Admin:            adminRepository,
-		Saby:             sabyService,
-		CatalogExport:    catalogExportService,
-		Push:             pushService,
-		Chat:             chatStore,
-		Cart:             cart.NewStore(pool),
-		Packages:         catalogRepository,
-		Collections:      catalogRepository,
-		Payments:         paymentService,
-		Settings:         shopSettings,
-		Procurement:      procurementService,
-		Reviews:          reviews.NewStore(pool, photoStorage),
-		Refunds:          paymentService,
-		ProductPhotos:    photoStorage,
-		CookieSecure:     cfg.Auth.CookieSecure,
-		StaticDir:        cfg.HTTP.StaticDir,
-		YandexSuggestKey: cfg.YandexSuggestKey,
-		DaDataAPIKey:     cfg.DaDataAPIKey,
-		Analytics:        analyticsStore,
-		SiteURL:          cfg.SiteURL,
-		Readiness:        pool,
-		Operations:       operationsProbe,
-		Avito:            avitoService,
+		StagingMedia:        stagingPublicFiles,
+		StaticAssetsBaseURL: cfg.StaticAssetsBaseURL,
+		Environment:         cfg.Environment,
+		EditorReferences:    editorReferences,
+		Catalog:             catalogRepository,
+		Auth:                authService,
+		Orders:              orderRepository,
+		OrderCreator:        orderService,
+		CDEK:                cdekClient,
+		Admin:               adminRepository,
+		Saby:                sabyService,
+		CatalogExport:       catalogExportService,
+		Push:                pushService,
+		Chat:                chatStore,
+		Cart:                cart.NewStore(pool),
+		Packages:            catalogRepository,
+		Collections:         catalogRepository,
+		Payments:            paymentService,
+		Settings:            shopSettings,
+		Procurement:         procurementService,
+		Reviews:             reviews.NewStore(pool, privateStorage).WithLegacyMediaStorage(photoStorage),
+		Refunds:             paymentService,
+		ProductPhotos:       productPhotoStorage,
+		CookieSecure:        cfg.Auth.CookieSecure,
+		StaticDir:           cfg.HTTP.StaticDir,
+		YandexSuggestKey:    cfg.YandexSuggestKey,
+		DaDataAPIKey:        cfg.DaDataAPIKey,
+		Analytics:           analyticsStore,
+		SiteURL:             cfg.SiteURL,
+		Readiness:           pool,
+		Operations:          operationsProbe,
+		Avito:               avitoService,
 	}))
 	go func() {
 		ticker := time.NewTicker(time.Minute)
@@ -289,6 +349,7 @@ func main() {
 	go order.NewExpiryWorker(pool, shopSettings, paymentService, logger).Run(ctx)
 	go order.NewLoyaltyWorker(pool, logger).Run(ctx)
 	go shippingWorker.Run(ctx)
+	go orderworkflow.Run(ctx, pool, logger)
 	go order.NewPackingPushWorker(pool, pushService, logger).Run(ctx)
 	go order.NewPackingWorker(pool, paymentService, cfg.SiteURL, logger).WithPaymentsEnabled(func() bool { return shopSettings.Enabled(settings.PaymentsEnabled) }).Run(ctx)
 	go order.NewLetterWorker(pool, mail.NewSender(mail.Config{

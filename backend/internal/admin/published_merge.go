@@ -240,6 +240,16 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 				return fmt.Errorf("scope source photos to SKU: %w", err)
 			}
 		}
+		if err = moveMergedEditorPlan(ctx, tx, target.ID, sourceID); err != nil {
+			return fmt.Errorf("move catalog editor plan: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE catalog_product_creation_requests SET product_id=$1 WHERE product_id=$2`, target.ID, sourceID); err != nil {
+			return fmt.Errorf("move creation receipts: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE product_creation_drafts SET product_id=$1 WHERE product_id=$2`, target.ID, sourceID); err != nil {
+			return fmt.Errorf("move creation history: %w", err)
+		}
+
 		if _, err = tx.Exec(ctx, `UPDATE product_media SET product_id=$1 WHERE product_id=$2`, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move product media: %w", err)
 		}
@@ -282,6 +292,9 @@ func mergeAuditSnapshot(ctx context.Context, tx pgx.Tx, productID int64) (json.R
 		'attributes',COALESCE((SELECT jsonb_agg(to_jsonb(attribute) ORDER BY attribute.attribute_id) FROM product_attribute_values attribute WHERE attribute.product_id=product.id),'[]'::jsonb),
 		'media',COALESCE((SELECT jsonb_agg(to_jsonb(media) ORDER BY media.id) FROM product_media media WHERE media.product_id=product.id),'[]'::jsonb),
 		'supplementaryMedia',COALESCE((SELECT jsonb_agg(to_jsonb(media) ORDER BY media.object_key) FROM catalog_supplementary_media media WHERE media.product_id=product.id),'[]'::jsonb),
+		'creationDrafts',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',draft.id,'productId',draft.product_id) ORDER BY draft.id) FROM product_creation_drafts draft WHERE draft.product_id=product.id),'[]'::jsonb),
+		'creationRequests',COALESCE((SELECT jsonb_agg(to_jsonb(receipt) ORDER BY receipt.actor_customer_id,receipt.creation_id) FROM catalog_product_creation_requests receipt WHERE receipt.product_id=product.id),'[]'::jsonb),
+		'editorPlan',(SELECT to_jsonb(plan) FROM catalog_editor_plans plan WHERE plan.product_id=product.id),
 		'urlAliases',COALESCE((SELECT jsonb_agg(alias ORDER BY alias) FROM product_url_aliases WHERE product_id=product.id),'[]'::jsonb),
 		'collectionIds',COALESCE((SELECT jsonb_agg(collection_id ORDER BY collection_id) FROM collection_products WHERE product_id=product.id),'[]'::jsonb),
 		'orderItemIds',COALESCE((SELECT jsonb_agg(id ORDER BY id) FROM order_items WHERE product_id=product.id),'[]'::jsonb),
@@ -616,6 +629,9 @@ func checkKnownProductReferences(ctx context.Context, tx pgx.Tx) error {
 		"product_attribute_values": true, "collection_products": true, "product_media": true,
 		"product_reviews": true, "order_items": true, "catalog_ai_enrichment_jobs": true,
 		"product_url_aliases": true, "avito_listing_products": true, "catalog_supplementary_media": true,
+		"product_creation_drafts":            true,
+		"catalog_product_creation_requests":  true,
+		"catalog_editor_plans":               true,
 		"launch_hidden_nonplant_products":    true,
 		"launch_hidden_extra_plant_products": true, "launch_hidden_extra_plant_variants": true,
 	}

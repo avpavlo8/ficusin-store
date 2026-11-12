@@ -46,6 +46,9 @@ func createReviewHandler(logger *slog.Logger, authentication authService, store 
 			return
 		}
 		id, err := store.Create(r.Context(), user.ID, r.PathValue("slug"), input)
+		if privateFileUnavailable(w, err) {
+			return
+		}
 		if errors.Is(err, reviews.ErrNotPurchased) {
 			writeJSON(w, http.StatusForbidden, errorResponse{Error: "Отзыв доступен после завершённой покупки этого товара"})
 			return

@@ -1,0 +1,47 @@
+html[data-pull-refresh="true"] {
+  overscroll-behavior-y: none;
+}
+.pull-to-refresh {
+  position: fixed;
+  z-index: 10000;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: calc(100vw - 32px);
+  padding: 11px 15px;
+  border-radius: 24px;
+  background: #fff;
+  color: #285b3e;
+  box-shadow: 0 4px 18px rgb(24 52 35 / 16%);
+  transform: translate(-50%, calc(var(--pull-offset, 0px) - 20px));
+  pointer-events: none;
+  font-size: 12px;
+  line-height: 1.3;
+}
+.pull-to-refresh[hidden] {
+  display: none;
+}
+.pull-to-refresh svg {
+  flex-shrink: 0;
+  transform: rotate(-35deg);
+  transition: transform 150ms ease-out;
+}
+.pull-to-refresh[data-ready="true"] svg {
+  transform: rotate(35deg);
+}
+.pull-to-refresh[data-refreshing="true"] svg {
+  animation: pull-refresh-spin 800ms linear infinite;
+}
+@keyframes pull-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pull-to-refresh svg {
+    transition: none;
+    animation: none;
+  }
+}

@@ -21,7 +21,7 @@ func TestResolveAliasCollapsesLateInvoiceLineOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("late-fittonia-%d", unique)
 	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,balance,section_path,seen_at)
@@ -104,7 +104,7 @@ func TestManualInvoicePairOverridesWrongAliasAndPreservesPlanPrice(t *testing.T)
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	plannedSaby := fmt.Sprintf("manual-carmona-%d", unique)
 	wrongSaby := fmt.Sprintf("manual-wrong-%d", unique)
@@ -190,7 +190,7 @@ func TestManualInvoicePairSwapsAlreadyMatchedCarmonaRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	firstSaby := fmt.Sprintf("carmona-straight-%d", unique)
 	secondSaby := fmt.Sprintf("carmona-curved-%d", unique)

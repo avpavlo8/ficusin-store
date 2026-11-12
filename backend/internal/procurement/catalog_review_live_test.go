@@ -28,7 +28,7 @@ func TestCatalogReviewOnlyIncludesUnresolvedActivePurchaseLines(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	var actorID, supplierID, orderID, planID int64
 	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Catalog review test',now()) RETURNING id`, fmt.Sprintf("review-%d@example.invalid", unique), fmt.Sprintf("+75%09d", unique%1000000000)).Scan(&actorID))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -74,11 +75,15 @@ func (service *Service) DocumentPDF(ctx context.Context, id int64) ([]byte, erro
 
 func (store *PostgresStore) DocumentPDF(ctx context.Context, id int64) ([]byte, error) {
 	var content []byte
-	err := store.pool.QueryRow(ctx, "SELECT content FROM procurement_documents WHERE id=$1", id).Scan(&content)
+	var key string
+	err := store.pool.QueryRow(ctx, "SELECT content,COALESCE(object_key,'') FROM procurement_documents WHERE id=$1", id).Scan(&content, &key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return content, err
+	if err != nil {
+		return nil, err
+	}
+	return fileassets.Read(ctx, store.fileStorage, key, content)
 }
 
 type ProductPage struct {

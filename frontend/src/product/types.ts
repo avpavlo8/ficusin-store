@@ -92,7 +92,15 @@ export type ProductDetail = {
 // Attribute codes are stable machine values. The API now carries labels for
 // owner-defined options; this fallback only covers the seeded catalogue.
 export const attributeLabels: Record<string, string> = {
-  sunny: "Яркий свет",
+  warm: "Тёплая (+20…+27 °C)",
+  cool: "Прохладная (+10…+19 °C)",
+  cold: "Холодная (0…+9 °C)",
+  plain: "Однотонная",
+  variegated: "Вариегатная",
+  patterned: "Узорчатая",
+  tree: "Деревце",
+
+  sunny: "Прямое солнце",
   diffused: "Рассеянный свет",
   low_light: "Полутень",
   frequent: "Частый",

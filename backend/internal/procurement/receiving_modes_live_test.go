@@ -30,7 +30,7 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 		}
 	}
 	unique := time.Now().UnixNano()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	var actorID, supplierID int64
 	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Receiving modes test',now()) RETURNING id`, fmt.Sprintf("receiving-%d@example.invalid", unique), fmt.Sprintf("+74%09d", unique%1000000000)).Scan(&actorID))
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, fmt.Sprintf("Receiving %d", unique)).Scan(&supplierID))

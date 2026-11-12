@@ -85,7 +85,19 @@ func testStore(t *testing.T) *Store {
 	if _, err = pool.Exec(ctx, `CREATE TABLE auth_sessions(token_hash TEXT PRIMARY KEY,customer_id BIGINT,expires_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP+INTERVAL '1 day'); INSERT INTO auth_sessions(token_hash,customer_id) VALUES('buyer-session',1),('staff-session',2); CREATE TABLE admin_users(customer_id BIGINT PRIMARY KEY,role TEXT,is_active BOOLEAN DEFAULT TRUE); INSERT INTO admin_users(customer_id,role) VALUES(2,'manager')`); err != nil {
 		t.Fatal(err)
 	}
-	return NewStore(pool)
+	for _, file := range []string{"20261112_chat_catalog_attachments.sql", "20261112_chat_private_file_storage.sql"} {
+		raw, err := os.ReadFile("../../../timeweb/migrations/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = pool.Exec(ctx, string(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = pool.Exec(ctx, `CREATE TABLE products(id BIGINT PRIMARY KEY,product_code BIGINT,name TEXT,status TEXT);CREATE TABLE product_media(id BIGSERIAL PRIMARY KEY,product_id BIGINT,variant_id BIGINT,object_key TEXT,is_primary INTEGER,sort_order INTEGER);CREATE TABLE media_mirror(source_url TEXT PRIMARY KEY,card_url TEXT,large_url TEXT);CREATE TABLE orders(id BIGINT PRIMARY KEY,customer_id BIGINT,order_number TEXT,status TEXT,created_at TIMESTAMPTZ DEFAULT NOW());CREATE TABLE order_items(order_id BIGINT,product_name TEXT);`); err != nil {
+		t.Fatal(err)
+	}
+	return NewStore(pool).WithFileStorage(&chatMemoryFiles{items: map[string][]byte{}})
 }
 func TestChatDurabilityIsolationAndLogin(t *testing.T) {
 	s := testStore(t)
@@ -295,6 +307,14 @@ func TestRegisteredChatNeedsNoRepeatedConsentAndStoresPrivateFiles(t *testing.T)
 	if err != nil || mimeType != "application/octet-stream" || name != "инструкция.pdf" || kind != "file" || !bytes.Equal(stored, data) {
 		t.Fatalf("file storage: %s %s %s %v", mimeType, name, kind, err)
 	}
+	var objectKey string
+	var storedBytes []byte
+	if err = s.pool.QueryRow(ctx, `SELECT object_key,image_data FROM support_messages WHERE id=$1`, file.ID).Scan(&objectKey, &storedBytes); err != nil || objectKey == "" || len(storedBytes) > 0 {
+		t.Fatalf("new file was not stored only in S3: %q %d %v", objectKey, len(storedBytes), err)
+	}
+	if _, err = NewStore(s.pool).Send(ctx, Identity{CustomerID: 1}, 0, 0, input); err != nil {
+		t.Fatalf("duplicate file send depended on available storage: %v", err)
+	}
 	if _, _, _, _, err = s.Attachment(ctx, id+1, file.ID); err == nil {
 		t.Fatal("private file crossed thread boundary")
 	}
@@ -332,4 +352,28 @@ func TestNativeMP4BrandDetection(t *testing.T) {
 			}
 		})
 	}
+}
+
+type chatMemoryFiles struct {
+	items map[string][]byte
+	mu    sync.Mutex
+}
+
+func (s *chatMemoryFiles) Configured() bool { return true }
+func (s *chatMemoryFiles) Put(_ context.Context, key string, data []byte, _ string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items[key] = append([]byte{}, data...)
+	return nil
+}
+func (s *chatMemoryFiles) Get(_ context.Context, key string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]byte{}, s.items[key]...), nil
+}
+func (s *chatMemoryFiles) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.items, key)
+	return nil
 }

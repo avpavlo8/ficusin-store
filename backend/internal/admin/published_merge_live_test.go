@@ -37,6 +37,7 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	avitoID := fmt.Sprintf("merge-avito-%d", unique)
 	var targetID, sourceID, targetCode, sourceCode, targetVariantID, sourceVariantID, ownerID, orderID, reviewID, orderItemID, categoryID int64
 	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM product_creation_drafts WHERE id=$1`, fmt.Sprintf("merge-creation-%d", unique))
 		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='product.published.merge' AND entity_id=$1`, fmt.Sprint(targetID))
 		_, _ = pool.Exec(ctx, `DELETE FROM product_reviews WHERE id=$1`, reviewID)
 		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, orderID)
@@ -68,6 +69,16 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 		RETURNING id,product_code`, sourceSaby, sourceSlug, categoryID).Scan(&sourceID, &sourceCode); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pool.Exec(ctx, `INSERT INTO product_creation_drafts(id,customer_id,product_id,data) VALUES($1,$2,$3,'{"name":"Original source creation"}')`, fmt.Sprintf("merge-creation-%d", unique), ownerID, sourceID); err != nil {
+		t.Fatal(err)
+	}
+
+	for index, id := range []int64{targetID, sourceID} {
+		if _, err := pool.Exec(ctx, `INSERT INTO catalog_product_creation_requests(actor_customer_id,creation_id,product_id) VALUES($1,$2,$3)`, ownerID, fmt.Sprintf("00000000-0000-4000-8000-%012d", index+1), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	if err := pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor,is_active)
 		VALUES($1,$2,$3,'D12',120000,1) RETURNING id`, targetID, targetSaby, targetSKU).Scan(&targetVariantID); err != nil {
 		t.Fatal(err)
@@ -75,6 +86,11 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor,is_active)
 		VALUES($1,$2,$3,'D17',170000,1) RETURNING id`, sourceID, sourceSaby, sourceSKU).Scan(&sourceVariantID); err != nil {
 		t.Fatal(err)
+	}
+	for _, item := range []struct{ product, variant int64 }{{targetID, targetVariantID}, {sourceID, sourceVariantID}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO catalog_editor_plans(product_id,config) VALUES($1,jsonb_build_object('variants',jsonb_build_array(jsonb_build_object('variantId',$2::bigint,'saby',jsonb_build_object('mode','create')))))`, item.product, item.variant); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Older cards also retain size values at product scope. Distinct SKU sizes
 	// must not masquerade as a conflict in shared botanical attributes.
@@ -256,6 +272,28 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	if name != "Тестовая аглаонема Raven" || plantKind != "aglaonema" || light != "diffused" || description != "Проверенное описание" {
 		t.Fatalf("lost editorial content: name=%q kind=%q light=%q description=%q", name, plantKind, light, description)
 	}
+	var creationProduct int64
+	var creationName string
+	if err := pool.QueryRow(ctx, `SELECT product_id,data->>'name' FROM product_creation_drafts WHERE id=$1`, fmt.Sprintf("merge-creation-%d", unique)).Scan(&creationProduct, &creationName); err != nil {
+		t.Fatal(err)
+	}
+	if creationProduct != targetID || creationName != "Original source creation" {
+		t.Fatalf("creation history lost during merge: %d %q", creationProduct, creationName)
+	}
+
+	var planCount int
+	if err := pool.QueryRow(ctx, `SELECT jsonb_array_length(config->'variants') FROM catalog_editor_plans WHERE product_id=$1`, targetID).Scan(&planCount); err != nil || planCount != 2 {
+		t.Fatalf("editor plans not merged: %d %v", planCount, err)
+	}
+	var receiptCount int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM catalog_product_creation_requests WHERE actor_customer_id=$1 AND product_id=$2`, ownerID, targetID).Scan(&receiptCount); err != nil || receiptCount != 2 {
+		t.Fatalf("creation receipts not merged: %d %v", receiptCount, err)
+	}
+	replayed, replayErr := repository.CreateProduct(ctx, actor, ProductCreate{CreationID: "00000000-0000-4000-8000-000000000002", Name: "Retry source creation"})
+	if replayErr != nil || replayed.ID != targetID {
+		t.Fatalf("published source retry lost canonical target: %+v %v", replayed, replayErr)
+	}
+
 	var orderProductID, reviewProductID, orderVariantID int64
 	var orderSKU string
 	if err := pool.QueryRow(ctx, `SELECT product_id,variant_id,sku FROM order_items WHERE id=$1`, orderItemID).Scan(&orderProductID, &orderVariantID, &orderSKU); err != nil {

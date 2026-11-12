@@ -44,7 +44,7 @@ export type CategoryAttribute = {
 };
 
 export type AdminData = {
-  user: { fullName: string };
+  user: { fullName: string; avatarUpdatedAt?: string };
   role: Role;
   permissions: string[];
   dashboard: {
@@ -157,7 +157,17 @@ export type Customer = {
   createdAt: string;
 };
 
+export type OrderWorkflow = {
+  status: string;
+  queue: "new" | "in_progress" | "in_delivery" | "completed" | "cancelled";
+  readyForAssembly: boolean;
+  stockConfirmed: boolean;
+  packagingConfirmed: boolean;
+  blockers: Array<{ code: string; message: string; view?: "items" | "delivery" | "payment" }>;
+  manualStatuses: string[];
+};
 export type Order = {
+  workflow?: OrderWorkflow;
   id: number;
   orderNumber: string;
   customerId?: number;
@@ -178,10 +188,12 @@ export type Order = {
   createdAt: string;
   items: Array<{
     productId: number;
+    productCode?: string;
     sku: string;
     variantLabel: string;
     productName: string;
     image?: string;
+    imageFallback?: string;
     unitPrice: number;
     quantity: number;
   }>;

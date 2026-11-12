@@ -1,3 +1,5 @@
+import { ChatReferencePicker } from "./ChatReferencePicker";
+import { ChatReferenceCard } from "./ChatReferenceCard";
 import {
   useCallback,
   useEffect,
@@ -15,7 +17,7 @@ import {
 } from "./lib/chat-attachment";
 import { chatRequest } from "./lib/chat-api";
 import ChatPhotoViewer from "./ChatPhotoViewer";
-import type { ChatContext, ChatThreadData } from "./lib/chat";
+import type { ChatContext, ChatThreadData, ChatReference } from "./lib/chat";
 import "./styles/chat.css";
 
 export function ChatIcon({
@@ -101,6 +103,9 @@ export default function ChatThread({
   const [text, setText] = useState("");
   const [attachment, setAttachment] = useState<PreparedAttachment | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [attachMenu, setAttachMenu] = useState(false);
+  const [referenceKind, setReferenceKind] = useState<"product" | "order" | null>(null);
+  const [reference, setReference] = useState<ChatReference | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const photoTrigger = useRef<HTMLButtonElement>(null);
   const inputID = useId();
@@ -283,16 +288,17 @@ export default function ChatThread({
 
   const send = async (event: FormEvent) => {
     event.preventDefault();
-    if (sending || preparing || loading || (!text.trim() && !attachment)) return;
+    if (sending || preparing || loading || (!text.trim() && !attachment && !reference)) return;
     setSending(true);
     setError("");
-    const signature = JSON.stringify([text.trim(), topic]);
+    const signature = JSON.stringify([text.trim(), topic, reference?.kind, reference?.id]);
     if (pending.current.signature !== signature || pending.current.attachment !== attachment)
       pending.current = { signature, clientId: crypto.randomUUID(), attachment };
     try {
       const data = await chatRequest<ChatThreadData>(base + "/messages", {
         clientId: pending.current.clientId,
         text: text.trim(),
+        reference: reference ? { kind: reference.kind, id: reference.id } : undefined,
         attachment: attachment ? { name: attachment.name, data: attachment.data } : undefined,
         consent,
         contextUrl: topic?.url || "",
@@ -304,6 +310,7 @@ export default function ChatThread({
       else accept(data);
       setText("");
       setAttachment(null);
+      setReference(null);
       setTopic(undefined);
       pending.current = { signature: "", clientId: "", attachment: null };
       onUpdateRef.current?.();
@@ -344,10 +351,12 @@ export default function ChatThread({
     <div
       className="chat-thread"
       onKeyDown={(event) => {
-        if (emojiOpen && event.key === "Escape") {
+        if ((emojiOpen || attachMenu || referenceKind) && event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
           setEmojiOpen(false);
+          setAttachMenu(false);
+          setReferenceKind(null);
           textarea.current?.focus({ preventScroll: true });
         }
       }}
@@ -416,6 +425,9 @@ export default function ChatThread({
                   <a className="chat-context-link" href={contextHref(message.contextUrl)}>
                     {message.contextLabel || "Страница обращения"}
                   </a>
+                )}
+                {message.reference && (
+                  <ChatReferenceCard reference={message.reference} staff={staff} />
                 )}
                 {message.hasImage && (
                   <button
@@ -526,6 +538,66 @@ export default function ChatThread({
             </button>
           </div>
         )}
+        {reference && (
+          <div className="chat-reference-preview">
+            <ChatReferenceCard reference={reference} staff={staff} preview />
+            <button
+              type="button"
+              disabled={sending}
+              aria-label="Убрать прикреплённую карточку"
+              onClick={() => setReference(null)}
+            >
+              <ChatIcon name="close" />
+            </button>
+          </div>
+        )}
+        {referenceKind && (
+          <ChatReferencePicker
+            key={referenceKind}
+            base={base}
+            kind={referenceKind}
+            onClose={() => {
+              setReferenceKind(null);
+              textarea.current?.focus({ preventScroll: true });
+            }}
+            onSelect={(value) => {
+              setReference(value);
+              setReferenceKind(null);
+              textarea.current?.focus({ preventScroll: true });
+            }}
+          />
+        )}
+        {attachMenu && (
+          <div className="chat-attach-menu" role="group" aria-label="Что прикрепить">
+            <button
+              type="button"
+              onClick={() => {
+                setAttachMenu(false);
+                fileInput.current?.click();
+              }}
+            >
+              Фото, видео или файл
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAttachMenu(false);
+                setReferenceKind("product");
+              }}
+            >
+              Товар
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAttachMenu(false);
+                setReferenceKind("order");
+              }}
+            >
+              Заказ
+            </button>
+          </div>
+        )}
         {attachment && (
           <div className="chat-preview">
             {attachment.preview ? (
@@ -623,9 +695,14 @@ export default function ChatThread({
             className="chat-compose-icon"
             type="button"
             disabled={sending || preparing}
-            aria-label="Прикрепить фото, видео или файл"
-            title="Фото, видео или файл до 20 МБ"
-            onClick={() => fileInput.current?.click()}
+            aria-label="Прикрепить вложение"
+            title="Прикрепить файл, товар или заказ"
+            aria-expanded={attachMenu || !!referenceKind}
+            onClick={() => {
+              setEmojiOpen(false);
+              setReferenceKind(null);
+              setAttachMenu((value) => !value);
+            }}
           >
             <ChatIcon name="clip" />
           </button>
@@ -685,7 +762,11 @@ export default function ChatThread({
             aria-label="Смайлики"
             aria-expanded={emojiOpen}
             disabled={sending}
-            onClick={() => setEmojiOpen((value) => !value)}
+            onClick={() => {
+              setAttachMenu(false);
+              setReferenceKind(null);
+              setEmojiOpen((value) => !value);
+            }}
           >
             <ChatIcon name="smile" />
           </button>
@@ -697,7 +778,7 @@ export default function ChatThread({
               loading ||
               sending ||
               preparing ||
-              (!text.trim() && !attachment) ||
+              (!text.trim() && !attachment && !reference) ||
               (!staff && !thread.id && thread.consentRequired && !consent)
             }
           >

@@ -78,6 +78,9 @@ func (handlers authHandlers) uploadAvatar(response http.ResponseWriter, request 
 	}
 
 	if err := handlers.service.SaveAvatar(request.Context(), user.ID, image, mime); err != nil {
+		if privateFileUnavailable(response, err) {
+			return
+		}
 		handlers.logger.Error("save avatar failed", "error", err, "customer_id", user.ID)
 		writeJSON(response, http.StatusInternalServerError, errorResponse{
 			Error: "Не удалось сохранить фото",
