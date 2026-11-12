@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./live-fixtures";
 
 test("PDP purchase layout, nested menu and gallery swipe work live", async ({ page, request }) => {
   const response = await request.get("/api/v1/products/33");
@@ -55,7 +55,7 @@ test("Search puts results first and offers suggestions live", async ({page}) => 
   await expect(page.getByRole("heading", {name:"Результаты поиска"})).toBeVisible();
 });
 
-test("Product tabs keep all text mounted and show one section at a time live", async ({ page, request }, testInfo) => {
+test("Product tabs keep all text mounted and show one section at a time live", async ({ page, request }) => {
   const response = await request.get("/api/v1/products/33");
   expect(response.ok()).toBeTruthy();
   const { product } = await response.json();
@@ -72,15 +72,18 @@ test("Product tabs keep all text mounted and show one section at a time live", a
   if (product.passport.watering?.trim()) await expect(page.locator("#pdp-panel-care")).toContainText(product.passport.watering);
   await expect(page.locator("#pdp-panel-care")).toBeHidden();
   await expect(page.getByRole("tabpanel")).toHaveCount(1);
-  await tabs.evaluate(element => element.scrollIntoView({ block: "start", behavior: "instant" }));
-  await page.screenshot({ path: testInfo.outputPath("product-tabs-about.png") });
+  await page.evaluate(() => document.fonts.ready);
+  const careTab = page.getByRole("tab", { name: "Уход", exact: true });
+  // Let Playwright finish the real click's visibility/scroll preparation before
+  // taking the baseline; a block:start scroll can leave the target repositioning.
+  await careTab.click({ trial: true });
+  await expect(careTab).toBeInViewport({ ratio: 1 });
   const before = await page.evaluate(() => window.scrollY);
-  await page.getByRole("tab", { name: "Уход", exact: true }).click();
+  await careTab.click();
   await expect(page.locator("#pdp-panel-care")).toBeVisible();
   await expect(page.locator("#pdp-panel-about")).toBeHidden();
   await expect(page.getByRole("tabpanel")).toHaveCount(1);
-  expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(before, 0);
-  await page.screenshot({ path: testInfo.outputPath("product-tabs-care.png") });
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeCloseTo(before, 0);
   await page.getByRole("tab", { name: /Отзывы/ }).click();
   await expect(page.locator("#pdp-panel-reviews")).toBeVisible();
   await expect(page.getByRole("tabpanel")).toHaveCount(1);

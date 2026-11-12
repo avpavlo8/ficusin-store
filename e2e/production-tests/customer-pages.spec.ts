@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./live-fixtures";
 
 test("production wholesale directory finds a real organization and fills its details", async ({
   page,

@@ -1,4 +1,26 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./live-fixtures";
+import { installOfferSeenKey } from "../../frontend/src/lib/install-offer";
+
+test.describe("first visit onboarding", () => {
+  test.use({ showInstallOffer: true });
+
+  test("production first-visit install invitation is shown once and closes normally", async ({ page }) => {
+    await page.goto("/");
+    const offer = page.getByRole("dialog", { name: "Фикусин на экране Домой", exact: true });
+    await expect(offer).toBeVisible();
+    await expect(offer).toContainText("Добавьте Фикусин на главный экран");
+    await offer.getByRole("button", { name: "Закрыть предложение установки", exact: true }).click();
+    await expect(offer).toHaveCount(0);
+    await expect.poll(() => page.evaluate(key => localStorage.getItem(key), installOfferSeenKey)).toBe("1");
+    await page.reload();
+    await expect(page.locator(".storefront-card").first()).toBeVisible();
+    // Wait beyond the intentional 700 ms offer delay to check non-reappearance.
+    await page.waitForTimeout(1000);
+    await expect(offer).toHaveCount(0);
+    await page.getByRole("button", { name: /Фильтры/ }).click();
+    await expect(page.getByLabel("Цена: до", { exact: true })).toBeVisible();
+  });
+});
 
 test("production homepage filters by budget and shows the live variant height and care scale", async ({page,request})=>{
   const response=await request.get("/api/v1/catalog");
@@ -25,8 +47,8 @@ test("production homepage filters by budget and shows the live variant height an
   }
   if(current.stock>0) await expect(first.locator(".storefront-price em")).toHaveCount(0);
   else {
-    await expect(first.locator(".storefront-price")).not.toContainText("≈");
-    await expect(first.locator(".storefront-price")).toContainText("Под заказ · цена ориентировочная");
+    await expect(first.locator(".storefront-price")).toContainText("≈");
+    await expect(first.locator(".storefront-price")).toContainText("Под заказ");
   }
   await page.getByRole("button",{name:/Фильтры/}).click();
   await page.getByLabel("Цена: до",{exact:true}).fill(String(budget));

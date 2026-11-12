@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./live-fixtures";
 
 test("production installed-app and browser icons serve the approved logo", async ({ page, request }) => {
   await page.goto("/");
