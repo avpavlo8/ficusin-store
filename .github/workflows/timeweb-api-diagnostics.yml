@@ -1,66 +1,29 @@
-name: Timeweb staging inspection
+name: Isolated staging storage modes
 on:
   workflow_dispatch:
     inputs:
-      operation:
-        type: choice
-        options: [plan, provision, status, configure, activate, repair-health, pause, seed, redeploy, owner-profile, repair-production-access]
-        default: plan
-      approved_monthly_rub:
-        type: string
-        default: '0'
-      candidate_sha:
-        type: string
-        default: ''
+      apply:
+        description: Apply mock storage and publication modes only to existing app 280757
+        type: boolean
+        default: false
 permissions:
   contents: read
+concurrency:
+  group: isolated-staging-storage-modes-280757
+  cancel-in-progress: false
 jobs:
-  inspect:
+  staging-modes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Read existing application and available resources
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install database driver for read-only isolation verification
+        run: python3 -m pip install 'psycopg[binary]==3.2.12'
+      - name: Verify isolated staging and inspect or apply only approved modes
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: python3 scripts/timeweb-staging-inspect.py
-      - name: Prepare or provision isolated staging
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          STAGING_ACCESS_TOKEN: ${{ secrets.STAGING_ACCESS_TOKEN }}
-          STAGING_OPERATION: ${{ inputs.operation }}
-          APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
-          STAGING_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-        run: python3 scripts/timeweb-staging-provision.py
-      - name: Inspect or activate only the isolated staging application
-        if: inputs.operation == 'status' || inputs.operation == 'activate' || inputs.operation == 'configure' || inputs.operation == 'repair-health' || inputs.operation == 'pause' || inputs.operation == 'redeploy'
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          STAGING_OPERATION: ${{ inputs.operation }}
-          APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
-          STAGING_CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-        run: python3 scripts/timeweb-staging-manage.py
-      - name: Prepare isolated catalog and synthetic owner
-        if: inputs.operation == 'seed'
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          STAGING_ACCESS_TOKEN: ${{ secrets.STAGING_ACCESS_TOKEN }}
-          APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
-        run: |
-          python3 -m pip install 'psycopg[binary]==3.2.12'
-          python3 scripts/timeweb-staging-seed.py
-      - name: Restore existing production owner ACL after provider role setup
-        if: inputs.operation == 'repair-production-access'
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          STAGING_OPERATION: ${{ inputs.operation }}
-        run: |
-          python3 -m pip install 'psycopg[binary]==3.2.12'
-          python3 scripts/timeweb-repair-owner-access.py
-      - name: Prepare only the operator owner account on staging
-        if: inputs.operation == 'owner-profile'
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          APPROVED_STAGING_MONTHLY_RUB: ${{ inputs.approved_monthly_rub }}
-        run: |
-          python3 -m pip install 'psycopg[binary]==3.2.12'
-          python3 scripts/timeweb-staging-owner.py
+          APPLY_STAGING_MODES: ${{ inputs.apply }}
+        run: python3 scripts/timeweb-staging-storage-modes.py
