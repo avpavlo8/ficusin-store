@@ -96,6 +96,10 @@ export function ProductCreationPage({
   );
   const [saveError, setSaveError] = useState(initial.error);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogRevision, setCatalogRevision] = useState(0);
+  const [schemaCategoryId, setSchemaCategoryId] = useState<number>();
+  const [schemaRevision, setSchemaRevision] = useState(0);
   const [schema, setSchema] = useState<CategoryAttribute[]>([]);
   const [catalogError, setCatalogError] = useState("");
   const [schemaError, setSchemaError] = useState("");
@@ -172,13 +176,16 @@ export function ProductCreationPage({
       .catch(() => {
         if (active)
           setCatalogError(
-            "Не удалось загрузить категории. Остальные данные можно заполнить сейчас.",
+            "Не удалось загрузить категории. Черновик сохранён. Перед сохранением товара повторите загрузку.",
           );
+      })
+      .finally(() => {
+        if (active) setCatalogLoading(false);
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [catalogRevision]);
   useEffect(() => {
     if (!productId) return;
     let active = true;
@@ -317,6 +324,7 @@ export function ProductCreationPage({
       .then((data) => {
         if (active) {
           setSchema(data.attributes || []);
+          setSchemaCategoryId(draft.categoryId);
           setSchemaError("");
         }
       })
@@ -326,7 +334,7 @@ export function ProductCreationPage({
     return () => {
       active = false;
     };
-  }, [draft.categoryId]);
+  }, [draft.categoryId, schemaRevision]);
   useEffect(() => {
     if (!saveError && !mediaBusy && !saving) return;
     const protect = (event: BeforeUnloadEvent) => {
@@ -402,6 +410,38 @@ export function ProductCreationPage({
   const categorySection =
     rootCategory(categories, draft.categoryId)?.slug || product?.catalogSection;
   const plant = categorySection === "plants";
+  const categoryLoadMessage =
+    catalogError ||
+    (!catalogLoading && draft.categoryId && !rootCategory(categories, draft.categoryId)
+      ? "Выбранная категория недоступна. Выберите другую или повторите загрузку категорий."
+      : "");
+  const metadataReady = Boolean(
+    !catalogLoading &&
+      !catalogError &&
+      draft.categoryId &&
+      rootCategory(categories, draft.categoryId)?.slug &&
+      schemaCategoryId === draft.categoryId &&
+      !schemaError,
+  );
+  const submissionSection = () => {
+    const current = latest.current;
+    const section = rootCategory(categories, current.categoryId)?.slug;
+    if (
+      catalogLoading ||
+      catalogError ||
+      !section ||
+      schemaCategoryId !== current.categoryId ||
+      schemaError
+    ) {
+      setRemoteError(
+        categoryLoadMessage ||
+          schemaError ||
+          "Дождитесь загрузки категории и её полей. Черновик сохранён.",
+      );
+      return;
+    }
+    return section;
+  };
   const variants = (draft.variants?.length ? draft.variants : [seedVariant(draft)]).map((item) => ({
     ...item,
     label: categoryVariantName(item, categorySection),
@@ -620,9 +660,12 @@ export function ProductCreationPage({
   };
   const apply = async (created?: Product) => {
     const targetProduct = created || product;
+    const section = submissionSection();
+    if (!section) return;
+    const plant = section === "plants";
     const variants = (latest.current.variants || []).map((row) => ({
       ...row,
-      label: categoryVariantName(row, categorySection),
+      label: categoryVariantName(row, section),
     }));
     const variant =
       variants.find((row) => row.id === latest.current.selectedVariantId) || variants[0];
@@ -665,8 +708,7 @@ export function ProductCreationPage({
       if (draft.description !== base.description) body.description = draft.description;
       if (draft.categoryId !== base.categoryId) {
         body.categoryId = draft.categoryId;
-        body.catalogSection =
-          rootCategory(categories, draft.categoryId)?.slug || base.catalogSection;
+        body.catalogSection = section;
       }
       if (plant) {
         if (draft.latinName !== base.latinName) body.latinName = draft.latinName;
@@ -963,6 +1005,8 @@ export function ProductCreationPage({
       setRemoteError("Укажите название и категорию товара.");
       return;
     }
+    const section = submissionSection();
+    if (!section) return;
     const currentVariants = (current.variants || []).filter(
       (row) => !row.removePending && !row.archived,
     );
@@ -1002,7 +1046,7 @@ export function ProductCreationPage({
             description: current.description,
             latinName: current.latinName,
             categoryId: current.categoryId,
-            catalogSection: categorySection,
+            catalogSection: section,
             priceMinor: Math.round(Number(first.price) * 100),
             attributes: current.attributes,
             variantAttributes: first.attributes,
@@ -1364,13 +1408,30 @@ export function ProductCreationPage({
                   </label>
                   <div className="wide admin-field">
                     <span className="admin-field-label">Категория на сайте *</span>
-                    {catalogError && <p role="alert">{catalogError}</p>}
+                    {categoryLoadMessage && (
+                      <p role="alert">
+                        {categoryLoadMessage}{" "}
+                        <button
+                          type="button"
+                          className="admin-action"
+                          onClick={() => {
+                            setCatalogLoading(true);
+                            setCatalogError("");
+                            setRemoteError("");
+                            setCatalogRevision((value) => value + 1);
+                          }}
+                        >
+                          Повторить загрузку категорий
+                        </button>
+                      </p>
+                    )}
                     <CategoryPicker
                       categories={categories}
                       value={draft.categoryId}
                       onChange={(categoryId) => {
                         if (categoryId === draft.categoryId) return;
                         setSchema([]);
+                        setSchemaCategoryId(undefined);
                         setSchemaError("");
                         update({ categoryId });
                       }}
@@ -1501,7 +1562,19 @@ export function ProductCreationPage({
                   </p>
                 ) : schemaError ? (
                   <p role="alert" className="editor-alert">
-                    {schemaError}
+                    {schemaError}{" "}
+                    <button
+                      type="button"
+                      className="admin-action"
+                      onClick={() => {
+                        setSchemaCategoryId(undefined);
+                        setSchemaError("");
+                        setRemoteError("");
+                        setSchemaRevision((value) => value + 1);
+                      }}
+                    >
+                      Повторить загрузку характеристик
+                    </button>
                   </p>
                 ) : plant ? (
                   <PlantCharacteristicsEditor
@@ -1737,6 +1810,11 @@ export function ProductCreationPage({
         </div>
       </div>
       <footer className="editor-save-actions">
+        {!metadataReady && !categoryLoadMessage && !schemaError && draft.categoryId && (
+          <span className="editor-secondary" role="status">
+            Готовим поля выбранной категории…
+          </span>
+        )}
         {(!product || creationChannels.length > 0) && (
           <div className="editor-destinations" role="group" aria-label="Где создать товар">
             {!product && (
@@ -1771,7 +1849,7 @@ export function ProductCreationPage({
         <button
           type="button"
           className="admin-primary"
-          disabled={loading || !remoteLoaded || saving || mediaBusy}
+          disabled={loading || !remoteLoaded || saving || mediaBusy || !metadataReady}
           onClick={() => {
             const missing = variants
               .filter((row) => !row.removePending && !row.archived)

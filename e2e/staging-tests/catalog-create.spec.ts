@@ -100,7 +100,8 @@ test("real staging: route editor draft, photos, seasonal boxes and outbound isol
   expect(plan.publications[0].message).toContain("Рабочий СБИС не изменялся");
   expect(plan.barcodes[String(variants[0].id)]).toMatch(/^200\d{10}$/);
   const after = await (await context.request.get(`/api/v1/admin/products/${product.id}/variants`)).json();
-  expect(after.variants[0].sabyId).toMatch(/^STG-EDITOR-200/);
+  const sabyLink = after.variants[0].externalIds.find((link: {provider:string;type:string;externalId:string}) => link.provider === "saby" && link.type === "id");
+  expect(sabyLink?.externalId).toMatch(/^STG-EDITOR-200/);
   await page.reload();
   await expect(page.locator(".editor-page").getByLabel("Название товара *", { exact: true })).toHaveValue(name);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);

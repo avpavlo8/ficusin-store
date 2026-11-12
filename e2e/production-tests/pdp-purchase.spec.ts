@@ -13,9 +13,13 @@ test("PDP purchase layout, nested menu and gallery swipe work live", async ({ pa
   await expect(page.locator(".pdp-summary .pdp-related")).toHaveCount(1);
   await expect(page.locator(".pdp-summary .pdp-related-track")).toHaveCSS("display","flex");
   const cards = page.locator(".pdp-summary .related-card");
-  const first = (await cards.nth(0).boundingBox())!;
-  const second = (await cards.nth(1).boundingBox())!;
-  expect(second.y).toBeCloseTo(first.y,0);
+  // Compare both cards in the same browser frame. Sequential boundingBox calls
+  // can straddle a browser scroll/layout adjustment while images finish loading.
+  await expect.poll(() => cards.evaluateAll(elements => {
+    const first = elements[0]?.getBoundingClientRect();
+    const second = elements[1]?.getBoundingClientRect();
+    return first && second ? second.y - first.y : Number.NaN;
+  })).toBeCloseTo(0, 0);
   await expect(page.locator(".pdp-lead")).toHaveCount(0);
   await expect(page.getByText("Артикул", { exact:true })).toHaveCount(0);
   const image = page.getByRole("button", { name:"Открыть фотографию на весь экран" });
