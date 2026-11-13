@@ -58,3 +58,14 @@ else:
         print("Verified category metadata:",json.dumps({"id":entity.get("Id"),"name":entity.get("Name"),"identifier":entity.get("Identifier")},ensure_ascii=False))
     else:
         print("Category identity not confirmed; no values printed")
+
+lookup = request("https://online.sbis.ru/service/?srv=1", {"jsonrpc":"2.0", "protocol":6, "method":"Nomenclature.Read", "params":{"ИдО":3333,"ИмяМетода":None}, "id":3}, {"X-SBISAccessToken":token})
+if lookup.get("error"):
+    print("Folder read rejected:",lookup["error"].get("code"),str(lookup["error"].get("message",""))[:600])
+else:
+    entity=fields(lookup.get("result",{}))
+    print("Folder response schema:",json.dumps(list(entity),ensure_ascii=False))
+    if str(entity.get("Id")) == "3333":
+        print("Verified folder metadata:",json.dumps({"id":entity.get("Id"),"name":entity.get("Name"),"isFolder":entity.get("IsFolder"),"isFolderUI":entity.get("IsFolderUI")},ensure_ascii=False))
+    else:
+        print("Folder identity not confirmed; no values printed")
