@@ -34,10 +34,14 @@ class Tests(unittest.TestCase):
 
  def test_missing_or_failed_get_never_fabricates_a_receipt_status(self):
   class Failed:
-   def get(self,*args):return {'ok':False,'httpStatus':404},None
+   def get(self,path,params=None):
+    if path=='/receipts':return {'ok':True,'httpStatus':200},{'items':[]}
+    return {'ok':False,'httpStatus':404},None
   result=m.reconcile([row()],Failed())
   self.assertEqual(result['groups'][0]['providerRead']['httpStatus'],404)
   self.assertNotIn('providerReceipt',result['groups'][0])
+  self.assertTrue(result['groups'][0]['providerReceipts']['complete'])
+  self.assertEqual(result['groups'][0]['providerReceipts']['receipts'],[])
 
  def test_fixed_get_only_url_and_denied_paths(self):
   seen=[]

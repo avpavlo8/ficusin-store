@@ -20,7 +20,7 @@ guards = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guards)
 BASE = 'https://api.yookassa.ru/v3'
 MODES = {'full_payment', 'full_prepayment', 'partial_prepayment', 'advance', 'partial_payment', 'credit', 'credit_payment'}
-STATUSES = {'pending', 'waiting_for_capture', 'succeeded', 'canceled', 'paid', 'failed', 'manual_review', 'unknown', 'ready', 'new', 'confirmed', 'assembling', 'shipped', 'completed', 'offered', 'expired'}
+STATUSES = {'pending', 'waiting_for_capture', 'succeeded', 'canceled', 'cancelled', 'paid', 'failed', 'manual_review', 'unknown', 'ready', 'new', 'confirmed', 'assembling', 'shipped', 'completed', 'offered', 'expired'}
 QUERY = """
 WITH facts AS (
  SELECT p.id,p.provider_payment_id,ROUND(p.amount*100)::bigint amount_minor,
@@ -140,6 +140,7 @@ def reconcile(rows, reader):
                 raise guards.PreflightError('provider_payment_identity_mismatch')
             info.update(providerStatus=label(payment.get('status')), providerTest=payment.get('test') if isinstance(payment.get('test'), bool) else 'not_returned',
                         providerReceipt=label(payment.get('receipt_registration')), amountMatches=amount_matches(payment, row['amount_minor']))
+        if payment is not None or meta.get('httpStatus') == 404:
             info['providerReceipts'] = receipt_list(reader, payment_id)
         for group, key in (('income', 'income_warning'), ('settlement', 'settlement_warning')):
             if row[key]:
