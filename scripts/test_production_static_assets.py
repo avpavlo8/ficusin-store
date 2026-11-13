@@ -90,12 +90,22 @@ class Tests(unittest.TestCase):
     m.execute(p,storage,Path(directory),directory,SHA,True,builder=build,publisher=publisher_fixture(calls),get_html=lambda:html)
    self.assertNotIn(True,calls);self.assertEqual(p.patches,[])
 
- def test_capacity_and_auto_upgrade_guard_do_not_raise_tariff(self):
-  for size,used,upgrade in ((1,1,False),(1<<20,1,True)):
-   p=Provider();p.metadata["disk_stats"].update(size=size,used=used);p.metadata["is_allow_auto_upgrade"]=upgrade
+ def test_insufficient_or_unknown_allocated_capacity_prevents_writes(self):
+  for size,used in ((1,1),(0,0),(1,float('nan')),(None,1),(1,'secret-not-a-number')):
+   p=Provider();p.metadata["disk_stats"].update(size=size,used=used)
    with self.assertRaises(m.AssetError):self.run_execute(p,apply=True)
    self.assertEqual(p.patches,[])
   capacity=m.bucket_capacity(bucket_fixture());self.assertEqual(capacity["capacityBytes"],1<<30)
+
+ def test_existing_expansion_flags_do_not_replace_the_current_numeric_quota(self):
+  p=Provider();p.metadata['is_allow_auto_upgrade']=True
+  p.metadata['disk_stats'].update(size=10485760,used='1677721.625',is_unlimited=True)
+  original=copy.deepcopy(p.metadata)
+  result,p,_=self.run_execute(p,apply=True)
+  self.assertTrue(result['uploadedVerified']);self.assertFalse(result['capacity']['autoUpgradeDisabled'])
+  self.assertEqual(result['capacity']['capacityBytes'],10<<30)
+  self.assertEqual(result['capacity']['providerUsedBytes'],1717986944)
+  self.assertEqual(p.metadata,original)
 
  def test_changed_verified_manifest_cannot_activate(self):
   calls=[];original=publisher_fixture(calls);p=Provider()

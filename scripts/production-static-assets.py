@@ -9,6 +9,7 @@ import argparse
 import hashlib
 from html.parser import HTMLParser
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -95,14 +96,21 @@ def bucket_capacity(bucket, apply=False):
     # Official SDK BucketDiskStats specifies size/used in KB, not MB/bytes:
     # github.com/timeweb-cloud/sdk-javascript/blob/main/docs/BucketDiskStats.md
     stats = bucket.get("disk_stats")
-    if not isinstance(stats, dict) or stats.get("is_unlimited") is not False:
+    if not isinstance(stats, dict):
         raise AssetError("public_capacity_not_finite_verified")
-    size, used = stats.get("size"), stats.get("used")
-    if any(not isinstance(v, int) or isinstance(v, bool) or v < 0 for v in (size, used)) or size <= 0 or used > size:
+    def number(value):
+        if isinstance(value, str) and re.fullmatch(r"[0-9]{1,20}(?:\.[0-9]{1,12})?", value):
+            value = float(value)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise AssetError("invalid_public_capacity_metadata")
+        return value
+    size, used = number(stats.get("size")), number(stats.get("used"))
+    if min(size, used) < 0 or size <= 0 or used > size:
         raise AssetError("invalid_public_capacity_metadata")
-    if apply and bucket.get("is_allow_auto_upgrade") is not False:
-        raise AssetError("public_auto_upgrade_not_verified_off")
-    return {"capacityBytes": size * 1024, "providerUsedBytes": used * 1024,
+    # The existing bucket reports an allocated 10 GiB even with expansion flags
+    # enabled. Bound uploads against that current numeric allocation, not a
+    # possible future expansion; never alter its preset or expansion settings.
+    return {"capacityBytes": math.floor(size * 1024), "providerUsedBytes": math.ceil(used * 1024),
             "autoUpgradeDisabled": bucket.get("is_allow_auto_upgrade") is False}
 
 
