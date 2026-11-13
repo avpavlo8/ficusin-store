@@ -350,6 +350,7 @@ export default function ChatThread({
   return (
     <div
       className="chat-thread"
+      data-reference-open={referenceKind ? "true" : undefined}
       onKeyDown={(event) => {
         if ((emojiOpen || attachMenu || referenceKind) && event.key === "Escape") {
           event.preventDefault();
@@ -361,6 +362,22 @@ export default function ChatThread({
         }
       }}
     >
+      {referenceKind && (
+        <ChatReferencePicker
+          key={referenceKind}
+          base={base}
+          kind={referenceKind}
+          onClose={() => {
+            setReferenceKind(null);
+            textarea.current?.focus({ preventScroll: true });
+          }}
+          onSelect={(value) => {
+            setReference(value);
+            setReferenceKind(null);
+            textarea.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
       <div
         className="chat-messages"
         ref={scroll}
@@ -550,22 +567,6 @@ export default function ChatThread({
               <ChatIcon name="close" />
             </button>
           </div>
-        )}
-        {referenceKind && (
-          <ChatReferencePicker
-            key={referenceKind}
-            base={base}
-            kind={referenceKind}
-            onClose={() => {
-              setReferenceKind(null);
-              textarea.current?.focus({ preventScroll: true });
-            }}
-            onSelect={(value) => {
-              setReference(value);
-              setReferenceKind(null);
-              textarea.current?.focus({ preventScroll: true });
-            }}
-          />
         )}
         {attachMenu && (
           <div className="chat-attach-menu" role="group" aria-label="Что прикрепить">

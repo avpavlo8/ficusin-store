@@ -34,7 +34,7 @@ export function useAdminChatViewport() {
         const height = window.visualViewport?.height || innerHeight;
         const focused =
           chatPanel?.contains(document.activeElement) &&
-          document.activeElement?.matches(".chat-compose textarea");
+          document.activeElement?.matches(".chat-compose textarea, .chat-reference-picker input");
         const reduced = restingHeight - height > 100;
         if (focused && reduced) sawKeyboard = true;
         const keyboard = reduced && sawKeyboard;
@@ -48,8 +48,13 @@ export function useAdminChatViewport() {
         );
         shell.style.setProperty("--admin-chat-top", `${window.visualViewport?.offsetTop || 0}px`);
       };
-      const onFocus = () => {
-        sawKeyboard = false;
+      const onFocus = (event: FocusEvent) => {
+        if (
+          event.target instanceof Element &&
+          event.target.matches(".chat-compose textarea, .chat-reference-picker input")
+        ) {
+          sawKeyboard = false;
+        }
         update();
       };
       const onBlur = () => {
