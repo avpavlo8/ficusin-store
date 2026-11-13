@@ -97,6 +97,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/products/{id}/editor-publications/{channel}/retry", editorPublicationRetryHandler(adminAPI))
 	mux.HandleFunc("GET /api/v1/admin/catalog-editor/references", editorReferencesHandler(adminAPI, dependencies.EditorReferences))
 
+	registerOrderSaleRoutes(mux, adminAPI)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
 	mux.HandleFunc("GET /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, false))
 	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, true))

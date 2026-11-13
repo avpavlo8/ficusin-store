@@ -1,0 +1,137 @@
+package order
+
+import (
+	"context"
+	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"io"
+	"log/slog"
+	"net/url"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+type realizationReadOnlyCarrier struct {
+	status string
+	reads  int
+}
+
+func (*realizationReadOnlyCarrier) Configured() bool { return true }
+func (*realizationReadOnlyCarrier) CreateOrder(context.Context, integration.ShipmentRequest) (integration.Shipment, error) {
+	panic("must not create real shipment")
+}
+func (*realizationReadOnlyCarrier) CancelOrder(context.Context, string) error {
+	panic("must not cancel shipment")
+}
+func (c *realizationReadOnlyCarrier) FetchOrder(context.Context, string) (integration.Shipment, error) {
+	c.reads++
+	return integration.Shipment{UUID: "local", Status: c.status}, nil
+}
+func (c *realizationReadOnlyCarrier) FindOrderByNumber(_ context.Context, number string) (integration.Shipment, error) {
+	c.reads++
+	status := c.status
+	if strings.Contains(number, "DIRECT") {
+		status = "DELIVERED"
+	}
+	return integration.Shipment{UUID: "local-" + number, Status: status}, nil
+}
+
+func TestShippingRealizationHooksPostgres(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	parsed, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Path != "/ficusin_order_sale_test" || (parsed.Hostname() != "localhost" && parsed.Hostname() != "127.0.0.1") {
+		t.Fatal("requires loopback dedicated ficusin_order_sale_test")
+	}
+	ctx := context.Background()
+	control, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close(ctx)
+	schema := fmt.Sprintf("sale_shipping_test_%d", time.Now().UnixNano())
+	ident := pgx.Identifier{schema}.Sanitize()
+	if _, err = control.Exec(ctx, "CREATE SCHEMA "+ident); err != nil {
+		t.Fatal(err)
+	}
+	defer control.Exec(ctx, "DROP SCHEMA "+ident+" CASCADE")
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.ConnConfig.RuntimeParams["search_path"] = schema
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	exec := func(q string) {
+		t.Helper()
+		if _, err = pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`CREATE TABLE customers(id BIGINT PRIMARY KEY);CREATE TABLE warehouses(id BIGINT PRIMARY KEY,name TEXT,is_active INTEGER);
+ CREATE TABLE product_external_ids(variant_id BIGINT,provider TEXT,id_type TEXT,status TEXT,external_id TEXT);
+ CREATE TABLE product_variants(id BIGINT PRIMARY KEY,saby_id TEXT);INSERT INTO product_variants VALUES(1,'3980');
+ CREATE TABLE orders(id BIGINT PRIMARY KEY,order_number TEXT,status TEXT,customer_id BIGINT,delivery_method TEXT,cdek_status TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_track_number TEXT DEFAULT '',cdek_status_reason TEXT DEFAULT '',cdek_create_state TEXT DEFAULT 'unknown',cdek_attempts INT DEFAULT 0,cdek_next_attempt_at TIMESTAMPTZ,cdek_synced_at TIMESTAMPTZ,cdek_order_number TEXT DEFAULT '');
+ CREATE TABLE order_items(id BIGINT PRIMARY KEY,order_id BIGINT,variant_id BIGINT,product_name TEXT,sku TEXT,quantity INTEGER,unit_price NUMERIC(12,2));
+ CREATE TABLE shipment_offers(id BIGINT PRIMARY KEY,order_id BIGINT,status TEXT,delivery_method TEXT,cdek_status TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),updated_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_track_number TEXT DEFAULT '',cdek_status_reason TEXT DEFAULT '',cdek_create_state TEXT DEFAULT 'unknown',cdek_attempts INT DEFAULT 0,cdek_next_attempt_at TIMESTAMPTZ,cdek_synced_at TIMESTAMPTZ,cdek_last_error TEXT DEFAULT '');
+ ALTER TABLE orders ADD COLUMN cdek_last_error TEXT DEFAULT '';
+ CREATE TABLE shipment_offer_items(order_item_id BIGINT,shipment_offer_id BIGINT,variant_id BIGINT,product_name TEXT,sku TEXT,quantity INTEGER,unit_price NUMERIC(12,2));
+ INSERT INTO orders(id,order_number,status,delivery_method)VALUES(1,'LOCAL-MAIN','ready','cdek'),(2,'LOCAL-PART','new','cdek'),(3,'LOCAL-DIRECT','ready','cdek');
+ INSERT INTO order_items VALUES(1,1,1,'Plant','D13',2,100),(2,2,1,'Plant','D13',5,100),(3,3,1,'Plant','D13',1,100);
+ INSERT INTO shipment_offers(id,order_id,status,delivery_method)VALUES(21,2,'shipping','cdek');
+ INSERT INTO shipment_offer_items VALUES(2,21,1,'Exact partial','D13',2,100);`)
+	migration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_intents.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(string(migration))
+	carrier := &realizationReadOnlyCarrier{status: "IN_TRANSIT"}
+	worker := &ShippingWorker{pool: pool, cdek: carrier, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	// Historical shipped rows still awaiting UUID reconciliation are manual-only.
+	exec(`INSERT INTO orders(id,order_number,status,delivery_method)VALUES(6,'LOCAL-OLD-UNKNOWN','shipped','cdek');INSERT INTO order_items VALUES(6,6,1,'Historical unknown','D13',1,100);`)
+	worker.reconcileUnknownShipments(ctx)
+	var count, quantity int
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*),COALESCE(SUM(l.quantity),0) FROM order_sale_intents i JOIN order_sale_intent_lines l ON l.intent_id=i.id`).Scan(&count, &quantity); err != nil || count != 2 || quantity != 4 {
+		t.Fatalf("reconciled real handovers lost exact intents: %d/%d %v", count, quantity, err)
+	}
+	var direct int
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM order_sale_intents WHERE order_id=3`).Scan(&direct); err != nil || direct != 0 {
+		t.Fatal("direct completed delivery enqueued", direct, err)
+	}
+	var historical int
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM order_sale_intents WHERE order_id=6`).Scan(&historical); err != nil || historical != 0 {
+		t.Fatal("unknown historical shipped order silently backfilled", historical, err)
+	}
+	worker.reconcileUnknownShipments(ctx)
+	carrier.status = "DELIVERED"
+	worker.refreshStatuses(ctx)
+	worker.refreshOfferStatuses(ctx)
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM order_sale_intents`).Scan(&count); err != nil || count != 2 {
+		t.Fatal("completion duplicated reconciliation intent", count, err)
+	}
+	// Normal polling path must also atomically enqueue a newly confirmed handover.
+	exec(`INSERT INTO orders(id,order_number,status,delivery_method,cdek_uuid,cdek_create_state)VALUES(4,'LOCAL-POLL','ready','cdek','poll','registered');INSERT INTO order_items VALUES(4,4,1,'Polling plant','D13',1,100);`)
+	carrier.status = "IN_TRANSIT"
+	worker.refreshStatuses(ctx)
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM order_sale_intents WHERE order_id=4`).Scan(&count); err != nil || count != 1 {
+		t.Fatal("polling did not queue intent", count, err)
+	}
+	// New carrier scans at the same shipped status cannot backfill old shipped orders.
+	exec(`INSERT INTO orders(id,order_number,status,delivery_method,cdek_uuid,cdek_create_state,cdek_status)VALUES(5,'LOCAL-OLD','shipped','cdek','old','registered','READY_FOR_SHIPMENT_IN_SENDER_CITY');INSERT INTO order_items VALUES(5,5,1,'Historical plant','D13',1,100);`)
+	worker.refreshStatuses(ctx)
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM order_sale_intents WHERE order_id=5`).Scan(&count); err != nil || count != 0 {
+		t.Fatal("old shipment silently backfilled", count, err)
+	}
+}

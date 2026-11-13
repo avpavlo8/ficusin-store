@@ -443,7 +443,7 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 			if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok && item.status != "cancelled" && item.status != "completed" {
 				nextStatus = mapped
 			}
-			_, err = worker.pool.Exec(ctx, `
+			_, err = worker.storeShipmentStatus(ctx, item.id, 0, nextStatus == "shipped" && nextStatus != item.status, `
 				UPDATE orders
 				SET cdek_uuid=$2,cdek_track_number=$3,cdek_status=$4,cdek_status_reason=$5,
 					cdek_create_state='registered',cdek_last_error='',cdek_next_attempt_at=NULL,
@@ -504,7 +504,7 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 			if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok {
 				nextStatus = mapped
 			}
-			_, err = worker.pool.Exec(ctx, `
+			_, err = worker.storeShipmentStatus(ctx, 0, item.id, nextStatus == "shipped" && nextStatus != item.status, `
 				UPDATE shipment_offers
 				SET cdek_uuid=$2,cdek_track_number=$3,cdek_status=$4,cdek_status_reason=$5,
 					cdek_create_state='registered',cdek_last_error='',cdek_next_attempt_at=NULL,
@@ -854,7 +854,7 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		if mapped, known := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; known {
 			nextStatus = mapped
 		}
-		command, err := worker.pool.Exec(ctx, `
+		command, err := worker.storeShipmentStatus(ctx, item.id, 0, nextStatus != "" && nextStatus != item.status, `
 			UPDATE orders
 			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = CASE WHEN status IN ('cancelled','completed') OR $5='' THEN status ELSE $5 END,
 				cdek_synced_at = CURRENT_TIMESTAMP
@@ -905,7 +905,7 @@ func (worker *ShippingWorker) refreshOfferStatuses(ctx context.Context) {
 		if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok {
 			next = mapped
 		}
-		if _, err := worker.pool.Exec(ctx, `UPDATE shipment_offers SET cdek_track_number=$2,cdek_status=$3,cdek_status_reason=$4,status=$5,cdek_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, next); err != nil {
+		if _, err := worker.storeShipmentStatus(ctx, 0, item.id, next != item.status, `UPDATE shipment_offers SET cdek_track_number=$2,cdek_status=$3,cdek_status_reason=$4,status=$5,cdek_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, next); err != nil {
 			worker.logger.Error("store cdek shipment offer status failed", "error", err, "offer_id", item.id)
 		}
 	}

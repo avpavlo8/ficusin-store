@@ -10,6 +10,7 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -439,6 +440,11 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 		WHERE id = $1
 	`, id, status, paymentStatus); err != nil {
 		return Order{}, fmt.Errorf("update order status: %w", err)
+	}
+	if status != "" && status != currentStatus && (status == "shipped" || status == "completed") {
+		if _, err := ordersale.Enqueue(ctx, tx, id, 0, "automatic"); err != nil {
+			return Order{}, fmt.Errorf("queue order realization: %w", err)
+		}
 	}
 	// A completed sale no longer owns a storefront reservation: the physical
 	// balance is supplied by Saby and this only removes our local hold.
