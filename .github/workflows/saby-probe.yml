@@ -34,8 +34,8 @@ on:
         type: boolean
         required: false
         default: false
-      payment_receipt_audit:
-        description: Reconcile fiscal warning records using readonly SQL and YooKassa GETs
+      catalog_publication_audit:
+        description: Inspect the explicitly approved test product and vendor publication receipts
         type: boolean
         required: false
         default: false
@@ -73,7 +73,7 @@ jobs:
           python3 - <<'PYONE'
           import json,os
           values=json.loads(os.environ['INPUTS_JSON'])
-          flags=['activate_publishing','publish_static_assets','marketplace_readiness','redeploy_exact','payment_receipt_audit','production_storage_readiness','production_preflight','production_readiness']
+          flags=['activate_publishing','publish_static_assets','marketplace_readiness','redeploy_exact','catalog_publication_audit','production_storage_readiness','production_preflight','production_readiness']
           selected=sum(values.get(k) in (True,'true') for k in flags)+(values.get('production_files','none') not in ('none',''))
           if selected != 1:
               raise SystemExit('Select exactly one scoped operation')
@@ -114,7 +114,7 @@ jobs:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/production-marketplace-readiness.py
       - name: Validate post-release operation target
-        if: inputs.payment_receipt_audit || inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        if: inputs.catalog_publication_audit || inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: |
@@ -138,7 +138,7 @@ jobs:
         with:
           node-version: 24
       - name: Install post-release operation clients
-        if: inputs.payment_receipt_audit || inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        if: inputs.catalog_publication_audit || inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
         run: python3 -m pip install 'boto3==1.40.18' 'psycopg[binary]==3.2.13'
       - name: Activate only future explicit production catalog saves
         if: inputs.activate_publishing
@@ -172,9 +172,9 @@ jobs:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: python3 scripts/production-redeploy-exact.py --expected-commit "$EXPECTED_COMMIT" --apply
-      - name: Audit fiscal warning records without financial or database writes
-        if: inputs.payment_receipt_audit
+      - name: Read test-product publication receipts without writes
+        if: inputs.catalog_publication_audit
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/production-receipt-audit.py --expected-commit "$EXPECTED_COMMIT"
+        run: python3 scripts/production-catalog-publication-audit.py --expected-commit "$EXPECTED_COMMIT"
