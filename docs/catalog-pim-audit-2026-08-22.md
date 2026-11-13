@@ -1,5 +1,9 @@
 # Catalogue/PIM audit — 2026-08-22
 
+> Исторический документ: описывает состояние и решения своего этапа, а не
+> текущий состав приложения. Действующая карта — [current-system.md](current-system.md).
+
+
 ## Scope
 
 Reviewed attribute definitions, category inheritance, PRODUCT/SKU values, filters, dynamic collections, collection covers and admin layouts on desktop and phone widths.

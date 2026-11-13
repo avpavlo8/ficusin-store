@@ -79,14 +79,6 @@ export default function CheckoutHost({
     initialOpen: checkoutPage,
   });
   const { checkoutOpen, setCheckoutOpen, setCheckoutProfile } = checkout;
-  // Local review of the post-order screens without creating an order or clearing the cart.
-  const previewMode =
-    import.meta.env.DEV && checkoutPage
-      ? new URLSearchParams(window.location.search).get("preview")
-      : null;
-  const previewConfirmation =
-    previewMode === "confirmation" || previewMode === "confirmation-pending";
-
   useEffect(() => {
     if ((cartPage || checkoutPage) && cartLines.length)
       track("view_cart", {
@@ -216,20 +208,7 @@ export default function CheckoutHost({
         />
       )}
 
-      {previewConfirmation ? (
-        <CheckoutPanel
-          user={!!user}
-          page
-          pricingReady={pricingReady}
-          pricingError={pricingError}
-          {...checkout.panelProps}
-          orderNumber="LOCAL-1024"
-          orderConfirmationPending={previewMode === "confirmation-pending"}
-          orderConfirmationReason={previewMode === "confirmation-pending" ? "preorder" : null}
-          delivery="pickup"
-          paymentMethod="on_delivery"
-        />
-      ) : checkoutPage && cartStatus === "loading" ? (
+      {checkoutPage && cartStatus === "loading" ? (
         <section className="checkout-load-state" role="status">
           <h1>Загружаем оформление…</h1>
           <p>Проверяем состав и актуальные цены корзины.</p>

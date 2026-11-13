@@ -73,9 +73,6 @@ func TestDurableCatalogueExportOnDatabase(t *testing.T) {
 	if e = pool.QueryRow(ctx, `SELECT COUNT(*),MAX(revision)::int FROM catalog_saby_exports WHERE variant_id=$1`, id).Scan(&count, &rev); e != nil || count != 1 || rev != 1 {
 		t.Fatalf("duplicate commands %d %d %v", count, rev, e)
 	}
-	if e = repo.DeleteProductVariant(ctx, actor, id); !errors.Is(e, admin.ErrInvalidInput) {
-		t.Fatalf("pending SKU deletion allowed: %v", e)
-	}
 	if e = repo.LinkVariantToSaby(ctx, actor, id, "unrelated"); !errors.Is(e, admin.ErrInvalidInput) {
 		t.Fatalf("pending identity replacement allowed: %v", e)
 	}

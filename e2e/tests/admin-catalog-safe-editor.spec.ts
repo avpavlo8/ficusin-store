@@ -25,8 +25,6 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
  if(/\/categories\/\d+\/attributes$/.test(path))return send({attributes:[...schema,...effective,...[{code:'pot_diameter_cm',name:'Диаметр горшка'},{code:'height_cm',name:'Высота'}].map((f,i)=>({...schema[0],...f,id:40+i,dataType:'number',unit:'см',scope:'variant',options:[]}))]});
  if(/\/categories\/\d+\/effective-attributes$/.test(path))return send({attributes:effective});
  const rows=path.match(/\/products\/(\d+)\/variants$/);if(rows)return send({variants:variants.get(Number(rows[1]))||[]});
- if(path.endsWith('/relationships'))return send({relationships:{mappings:[],suppliers:[],sales:[]}});
- if(path.endsWith('/price-proposals'))return send({proposals:[]});
  const mediaRoute=path.match(/\/(products|variants)\/(\d+)\/media(?:\/(copy|\d+)(?:\/(primary))?)?$/);
  if(mediaRoute){const [,kind,rawId,action,primary]=mediaRoute;const id=Number(rawId);const belongs=(row:typeof media[number])=>kind==='products'?row.productId===id:row.variantId===id;
   if(method==='GET')return send({media:media.filter(belongs)});

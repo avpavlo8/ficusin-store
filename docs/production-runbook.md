@@ -1,7 +1,7 @@
 # Production release and incident runbook
 
 Owner: Platform
-Last reviewed: 2026-09-07
+Last reviewed: 2026-11-13
 
 ## Release gate
 
@@ -24,8 +24,12 @@ target.
 ## Rollback
 
 - Roll back to the last known-good immutable image/revision in Timeweb.
-- Database migrations use expand/contract rules. A release must remain readable
-  by the previous application version; destructive cleanup is a later release.
+- Check database compatibility before selecting an older image. The cleanup
+  migrations move retired tables into `legacy_archive`; a pre-cleanup binary
+  still querying those tables in `public` cannot be rolled back blindly. Keep
+  the last compatible image, or rehearse restoring the required schema and
+  snapshot before changing the runtime. Archive moves preserve records but do
+  not make every historical binary compatible.
 - Never rename an applied migration. Never attempt an ad-hoc reverse migration
   while handling an incident unless a rehearsed procedure explicitly requires it.
 

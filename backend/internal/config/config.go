@@ -136,10 +136,9 @@ type Auth struct {
 	SessionDays  int
 }
 
-// SMS holds settings for the SMS.ru gateway used to deliver OTP login
-// codes over a call (no sender name registration required). If APIKey is
-// empty, codes are only logged (useful for local development) and no call
-// is actually placed.
+// SMS configures SMS.ru's user-initiated call check, not an OTP delivery call.
+// Without APIKey the development adapter fabricates a confirmed check. A
+// production deployment must supply SMSRU_API_KEY for real phone verification.
 type SMS struct {
 	APIKey string
 }

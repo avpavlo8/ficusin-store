@@ -158,10 +158,6 @@ func NewService(store Store) *Service {
 	return &Service{store: store, parser: NewPDFParser()}
 }
 
-func NewServiceWithParser(store Store, parser Parser) *Service {
-	return &Service{store: store, parser: parser}
-}
-
 func NewServiceWithExecutor(store Store, executor Executor) *Service {
 	return &Service{store: store, parser: NewPDFParser(), executor: executor}
 }

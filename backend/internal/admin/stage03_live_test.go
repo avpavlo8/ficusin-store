@@ -100,29 +100,6 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		}
 	})
 
-	t.Run("one product exposes two suppliers", func(t *testing.T) {
-		var sabyID string
-		if err := pool.QueryRow(ctx, `SELECT saby_id FROM products WHERE id=$1`, productA).Scan(&sabyID); err != nil {
-			t.Fatal(err)
-		}
-		for index := 0; index < 2; index++ {
-			var supplierID int64
-			if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,country_code,default_currency) VALUES($1,'domestic','RU','RUB') RETURNING id`, fmt.Sprintf("Stage 03 supplier %d %d", unique, index)).Scan(&supplierID); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := pool.Exec(ctx, `INSERT INTO procurement_supplier_products(supplier_id,saby_id,supplier_article,availability_status,canonical_variant_id) VALUES($1,$2,$3,'available',$4)`, supplierID, sabyID, fmt.Sprintf("SUP-%d", index), variantA); err != nil {
-				t.Fatal(err)
-			}
-		}
-		relations, err := repository.ProductRelationships(ctx, productA)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(relations.Suppliers) != 2 {
-			t.Fatalf("suppliers=%d, want 2", len(relations.Suppliers))
-		}
-	})
-
 	t.Run("package dimensions accept decimals and reject zero", func(t *testing.T) {
 		var categoryID, attributeID int64
 		if err := pool.QueryRow(ctx, `INSERT INTO categories(name,slug) VALUES('Stage 03 packaging',$1) RETURNING id`, fmt.Sprintf("stage-03-packaging-%d", unique)).Scan(&categoryID); err != nil {
@@ -223,7 +200,8 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		}
 	})
 
-	if _, err := repository.UpdateProductVariant(ctx, manager, variantA, VariantInput{Label: "manager", PriceMinor: 1, Stock: 1, WholesaleMinQty: 1, Active: true}); !errors.Is(err, ErrForbidden) {
+	price := int64(1)
+	if _, err := repository.UpdateProduct(ctx, manager, productA, ProductUpdate{Variants: []VariantEdit{{ID: variantA, PriceMinor: &price}}}); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("manager changed commercial fields: %v", err)
 	}
 }

@@ -91,11 +91,6 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertNotIn("permission == PermissionDelete", permissions.split("case RoleManager:", 1)[1])
         self.assertIn("PermissionDelete", manage)
 
-    def test_variant_delete_is_safe_only_before_sale(self):
-        pim = text("backend/internal/admin/catalog_pim.go")
-        self.assertIn("SELECT EXISTS(SELECT 1 FROM order_items WHERE variant_id=$1)", pim)
-        self.assertIn("проданный SKU можно только архивировать", pim)
-
     def test_dynamic_collections_are_live_pim_queries(self):
         migration = text("timeweb/migrations/057_dynamic_collection_rules.sql")
         public = text("backend/internal/catalog/postgres.go")

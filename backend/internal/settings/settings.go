@@ -29,7 +29,6 @@ const (
 	PaymentsEnabled     = "payments.enabled"
 	TelegramEnabled     = "telegram.enabled"
 	AutoCancelHours     = "orders.auto_cancel_hours"
-	SabyStockEnabled    = "saby.stock_enabled"
 	MetrikaID           = "analytics.metrika_id"
 	YandexVerification  = "seo.yandex_verification"
 	GoogleVerification  = "seo.google_verification"
@@ -67,12 +66,6 @@ var Definitions = []Definition{
 		Kind:  "switch",
 	},
 	{
-		Key:   SabyStockEnabled,
-		Title: "Списывать остатки в СБИС",
-		Note:  "Выключено — магазин только записывает в журнал, что он сделал бы с настоящим складом: заказ занимает растение, отгрузка списывает. Наружу ничего не уходит, и это стоит проверить до того, как трогать живой склад.",
-		Kind:  "switch",
-	},
-	{
 		Key:   TelegramEnabled,
 		Title: "Уведомления в Telegram",
 		Note:  "Выключите, чтобы тестовые заказы не сыпались менеджеру.",
@@ -81,7 +74,7 @@ var Definitions = []Definition{
 	{
 		Key:   AutoCancelHours,
 		Title: "Отменять неоплаченный заказ через, часов",
-		Note:  "Заказ освобождает товар обратно на склад. 0 — не отменять автоматически.",
+		Note:  "Закрывает просроченный неоплаченный заказ и его платёжную ссылку. Локальный резерв больше не создаётся. 0 — не отменять автоматически.",
 		Kind:  "number",
 	},
 	{
@@ -131,7 +124,6 @@ var defaults = map[string]string{
 	CDEKOrdersEnabled:   "0",
 	TelegramEnabled:     "1",
 	AutoCancelHours:     "24",
-	SabyStockEnabled:    "0",
 	CDEKSenderName:      "",
 	CDEKSenderPhone:     "",
 	CDEKSenderAddress:   "",

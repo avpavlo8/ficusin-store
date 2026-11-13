@@ -261,7 +261,7 @@ func TestImportDocumentValidatesAndDelegatesParsedPDF(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
 	parsed := ParsedDocument{ParserKind: "domestic_payment_invoice", Lines: []ParsedLine{{RawName: "Фикус"}}}
-	result, err := NewServiceWithParser(store, parserStub{result: parsed}).ImportDocument(
+	result, err := newServiceWithParser(store, parserStub{result: parsed}).ImportDocument(
 		context.Background(), Actor{}, DocumentUpload{
 			SupplierID: 3, FileName: " invoice.pdf ", ContentType: "application/pdf", Content: []byte("%PDF-test"),
 		})
@@ -275,7 +275,7 @@ func TestImportDocumentValidatesAndDelegatesParsedPDF(t *testing.T) {
 
 func TestImportDocumentRejectsNonPDF(t *testing.T) {
 	t.Parallel()
-	_, err := NewServiceWithParser(&storeStub{}, parserStub{}).ImportDocument(
+	_, err := newServiceWithParser(&storeStub{}, parserStub{}).ImportDocument(
 		context.Background(), Actor{}, DocumentUpload{SupplierID: 1, FileName: "invoice.pdf", Content: []byte("hello")},
 	)
 	if !errors.Is(err, ErrInvalidInput) {
@@ -298,4 +298,8 @@ func TestSearchNomenclatureAndResolveAliasValidateInput(t *testing.T) {
 	if _, err := service.ResolveAlias(context.Background(), Actor{}, 17, AliasResolution{MatchStatus: "ignored", SabyID: "X1"}); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
+}
+
+func newServiceWithParser(store Store, parser Parser) *Service {
+	return &Service{store: store, parser: parser}
 }

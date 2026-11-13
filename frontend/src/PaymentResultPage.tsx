@@ -31,14 +31,7 @@ function ResultArrow({ diagonal = false }: { diagonal?: boolean }) {
   );
 }
 
-export default function PaymentResultPage({
-  orderNumber,
-  preview,
-}: {
-  orderNumber: string;
-  preview?: "success" | "pending" | "failed";
-}) {
-  const localPreview = import.meta.env.DEV ? preview : undefined;
+export default function PaymentResultPage({ orderNumber }: { orderNumber: string }) {
   const [view, setView] = useState<ResultView>({ kind: "loading" });
   const [retry, setRetry] = useState(0);
   const [checking, setChecking] = useState(true);
@@ -52,22 +45,6 @@ export default function PaymentResultPage({
 
     async function checkPayment() {
       try {
-        if (import.meta.env.DEV && localPreview) {
-          const { getPreviewOrder } = await import("./previewOrder");
-          if (!disposed)
-            setView({
-              kind: "order",
-              order: getPreviewOrder(
-                localPreview === "success"
-                  ? "paid"
-                  : localPreview === "failed"
-                    ? "payment-failed"
-                    : "confirmed",
-              ),
-              autoChecking: false,
-            });
-          return;
-        }
         if (attempts === 0) {
           const auth = await fetch("/api/v1/auth/me", {
             credentials: "same-origin",
@@ -126,7 +103,7 @@ export default function PaymentResultPage({
       controller.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [localPreview, orderNumber, retry]);
+  }, [orderNumber, retry]);
 
   const order = view.kind === "order" ? view.order : null;
   const state = view.kind === "order" ? paymentResultState(view.order) : view.kind;
@@ -134,7 +111,7 @@ export default function PaymentResultPage({
   const pending = state === "pending";
   const failed = state === "failed";
   const illustrated = success || pending || failed;
-  const orderHref = `/account/orders/${encodeURIComponent(orderNumber)}${localPreview ? (localPreview === "success" ? "?state=paid" : "?state=confirmed") : ""}`;
+  const orderHref = `/account/orders/${encodeURIComponent(orderNumber)}`;
   const loginHref = `/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`;
   const title = {
     success: "Оплата прошла",
@@ -171,9 +148,6 @@ export default function PaymentResultPage({
     <main className="payment-result-page">
       <StoreHeader />
       <section className="payment-result-shell" aria-labelledby="payment-result-title">
-        {localPreview && (
-          <p className="payment-result-preview">Демонстрационный экран · локальный просмотр</p>
-        )}
         <article
           className="payment-result-card"
           data-success={success}

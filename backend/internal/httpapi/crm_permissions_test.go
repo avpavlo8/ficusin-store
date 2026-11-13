@@ -36,9 +36,6 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 		{"DELETE", "/api/v1/admin/categories/1", ""},
 		{"DELETE", "/api/v1/admin/products/1/media/2", ""},
 		{"DELETE", "/api/v1/admin/variants/1/media/2", ""},
-		{"POST", "/api/v1/admin/variants/1/copy", "{}"},
-		{"POST", "/api/v1/admin/variants/1/archive", "{}"},
-		{"DELETE", "/api/v1/admin/variants/1", ""},
 		{"POST", "/api/v1/admin/products/1/variants", "{}"},
 		{"DELETE", "/api/v1/admin/collection-definitions/1", ""},
 		{"PATCH", "/api/v1/admin/customers/1", `{"fullName":"Changed","retailDiscountBps":9000}`},
@@ -67,16 +64,6 @@ func TestCRMManagerProductPatchRejectsEntireMixedRequest(t *testing.T) {
 		})
 	}
 }
-func TestCRMManagerVariantMixedPatchRejected(t *testing.T) {
-	for _, field := range []string{`"priceMinor":null`, `"stock":0`, `"externalIds":[]`, `"active":false`, `"PriceMinor":10`} {
-		router := NewRouter(discardLogger(), adminDependencies(admin.NewPostgresRepository(nil), admin.RoleManager, ""))
-		response := httptest.NewRecorder()
-		router.ServeHTTP(response, adminRequest("PATCH", "/api/v1/admin/variants/1", `{"label":"Must not persist",`+field+`}`))
-		if response.Code != 403 {
-			t.Fatalf("%s: %d %s", field, response.Code, response.Body.String())
-		}
-	}
-}
 func TestCRMContentEditPreservesGallery(t *testing.T) {
 	for _, role := range []string{admin.RoleOwner, admin.RoleManager} {
 		repository := &crmProductRepository{}
@@ -99,5 +86,26 @@ func TestCRMManagerPermissionResponse(t *testing.T) {
 		if strings.Contains(response.Body.String(), forbidden) {
 			t.Fatalf("leaked permission %s", forbidden)
 		}
+	}
+}
+
+// Current editing uses one atomic product PATCH. Retired independent mutation
+// routes must not remain reachable after their old UI has been removed.
+func TestRetiredCatalogRoutesAreNotRegistered(t *testing.T) {
+	router := NewRouter(discardLogger(), adminDependencies(admin.NewPostgresRepository(nil), admin.RoleOwner, ""))
+	for _, operation := range []struct{ method, path string }{
+		{"PATCH", "/api/v1/admin/variants/1"},
+		{"DELETE", "/api/v1/admin/variants/1"},
+		{"POST", "/api/v1/admin/variants/1/copy"},
+		{"POST", "/api/v1/admin/variants/1/archive"},
+		{"GET", "/api/v1/admin/products/1/relationships"},
+	} {
+		t.Run(operation.method+" "+operation.path, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, adminRequest(operation.method, operation.path, "{}"))
+			if response.Code != 404 {
+				t.Fatalf("retired route returned %d: %s", response.Code, response.Body.String())
+			}
+		})
 	}
 }
