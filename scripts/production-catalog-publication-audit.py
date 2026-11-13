@@ -82,11 +82,17 @@ def wb_error_report(payload, env):
     recognized = isinstance(batches, list)
     result = {'shape': vendor_shape(payload, env), 'parserFormat': 'data.items' if isinstance(data, dict) and recognized else 'data[]' if recognized else 'unsupported',
               'firstPageOnly': True, 'batchCountScanned': len(batches) if recognized else None, 'testErrors': []}
+    result['batchIdentitySummary']=[]
     cursor = data.get('cursor') if isinstance(data, dict) else root.get('cursor')
     result['morePages'] = cursor.get('next') if isinstance(cursor, dict) and isinstance(cursor.get('next'), bool) else None
     for batch in batches if recognized else []:
         if not isinstance(batch, dict): continue
         errors = batch.get('errors')
+        codes=batch.get('vendorCodes',[])
+        own=isinstance(codes,list) and 'сам' in codes
+        result['batchIdentitySummary'].append({'testArticlePresent':own,'vendorCodeCount':len(codes) if isinstance(codes,list) else None,'errorType':json_kind(errors),'errorKeysCount':len(errors) if isinstance(errors,dict) else None})
+        if own and len(codes)==1:
+            result['singleTestBatchErrorShape']={'keys':[safe_vendor_text(str(k),env,80) for k in errors] if isinstance(errors,dict) else [],'value':safe_vendor_text(json.dumps(errors,ensure_ascii=False),env,1800),**{f:safe_vendor_text(batch[f],env,100) for f in ('updatedAt','batchUUID') if isinstance(batch.get(f),str)}}
         if isinstance(errors, dict) and 'сам' in errors:
             messages = errors['сам']
         elif batch.get('vendorCode') == 'сам':
