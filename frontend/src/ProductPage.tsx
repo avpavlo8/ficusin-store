@@ -420,7 +420,14 @@ export default function ProductPage({ slug }: { slug: string }) {
               <div className="product-info">
                 <p className="latin">{item.latin}</p>
                 <h3>{item.name}</h3>
-                <strong>{money(item.price)}</strong>
+                <strong
+                  aria-label={
+                    item.stock <= 0 ? `Ориентировочная цена: ${money(item.price)}` : undefined
+                  }
+                >
+                  {item.stock <= 0 && "≈ "}
+                  {money(item.price)}
+                </strong>
               </div>
             </a>
           ))}
