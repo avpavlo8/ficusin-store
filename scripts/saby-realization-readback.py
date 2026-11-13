@@ -13,7 +13,7 @@ guards = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guards)
 SERVICE = 'https://online.sbis.ru/service/?srv=1'
 AUTH = 'https://online.sbis.ru/oauth/service/'
-READS = {'ДокОтгрИсх.СписокХраним', 'ДокОтгрИсх.Прочитать', 'sabyWarehouse.List'}
+READS = {'ДокОтгрИсх.СписокХраним', 'ДокОтгрИсх.Прочитать', 'sabyWarehouse.List','РеалИсх.DocNomList','СБИС.ПрочитатьДокумент'}
 
 def request(url, body, token=''):
     if url not in (SERVICE, AUTH) or (url == SERVICE and body.get('method') not in READS):
@@ -70,8 +70,8 @@ def summary(entity):
     # counterparties, contacts, notes, attachments or arbitrary scalar values.
     names = {'@Документ','ИдентификаторДокумента','ДокументРасширение.ИдентификаторВИ',
              'ТипДокумента','НазваниеТипаДокумента','Тип','Проведен','Проведён','Проведение',
-             'Состояние','Статус','Склад','СкладОтправитель','СкладПолучатель','Регламент','ИдРегламента','ТипДокумента.ПодТипДокумента','ТипДокумента.ТипДокумента','СкладскойДокумент.Склад','СкладскойДокумент.Флаги','ДокументРасширение.Состояние'}
-    return {k:v for k,v in entity.items() if k in names and (isinstance(v,(str,int,float,bool,type(None))) or k=='@Документ' and isinstance(v,list) and len(v)==2 and isinstance(v[0],int) and isinstance(v[1],str))}
+             'Состояние','Статус','Склад','СкладОтправитель','СкладПолучатель','Регламент','ИдРегламента','ТипДокумента.ПодТипДокумента','ТипДокумента.ТипДокумента','СкладскойДокумент.Склад','СкладскойДокумент.Флаги','ДокументРасширение.Состояние','Документ_','СкладскойДокумент.СкладскойДокумент_','ТипДокумента.ИмяДиалога','ТипДокумента.ИмяБраузера','ТипДокумента.GUID','ТипДокумента.ТочкиПроведения'}
+    return {k:v for k,v in entity.items() if k in names and (isinstance(v,(str,int,float,bool,type(None))) or k=='@Документ' and isinstance(v,list) and len(v)==2 and isinstance(v[0],int) and isinstance(v[1],str) or k in ('ТипДокумента.ТочкиПроведения','ДокументРасширение.Состояние') and isinstance(v,list) and all(x is None or isinstance(x,bool) for x in v))}
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -95,6 +95,11 @@ def main():
             if isinstance(identity,bool) or not isinstance(identity,int) or identity<=0: continue
             doc=rpc('ДокОтгрИсх.Прочитать',{'ИдО':identity,'ИмяМетода':'ДокОтгрИсх.Список'},token)
             print(json.dumps({'documentShape':shape(doc),'identifiers':summary(fields(doc))},ensure_ascii=False))
+            if row == rows(listing)[0]:
+                detail=rpc('РеалИсх.DocNomList',{'Фильтр':record([('СкладскойДокумент','Число целое',identity),('Тип','Число целое',0),('ЭтоРасходы','Логическое',False),('Раздел','Число целое',None)]),'Сортировка':None,'Навигация':record([('ЕстьЕще','Логическое',True),('Страница','Число целое',0),('РазмерСтраницы','Число целое',100)]),'ДопПоля':[]},token,6)
+                print(json.dumps({'outgoingLineShape':shape(detail)},ensure_ascii=False))
+                public=rpc('СБИС.ПрочитатьДокумент',{'Документ':{'Идентификатор':row['ИдентификаторДокумента']}},token,3)
+                print(json.dumps({'publicReadShape':shape(public),'regulation':(public or {}).get('Регламент')},ensure_ascii=False))
         warehouses=rpc('sabyWarehouse.List',{'filter':{'limit':100,'page':0}},token,6)
         print(json.dumps({'warehouseShape':shape(warehouses),'warehouseIDs':[{k:w.get(k) for k in ('id','warehouseId')} for w in (warehouses or {}).get('warehouses',[])]},ensure_ascii=False))
         return 0
