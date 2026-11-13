@@ -12,7 +12,7 @@ func (r *PostgresRepository) RetryEditorPublication(ctx context.Context, actor A
 	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
-	if channel != "wb" && channel != "ozon" {
+	if channel != "wb" && channel != "ozon" && channel != "saby" {
 		return ErrInvalidInput
 	}
 	tx, e := r.pool.Begin(ctx)

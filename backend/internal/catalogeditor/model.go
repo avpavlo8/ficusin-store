@@ -217,6 +217,10 @@ type Packaging struct {
 	Weight float64 `json:"weightGrams"`
 }
 type Request struct {
+	Saby           Saby           `json:"saby,omitempty"`
+	SabyID         string         `json:"sabyId,omitempty"`
+	SabyUUID       string         `json:"sabyUUID,omitempty"`
+	PriceMinor     int64          `json:"priceMinor,omitempty"`
 	Action         string         `json:"action,omitempty"`
 	ExistingID     string         `json:"existingId,omitempty"`
 	SiteAttributes map[string]any `json:"attributes,omitempty"`
@@ -234,7 +238,14 @@ type Request struct {
 	WBPrice        string         `json:"wbPrice"`
 	Schema         []Attribute    `json:"schema"`
 }
+type Saby struct {
+	Category     Category `json:"category"`
+	Folder       Category `json:"folder"`
+	Mode         string   `json:"mode"`
+	ExistingCode string   `json:"existingCode"`
+}
 type RemoteIDs struct {
+	UUID         string `json:"uuid,omitempty"`
 	ImageCount   int    `json:"imageCount,omitempty"`
 	RemoteStatus string `json:"remoteStatus,omitempty"`
 	ProductID    string `json:"productId,omitempty"`
@@ -243,13 +254,14 @@ type RemoteIDs struct {
 	Barcode      string `json:"barcode,omitempty"`
 }
 type Progress struct {
-	UpdateRequest   *Request  `json:"updateRequest,omitempty"`
-	Stage           string    `json:"stage,omitempty"`
-	TaskID          int64     `json:"taskId,omitempty"`
-	IDs             RemoteIDs `json:"ids"`
-	CreateAttempted bool      `json:"createAttempted,omitempty"`
-	Ambiguous       bool      `json:"ambiguous,omitempty"`
-	Checks          int       `json:"checks,omitempty"`
+	Native          json.RawMessage `json:"native,omitempty"`
+	UpdateRequest   *Request        `json:"updateRequest,omitempty"`
+	Stage           string          `json:"stage,omitempty"`
+	TaskID          int64           `json:"taskId,omitempty"`
+	IDs             RemoteIDs       `json:"ids"`
+	CreateAttempted bool            `json:"createAttempted,omitempty"`
+	Ambiguous       bool            `json:"ambiguous,omitempty"`
+	Checks          int             `json:"checks,omitempty"`
 }
 type Result struct {
 	Progress Progress
@@ -258,6 +270,18 @@ type Result struct {
 }
 type Publisher interface {
 	Advance(ctx context.Context, channel string, request Request, progress Progress) (Result, error)
+}
+
+// ChannelPublishers separates capabilities while sharing durable receipt and
+// lease handling. A missing channel can never fall through to another vendor.
+type ChannelPublishers map[string]Publisher
+
+func (p ChannelPublishers) Advance(ctx context.Context, channel string, request Request, progress Progress) (Result, error) {
+	provider := p[channel]
+	if provider == nil {
+		return Result{}, fmt.Errorf("публикация %s не подключена", channel)
+	}
+	return provider.Advance(ctx, channel, request, progress)
 }
 
 func SiteAttributeCode(a Attribute) string {

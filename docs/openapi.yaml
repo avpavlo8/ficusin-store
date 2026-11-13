@@ -3933,14 +3933,14 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [products.manage]
-      description: Resume a failed publication from its durable receipt. An uncertain create is reconciled by article and barcode and is never blindly resubmitted. Mock IDs remain isolated from working integrations.
+      description: Resume a failed publication from its durable receipt. An uncertain WB/Ozon create is reconciled by article and barcode and is never blindly resubmitted. A native Saby Create without a returned draft ID requires manual review and is never repeated. Mock IDs remain isolated from working integrations.
       parameters:
         - { in: path, name: id, required: true, schema: { type: integer } }
         - {
             in: path,
             name: channel,
             required: true,
-            schema: { type: string, enum: [wb, ozon] },
+            schema: { type: string, enum: [wb, ozon, saby] },
           }
       requestBody:
         required: true

@@ -8,6 +8,8 @@ Creation and editing of site variants use the same category-scoped attribute val
 
 `CATALOG_PUBLICATION_MODE` defaults to `disabled`. Saving creates preparation records but does not call seller write APIs.
 
+Publication requests retain the mode of the explicit Save/Create action. Workers consume only their exact mode. Enabling `live` never promotes an old `disabled` or `mock` preparation; the operator must explicitly save that card again. Unresolved write receipts cannot be reset by switching modes.
+
 `mock` runs the real HTTP adapters through an in-memory vendor emulator. Its transport rejects all external hosts and never makes a network connection. The UI clearly labels local API checks and fixture categories. Emulator cards survive backend restarts in `catalog_editor_mock_state`. Mock dictionaries are namespaced separately (`mock/*`), and verified mock IDs are stored separately from canonical production integration IDs. The local preview launcher explicitly selects this mode and sets `CATALOG_PUBLICATION_LIVE_ENABLED=false`.
 
 `live` requires **both** `APP_ENV=production` and `CATALOG_PUBLICATION_LIVE_ENABLED=true`, as well as the mode value itself. Development and staging refuse live publication. No real creation or deployment was performed during implementation. Live credentials, account permissions and category-specific acceptance remain to be verified before any authorised real run.
@@ -25,7 +27,17 @@ The bottom checkboxes only select new destinations and are hidden for establishe
 
 Publication leases, attempts and progress are persisted. The latest edit is queued in a separate pending snapshot while an earlier operation is in flight, and promoted once the receipt is resolved. Lost create responses and expired create leases are reconciled by exact article plus barcode, never blindly resent. An unresolved creation becomes `needs_attention`. Confirmed validation failures can be corrected and saved; `POST /admin/products/{id}/editor-publications/{channel}/retry` resumes failed work without losing receipts. External links are unique per marketplace and mode. Publication success means a card exists; it does not assert moderation approval, required documents, sale eligibility or stock availability.
 
-Saby remains a separate path: its category/folder live on Product, existing nomenclature links by exact cached code, and its prior isolated local/staging simulation stays unchanged. New editor plans do not enable real Saby creation.
+## Native Saby publication
+
+An explicit Save/Create in enabled production queues Saby through the same durable publication worker. Disabled preparations remain disabled, while local/staging Saby simulation remains isolated. The editor never sends its native creation through the older CommerceML exporter or its technical catalogue.
+
+The frozen Saby request includes the selected native category/folder, site name with a pot-size suffix only when applicable, description, current site price, public photos, canonical attributes and a stable generated 200-prefixed EAN-13. Saby's numeric integration ID, native business number, UUID and EAN remain separate identifiers. Existing numeric links always mean Update, including when a recovered browser draft still says `mode:create`. Unchanged saves retain their finished receipt.
+
+Native Create creates a server draft. The worker records the irreversible boundary before POST, then durably saves the returned draft ID before later updates or media work. An unknown Create response without a recoverable ID requires manual review; neither automatic retry nor a changed editor mode/name may create it again. Verified completion alone updates canonical Saby IDs and activates the Saby stock source. Binding is not a stock confirmation: a real inventory exchange must still provide fresh quantities.
+
+Native Save prepares its exact managed payload, expected image IDs and verification evidence in a separate durable step before sending Update. If a process dies during Update, its expired lease resumes verification, not another POST. An interrupted Move likewise reads its result back first. An interrupted temporary image upload pauses for manual review because its unknown attachment ID cannot be safely recreated. Incomplete older Save evidence also pauses rather than reporting an unverified success.
+
+The old manual catalogue exporter and native editor publications exclude each other under the same variant lock. An unresolved legacy export must finish before a new editor send, and an unfinished native publication blocks a competing legacy export. Existing unlinked nomenclature is selected by an exact unique cached business code; names never establish a link.
 
 ## Verification
 

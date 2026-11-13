@@ -247,18 +247,22 @@ func main() {
 	go catalogeditor.RunPreview(ctx, pool, cfg.Environment, logger)
 	adminRepository.WithEditorPublicationMode(cfg.CatalogPublicationMode)
 	editorReferences := integration.NewMarketplaceExecutor(cfg.CatalogMarketplaces.WBToken, cfg.CatalogMarketplaces.OzonClientID, cfg.CatalogMarketplaces.OzonAPIKey).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
-	var editorPublisher *integration.CatalogPublisher
+	var editorPublisher catalogeditor.Publisher
 	if cfg.CatalogPublicationMode == "mock" {
-		var err error
-		editorPublisher, err = integration.NewPersistentMockCatalog(ctx, pool)
+		mockPublisher, err := integration.NewPersistentMockCatalog(ctx, pool)
 		if err != nil {
 			logger.Error("local marketplace emulator unavailable", "error", err)
 			os.Exit(1)
 		}
-		editorReferences = editorPublisher.Executor
+		editorPublisher = mockPublisher
+		editorReferences = mockPublisher.Executor
 	}
 	if cfg.CatalogPublicationMode == "live" {
-		editorPublisher = &integration.CatalogPublisher{Executor: editorReferences}
+		marketplacePublisher := &integration.CatalogPublisher{Executor: editorReferences}
+		editorPublisher = catalogeditor.ChannelPublishers{
+			"wb": marketplacePublisher, "ozon": marketplacePublisher,
+			"saby": &integration.SabyEditorPublisher{Client: sabyProcurementClient},
+		}
 	}
 	if editorPublisher != nil {
 		go catalogeditor.RunPublisher(ctx, pool, editorPublisher, cfg.CatalogPublicationMode, logger)

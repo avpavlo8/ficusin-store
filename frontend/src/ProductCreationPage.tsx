@@ -119,7 +119,7 @@ export function ProductCreationPage({
       channel: string;
       status: string;
       message: string;
-      externalIds?: { productId: string; offerId: string };
+      externalIds?: { productId: string; offerId?: string };
     }>
   >([]);
   const [channelLinks, setChannelLinks] = useState<
@@ -369,6 +369,7 @@ export function ProductCreationPage({
           channel: string;
           status: string;
           message: string;
+          externalIds?: { productId: string; offerId?: string };
         }>;
         links: Record<string, Partial<Record<"wb" | "ozon", string>>>;
         sabyLinks?: Record<string, SabyReadLink>;
@@ -1815,36 +1816,43 @@ export function ProductCreationPage({
                         ? "Ozon"
                         : "СБИС"}
                     : {status.message}
-                    {status.externalIds?.productId && <> · ID {status.externalIds.productId}</>}
-                    {(status.status === "failed" || status.status === "needs_attention") &&
-                      status.channel !== "saby" && (
-                        <button
-                          className="admin-action"
-                          type="button"
-                          disabled={saving}
-                          onClick={async () => {
-                            if (!variant.serverId) return;
-                            setSaving(true);
-                            setRemoteError("");
-                            try {
-                              await api(
-                                `/api/v1/admin/products/${product?.id || draft.remoteCreatedProductId}/editor-publications/${status.channel}/retry`,
-                                {
-                                  method: "POST",
-                                  body: JSON.stringify({ variantId: variant.serverId }),
-                                },
-                              );
-                              setCollectionsRevision((v) => v + 1);
-                            } catch (e) {
-                              setRemoteError((e as Error).message);
-                            } finally {
-                              setSaving(false);
-                            }
-                          }}
-                        >
-                          Повторить проверку
-                        </button>
-                      )}
+                    {status.channel === "saby"
+                      ? status.externalIds?.offerId && <> · Код {status.externalIds.offerId}</>
+                      : status.externalIds?.productId && <> · ID {status.externalIds.productId}</>}
+                    {(status.status === "failed" ||
+                      (status.status === "needs_attention" &&
+                        (status.channel !== "saby" || status.externalIds?.productId))) && (
+                      <button
+                        className="admin-action"
+                        type="button"
+                        disabled={saving}
+                        onClick={async () => {
+                          if (!variant.serverId) return;
+                          setSaving(true);
+                          setRemoteError("");
+                          try {
+                            await api(
+                              `/api/v1/admin/products/${product?.id || draft.remoteCreatedProductId}/editor-publications/${status.channel}/retry`,
+                              {
+                                method: "POST",
+                                body: JSON.stringify({ variantId: variant.serverId }),
+                              },
+                            );
+                            setCollectionsRevision((v) => v + 1);
+                          } catch (e) {
+                            setRemoteError((e as Error).message);
+                          } finally {
+                            setSaving(false);
+                          }
+                        }}
+                      >
+                        {status.channel === "saby"
+                          ? status.status === "failed"
+                            ? "Повторить обмен"
+                            : "Проверить состояние"
+                          : "Повторить проверку"}
+                      </button>
+                    )}
                   </p>
                 ))}
             </>

@@ -43,12 +43,25 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	var channel, status string
 	var raw, stateRaw []byte
 	var attempts int
-	e = tx.QueryRow(ctx, `SELECT variant_id,channel,payload,progress,status,attempts FROM catalog_editor_publications WHERE channel IN ('wb','ozon') AND execution_mode IN ('disabled',$1) AND ((status IN ('prepared','queued') AND next_attempt_at<=NOW()) OR (status='processing' AND lease_until<NOW())) ORDER BY next_attempt_at,variant_id FOR UPDATE SKIP LOCKED LIMIT 1`, mode).Scan(&variant, &channel, &raw, &stateRaw, &status, &attempts)
+	e = tx.QueryRow(ctx, `SELECT variant_id,channel,payload,progress,status,attempts FROM catalog_editor_publications WHERE (channel IN ('wb','ozon') OR (channel='saby' AND $1='live')) AND execution_mode=$1 AND ((status IN ('prepared','queued') AND next_attempt_at<=NOW()) OR (status='processing' AND lease_until<NOW())) ORDER BY next_attempt_at,variant_id,channel FOR UPDATE SKIP LOCKED LIMIT 1`, mode).Scan(&variant, &channel, &raw, &stateRaw, &status, &attempts)
 	if e == pgx.ErrNoRows {
 		return nil
 	}
 	if e != nil {
 		return e
+	}
+	if channel == "saby" {
+		var legacyBusy bool
+		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND state IN ('queued','checking','verifying','unknown'))`, variant).Scan(&legacyBusy); e != nil {
+			return e
+		}
+		if legacyBusy {
+			_, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET next_attempt_at=NOW()+INTERVAL '20 seconds',message='Ожидаем завершения предыдущей отправки в СБИС' WHERE variant_id=$1 AND channel='saby'`, variant)
+			if e != nil {
+				return e
+			}
+			return tx.Commit(ctx)
+		}
 	}
 	var request Request
 	var progress Progress
@@ -65,14 +78,41 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 			return linkErr
 		}
 		if linkErr == nil {
+			if channel == "saby" {
+				var uuids []string
+				if e = tx.QueryRow(ctx, `SELECT ARRAY(SELECT DISTINCT external_id FROM product_external_ids WHERE variant_id=$1 AND provider='saby' AND id_type='alias' AND status='active' AND external_id~*'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')`, variant).Scan(&uuids); e != nil {
+					return e
+				}
+				if len(uuids) == 1 {
+					ids.UUID = uuids[0]
+				}
+			}
 			progress.IDs = ids
 			progress.CreateAttempted = true
 			progress.Stage = "update"
+			if channel == "saby" {
+				progress.Stage = "hydrate"
+			}
 		}
 	}
 	if status == "processing" && progress.Stage == "create" {
 		progress.Stage = "reconcile"
 		progress.Ambiguous = true
+	}
+	if status == "processing" && channel == "saby" {
+		// These leases may have died after the vendor accepted a write but
+		// before its reply/progress committed. Never replay that POST blindly.
+		switch progress.Stage {
+		case "save", "send-save":
+			progress.Stage = "verify"
+			progress.Ambiguous = true
+		case "move":
+			progress.Stage = "move-verify"
+			progress.Ambiguous = true
+		case "media":
+			progress.Stage = "media-unknown"
+			progress.Ambiguous = true
+		}
 	}
 	if progress.Stage == "create" {
 		progress.CreateAttempted = true
@@ -127,11 +167,33 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 		return e
 	}
 	defer tx.Rollback(ctx)
-	// Same lock order as saving: variant before publication.
+	// Saby completion updates the product as well as its variant. Match the
+	// editor's product -> variant -> publication order before taking either
+	// dependent row lock, otherwise a concurrent Save can deadlock completion.
 	var product int64
-	if e = tx.QueryRow(ctx, `SELECT product_id FROM product_variants WHERE id=$1 FOR UPDATE`, variant).Scan(&product); e != nil {
-		return e
+	if channel == "saby" {
+		if e = tx.QueryRow(ctx, `SELECT product_id FROM product_variants WHERE id=$1`, variant).Scan(&product); e != nil {
+			return e
+		}
+		var lockedProduct int64
+		if e = tx.QueryRow(ctx, `SELECT id FROM products WHERE id=$1 FOR UPDATE`, product).Scan(&lockedProduct); e != nil {
+			return e
+		}
+		var currentProduct int64
+		if e = tx.QueryRow(ctx, `SELECT product_id FROM product_variants WHERE id=$1 FOR UPDATE`, variant).Scan(&currentProduct); e != nil {
+			return e
+		}
+		if currentProduct != product {
+			// A concurrent merge moved the variant while we waited. Roll back;
+			// lease recovery reconciles the durable native receipt without replay.
+			return errors.New("publication variant changed product during completion")
+		}
+	} else {
+		if e = tx.QueryRow(ctx, `SELECT product_id FROM product_variants WHERE id=$1 FOR UPDATE`, variant).Scan(&product); e != nil {
+			return e
+		}
 	}
+	linkConflict := false
 	if result.Progress.IDs.ProductID != "" && result.Progress.IDs.ProductID != "0" {
 		occupied, err := remoteCardOccupied(ctx, tx, variant, channel, mode, result.Progress.IDs)
 		if err != nil {
@@ -140,11 +202,20 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 		if occupied {
 			result.Status = "failed"
 			result.Message = "Этот товар площадки уже связан с другим вариантом. Прежняя связь сохранена."
-			result.Progress = Progress{Stage: "conflict"}
+			if channel == "saby" {
+				// Keep the known remote draft/card receipt. Dropping its ID could
+				// turn a later save into another irreversible Create.
+				result.Status = "needs_attention"
+				result.Progress.Stage = "conflict"
+				result.Progress.CreateAttempted = true
+				linkConflict = true
+			} else {
+				result.Progress = Progress{Stage: "conflict"}
+			}
 			stateRaw, _ = json.Marshal(result.Progress)
 		}
 	}
-	if result.Progress.IDs.ProductID != "" && result.Progress.IDs.ProductID != "0" {
+	if !linkConflict && result.Progress.IDs.ProductID != "" && result.Progress.IDs.ProductID != "0" && (channel != "saby" || result.Progress.IDs.OfferID != "") {
 		ids := result.Progress.IDs
 		if _, e = tx.Exec(ctx, "SAVEPOINT remote_link"); e != nil {
 			return e
@@ -160,11 +231,16 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 			}
 			result.Status = "failed"
 			result.Message = "Этот товар площадки уже связан с другим вариантом. Проверьте связь."
-			result.Progress.IDs = RemoteIDs{}
-			result.Progress.Stage = "reconcile"
+			if channel == "saby" {
+				result.Status = "needs_attention"
+				result.Progress.Stage = "conflict"
+			} else {
+				result.Progress.IDs = RemoteIDs{}
+				result.Progress.Stage = "reconcile"
+			}
 			result.Progress.CreateAttempted = true
 			stateRaw, _ = json.Marshal(result.Progress)
-		} else if mode == "live" {
+		} else if mode == "live" && (channel != "saby" || result.Status == "created" || result.Status == "synced" || result.Status == "linked") {
 			// Mock IDs never reach canonical mappings or procurement.
 			if e = saveLiveRemoteLink(ctx, tx, product, variant, channel, ids); e != nil {
 				return e
@@ -179,7 +255,7 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET status=$3,message=$4,progress=$5,lease_until=NULL,next_attempt_at=NOW()+$6::interval,updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, variant, channel, result.Status, result.Message, stateRaw, delay.String()); e != nil {
 		return e
 	}
-	if result.Status == "created" || result.Status == "linked" || result.Status == "failed" && result.Progress.IDs.ProductID != "" {
+	if result.Status == "created" || result.Status == "synced" || result.Status == "linked" || result.Status == "failed" && result.Progress.IDs.ProductID != "" {
 		if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET payload=pending_payload,fingerprint=pending_fingerprint,progress='{}'::jsonb,status='prepared',message='Сохранены новые изменения, ожидают отправки',pending_payload=NULL,pending_fingerprint=NULL,next_attempt_at=NOW() WHERE variant_id=$1 AND channel=$2 AND pending_payload IS NOT NULL`, variant, channel); e != nil {
 			return e
 		}
@@ -188,6 +264,11 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 }
 
 func remoteCardOccupied(ctx context.Context, tx pgx.Tx, variant int64, channel, mode string, ids RemoteIDs) (bool, error) {
+	if channel == "saby" {
+		var occupied bool
+		err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants WHERE saby_id=$2 AND id<>$1) OR EXISTS(SELECT 1 FROM products WHERE saby_id=$2 AND id<>(SELECT product_id FROM product_variants WHERE id=$1)) OR EXISTS(SELECT 1 FROM product_external_ids WHERE provider='saby' AND status='active' AND (product_id<>(SELECT product_id FROM product_variants WHERE id=$1) OR (variant_id IS NOT NULL AND variant_id<>$1)) AND ((id_type='id' AND external_id=$2) OR (id_type='code' AND external_id=$3) OR (id_type='alias' AND external_id=$5 AND $5<>''))) OR EXISTS(SELECT 1 FROM catalog_editor_remote_links WHERE channel='saby' AND execution_mode=$4 AND variant_id<>$1 AND (remote_id=$2 OR offer_id=$3))`, variant, ids.ProductID, ids.OfferID, mode, ids.UUID).Scan(&occupied)
+		return occupied, err
+	}
 	var occupied bool
 	provider := "wildberries"
 	if channel == "ozon" {
@@ -197,6 +278,9 @@ func remoteCardOccupied(ctx context.Context, tx pgx.Tx, variant int64, channel, 
 	return occupied, e
 }
 func saveLiveRemoteLink(ctx context.Context, tx pgx.Tx, product, variant int64, channel string, ids RemoteIDs) error {
+	if channel == "saby" {
+		return saveLiveSabyLink(ctx, tx, product, variant, ids)
+	}
 	// Keep the old procurement mirror consistent before changing canonical IDs.
 	var sabyID string
 	e := tx.QueryRow(ctx, `SELECT COALESCE(saby_id,'') FROM canonical_product_directory WHERE variant_id=$1`, variant).Scan(&sabyID)

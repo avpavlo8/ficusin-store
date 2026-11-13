@@ -1,7 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
 import { owner } from "./helpers";
 
-async function setup(page: Page, holdPlan = false, holdVariants = false) {
+type Publication = {
+  variantId: number;
+  channel: string;
+  status: string;
+  message: string;
+  externalIds?: { productId: string; offerId?: string };
+};
+
+async function setup(
+  page: Page,
+  holdPlan = false,
+  holdVariants = false,
+  publications: Publication[] = [],
+) {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -126,7 +139,7 @@ async function setup(page: Page, holdPlan = false, holdVariants = false) {
         config: {
           variants: variants.map((v) => ({ variantId: v.id, saby: empty() })),
         },
-        publications: [],
+        publications,
         links: {},
         publicationMode: "disabled",
         barcodes: {},
@@ -169,6 +182,70 @@ async function setup(page: Page, holdPlan = false, holdVariants = false) {
   else await expect(editor.getByRole("button", { name: /^D11/ })).toBeVisible();
   return { editor, release, releaseVariants, mutations };
 }
+
+test("@desktop @phone Saby publications show business codes and only offer safe retries", async ({
+  page,
+}) => {
+  const publications: Publication[] = [
+    {
+      variantId: 10,
+      channel: "saby",
+      status: "failed",
+      message: "Сбой обмена СБИС",
+      externalIds: { productId: "1101", offerId: "X-FIRST" },
+    },
+    {
+      variantId: 10,
+      channel: "wb",
+      status: "published",
+      message: "Карточка сохранена",
+      externalIds: { productId: "WB-1101" },
+    },
+    {
+      variantId: 11,
+      channel: "saby",
+      status: "needs_attention",
+      message: "Результат неизвестен. Проверьте товар в СБИС.",
+    },
+  ];
+  const { editor, mutations } = await setup(page, false, false, publications);
+  const retries: unknown[] = [];
+  await page.route(
+    "**/api/v1/admin/products/1/editor-publications/saby/retry",
+    async (route) => {
+      expect(route.request().method()).toBe("POST");
+      retries.push(route.request().postDataJSON());
+      publications[0].status = "needs_attention";
+      publications[0].message = "Проверка сохранённой связи";
+      await route.fulfill({ json: { ok: true } });
+    },
+  );
+  await editor.getByRole("tab", { name: "Маркетплейсы", exact: true }).click();
+  let status = editor.locator('p[role="status"]').filter({ hasText: /^СБИС:/ });
+  await expect(status).toContainText("Код X-FIRST");
+  await expect(status).not.toContainText("ID 1101");
+  await expect(
+    editor.locator('p[role="status"]').filter({ hasText: /^Wildberries:/ }),
+  ).toContainText("ID WB-1101");
+  await status
+    .getByRole("button", { name: "Повторить обмен", exact: true })
+    .click();
+  await expect.poll(() => retries).toEqual([{ variantId: 10 }]);
+  await status
+    .getByRole("button", { name: "Проверить состояние", exact: true })
+    .click();
+  await expect
+    .poll(() => retries)
+    .toEqual([{ variantId: 10 }, { variantId: 10 }]);
+  await editor.getByRole("button", { name: /^D17/ }).click();
+  status = editor.locator('p[role="status"]').filter({ hasText: /^СБИС:/ });
+  await expect(status).toContainText(
+    "Результат неизвестен. Проверьте товар в СБИС.",
+  );
+  await expect(status.getByRole("button")).toHaveCount(0);
+  await expect(status).not.toContainText(/ID 110[12]|Код 110[12]/);
+  expect(mutations).toEqual([]);
+});
 
 test("@desktop existing Saby controls wait for variant identity while the rest of the draft stays editable", async ({
   page,

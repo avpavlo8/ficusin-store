@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"time"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -25,7 +28,8 @@ func (r *PostgresRepository) SabyEditorReferences(ctx context.Context) (map[stri
 		return refs, nil
 	}
 	folders := []map[string]string{}
-	rows, err := r.pool.Query(ctx, `SELECT saby_id,CASE WHEN cardinality(path)>0 THEN array_to_string(path,' / ') ELSE name END FROM saby_catalog_folders WHERE missing_since IS NULL ORDER BY path,name`)
+	nativeOnly := r.editorPublicationMode == "live" || r.editorEnvironment == "production"
+	rows, err := r.pool.Query(ctx, `SELECT saby_id,CASE WHEN cardinality(path)>0 THEN array_to_string(path,' / ') ELSE name END FROM saby_catalog_folders WHERE missing_since IS NULL AND (NOT $1::boolean OR saby_id~'^[1-9][0-9]*$') ORDER BY path,name`, nativeOnly)
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +54,25 @@ func (r *PostgresRepository) SabyEditorReferences(ctx context.Context) (map[stri
 	if len(cached) > 0 {
 		if err = json.Unmarshal(cached, &categories); err != nil {
 			return nil, err
+		}
+	} else if r.editorSabyMetadata != nil && r.editorSabyMetadata.Configured() {
+		if source, ok := r.editorSabyMetadata.(interface {
+			ListSabyEditorCategories(context.Context) ([]catalogeditor.Category, error)
+		}); ok {
+			readCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			defer cancel()
+			loaded, e := source.ListSabyEditorCategories(readCtx)
+			if e != nil {
+				return nil, e
+			}
+			raw, e := json.Marshal(loaded)
+			if e != nil {
+				return nil, e
+			}
+			if e = r.CacheEditorReference(readCtx, "saby", "categories", "", raw); e != nil {
+				return nil, e
+			}
+			categories = loaded
 		}
 	}
 	return map[string]any{"folders": folders, "categories": categories}, nil

@@ -26,12 +26,7 @@ func editorSabyName(name string, attributes map[string]any) string {
 type EditorCategory = catalogeditor.Category
 type EditorChannel = catalogeditor.Channel
 type EditorMarketplace = catalogeditor.Marketplace
-type EditorSaby struct {
-	Category     EditorCategory `json:"category"`
-	Folder       EditorCategory `json:"folder"`
-	Mode         string         `json:"mode"`
-	ExistingCode string         `json:"existingCode"`
-}
+type EditorSaby = catalogeditor.Saby
 type EditorVariantPlan struct {
 	VariantID   int64             `json:"variantId"`
 	Saby        EditorSaby        `json:"saby"`
@@ -193,6 +188,10 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 	if err := ValidateEditorPlan(plan, false); err != nil {
 		return EditorPlanView{}, err
 	}
+	mode := r.editorPublicationMode
+	if mode != "live" && mode != "mock" {
+		mode = "disabled"
+	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return EditorPlanView{}, err
@@ -211,6 +210,15 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 		}
 		if !submit {
 			continue
+		}
+		if mode == "live" {
+			var legacyBusy bool
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND state IN ('queued','checking','verifying','unknown'))`, v.VariantID).Scan(&legacyBusy); err != nil {
+				return EditorPlanView{}, err
+			}
+			if legacyBusy {
+				return EditorPlanView{}, fmt.Errorf("%w: дождитесь проверки предыдущей отправки в СБИС", ErrInvalidInput)
+			}
 		}
 		linked, err := editorLinkedChannels(ctx, tx, v.VariantID, r.editorPublicationMode)
 		if err != nil {
@@ -261,8 +269,22 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 				return EditorPlanView{}, fmt.Errorf("%w: укажите код существующего товара СБИС", ErrInvalidInput)
 			}
 			var id string
-			if err = tx.QueryRow(ctx, `SELECT saby_id FROM saby_nomenclature WHERE lower(code)=lower($1) AND missing_since IS NULL`, code).Scan(&id); err != nil {
-				return EditorPlanView{}, fmt.Errorf("%w: код СБИС не найден в загруженном справочнике", ErrInvalidInput)
+			var existingCodeMatches bool
+			if sabyID != "" {
+				if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM saby_nomenclature WHERE saby_id=$1 AND lower(code)=lower($2) AND missing_since IS NULL) OR EXISTS(SELECT 1 FROM product_external_ids WHERE product_id=$3 AND variant_id=$4 AND provider='saby' AND id_type='code' AND status='active' AND lower(external_id)=lower($2))`, sabyID, code, productID, v.VariantID).Scan(&existingCodeMatches); err != nil {
+					return EditorPlanView{}, err
+				}
+			}
+			if existingCodeMatches {
+				id = sabyID
+			} else {
+				var matches int
+				if err = tx.QueryRow(ctx, `SELECT count(*),COALESCE(min(saby_id),'') FROM saby_nomenclature WHERE lower(code)=lower($1) AND missing_since IS NULL`, code).Scan(&matches, &id); err != nil {
+					return EditorPlanView{}, err
+				}
+				if matches != 1 {
+					return EditorPlanView{}, fmt.Errorf("%w: код СБИС не найден в загруженном справочнике", ErrInvalidInput)
+				}
 			}
 			var occupied bool
 			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants WHERE saby_id=$1 AND id<>$2) OR EXISTS(SELECT 1 FROM product_external_ids WHERE provider='saby' AND id_type='id' AND external_id=$1 AND (variant_id IS DISTINCT FROM $2) AND product_id<>$3)`, id, v.VariantID, productID).Scan(&occupied); err != nil {
@@ -281,6 +303,22 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 		}
 		if sabyID == "" && (v.Saby.Category.ID == "" || v.Saby.Folder.ID == "") {
 			return EditorPlanView{}, fmt.Errorf("%w: выберите категорию и раздел СБИС", ErrInvalidInput)
+		}
+		var sabyUUID string
+		if sabyID != "" {
+			var uuids []string
+			if err = tx.QueryRow(ctx, `SELECT ARRAY(SELECT DISTINCT alias FROM (
+			 SELECT external_id alias FROM product_external_ids WHERE product_id=$1 AND variant_id=$2 AND provider='saby' AND id_type='alias' AND status='active'
+			 UNION SELECT unnest(external_ids) FROM saby_nomenclature WHERE saby_id=$3 AND missing_since IS NULL
+			 ) candidates WHERE alias~*'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')`, productID, v.VariantID, sabyID).Scan(&uuids); err != nil {
+				return EditorPlanView{}, err
+			}
+			if len(uuids) > 1 {
+				return EditorPlanView{}, fmt.Errorf("%w: найдено несколько UUID связи СБИС; проверьте соответствие карточки", ErrInvalidInput)
+			}
+			if len(uuids) == 1 {
+				sabyUUID = uuids[0]
+			}
 		}
 		var barcode string
 		if err = tx.QueryRow(ctx, `UPDATE product_variants SET generated_barcode=COALESCE(generated_barcode,catalog_editor_barcode()) WHERE id=$1 RETURNING generated_barcode`, v.VariantID).Scan(&barcode); err != nil {
@@ -317,6 +355,9 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 		for channel, ch := range map[string]EditorChannel{"saby": {Enabled: true}, "ozon": v.Marketplace.Ozon, "wb": v.Marketplace.WB} {
 			action := "create"
 			existing := linked[channel]
+			if channel == "saby" {
+				existing = sabyID
+			}
 			if replacing[channel] {
 				action = "resolve"
 				existing = ""
@@ -351,7 +392,10 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 					return EditorPlanView{}, e
 				}
 			}
-			payload := map[string]any{"variantId": v.VariantID, "productId": productID, "name": name, "description": description, "priceMinor": price, "barcode": channelBarcode, "sku": sku, "sabyId": sabyID, "saby": v.Saby, "marketplace": v.Marketplace, "channel": ch, "ozonPrice": v.OzonPrice, "wbPrice": v.WBPrice, "attributes": attrs, "images": images, "vat": "0", "season": "shared", "actorId": actor.CustomerID}
+			payload := map[string]any{"variantId": v.VariantID, "productId": productID, "name": name, "description": description, "priceMinor": price, "barcode": channelBarcode, "sku": sku, "sabyId": sabyID, "sabyUUID": sabyUUID, "saby": v.Saby, "marketplace": v.Marketplace, "channel": ch, "ozonPrice": v.OzonPrice, "wbPrice": v.WBPrice, "attributes": attrs, "images": images, "vat": "0", "season": "shared", "actorId": actor.CustomerID}
+			if channel == "saby" {
+				payload["action"], payload["existingId"] = action, existing
+			}
 			if channel != "saby" {
 				schema := []catalogeditor.Attribute{}
 				if action == "create" {
@@ -369,8 +413,22 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 			raw, _ := json.Marshal(payload)
 			fingerprintPayload := map[string]any{}
 			_ = json.Unmarshal(raw, &fingerprintPayload)
+			if channel == "saby" {
+				for _, key := range []string{"action", "existingId", "sabyId", "sabyUUID", "actorId", "marketplace", "channel", "ozonPrice", "wbPrice", "vat", "season"} {
+					delete(fingerprintPayload, key)
+				}
+				if config, ok := fingerprintPayload["saby"].(map[string]any); ok {
+					delete(config, "mode")
+					delete(config, "existingCode")
+					for _, field := range []string{"category", "folder"} {
+						if category, ok := config[field].(map[string]any); ok {
+							delete(category, "name")
+						}
+					}
+				}
+			}
 			if channel != "saby" {
-				for _, key := range []string{"action", "existingId", "schema", "saby", "sabyId", "actorId", "barcode"} {
+				for _, key := range []string{"action", "existingId", "schema", "saby", "sabyId", "sabyUUID", "actorId", "barcode"} {
 					delete(fingerprintPayload, key)
 				}
 				if c, ok := fingerprintPayload["channel"].(map[string]any); ok {
@@ -393,21 +451,25 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 			hash := hex.EncodeToString(sum[:])
 			// Persist the complete immutable request. Sending is separate from saving;
 			// configured providers consume this durable plan without re-reading a draft.
-			var priorStatus, priorHash string
-			priorErr := tx.QueryRow(ctx, `SELECT status,fingerprint FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 FOR UPDATE`, v.VariantID, channel).Scan(&priorStatus, &priorHash)
+			var priorStatus, priorHash, priorMode string
+			var priorProgress catalogeditor.Progress
+			priorErr := tx.QueryRow(ctx, `SELECT status,fingerprint,execution_mode,progress FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 FOR UPDATE`, v.VariantID, channel).Scan(&priorStatus, &priorHash, &priorMode, &priorProgress)
 			if priorErr != nil && priorErr != pgx.ErrNoRows {
 				return EditorPlanView{}, priorErr
 			}
-			if priorHash != "" && priorHash != hash && (priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention") {
-				if channel == "saby" {
-					continue
+			if priorErr == nil && priorMode != mode {
+				finished := priorStatus == "created" || priorStatus == "synced" || priorStatus == "linked" || priorStatus == "simulated"
+				if !finished && (priorProgress.CreateAttempted || priorProgress.Ambiguous || priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention") {
+					return EditorPlanView{}, fmt.Errorf("%w: предыдущая отправка площадки не завершена; сначала проверьте её результат", ErrInvalidInput)
 				}
+			}
+			if priorHash != "" && priorHash != hash && priorMode == mode && (priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention") {
 				if _, err = tx.Exec(ctx, `UPDATE catalog_editor_publications SET pending_payload=$3,pending_fingerprint=$4,updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, v.VariantID, channel, raw, hash); err != nil {
 					return EditorPlanView{}, err
 				}
 				continue
 			}
-			if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,status,message) VALUES($1,$2,$3,$4,'prepared','Подготовлено к созданию') ON CONFLICT(variant_id,channel) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,payload=EXCLUDED.payload,pending_payload=NULL,pending_fingerprint=NULL,progress=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint THEN catalog_editor_publications.progress ELSE '{}'::jsonb END,next_attempt_at=NOW(),status=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.status<>'cancelled' THEN catalog_editor_publications.status ELSE 'prepared' END,message=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint THEN catalog_editor_publications.message ELSE EXCLUDED.message END,updated_at=NOW()`, v.VariantID, channel, hash, raw); err != nil {
+			if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,status,message,execution_mode) VALUES($1,$2,$3,$4,'prepared','Подготовлено к созданию',$5) ON CONFLICT(variant_id,channel) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,payload=EXCLUDED.payload,execution_mode=EXCLUDED.execution_mode,pending_payload=NULL,pending_fingerprint=NULL,progress=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.progress ELSE '{}'::jsonb END,next_attempt_at=NOW(),status=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode AND catalog_editor_publications.status<>'cancelled' THEN catalog_editor_publications.status ELSE 'prepared' END,message=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.message ELSE EXCLUDED.message END,updated_at=NOW()`, v.VariantID, channel, hash, raw, mode); err != nil {
 				return EditorPlanView{}, err
 			}
 		}

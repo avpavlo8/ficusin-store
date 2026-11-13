@@ -86,6 +86,15 @@ func (s *PostgresStore) Enqueue(ctx context.Context, id, actor int64, hash strin
 	} else if e != nil {
 		return View{}, e
 	}
+	if !check {
+		var editorBusy bool
+		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_editor_publications WHERE variant_id=$1 AND channel='saby' AND execution_mode='live' AND status IN ('prepared','queued','processing','needs_attention'))`, id).Scan(&editorBusy); e != nil {
+			return View{}, e
+		}
+		if editorBusy {
+			return View{}, fmt.Errorf("%w: дождитесь проверки отправки из редактора товара в СБИС", ErrConflict)
+		}
+	}
 	current, e := snapshot(ctx, tx, id)
 	if e != nil {
 		return View{}, e
