@@ -217,6 +217,17 @@ def storage_plan(bucket_reply, presets_reply, public_bucket, original_count):
             continue
         candidates.append({"id": identity, "disk": disk, "price": price, "location": location, "storage_class": "hot"})
     candidates.sort(key=lambda preset: (preset["price"], preset["disk"], preset["id"]))
+    cold = []
+    for preset in presets:
+        if not isinstance(preset, dict) or preset.get("location") != location or preset.get("storage_class") != "cold":
+            continue
+        identity, disk, price = preset.get("id"), preset.get("disk"), preset.get("price")
+        if not isinstance(identity, int) or isinstance(identity, bool) or identity <= 0:
+            continue
+        if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) for value in (disk, price)) or disk <= 0 or price < 0:
+            continue
+        cold.append({"id": identity, "disk": disk, "price": price, "location": location, "storage_class": "cold"})
+    cold.sort(key=lambda preset: (preset["price"], preset["disk"], preset["id"]))
     current = {"id": 541777, "name": public_bucket, "location": location}
     if isinstance(bucket.get("preset_id"), int) and not isinstance(bucket["preset_id"], bool):
         current["preset_id"] = bucket["preset_id"]
@@ -224,6 +235,7 @@ def storage_plan(bucket_reply, presets_reply, public_bucket, original_count):
         current["storage_class"] = bucket["storage_class"]
     return {"mode": "read-only-plan", "originalBucketCount": original_count, "currentPublicBucket": current,
             "minimumSameLocationHotPresets": candidates[:3],
+            "minimumSameLocationColdPresets": cold[:3],
             "proposedName": "ficusin-private", "proposedType": "private",
             "creationAuthorizedByThisScript": False,
             "presetAvailabilityVerified": False,
