@@ -39,3 +39,6 @@ for name, value in flat.items():
             print("Category/folder scalar:", json.dumps({"field":name,"value":value},ensure_ascii=False))
         elif isinstance(value, dict):
             print("Category/folder nested schema:", json.dumps({"field":name,"keys":list(fields(value)) if "s" in value else list(value)},ensure_ascii=False))
+        elif isinstance(value, list):
+            safe = value if len(value) <= 8 and all(v is None or isinstance(v,(str,int,float,bool)) for v in value) else {"items":len(value)}
+            print("Category/folder identifier:", json.dumps({"field":name,"value":safe,"schema":next((s for s in record.get("s",[]) if s.get("n")==name),{})},ensure_ascii=False))
