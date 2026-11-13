@@ -126,3 +126,13 @@ def markup_shape(value, depth=0):
 if 'flat_native' in globals() and str(flat_native.get('Id'))=='1101' and flat_native.get('Number')=='X269652448' and flat_native.get('Identifier')=='0f56c2bd-2669-473f-9b94-875d521998a7':
     print('Native Description markup structure:',json.dumps(markup_shape(flat_native.get('Description')),ensure_ascii=False))
     print('Native PriceData row identities:',json.dumps([{key:row.get(key) for key in ('Id','PriceList','MeasureUnit','CanEdit')} for row in recordset_rows(flat_native.get('PriceData'))],ensure_ascii=False))
+price_scope = request('https://online.sbis.ru/service/?srv=1',{'jsonrpc':'2.0','protocol':6,'method':'Nomenclature.Read','params':{'Id':1101,'AdditionalFields':['PriceData','Number','Identifier'],'Option':{'_type':'record','s':[{'n':'PriceList','t':{'n':'Массив','t':'Число целое'}}],'d':[[6]]}},'id':6},{'X-SBISAccessToken':token})
+if price_scope.get('error'):
+    print('Scoped price read rejected:',price_scope['error'].get('code'))
+else:
+    scoped=fields(price_scope.get('result',{}))
+    if str(scoped.get('Id'))=='1101' and scoped.get('Number')=='X269652448' and scoped.get('Identifier')=='0f56c2bd-2669-473f-9b94-875d521998a7':
+        print('Scoped price identity verified')
+        print('Scoped PriceData schema:',json.dumps(scoped.get('PriceData',{}).get('s',[]),ensure_ascii=False))
+        print('Scoped PriceData controlled rows:',json.dumps([{**{key:row.get(key) for key in ('Id','PriceList','MeasureUnit','CanEdit','IsUpdated')},'PriceValueType':type(row.get('Price')).__name__} for row in recordset_rows(scoped.get('PriceData'))],ensure_ascii=False))
+    else: print('Scoped price identity not confirmed; no values printed')
