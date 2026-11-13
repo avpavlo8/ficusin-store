@@ -102,3 +102,17 @@ else:
     result=category_list.get("result",{})
     print("Category list schema:",json.dumps(result.get("s",[]),ensure_ascii=False))
     print("Category list count:",len(result.get("d",[])))
+
+def recordset_rows(record):
+    schema=record.get('s',[]) if isinstance(record,dict) else []
+    rows=record.get('d',[]) if isinstance(record,dict) else []
+    names=[column.get('n') for column in schema]
+    return [{name:row[i] for i,name in enumerate(names) if i<len(row)} for row in rows if isinstance(row,list)]
+if 'flat_native' in globals() and str(flat_native.get('Id'))=='1101' and flat_native.get('Number')=='X269652448' and flat_native.get('Identifier')=='0f56c2bd-2669-473f-9b94-875d521998a7':
+    print('Native CodeList controlled rows:',json.dumps([{key:row.get(key) for key in ('Id','Code','Type','Order')} for row in recordset_rows(flat_native.get('CodeList'))],ensure_ascii=False))
+    print('Native PriceData controlled rows:',json.dumps([{**{key:row.get(key) for key in ('PriceList','MeasureUnit','CanEdit','IsUpdated')},'PriceValueType':type(row.get('Price')).__name__} for row in recordset_rows(flat_native.get('PriceData'))],ensure_ascii=False))
+    print('Native Description shape:',json.dumps(describe(flat_native.get('Description')),ensure_ascii=False))
+    print('Native ImageData count:',len(recordset_rows(flat_native.get('ImageData'))))
+    print('Native location identifiers:',json.dumps({key:flat_native.get(key) for key in ('Category','CategoryName','Folder')},ensure_ascii=False))
+if 'category_list' in globals() and not category_list.get('error'):
+    print('Category list controlled row:',json.dumps([{key:row.get(key) for key in ('Id','Name','IsCategory','IsFolder','IsFolderUI','Deleted')} for row in recordset_rows(category_list.get('result',{}))],ensure_ascii=False))
