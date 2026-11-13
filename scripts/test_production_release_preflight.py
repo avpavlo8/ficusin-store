@@ -232,7 +232,7 @@ class PreflightTests(unittest.TestCase):
         self.assertNotIn("DO_NOT_PRINT", json.dumps(report))
         self.assertNotIn("SECRET_DETAIL", json.dumps(report))
 
-    def test_exact_commit_guard_allows_verified_null_branch_and_dict_branch(self):
+    def test_exact_commit_guard_allows_verified_null_dict_and_string_branch(self):
         app = app_fixture()
         app["branch_name"] = None
         self.assertEqual(module.production_settings(app, module.EXPECTED_COMMIT), app["envs"])
