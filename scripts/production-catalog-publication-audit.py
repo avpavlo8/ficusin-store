@@ -26,7 +26,7 @@ SELECT p.channel,p.status,p.execution_mode,p.message,p.attempts,
  p.progress->'native'->>'preparedHash' prepared_hash,
  p.progress->'native'->>'preparedRequestHash' prepared_request_hash,
  p.payload->'schema' schema,
- p.created_at,p.updated_at
+ p.updated_at
 FROM catalog_editor_publications p JOIN product_variants v ON v.id=p.variant_id
 WHERE p.variant_id=11412 AND v.product_id=11412
 ORDER BY p.channel
