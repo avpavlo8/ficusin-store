@@ -52,8 +52,13 @@ def main():
         if not token:raise guards.PreflightError('auth_failed')
         print('::add-mask::'+token)
         def rpc(method,params,protocol=3):return request(SERVICE,{'jsonrpc':'2.0','protocol':protocol,'method':method,'params':params,'id':1},token)
+        known=rpc('ДокОтгрИсх.Прочитать',{'ИдО':42737,'ИмяМетода':'ДокОтгрИсх.Список'},6)
+        raw_known=known.get('result') or {}
+        known_fields={c.get('n'):raw_known['d'][i] for i,c in enumerate(raw_known.get('s',[])) if i<len(raw_known.get('d',[]))}
+        if known_fields.get('@Документ')!=42737 or known_fields.get('ИдентификаторДокумента')!='01a1cb92-38be-7fbd-865d-d89aa0b571eb' or known_fields.get('СкладскойДокумент.Склад')!=283:raise guards.PreflightError('known_tenant_document_not_verified')
+        print(json.dumps({'tenantAnchorVerified':True,'headerWarehouseID':283,'movementWarehouseID':known_fields.get('Склад.Склад'),'ownOrganizationID':known_fields.get('ДокументНашаОрганизация'),'warehouseUUIDStable':False},ensure_ascii=False))
         warehouses=rpc('sabyWarehouse.List',{'filter':{'limit':100,'page':0}},6)
-        found=[w for w in (warehouses.get('result') or {}).get('warehouses',[]) if w.get('warehouseId')==283 and w.get('id')=='8da0aa36-f206-4b65-a0d4-00000000011b']
+        found=[w for w in (warehouses.get('result') or {}).get('warehouses',[]) if w.get('warehouseId')==283]
         if len(found)!=1:
             print(json.dumps({'warehousePreflight':{'rootKeys':list(warehouses),'error':safe_error(warehouses['error'],env) if warehouses.get('error') else None,'resultType':type(warehouses.get('result')).__name__,'identifiers':[{k:w.get(k) for k in ('id','warehouseId')} for w in (warehouses.get('result') or {}).get('warehouses',[])]}},ensure_ascii=False))
             raise guards.PreflightError('known_warehouse_not_verified')
