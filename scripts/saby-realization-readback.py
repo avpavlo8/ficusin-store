@@ -96,9 +96,9 @@ def main():
             doc=rpc('ДокОтгрИсх.Прочитать',{'ИдО':identity,'ИмяМетода':'ДокОтгрИсх.Список'},token)
             print(json.dumps({'documentShape':shape(doc),'identifiers':summary(fields(doc))},ensure_ascii=False))
             if row == rows(listing)[0]:
-                detail=rpc('РеалИсх.DocNomList',{'Фильтр':record([('СкладскойДокумент','Число целое',identity),('Тип','Число целое',0),('ЭтоРасходы','Логическое',False),('Раздел','Число целое',None)]),'Сортировка':None,'Навигация':record([('ЕстьЕще','Логическое',True),('Страница','Число целое',0),('РазмерСтраницы','Число целое',100)]),'ДопПоля':[]},token,6)
-                print(json.dumps({'outgoingLineShape':shape(detail)},ensure_ascii=False))
-                public=rpc('СБИС.ПрочитатьДокумент',{'Документ':{'Идентификатор':row['ИдентификаторДокумента']}},token,3)
+                detail=rpc('РеалИсх.DocNomList',{'Фильтр':record([('СкладскойДокумент','Число целое',identity),('Тип','Число целое',1),('ЭтоРасходы','Логическое',False),('Раздел','Число целое',None)]),'Сортировка':None,'Навигация':record([('ЕстьЕще','Логическое',True),('Страница','Число целое',0),('РазмерСтраницы','Число целое',100)]),'ДопПоля':[]},token,6)
+                print(json.dumps({'outgoingLineShape':shape(detail),'lineProof':{'rowCount':len(rows(detail)),'documentIDs':list({r.get('СкладскойДокумент') for r in rows(detail)}),'warehouses':list({r.get('Склад') for r in rows(detail)}),'directions':list({r.get('Тип') for r in rows(detail)}),'closedAll':all(r.get('Закрыто') is True for r in rows(detail)) if rows(detail) else False}},ensure_ascii=False))
+                public=rpc('СБИС.ПрочитатьДокумент',{'Документ':{'Идентификатор':fields(doc).get('ДокументРасширение.ИдентификаторВИ')}},token,3)
                 print(json.dumps({'publicReadShape':shape(public),'regulation':(public or {}).get('Регламент')},ensure_ascii=False))
         warehouses=rpc('sabyWarehouse.List',{'filter':{'limit':100,'page':0}},token,6)
         print(json.dumps({'warehouseShape':shape(warehouses),'warehouseIDs':[{k:w.get(k) for k in ('id','warehouseId')} for w in (warehouses or {}).get('warehouses',[])]},ensure_ascii=False))
