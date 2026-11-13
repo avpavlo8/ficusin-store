@@ -6,9 +6,10 @@ test.describe("first visit onboarding", () => {
 
   test("production first-visit install invitation is shown once and closes normally", async ({ page }) => {
     await page.goto("/");
-    const offer = page.getByRole("dialog", { name: "Фикусин на экране Домой", exact: true });
+    const offer = page.getByRole("complementary", { name: "Фикусин на экране Домой", exact: true });
     await expect(offer).toBeVisible();
-    await expect(offer).toContainText("Добавьте Фикусин на главный экран");
+    await expect(offer).toContainText("Магазин в одно касание");
+    await expect(page.locator('dialog[open], [aria-modal="true"]')).toHaveCount(0);
     await offer.getByRole("button", { name: "Закрыть предложение установки", exact: true }).click();
     await expect(offer).toHaveCount(0);
     await expect.poll(() => page.evaluate(key => localStorage.getItem(key), installOfferSeenKey)).toBe("1");

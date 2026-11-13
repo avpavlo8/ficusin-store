@@ -7,13 +7,15 @@ import {
   isStandalone,
 } from "./lib/pwa";
 
-// Installation is offered by the first-visit dialog or explicitly in Account.
+// Installation is offered by the first-visit banner or explicitly in Account.
 // Neither this component nor a page load requests notification permission.
 export function InstallHint({
   inline = false,
+  compact = false,
   onInstalled,
 }: {
   inline?: boolean;
+  compact?: boolean;
   onInstalled?: () => void;
 }) {
   const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(getStoreInstallPrompt);
@@ -36,6 +38,7 @@ export function InstallHint({
     };
   }, [onInstalled]);
   const install = async () => {
+    if (busy) return;
     setError("");
     if (!promptEvent) {
       setSteps((value) => !value);
@@ -72,7 +75,9 @@ export function InstallHint({
         <span>
           {installed
             ? "Открывайте приложение с иконки. Уведомления о заказах и сообщениях настраиваются ниже."
-            : "Добавьте Фикусин на главный экран, чтобы открывать магазин одним нажатием и получать уведомления."}
+            : compact
+              ? "Магазин в одно касание — с иконки на телефоне или компьютере."
+              : "Добавьте Фикусин на главный экран, чтобы открывать магазин одним нажатием и получать уведомления."}
         </span>
         {steps && !installed && (
           <ol>
@@ -96,7 +101,15 @@ export function InstallHint({
           disabled={busy}
           onClick={() => void install()}
         >
-          {busy ? "…" : promptEvent ? "Установить" : steps ? "Свернуть" : "Как установить"}
+          {busy
+            ? "…"
+            : promptEvent
+              ? compact
+                ? "Установить приложение"
+                : "Установить"
+              : steps
+                ? "Свернуть"
+                : "Как установить"}
         </button>
       )}
     </aside>
