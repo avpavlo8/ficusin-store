@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import time
@@ -159,6 +160,19 @@ class Provider:
         try:
             self.request("POST", "/storages/buckets", {"name": TARGET, "type": "private", "preset_id": PRESET})
         except urllib.error.HTTPError as error:
+            STATE["createHTTPStatus"] = error.code
+            try:
+                failure = json.loads(error.read(8192))
+                code = failure.get("error_code")
+                if isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", code):
+                    STATE["createErrorCode"] = code
+                message = failure.get("message")
+                if isinstance(message, str):
+                    message = re.sub(r"https?://\S+", "[url]", message)
+                    message = re.sub(r"[A-Za-z0-9+/=_-]{32,}", "[opaque]", message)
+                    STATE["createValidationMessage"] = message[:500]
+            except Exception:
+                pass
             if error.code < 500:
                 # Includes unavailable tariff, conflict, auth and quota: stop.
                 raise ProvisionError("create_rejected_no_tariff_fallback") from None
@@ -343,6 +357,9 @@ def main():
     provider = Provider(token, args.apply, time.monotonic() + 600)
     STATE["phase"] = "production_identity"
     initial, endpoint, region = check_app(provider.app())
+    for key, value in initial.items():
+        if any(part in key for part in ("TOKEN", "KEY", "SECRET", "PASSWORD", "DATABASE_URL", "SSL_CA")) and len(value) >= 8:
+            inspection.mask(value)
     STATE["phase"] = "price_cap"
     preset = check_preset(provider.request("GET", "/presets/storages"))
     STATE["phase"] = "target_lookup"
