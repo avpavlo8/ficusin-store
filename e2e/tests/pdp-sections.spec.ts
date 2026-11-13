@@ -22,6 +22,39 @@ test("@desktop @phone вкладка ухода не сдвигает стран
   await expect.poll(async () => (await page.locator("#plant-watering").boundingBox())?.y).toBeGreaterThanOrEqual(0);
 });
 
+test("@desktop @phone поздняя загрузка отзывов сохраняет прокрутку и рабочую ссылку под названием", async ({ page }) => {
+  await mockApi(page);
+  let release!: () => void;
+  let pending = false;
+  const loaded = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/assets/ProductReviews-*.js", async route => {
+    pending = true;
+    await loaded;
+    await route.continue();
+  });
+  try {
+    await page.goto("/product/1");
+    await expect.poll(() => pending).toBe(true);
+    const summary = page.locator(".pdp-summary .purchase-review-meta");
+    await expect(summary).toHaveText("5.0 · 1 отзывов");
+    const tabs = page.getByRole("tablist", { name: "Разделы товара" });
+    await tabs.evaluate(element => window.scrollTo({ top: window.scrollY + element.getBoundingClientRect().top, behavior: "instant" }));
+    const before = await page.evaluate(() => window.scrollY);
+    release();
+    await expect(page.locator("#reviews")).toBeAttached();
+    for (const name of ["Уход", "О растении", "Уход"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      await page.waitForTimeout(600);
+      expect(await page.evaluate(() => window.scrollY)).toBeCloseTo(before, 0);
+    }
+    await summary.click();
+    await page.locator("#reviews").getByRole("button", { name: "Написать отзыв", exact: true }).click();
+    await expect(page.getByRole("dialog").getByLabel("Ваш отзыв", { exact: true })).toBeFocused();
+  } finally {
+    release();
+  }
+});
+
 test("@desktop блоки ухода совпадают с шириной навигации на большом экране", async ({ page }) => {
   await page.setViewportSize({ width: 1872, height: 1000 });
   await mockApi(page);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ProductReview } from "./types";
 import { stars } from "./types";
+import { PurchaseReviewSummary } from "./PurchaseReviewSummary";
 
 const ratingLabels = ["", "Плохо", "Есть проблемы", "Нормально", "Хорошо", "Отлично"];
 
@@ -101,18 +102,7 @@ export function ReviewComposer({
   };
   return (
     <div className="purchase-review">
-      {count > 0 && (
-        <span
-          className="purchase-review-stars"
-          role="img"
-          aria-label={`Оценка ${rating.toFixed(1)} из 5`}
-        >
-          {stars(rating)}
-        </span>
-      )}
-      <button className="purchase-review-meta" type="button" onClick={onOpenReviews}>
-        {count ? `${rating.toFixed(1)} · ${count} отзывов` : "Пока нет отзывов"}
-      </button>
+      <PurchaseReviewSummary rating={rating} count={count} onOpenReviews={onOpenReviews} />
       {submitted && (
         <p className="review-submit-success" role="status">
           Спасибо за отзыв.

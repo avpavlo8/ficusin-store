@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader, type HeaderMenuItem, useStoreUser } from "./StoreHeader";
 import { ProductGallery } from "./product/ProductGallery";
 import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
+import { PurchaseReviewSummary } from "./product/PurchaseReviewSummary";
 import { PlantAbout, PlantCareGuide, PlantQuestions } from "./product/PlantCareGuide";
 import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
@@ -365,7 +366,9 @@ export default function ProductPage({ slug }: { slug: string }) {
   const openReviews = () => {
     changeTab("reviews");
     requestAnimationFrame(() =>
-      document.getElementById("reviews")?.scrollIntoView({
+      (
+        document.getElementById("reviews") || document.getElementById("pdp-panel-reviews")
+      )?.scrollIntoView({
         behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
           ? "instant"
           : "smooth",
@@ -498,7 +501,17 @@ export default function ProductPage({ slug }: { slug: string }) {
           inCart={Boolean(variant && cart[variant.sku])}
           relatedPlants={relatedPlants}
           reviewComposer={
-            <Suspense fallback={<p role="status">Загружаем отзывы…</p>}>
+            <Suspense
+              fallback={
+                <div className="purchase-review">
+                  <PurchaseReviewSummary
+                    rating={product.rating}
+                    count={product.reviewsCount}
+                    onOpenReviews={openReviews}
+                  />
+                </div>
+              }
+            >
               <ReviewComposer
                 slug={slug}
                 rating={product.rating}
