@@ -20,7 +20,6 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
-	"github.com/avpavlo8/ficusin-store/backend/internal/catalogsync"
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
@@ -232,18 +231,14 @@ func main() {
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	).WithIntegrationRequestLimiter(procurementStore)
 	adminRepository.WithEditorSabyMetadata(&integration.SabyEditorMetadataSource{Client: sabyProcurementClient, Hierarchy: &integration.SabyEditorHierarchySource{Client: sabyProcurementClient}}, cfg.Environment)
-	var catalogProvider catalogsync.Provider = sabyProcurementClient
 	if cfg.Environment == "staging" {
-		stagingProvider, err := catalogsync.NewStagingProvider(ctx, pool)
+		stock, err := saby.NewStagingStockRefresher(ctx, pool)
 		if err != nil {
-			logger.Error("staging catalogue configuration failed", "error", err)
+			logger.Error("staging stock configuration failed", "error", err)
 			os.Exit(1)
 		}
-		catalogProvider = stagingProvider
-		go stagingProvider.RunStagingStock(ctx, logger)
+		go stock.Run(ctx, logger)
 	}
-	catalogExportService := catalogsync.New(catalogsync.NewStore(pool), catalogProvider, logger)
-	go catalogExportService.Run(ctx)
 	go catalogeditor.RunPreview(ctx, pool, cfg.Environment, logger)
 	adminRepository.WithEditorPublicationMode(cfg.CatalogPublicationMode)
 	editorReferences := integration.NewMarketplaceExecutor(cfg.CatalogMarketplaces.WBToken, cfg.CatalogMarketplaces.OzonClientID, cfg.CatalogMarketplaces.OzonAPIKey).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
@@ -306,7 +301,6 @@ func main() {
 		CDEK:                cdekClient,
 		Admin:               adminRepository,
 		Saby:                sabyService,
-		CatalogExport:       catalogExportService,
 		Push:                pushService,
 		Chat:                chatStore,
 		Cart:                cart.NewStore(pool),

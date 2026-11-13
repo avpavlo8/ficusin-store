@@ -17,7 +17,7 @@ import (
 // SabyEditorPublisher is exclusively the catalogue editor's write capability.
 // It must only be invoked by the durable worker, whose committed create lease
 // distinguishes the first Stage=create call from a resumed Stage=reconcile.
-// No method of this provider is used by stock or technical-CML synchronizers.
+// No method of this provider is used by inbound stock synchronization.
 type SabyEditorPublisher struct {
 	Client      *SabyClient
 	ImageClient *http.Client

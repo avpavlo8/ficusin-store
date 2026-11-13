@@ -10,7 +10,6 @@ import (
 	"time"
 
 	ce "github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
-	"github.com/avpavlo8/ficusin-store/backend/internal/catalogsync"
 	"github.com/avpavlo8/ficusin-store/backend/internal/migrate"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -56,7 +55,6 @@ func TestSabyEditorPublicationLocalDatabase(t *testing.T) {
 	defer func() {
 		pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id=ANY($1::bigint[])`, variants)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id=ANY($1::bigint[])`, variants)
-		pool.Exec(ctx, `DELETE FROM catalog_saby_exports WHERE variant_id=ANY($1::bigint[])`, variants)
 		pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, actorID)
 		pool.Exec(ctx, `DELETE FROM products WHERE id=ANY($1::bigint[])`, products)
 		pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE code LIKE $1`, "TEST-SABY-"+tag+"%")
@@ -169,19 +167,7 @@ func TestSabyEditorPublicationLocalDatabase(t *testing.T) {
 		if ids != 1 || code != 1 || uuid != 1 {
 			t.Fatal("numeric identity, business code or UUID were conflated")
 		}
-		// Old/manual exports share the variant lock and cannot race native work.
-		exec(`UPDATE catalog_editor_publications SET status='queued' WHERE variant_id=$1 AND channel='saby'`, variant)
-		_, e = catalogsync.NewStore(pool).Enqueue(ctx, variant, actorID, "irrelevant", false)
-		if !errors.Is(e, catalogsync.ErrConflict) {
-			t.Fatalf("legacy export raced native publication: %v", e)
-		}
-		exec(`UPDATE catalog_editor_publications SET status='synced' WHERE variant_id=$1 AND channel='saby'`, variant)
-		exec(`INSERT INTO catalog_saby_exports(variant_id,import_code,state) VALUES($1,$2,'unknown')`, variant, publisher.code)
-		_, e = repo.SaveEditorPlan(ctx, actor, product.ID, plan, true)
-		if e == nil {
-			t.Fatal("native edit raced an unresolved old export")
-		}
-		exec(`DELETE FROM catalog_saby_exports WHERE variant_id=$1`, variant)
+
 	})
 	t.Run("unknown create and changed mode keep the irreversible receipt", func(t *testing.T) {
 		repo, product, plan := newCard("live")

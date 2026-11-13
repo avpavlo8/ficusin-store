@@ -5278,59 +5278,6 @@ paths:
           required: true
           schema:
             type: string
-  /admin/variants/{variantId}/saby-export:
-    get:
-      operationId: get_admin_variant_saby_export
-      summary: Preview saved site data and Saby export state (owner only)
-      tags: [Administration]
-      security:
-        - Session: []
-      x-permissions: [products.read]
-      x-source: backend/internal/httpapi/admin_catalog_export.go#catalogExportHandler
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema: { type: integer }
-      responses:
-        "200":
-          description: Saved site values and durable export state; no external requests or writes.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/catalogsync.View" }
-        default:
-          $ref: "#/components/responses/ValidationError"
-    post:
-      operationId: post_admin_variant_saby_export
-      summary: Queue an explicit Saby catalogue write or request read-only reconciliation (owner only)
-      description: Requires the current preview fingerprint. Unchanged confirmed payloads are not sent again. Unknown remote results permit only read-only reconciliation. Does not publish the site card or create inventory.
-      tags: [Administration]
-      security:
-        - Session: []
-      x-permissions: [products.manage]
-      x-source: backend/internal/httpapi/admin_catalog_export.go#catalogExportHandler
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                fingerprint: { type: string }
-                checkOnly: { type: boolean, default: false }
-      responses:
-        2XX:
-          description: Queued or already confirmed; check the returned state. A queued request is not a confirmed Saby write.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/catalogsync.View" }
-        default:
-          $ref: "#/components/responses/ValidationError"
   /admin/variants/{variantId}/saby-link:
     post:
       operationId: post_admin_variants_variantId_saby_link
@@ -7584,49 +7531,6 @@ components:
         tariffCode:
           type: integer
       type: object
-    catalogsync.View:
-      type: object
-      required:
-        [configured, state, message, snapshot, fingerprint, dirty, validation]
-      properties:
-        configured: { type: boolean }
-        state:
-          type: string
-          enum: [idle, queued, checking, verifying, unknown, synced, error]
-        message: { type: string }
-        fingerprint: { type: string }
-        dirty: { type: boolean }
-        validation: { type: string }
-        verifiedAt: { type: string, format: date-time }
-        snapshot:
-          type: object
-          required:
-            [
-              variantId,
-              productId,
-              sku,
-              name,
-              potCm,
-              heightCm,
-              priceMinor,
-              sabyId,
-              code,
-              article,
-              lookupName,
-            ]
-          properties:
-            variantId: { type: integer }
-            productId: { type: integer }
-            sku: { type: string }
-            name: { type: string }
-            potCm: { type: number }
-            heightCm: { type: number }
-            priceMinor:
-              { type: integer, description: Price in integer kopecks. }
-            sabyId: { type: string }
-            code: { type: string }
-            article: { type: string }
-            lookupName: { type: string }
     admin.ProductCreate:
       properties:
         creationId:

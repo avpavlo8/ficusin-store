@@ -50,19 +50,6 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	if e != nil {
 		return e
 	}
-	if channel == "saby" {
-		var legacyBusy bool
-		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND state IN ('queued','checking','verifying','unknown'))`, variant).Scan(&legacyBusy); e != nil {
-			return e
-		}
-		if legacyBusy {
-			_, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET next_attempt_at=NOW()+INTERVAL '20 seconds',message='Ожидаем завершения предыдущей отправки в СБИС' WHERE variant_id=$1 AND channel='saby'`, variant)
-			if e != nil {
-				return e
-			}
-			return tx.Commit(ctx)
-		}
-	}
 	var request Request
 	var progress Progress
 	if e = json.Unmarshal(raw, &request); e != nil {

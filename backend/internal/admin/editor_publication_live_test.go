@@ -48,7 +48,6 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	defer func() {
 		pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
-		pool.Exec(ctx, `DELETE FROM catalog_saby_exports WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
 		pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, customer)
 		pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, p.ID)
 		pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)

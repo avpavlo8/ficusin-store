@@ -211,15 +211,6 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 		if !submit {
 			continue
 		}
-		if mode == "live" {
-			var legacyBusy bool
-			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND state IN ('queued','checking','verifying','unknown'))`, v.VariantID).Scan(&legacyBusy); err != nil {
-				return EditorPlanView{}, err
-			}
-			if legacyBusy {
-				return EditorPlanView{}, fmt.Errorf("%w: дождитесь проверки предыдущей отправки в СБИС", ErrInvalidInput)
-			}
-		}
 		linked, err := editorLinkedChannels(ctx, tx, v.VariantID, r.editorPublicationMode)
 		if err != nil {
 			return EditorPlanView{}, err

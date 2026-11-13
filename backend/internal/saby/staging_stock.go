@@ -1,9 +1,13 @@
-package catalogsync
+package saby
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // StagingStockQuery keeps the copied stock of the isolated staging database
@@ -16,10 +20,22 @@ const StagingStockQuery = `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP
 	WHERE synced_at>TIMESTAMPTZ '1970-01-02 00:00:00+00'
 	  AND synced_at<CURRENT_TIMESTAMP-INTERVAL '20 minutes'`
 
-// RunStagingStock refreshes staging stock every 15 minutes until ctx ends.
-// It requires the StagingProvider, which has already verified that the
-// database is the isolated staging one.
-func (p *StagingProvider) RunStagingStock(ctx context.Context, logger *slog.Logger) {
+// StagingStockRefresher is isolated from real production stock sync.
+type StagingStockRefresher struct{ pool *pgxpool.Pool }
+
+func NewStagingStockRefresher(ctx context.Context, pool *pgxpool.Pool) (*StagingStockRefresher, error) {
+	var database string
+	if err := pool.QueryRow(ctx, "SELECT current_database()").Scan(&database); err != nil {
+		return nil, err
+	}
+	if database != "ficusin_staging" && !strings.HasPrefix(database, "ficusin_staging_") {
+		return nil, errors.New("stock refresh requires an isolated staging database")
+	}
+	return &StagingStockRefresher{pool: pool}, nil
+}
+
+// Run refreshes copied stock every 15 minutes; deliberately voided rows stay void.
+func (p *StagingStockRefresher) Run(ctx context.Context, logger *slog.Logger) {
 	refresh := func() {
 		tag, err := p.pool.Exec(ctx, StagingStockQuery)
 		if err != nil {

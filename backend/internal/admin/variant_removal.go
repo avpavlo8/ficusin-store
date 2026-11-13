@@ -34,7 +34,7 @@ func removeProductVariant(ctx context.Context, tx pgx.Tx, actor Actor, productID
 		return err
 	}
 	var external bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_external_ids WHERE variant_id=$1 AND provider='saby') OR EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1)`, variantID).Scan(&external); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_external_ids WHERE variant_id=$1 AND provider='saby') OR EXISTS(SELECT 1 FROM legacy_archive.catalog_saby_exports WHERE variant_id=$1)`, variantID).Scan(&external); err != nil {
 		return err
 	}
 	linked = linked || external
