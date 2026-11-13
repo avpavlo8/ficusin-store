@@ -42,7 +42,7 @@ FROM (
   UNION ALL
   SELECT 'duplicate_pending_payments', 'critical', COUNT(*)::bigint, NULL::bigint
   FROM (
-    SELECT order_id FROM payments WHERE status = 'pending'
+    SELECT order_id FROM payments WHERE status = 'pending' AND provider_test IS DISTINCT FROM TRUE
     GROUP BY order_id HAVING COUNT(*) > 1
   ) duplicates
   UNION ALL
@@ -51,6 +51,7 @@ FROM (
   FROM payments payment
   JOIN orders purchase ON purchase.id = payment.order_id
   WHERE payment.status = 'paid'
+    AND payment.provider_test IS DISTINCT FROM TRUE
     AND purchase.payment_method = 'online'
     AND purchase.status <> 'cancelled'
     AND purchase.payment_status NOT IN ('paid', 'partially_paid', 'refunded')
@@ -78,6 +79,7 @@ FROM (
   FROM payments payment
   JOIN orders purchase ON purchase.id = payment.order_id
   WHERE payment.status = 'pending' AND purchase.status <> 'cancelled'
+    AND payment.provider_test IS DISTINCT FROM TRUE
     AND payment.created_at < CURRENT_TIMESTAMP - INTERVAL '30 minutes'
   UNION ALL
   SELECT 'metrika_delivery_review', 'warning', COUNT(*)::bigint,
@@ -146,6 +148,7 @@ FROM (
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(p.created_at)))::bigint
   FROM payments p
   WHERE p.status='paid' AND p.provider_payment_id<>''
+    AND p.provider_test IS DISTINCT FROM TRUE
     AND p.created_at<CURRENT_TIMESTAMP-INTERVAL '15 minutes'
     AND (p.receipt_status IN ('canceled','unknown') OR (p.receipt_status IN ('','pending') AND p.created_at<CURRENT_TIMESTAMP-INTERVAL '3 days'))
   UNION ALL
@@ -155,16 +158,21 @@ FROM (
   LEFT JOIN shipment_offers so ON so.id=p.shipment_offer_id
   LEFT JOIN payment_settlement_receipts sr ON sr.payment_id=p.id
   WHERE p.status='paid' AND p.provider_payment_id<>'' AND COALESCE(so.status,o.status)='completed'
-    AND (sr.payment_id IS NULL OR sr.status IN ('failed','manual_review','canceled') OR (sr.status='pending' AND sr.created_at<CURRENT_TIMESTAMP-INTERVAL '3 days'))
+    AND p.provider_test IS DISTINCT FROM TRUE
+    AND payment_fiscal_mode(p.request_payload)<>'full_payment'
+    AND ((sr.payment_id IS NULL AND (p.settlement_requested_at IS NULL OR p.settlement_requested_at<CURRENT_TIMESTAMP-INTERVAL '5 minutes'))
+      OR sr.status IN ('failed','manual_review','canceled') OR (sr.status='pending' AND sr.created_at<CURRENT_TIMESTAMP-INTERVAL '3 days'))
     AND p.amount>COALESCE((SELECT SUM(r.amount) FROM payment_refunds r WHERE r.payment_id=p.id AND r.status='succeeded'),0)
   UNION ALL
   SELECT 'refund_manual_review', 'warning', COUNT(*)::bigint,
-         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
-  FROM payment_refunds WHERE needs_review OR (status='pending' AND created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes')
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(r.created_at)))::bigint
+  FROM payment_refunds r JOIN payments p ON p.id=r.payment_id
+  WHERE p.provider_test IS DISTINCT FROM TRUE AND (r.needs_review OR (r.status='pending' AND r.created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes'))
   UNION ALL
   SELECT 'refund_receipt_required', 'warning', COUNT(*)::bigint,
-         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
-  FROM payment_refunds WHERE status='succeeded' AND (receipt_status IN ('canceled','unknown','legacy_unverified') OR (receipt_status='pending' AND created_at<CURRENT_TIMESTAMP-INTERVAL '3 days'))
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(r.created_at)))::bigint
+  FROM payment_refunds r JOIN payments p ON p.id=r.payment_id
+  WHERE p.provider_test IS DISTINCT FROM TRUE AND r.status='succeeded' AND (r.receipt_status IN ('canceled','unknown','legacy_unverified') OR (r.receipt_status='pending' AND r.created_at<CURRENT_TIMESTAMP-INTERVAL '3 days'))
   UNION ALL
   SELECT 'expired_procurement_lock', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(locked_until)))::bigint

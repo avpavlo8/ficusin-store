@@ -94,6 +94,8 @@ type PaymentRequest struct {
 }
 
 type Payment struct {
+	// nil means the provider did not return a test-mode fact.
+	Test            *bool
 	ReceiptStatus   string
 	ID              string
 	Status          string
@@ -304,6 +306,7 @@ func (client *YooKassaClient) send(
 }
 
 type yooKassaPayment struct {
+	Test          *bool             `json:"test"`
 	ReceiptStatus string            `json:"receipt_registration"`
 	ID            string            `json:"id"`
 	Status        string            `json:"status"`
@@ -325,6 +328,7 @@ func (payment yooKassaPayment) toPayment() (Payment, error) {
 		return Payment{}, fmt.Errorf("%w: некорректная сумма платежа", ErrPaymentOutcomeUnknown)
 	}
 	return Payment{
+		Test:            payment.Test,
 		ReceiptStatus:   payment.ReceiptStatus,
 		ID:              payment.ID,
 		Status:          payment.Status,

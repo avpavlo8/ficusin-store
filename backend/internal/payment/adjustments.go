@@ -545,6 +545,9 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 	if err != nil {
 		return err
 	}
+	if payment.ID != providerPaymentID {
+		return errors.New("ответ ЮKassa не соответствует платежу")
+	}
 	var paymentRowID, orderID int64
 	var shipmentOfferID *int64
 	var expected float64
@@ -583,6 +586,9 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 	if err != nil {
 		return err
 	}
+	if payment.ID != providerPaymentID {
+		return errors.New("ответ ЮKassa не соответствует платежу")
+	}
 	if payment.Status == "waiting_for_capture" {
 		if err := service.resolveAuthorization(ctx, payment, paymentRowID, orderID, shipmentOfferID, expected, localStatus); err != nil {
 			return err
@@ -590,6 +596,9 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		payment, err = service.provider.FetchPayment(ctx, providerPaymentID)
 		if err != nil {
 			return err
+		}
+		if payment.ID != providerPaymentID {
+			return errors.New("ответ ЮKassa не соответствует платежу")
 		}
 		// The provider may still be processing the idempotent capture/cancel.
 		// Keep the local row pending so the worker checks it again.
@@ -603,6 +612,10 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		return nil
 	}
 	paid := payment.Paid && payment.Status == "succeeded" && cents(payment.Amount) == cents(expected)
+	verifiedTest := payment.Test
+	if cents(payment.Amount) != cents(expected) {
+		verifiedTest = nil
+	}
 	status := payment.Status
 	var paidAt any
 	if paid {
@@ -610,8 +623,11 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		paidAt = time.Now()
 	}
 	if _, err := service.pool.Exec(ctx, `
-		UPDATE payments SET status=$2,paid_at=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$1
-	`, paymentRowID, status, paidAt); err != nil {
+		UPDATE payments SET status=$2,paid_at=$3,updated_at=CURRENT_TIMESTAMP,
+		 provider_test=COALESCE($4,provider_test),
+		 provider_test_source=CASE WHEN $4::boolean IS NOT NULL THEN 'yookassa' ELSE provider_test_source END
+		WHERE id=$1
+	`, paymentRowID, status, paidAt, verifiedTest); err != nil {
 		return fmt.Errorf("update payment: %w", err)
 	}
 	if shipmentOfferID != nil {

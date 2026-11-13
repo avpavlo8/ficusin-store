@@ -6808,7 +6808,8 @@ paths:
     post:
       operationId: settlePaymentReceipt
       description:
-        Owner confirms actual delivery and creation of a prepayment settlement receipt in YooKassa.
+        Owner confirms creation of a prepayment settlement receipt in YooKassa for a reviewed historical purchase.
+        New order and shipment completions enqueue this receipt automatically; both paths share one durable request and idempotency key.
         Exact composition, actor and key are persisted before POST. Known receipt IDs use GET only.
         Workers never create receipts.
       parameters:

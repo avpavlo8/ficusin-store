@@ -345,6 +345,13 @@ func (service *Service) Sync(ctx context.Context, providerPaymentID string) erro
 		return fmt.Errorf("load payment: %w", err)
 	}
 	paid := payment.Paid && payment.Status == "succeeded"
+	if payment.ID != providerPaymentID {
+		return errors.New("ответ ЮKassa не соответствует платежу")
+	}
+	verifiedTest := payment.Test
+	if cents(payment.Amount) != cents(expected) {
+		verifiedTest = nil
+	}
 	// An amount that does not match what we asked for is never treated as
 	// payment for this order, whatever the provider says about it.
 	if paid && cents(payment.Amount) != cents(expected) {
@@ -385,9 +392,11 @@ func (service *Service) Sync(ctx context.Context, providerPaymentID string) erro
 		paidAt = time.Now()
 	}
 	if _, err := transaction.Exec(ctx, `
-		UPDATE payments SET status = $2, paid_at = $3, updated_at = CURRENT_TIMESTAMP
+		UPDATE payments SET status = $2, paid_at = $3, updated_at = CURRENT_TIMESTAMP,
+		 provider_test=COALESCE($4,provider_test),
+		 provider_test_source=CASE WHEN $4::boolean IS NOT NULL THEN 'yookassa' ELSE provider_test_source END
 		WHERE provider_payment_id = $1
-	`, providerPaymentID, status, paidAt); err != nil {
+	`, providerPaymentID, status, paidAt, verifiedTest); err != nil {
 		return fmt.Errorf("update payment status: %w", err)
 	}
 	if paid {

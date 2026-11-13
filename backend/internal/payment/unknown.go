@@ -158,9 +158,11 @@ func (service *Service) attemptPaymentCreation(ctx context.Context, paymentID in
 	if _, err := service.pool.Exec(ctx, `
 		UPDATE payments SET provider_payment_id=$2,status=$3,confirmation_url=$4,
 			last_error='',next_recovery_at=NULL,recovery_locked_until=NULL,
+			provider_test=COALESCE($5,provider_test),
+			provider_test_source=CASE WHEN $5::boolean IS NOT NULL THEN 'yookassa' ELSE provider_test_source END,
 			updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1 AND provider_payment_id=''
-	`, paymentID, created.ID, status, created.ConfirmationURL); err != nil {
+	`, paymentID, created.ID, status, created.ConfirmationURL, created.Test); err != nil {
 		return integration.Payment{}, fmt.Errorf("save recovered payment: %w", err)
 	}
 	return created, nil

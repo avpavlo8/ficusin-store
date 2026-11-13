@@ -893,6 +893,7 @@ export function AdminOrderEditor({
                 {(
                   {
                     ready: "Ожидает формирования чека зачёта в ЮKassa",
+                    queued: "Чек окончательного расчёта будет создан автоматически",
                     failed: "Чек не принят — нужна сверка в ЮKassa",
                     manual_review: "Нужна ручная сверка чека в ЮKassa",
                     succeeded: "Зарегистрирован ЮKassa",
