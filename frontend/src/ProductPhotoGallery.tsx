@@ -6,6 +6,7 @@ import { moveGalleryPhoto } from "./galleryOrder";
 function Preview({ item }: { item: DraftMedia }) {
   const [url, setURL] = useState("");
   const [failed, setFailed] = useState(false);
+  const [failedSource, setFailedSource] = useState("");
   useEffect(() => {
     if (item.source) return;
     let active = true;
@@ -29,14 +30,23 @@ function Preview({ item }: { item: DraftMedia }) {
     };
   }, [item.id, item.source]);
   const src = item.source || url;
-  return src ? (
+  const unavailable = (!src && failed) || Boolean(src && failedSource === src);
+  return src && !unavailable ? (
     item.type.startsWith("video/") ? (
-      <video src={src} muted preload="metadata" draggable={false} />
+      <video
+        src={src}
+        muted
+        preload="metadata"
+        draggable={false}
+        onError={() => setFailedSource(src)}
+      />
     ) : (
-      <img src={src} alt={item.name} draggable={false} />
+      <img src={src} alt={item.name} draggable={false} onError={() => setFailedSource(src)} />
     )
   ) : (
-    <div className="editor-media-placeholder">{failed ? "Файл недоступен" : "Загружаем…"}</div>
+    <div className="editor-media-placeholder" role="img" aria-label={item.name}>
+      {unavailable ? "Не удалось открыть файл" : "Загружаем…"}
+    </div>
   );
 }
 function RemovePhotoIcon() {
