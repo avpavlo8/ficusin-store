@@ -99,8 +99,11 @@ def database_options(env, directory):
 
 
 def inspect(connect=None):
-    app = read_app()
-    if app.get('id')==280757 and app.get('name')=='ficusin-staging':
+    return inspect_app(read_app(), connect)
+
+
+def inspect_app(app, connect=None, emit_metadata=True):
+    if emit_metadata and app.get('id')==280757 and app.get('name')=='ficusin-staging':
         envs=app.get('envs') or {}
         print(json.dumps({'probe':'stage_metadata','siteHost':urllib.parse.urlsplit(envs.get('SITE_URL','')).hostname,'branch':branch_name(app),'branchFieldsPresent':[key for key in ('branch','branch_name') if key in app]}))
     env = guard(app)

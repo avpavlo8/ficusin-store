@@ -1,13 +1,18 @@
-name: Read isolated staging realization settings
+name: Guard isolated staging realization mock settings
 on:
   workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply only the three approved mock realization settings to staging app 280757
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
-  group: isolated-staging-order-sale-audit-280757
+  group: isolated-staging-order-sale-modes-280757
   cancel-in-progress: false
 jobs:
-  staging-read-only:
+  staging-modes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -15,9 +20,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install read-only database inspection client
+      - name: Install read-only database preflight client
         run: python3 -m pip install 'psycopg[binary]==3.2.13'
-      - name: Verify isolated staging and read active warehouse identifiers
+      - name: Inspect or explicitly apply only approved staging mock settings
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: python3 scripts/timeweb-staging-order-sale-audit.py
+          APPLY_STAGING_ORDER_MODES: ${{ inputs.apply }}
+        run: python3 scripts/timeweb-staging-order-sale-modes.py
