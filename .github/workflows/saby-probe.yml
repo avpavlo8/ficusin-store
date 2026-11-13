@@ -44,11 +44,12 @@ on:
         type: boolean
         required: false
         default: false
-      create_realization_test_draft:
-        description: Create one identified empty ordinary realization test draft, without stock or posting
-        type: boolean
+      realization_test_action:
+        description: Run a fixed owned realization test action (never a customer order)
+        type: choice
+        options: [none, bind-header, post-once]
         required: false
-        default: false
+        default: none
       production_readiness:
         description: Read production configuration presence without secrets
         type: boolean
@@ -73,8 +74,8 @@ jobs:
           python3 - <<'PYONE'
           import json,os
           values=json.loads(os.environ['INPUTS_JSON'])
-          flags=['activate_publishing','publish_static_assets','marketplace_readiness','redeploy_exact','catalog_publication_audit','production_storage_readiness','create_realization_test_draft','production_readiness']
-          selected=sum(values.get(k) in (True,'true') for k in flags)+(values.get('production_files','none') not in ('none',''))
+          flags=['activate_publishing','publish_static_assets','marketplace_readiness','redeploy_exact','catalog_publication_audit','production_storage_readiness','production_readiness']
+          selected=sum(values.get(k) in (True,'true') for k in flags)+(values.get('production_files','none') not in ('none',''))+(values.get('realization_test_action','none') not in ('none',''))
           if selected != 1:
               raise SystemExit('Select exactly one scoped operation')
           PYONE
@@ -114,7 +115,7 @@ jobs:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/production-marketplace-readiness.py
       - name: Validate post-release operation target
-        if: inputs.create_realization_test_draft || inputs.catalog_publication_audit || inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        if: (inputs.realization_test_action != 'none' && inputs.realization_test_action != '') || inputs.catalog_publication_audit || inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: |
@@ -179,14 +180,14 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: python3 scripts/saby-realization-readback.py --expected-commit "$EXPECTED_COMMIT"
 
-      - name: Create one explicitly authorized empty realization test draft
-        if: inputs.create_realization_test_draft
+      - name: Execute fixed owned realization test action
+        if: inputs.realization_test_action != 'none' && inputs.realization_test_action != ''
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/saby-realization-create-probe.py --expected-commit "$EXPECTED_COMMIT"
+        run: python3 scripts/saby-realization-action-probe.py --expected-commit "$EXPECTED_COMMIT" --action "${{ inputs.realization_test_action }}"
       - uses: actions/upload-artifact@v4
-        if: always() && inputs.create_realization_test_draft
+        if: always() && inputs.realization_test_action != 'none' && inputs.realization_test_action != ''
         with:
           name: saby-realization-test-receipt
           path: saby-realization-test-receipt.json
