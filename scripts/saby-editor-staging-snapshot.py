@@ -327,6 +327,7 @@ def cache_snapshot(connection, link, payload):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--only-id", default="", help="Read only one explicitly selected canonical ID")
     parser.add_argument("--apply", action="store_true", help="Write verified snapshots to the isolated staging editor cache")
     parser.add_argument("--max-items", type=int, default=1000)
     parser.add_argument("--time-budget-seconds", type=int, default=600)
@@ -347,6 +348,11 @@ def main():
         with connect_stage(settings, temporary) as connection:
             validate_database(connection)
             links, stats["skippedIdentity"] = load_links(connection)
+            if args.only_id:
+                selected = numeric_id(args.only_id)
+                links = [link for link in links if link.id == selected]
+                if not links:
+                    raise SnapshotError("requested_link_not_eligible")
             stats["eligible"] = len(links)
             requested["eligible"] = any(link.id == "1101" for link in links)
             reader.authenticate()

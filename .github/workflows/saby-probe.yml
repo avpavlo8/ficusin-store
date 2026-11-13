@@ -4,6 +4,16 @@ name: Saby probe
 on:
   workflow_dispatch:
     inputs:
+      production_storage_readiness:
+        description: Inspect existing production S3 bucket privacy without writes
+        type: boolean
+        required: false
+        default: false
+      production_preflight:
+        description: Read production database and backup release prerequisites
+        type: boolean
+        required: false
+        default: false
       production_readiness:
         description: Read production configuration presence without secrets
         type: boolean
@@ -34,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Probe Saby nomenclature
-        if: inputs.receipt_id == '' && !inputs.snapshot_staging && !inputs.production_readiness
+        if: inputs.receipt_id == '' && !inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -43,7 +53,7 @@ jobs:
           SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-linked-card-readback.py
       - name: Probe existing receipt response schema without values
-        if: inputs.receipt_id != '' && !inputs.snapshot_staging && !inputs.production_readiness
+        if: inputs.receipt_id != '' && !inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -52,16 +62,16 @@ jobs:
           SABY_RECEIPT_GUID: ${{ inputs.receipt_guid }}
         run: python3 scripts/saby-receipt-probe.py
       - name: Install staging cache client
-        if: inputs.snapshot_staging && !inputs.production_readiness
+        if: inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight
         run: python3 -m pip install 'psycopg[binary]==3.2.13'
       - name: Cache verified Saby editor metadata in isolated staging
-        if: inputs.snapshot_staging && !inputs.production_readiness
+        if: inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: python3 scripts/saby-editor-staging-snapshot.py --apply --max-items 1000 --time-budget-seconds 600
+        run: python3 scripts/saby-editor-staging-snapshot.py --apply --only-id 1101 --max-items 1 --time-budget-seconds 120
       - name: Inspect production release prerequisites without exposing secrets
         if: inputs.production_readiness
         env:
@@ -79,3 +89,16 @@ jobs:
           safe['separatePrivateBucket']=bool(env.get('PRIVATE_S3_BUCKET')) and env.get('PRIVATE_S3_BUCKET')!=env.get('S3_BUCKET')
           print(json.dumps(safe))
           PYREAD
+      - name: Install production prerequisite clients
+        if: inputs.production_storage_readiness || inputs.production_preflight
+        run: python3 -m pip install 'boto3==1.40.18' 'psycopg[binary]==3.2.13'
+      - name: Inspect production private storage without writes
+        if: inputs.production_storage_readiness
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 scripts/production-private-storage-inspect.py
+      - name: Read production database and backup prerequisites
+        if: inputs.production_preflight
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 scripts/production-release-preflight.py
