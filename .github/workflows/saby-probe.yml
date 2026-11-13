@@ -4,6 +4,26 @@ name: Saby probe
 on:
   workflow_dispatch:
     inputs:
+      expected_commit:
+        description: Exact deployed main SHA for approved post-release operations
+        type: string
+        required: false
+      activate_publishing:
+        description: Activate future explicit catalog saves in the verified production release
+        type: boolean
+        required: false
+        default: false
+      production_files:
+        description: Legacy private website file migration; source bytes are retained
+        type: choice
+        options: [none, dryrun, apply]
+        required: false
+        default: none
+      publish_static_assets:
+        description: Publish exact live static files to existing public S3 and activate verified proxy
+        type: boolean
+        required: false
+        default: false
       marketplace_readiness:
         description: Verify marketplace category reads using existing production credentials
         type: boolean
@@ -34,21 +54,6 @@ on:
         type: boolean
         required: false
         default: false
-      snapshot_staging:
-        description: Cache verified existing Saby links in isolated staging only
-        type: boolean
-        required: false
-        default: false
-      search:
-        description: Название товара для поиска (например, Араукария)
-        required: false
-        default: Араукария
-      receipt_id:
-        description: Числовой ID существующего поступления (только чтение схемы)
-        required: false
-      receipt_guid:
-        description: UUID существующего поступления (только чтение схемы)
-        required: false
 
 permissions:
   contents: read
@@ -61,37 +66,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Probe Saby nomenclature
-        if: inputs.receipt_id == '' && !inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage && !inputs.marketplace_readiness
+      - name: Require one explicit operation
         env:
-          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
-          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
-          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
-          SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
-          SABY_PROBE_SEARCH: ${{ inputs.search }}
-        run: python3 scripts/saby-linked-card-readback.py
-      - name: Probe existing receipt response schema without values
-        if: inputs.receipt_id != '' && !inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage && !inputs.marketplace_readiness
-        env:
-          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
-          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
-          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
-          SABY_RECEIPT_ID: ${{ inputs.receipt_id }}
-          SABY_RECEIPT_GUID: ${{ inputs.receipt_guid }}
-        run: python3 scripts/saby-receipt-probe.py
-      - name: Install staging cache client
-        if: inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage && !inputs.marketplace_readiness
-        run: python3 -m pip install 'psycopg[binary]==3.2.13'
-      - name: Cache verified Saby editor metadata in isolated staging
-        if: inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage && !inputs.marketplace_readiness
-        env:
-          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
-          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
-          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: python3 scripts/saby-editor-staging-snapshot.py --apply --only-id 1101 --max-items 1 --time-budget-seconds 120
+          INPUTS_JSON: ${{ toJson(inputs) }}
+        run: |
+          python3 - <<'PYONE'
+          import json,os
+          values=json.loads(os.environ['INPUTS_JSON'])
+          flags=['activate_publishing','publish_static_assets','marketplace_readiness','provision_private_storage','production_backup','production_storage_readiness','production_preflight','production_readiness']
+          selected=sum(values.get(k) in (True,'true') for k in flags)+(values.get('production_files','none') not in ('none',''))
+          if selected != 1:
+              raise SystemExit('Select exactly one scoped operation')
+          PYONE
       - name: Inspect production release prerequisites without exposing secrets
-        if: inputs.production_readiness
+        if: inputs.production_readiness && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: |
@@ -108,30 +96,83 @@ jobs:
           print(json.dumps(safe))
           PYREAD
       - name: Install production prerequisite clients
-        if: inputs.production_storage_readiness || inputs.production_preflight || inputs.provision_private_storage
+        if: (inputs.production_storage_readiness || inputs.production_preflight || inputs.provision_private_storage) && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         run: python3 -m pip install 'boto3==1.40.18' 'psycopg[binary]==3.2.13'
       - name: Inspect production private storage without writes
-        if: inputs.production_storage_readiness
+        if: inputs.production_storage_readiness && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/production-private-storage-inspect.py
       - name: Read production database and backup prerequisites
-        if: inputs.production_preflight
+        if: inputs.production_preflight && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/production-release-preflight.py
       - name: Create the approved release recovery point
-        if: inputs.production_backup
+        if: inputs.production_backup && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/production-release-backup.py --apply
       - name: Provision and verify the approved private file storage
-        if: inputs.provision_private_storage
+        if: inputs.provision_private_storage && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/provision-production-private-storage.py --apply
       - name: Verify marketplace category reads without creating cards
-        if: inputs.marketplace_readiness
+        if: inputs.marketplace_readiness && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/production-marketplace-readiness.py
+      - name: Validate post-release operation target
+        if: inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          python3 - <<'PYGUARD'
+          import os,re
+          if not re.fullmatch(r"[0-9a-f]{40}", os.environ.get('EXPECTED_COMMIT','')):
+              raise SystemExit('Exact full deployed main commit required')
+          PYGUARD
+      - uses: actions/checkout@v4
+        if: (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        with:
+          ref: ${{ inputs.expected_commit }}
+          path: release-source
+      - uses: actions/setup-go@v5
+        if: (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        with:
+          go-version-file: release-source/backend/go.mod
+          cache-dependency-path: release-source/backend/go.sum
+      - uses: actions/setup-node@v4
+        if: inputs.publish_static_assets
+        with:
+          node-version: 24
+      - name: Install post-release operation clients
+        if: inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        run: python3 -m pip install 'boto3==1.40.18' 'psycopg[binary]==3.2.13'
+      - name: Activate only future explicit production catalog saves
+        if: inputs.activate_publishing
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: python3 scripts/production-publisher-activation.py --expected-commit "$EXPECTED_COMMIT" --apply
+      - name: Migrate approved legacy private website files
+        if: inputs.production_files != 'none' && inputs.production_files != ''
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
+          MIGRATION_MODE: ${{ inputs.production_files }}
+        run: |
+          if [ "$MIGRATION_MODE" = apply ]; then
+            python3 scripts/production-file-migration.py --expected-commit "$EXPECTED_COMMIT" --apply
+          else
+            python3 scripts/production-file-migration.py --expected-commit "$EXPECTED_COMMIT"
+          fi
+      - name: Publish and activate verified static website assets
+        if: inputs.publish_static_assets
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
+        run: python3 scripts/production-static-assets.py --expected-commit "$EXPECTED_COMMIT" --apply

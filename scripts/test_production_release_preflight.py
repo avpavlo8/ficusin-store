@@ -31,10 +31,11 @@ class Result:
 class Connection:
     read_only = True
 
-    def __init__(self, publications=True, mode=True, identity=None, shipping=(0, 0, 0)):
+    def __init__(self, publications=True, mode=True, identity=None, shipping=(0, 0, 0), folders=(8, 8, 1)):
         self.publications, self.mode = publications, mode
         self.identity = identity or (module.DATABASE, "fixture", "on", "on")
         self.shipping, self.queries, self.closed = shipping, [], False
+        self.folders = folders
 
     def transaction(self):
         connection = self
@@ -69,6 +70,14 @@ class Connection:
             return Result([("disabled", "prepared", 2), ("mock", "processing", 1), ("live", "queued", 3)])
         if "GROUP BY status" in sql:
             return Result([("prepared", 2)])
+        if "to_regclass('public.saby_catalog_folders')" in sql:
+            return Result([(self.folders is not None,)])
+        if "FROM saby_catalog_folders" in sql:
+            if self.folders is None:
+                raise AssertionError("folder rows queried without their table")
+            if "WHERE missing_since IS NULL" not in sql or "saby_id ~ '^[1-9][0-9]*$'" not in sql or "saby_id='3333' AND name='Цветы маркетплейс'" not in sql:
+                raise AssertionError("folder identity aggregation lost its exact guards")
+            return Result([self.folders])
         if "FROM public.orders" in sql:
             return Result([self.shipping])
         raise AssertionError("unexpected SQL")
@@ -102,12 +111,22 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(reader.paths, [f"/apps/{module.APP_ID}", f"/dbs/{module.DATABASE_ID}/backups"])
         self.assertEqual(len(report["catalogPublications"]["pending"]), 3)
         self.assertEqual(report["migrations"]["count"], 201)
+        self.assertEqual(report["sabyFolders"], {"tableExists": True, "count": 8, "numericIds": 8, "requestedFolderNameMatches": True})
         self.assertTrue(report["shipping"]["exactWorkflowReadRequired"])
         self.assertEqual(report["shipping"]["autoTransitionCandidateUpperBound"], 1)
         encoded = json.dumps(report)
         for forbidden in ("fixture-password", "DATABASE_URL", "download_url", "MUST NOT PRINT", "private.invalid"):
             self.assertNotIn(forbidden, encoded)
         self.assertEqual(set(report["backups"]["backups"][0]), {"id", "status", "created_at"})
+
+    def test_folder_inventory_reports_missing_table_and_unverified_identity_honestly(self):
+        for folders, expected in ((None, {"tableExists": False}),
+                                  ((3, 2, 0), {"tableExists": True, "count": 3, "numericIds": 2, "requestedFolderNameMatches": False})):
+            with self.subTest(folders=folders):
+                connection = Connection(folders=folders)
+                report = module.inspect(Reader(), lambda settings: connection, module.EXPECTED_COMMIT)
+                self.assertEqual(report["sabyFolders"], expected)
+                self.assertTrue(connection.closed)
 
     def test_old_main_missing_table_is_honest(self):
         report = module.inspect(Reader(), lambda settings: Connection(publications=False), module.EXPECTED_COMMIT)
