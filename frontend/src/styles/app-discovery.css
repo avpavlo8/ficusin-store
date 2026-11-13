@@ -104,7 +104,3 @@
 .customer-push-settings .push-toggle {
   margin: 0;
 }
-
-.home-benefits:has(.home-loyalty) {
-  grid-template-columns: minmax(0, 1fr);
-}

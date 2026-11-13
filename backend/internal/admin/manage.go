@@ -301,7 +301,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 		-- Историческая строка заказа, чей товар удалили из каталога годы назад,
 		-- живёт через legacy_product_ref и не имеет ни product_id, ни sku.
 		-- Без COALESCE такой заказ ронял весь список заказов в админке.
-		SELECT item.order_id, COALESCE(item.product_id, 0), COALESCE((SELECT product_code::TEXT FROM products WHERE id=item.product_id AND status='published'),''), COALESCE(item.sku, ''), COALESCE(item.variant_label, ''),
+		SELECT item.order_id, item.id, COALESCE(item.product_id, 0), COALESCE((SELECT product_code::TEXT FROM products WHERE id=item.product_id AND status='published'),''), COALESCE(item.sku, ''), COALESCE(item.variant_label, ''),
 			item.product_name, item.unit_price::DOUBLE PRECISION, item.quantity
 		FROM order_items item WHERE item.order_id = ANY($1::bigint[]) ORDER BY item.id
 	`, ids)
@@ -316,7 +316,7 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 	for itemRows.Next() {
 		var orderID int64
 		var item OrderItem
-		if err := itemRows.Scan(&orderID, &item.ProductID, &item.ProductCode, &item.SKU, &item.VariantLabel, &item.ProductName,
+		if err := itemRows.Scan(&orderID, &item.ID, &item.ProductID, &item.ProductCode, &item.SKU, &item.VariantLabel, &item.ProductName,
 			&item.UnitPrice, &item.Quantity); err != nil {
 			return nil, fmt.Errorf("scan admin order item: %w", err)
 		}

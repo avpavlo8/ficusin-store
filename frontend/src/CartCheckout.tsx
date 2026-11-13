@@ -283,7 +283,7 @@ export function CartDrawer({
                 </p>
               </div>
             )}
-            {guest && !!lines.length && <GuestLoyaltyNotice />}
+            {open && guest && !!lines.length && <GuestLoyaltyNotice />}
             {lineCards}
             {status === "ready" && !lines.length && !missingCount && (
               <div className="empty-cart">
@@ -845,7 +845,6 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
           noValidate
         >
           <div className="checkout-form-main">
-            {!user && pricingReady && !pricingError && <GuestLoyaltyNotice />}
             <fieldset className="checkout-form-section checkout-contact-section">
               <legend>Контактные данные</legend>
               <p className="checkout-step-description">

@@ -62,6 +62,6 @@ test('iPhone first homepage installation offer has steps and respects dismissal 
  await mockApi(page,undefined,{showInstallOffer:true});await page.addInitScript(()=>{Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1'});Object.defineProperty(navigator,'standalone',{value:false});});
  await page.goto('/');const offer=page.getByRole('dialog',{name:'Фикусин на экране Домой'});await expect(offer).toBeVisible();
  await offer.getByRole('button',{name:'Как установить',exact:true}).click();await expect(offer).toContainText('Откройте меню «Поделиться»');await expect(offer).toContainText('На экран Домой');expect(await horizontalOverflow(page)).toBe(0);
- await offer.getByRole('button',{name:'Закрыть предложение установки'}).click();await page.reload();await expect(page.locator('.home-benefits')).toBeVisible();await expect(offer).toHaveCount(0);
+ await offer.getByRole('button',{name:'Закрыть предложение установки'}).click();await page.reload();await expect(page.locator('.storefront-grid')).toBeVisible();await expect(offer).toHaveCount(0);
  await page.goto('/favorites');await expect(page.locator('.install-hint')).toHaveCount(0);
 });

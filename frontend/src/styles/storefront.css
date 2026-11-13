@@ -2856,15 +2856,6 @@
   font-size: 11px;
 }
 
-.home-benefits {
-  margin: 24px auto 36px;
-  width: min(1440px, calc(100% - 64px));
-  display: grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 32px;
-  color: var(--green);
-}
-.home-loyalty,
 .home-install {
   padding: 24px 0;
   border-top: 1px solid var(--line);
@@ -2873,14 +2864,12 @@
   align-items: flex-start;
   gap: 12px;
 }
-.home-loyalty h2,
 .home-install strong {
   display: block;
   margin: 0 0 10px;
   font-size: 24px;
   line-height: 1.2;
 }
-.home-loyalty p,
 .home-install span,
 .home-install ol {
   margin: 0 0 8px;
@@ -2909,13 +2898,6 @@
   font-size: 15px;
 }
 @media (max-width: 850px) {
-  .home-benefits {
-    width: calc(100% - 32px);
-    grid-template-columns: 1fr;
-    gap: 0;
-    margin-block: 16px 24px;
-  }
-  .home-loyalty h2,
   .home-install strong {
     font-size: 22px;
   }

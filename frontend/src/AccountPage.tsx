@@ -418,7 +418,21 @@ function OrdersSection({ error: profileError, onRetry }: { error: string; onRetr
               key={order.orderNumber}
               href={`/account/orders/${encodeURIComponent(order.orderNumber)}`}
             >
-              <strong className="customer-order-number">№ {order.orderNumber}</strong>
+              <span className="customer-order-heading">
+                <strong className="customer-order-number">№ {order.orderNumber}</strong>
+                <span
+                  className="customer-order-status"
+                  data-tone={
+                    order.status === "cancelled"
+                      ? "neutral"
+                      : order.status === "new" || order.status === "confirmed"
+                        ? "waiting"
+                        : "active"
+                  }
+                >
+                  {orderStatusLabels[order.status] ?? order.status}
+                </span>
+              </span>
               <span className="customer-order-meta">
                 <time dateTime={order.createdAt}>
                   {new Date(order.createdAt).toLocaleDateString("ru-RU")}
@@ -426,18 +440,6 @@ function OrdersSection({ error: profileError, onRetry }: { error: string; onRetr
                 <span className="customer-order-quantity">{order.itemsCount} шт.</span>
               </span>
               <strong className="customer-order-total">{money.format(order.total)}</strong>
-              <span
-                className="customer-order-status"
-                data-tone={
-                  order.status === "cancelled"
-                    ? "neutral"
-                    : order.status === "new" || order.status === "confirmed"
-                      ? "waiting"
-                      : "active"
-                }
-              >
-                {orderStatusLabels[order.status] ?? order.status}
-              </span>
               <svg
                 className="order-row-arrow"
                 aria-hidden="true"

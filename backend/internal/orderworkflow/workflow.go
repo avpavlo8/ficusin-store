@@ -15,9 +15,10 @@ import (
 )
 
 type Blocker struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	View    string `json:"view,omitempty"`
+	Code         string  `json:"code"`
+	Message      string  `json:"message"`
+	View         string  `json:"view,omitempty"`
+	OrderItemIDs []int64 `json:"orderItemIds,omitempty"`
 }
 type State struct {
 	Status             string    `json:"status"`
@@ -29,11 +30,12 @@ type State struct {
 	ManualStatuses     []string  `json:"manualStatuses"`
 }
 type Line struct {
-	Name       string `json:"name"`
-	Wanted     int    `json:"wanted"`
-	Available  int    `json:"available"`
-	StockKnown bool   `json:"stockKnown"`
-	Dimensions bool   `json:"dimensions"`
+	OrderItemIDs []int64 `json:"orderItemIds"`
+	Name         string  `json:"name"`
+	Wanted       int     `json:"wanted"`
+	Available    int     `json:"available"`
+	StockKnown   bool    `json:"stockKnown"`
+	Dimensions   bool    `json:"dimensions"`
 }
 type Facts struct {
 	Status, PaymentStatus, PaymentMethod, DeliveryMethod, CDEKState string
@@ -57,7 +59,9 @@ func Evaluate(f Facts) State {
 	case "assembling", "ready":
 		s.Queue = "in_progress"
 	}
-	add := func(code, message, view string) { s.Blockers = append(s.Blockers, Blocker{code, message, view}) }
+	add := func(code, message, view string, orderItemIDs ...int64) {
+		s.Blockers = append(s.Blockers, Blocker{Code: code, Message: message, View: view, OrderItemIDs: orderItemIDs})
+	}
 	if f.PaymentStatus != "paid" {
 		message := "Заказ не оплачен"
 		if f.PaymentStatus == "partially_paid" {
@@ -80,14 +84,14 @@ func Evaluate(f Facts) State {
 	for _, line := range f.Lines {
 		if !line.StockKnown {
 			s.StockConfirmed = false
-			add("stock_unknown", "Нет свежего остатка СБИС: "+line.Name, "items")
+			add("stock_unknown", "Нет свежего остатка СБИС: "+line.Name, "items", line.OrderItemIDs...)
 		} else if line.Available < line.Wanted {
 			s.StockConfirmed = false
-			add("stock_short", "Не хватает в наличии: "+line.Name, "items")
+			add("stock_short", "Не хватает в наличии: "+line.Name, "items", line.OrderItemIDs...)
 		}
 		if f.DeliveryMethod == "cdek" && !line.Dimensions && !f.BoxesConfirmed {
 			s.PackagingConfirmed = false
-			add("dimensions", "Не заполнены габариты и вес: "+line.Name, "delivery")
+			add("dimensions", "Не заполнены габариты и вес: "+line.Name, "delivery", line.OrderItemIDs...)
 		}
 	}
 	if f.DeliveryMethod == "cdek" {
@@ -135,8 +139,8 @@ const factsSQL = `
  SELECT o.id,o.status,o.payment_status,o.payment_method,o.delivery_method,o.delivery_fee_pending=1,o.delivery_repack_requested=1,
   o.cdek_create_state,(COALESCE(o.cdek_tariff_code,0)>0 AND COALESCE(o.cdek_office_code,'')<>''),
   EXISTS(SELECT 1 FROM payments pay WHERE pay.order_id=o.id AND (pay.status='waiting_for_capture' OR (pay.status='pending' AND pay.provider_payment_id=''))),
-  COALESCE((SELECT jsonb_agg(jsonb_build_object('name',lines.name,'wanted',lines.wanted,'available',COALESCE(stock.available,0),'stockKnown',COALESCE(stock.known,false),'dimensions',lines.dimensions))
-   FROM (SELECT oi.variant_id,MIN(oi.product_name) name,SUM(oi.quantity)::int wanted,
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('orderItemIds',lines.order_item_ids,'name',lines.name,'wanted',lines.wanted,'available',COALESCE(stock.available,0),'stockKnown',COALESCE(stock.known,false),'dimensions',lines.dimensions))
+   FROM (SELECT oi.variant_id,array_agg(oi.id ORDER BY oi.id) order_item_ids,MIN(oi.product_name) name,SUM(oi.quantity)::int wanted,
     BOOL_AND(COALESCE(NULLIF((oi.variant_snapshot->>'packageLengthCm')::numeric,0),shipping_package_dimension(oi.variant_id,'package_length_cm'),0)>0 AND
      COALESCE(NULLIF((oi.variant_snapshot->>'packageWidthCm')::numeric,0),shipping_package_dimension(oi.variant_id,'package_width_cm'),0)>0 AND
      COALESCE(NULLIF((oi.variant_snapshot->>'packageHeightCm')::numeric,0),shipping_package_dimension(oi.variant_id,'package_height_cm'),0)>0 AND

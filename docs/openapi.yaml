@@ -7624,6 +7624,10 @@ components:
               code: { type: string }
               message: { type: string }
               view: { type: string, enum: [items, delivery, payment] }
+              orderItemIds:
+                type: array
+                items: { type: integer, format: int64 }
+                description: Exact order item IDs affected by an item-level blocker; omitted for order-wide blockers.
         manualStatuses: { type: array, items: { type: string } }
     admin.OrderDiscount:
       properties:

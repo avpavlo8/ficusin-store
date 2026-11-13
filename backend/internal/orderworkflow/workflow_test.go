@@ -2,8 +2,10 @@ package orderworkflow_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +93,40 @@ func TestPickupCashNeedsExplicitManualAssemblyAndPaymentAtHandover(t *testing.T)
 		t.Fatal("unpaid online order can be picked", s)
 	}
 }
+
+func TestItemBlockersIdentifyExactOrderRowsRatherThanNames(t *testing.T) {
+	f := readyFacts()
+	f.PaymentStatus = "pending"
+	f.FeePending = true
+	f.Lines = []flow.Line{
+		{Name: "Нолина", OrderItemIDs: []int64{11, 13}, Wanted: 2, StockKnown: false, Dimensions: true},
+		{Name: "Нолина", OrderItemIDs: []int64{12}, Wanted: 2, Available: 1, StockKnown: true, Dimensions: true},
+		{Name: "Нолина", OrderItemIDs: []int64{14}, Wanted: 1, Available: 1, StockKnown: true, Dimensions: false},
+	}
+	want := map[string][]int64{"stock_unknown": {11, 13}, "stock_short": {12}, "dimensions": {14}, "payment": nil, "delivery_fee": nil}
+	s := flow.Evaluate(f)
+	if len(s.Blockers) != len(want) {
+		t.Fatalf("unexpected blockers: %+v", s.Blockers)
+	}
+	for _, blocker := range s.Blockers {
+		ids, ok := want[blocker.Code]
+		if !ok || !slices.Equal(blocker.OrderItemIDs, ids) {
+			t.Fatalf("%s: order rows %v, want %v", blocker.Code, blocker.OrderItemIDs, ids)
+		}
+		raw, err := json.Marshal(blocker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var payload map[string]json.RawMessage
+		if err = json.Unmarshal(raw, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if _, present := payload["orderItemIds"]; present != (len(ids) > 0) {
+			t.Fatalf("incorrect orderItemIds omission: %s", raw)
+		}
+	}
+}
+
 func TestOrderWorkflowLocalDatabase(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
@@ -111,7 +147,7 @@ func TestOrderWorkflowLocalDatabase(t *testing.T) {
 	}
 	tag := fmt.Sprint(time.Now().UnixNano())
 	sabyID := "workflow-" + tag
-	var product, variant, warehouse, order, customer int64
+	var product, variant, warehouse, order, customer, orderItem int64
 	must := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -137,8 +173,7 @@ func TestOrderWorkflowLocalDatabase(t *testing.T) {
 	_, err = pool.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at) VALUES($1,$2,3,0,NOW())`, warehouse, variant)
 	must(err)
 	must(pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_id,customer_name,phone,email,address,delivery_method,delivery_fee,subtotal,total,payment_method,payment_status,status,has_preorder,delivery_fee_pending,cdek_tariff_code,cdek_office_code,cdek_status) VALUES($1,$2,'Workflow','+70000000000','','test','cdek',100,100,200,'online','paid','new',1,0,136,'TEST','CREATED') RETURNING id`, "WORKFLOW-"+tag, customer).Scan(&order))
-	_, err = pool.Exec(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity) SELECT $1,$2,id,sku,'Workflow plant','D13','{"packageLengthCm":30,"packageWidthCm":20,"packageHeightCm":40,"packageWeightGrams":1000}',100,1 FROM product_variants WHERE id=$3`, order, product, variant)
-	must(err)
+	must(pool.QueryRow(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity) SELECT $1,$2,id,sku,'Workflow plant','D13','{"packageLengthCm":30,"packageWidthCm":20,"packageHeightCm":40,"packageWeightGrams":1000}',100,1 FROM product_variants WHERE id=$3 RETURNING id`, order, product, variant).Scan(&orderItem))
 	must(flow.Refresh(ctx, pool, []int64{order}))
 	states, err := flow.Read(ctx, pool, []int64{order})
 	must(err)
@@ -177,6 +212,57 @@ func TestOrderWorkflowLocalDatabase(t *testing.T) {
 			}
 		})
 	}
+	t.Run("admin list exposes IDs used by item blockers", func(t *testing.T) {
+		orders, e := repo.ListOrders(ctx)
+		must(e)
+		for _, listed := range orders {
+			if listed.ID != order {
+				continue
+			}
+			if len(listed.Items) != 1 || listed.Items[0].ID != orderItem {
+				t.Fatalf("admin list lost real item ID %d: %+v", orderItem, listed.Items)
+			}
+			if len(listed.Workflow.Blockers) != 1 || listed.Workflow.Blockers[0].Code != "dimensions" || !slices.Equal(listed.Workflow.Blockers[0].OrderItemIDs, []int64{listed.Items[0].ID}) {
+				t.Fatalf("item ID and blocker ID do not match: %+v", listed.Workflow)
+			}
+			return
+		}
+		t.Fatal("fixture order missing from admin list")
+	})
+	t.Run("same-name rows and repeated variant keep exact item IDs", func(t *testing.T) {
+		tx, e := pool.Begin(ctx)
+		must(e)
+		defer tx.Rollback(ctx)
+		_, e = tx.Exec(ctx, `UPDATE orders SET status='new',payment_status='paid' WHERE id=$1`, order)
+		must(e)
+		_, e = tx.Exec(ctx, `UPDATE inventory SET available_qty=3,synced_at=NOW() WHERE variant_id=$1`, variant)
+		must(e)
+		_, e = tx.Exec(ctx, `DELETE FROM order_items WHERE order_id=$1`, order)
+		must(e)
+		var otherVariant int64
+		must(tx.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor,is_active) VALUES($1,'D17',10000,1) RETURNING id`, product).Scan(&otherVariant))
+		insertItem := func(variantID int64, quantity int, snapshot string) int64 {
+			t.Helper()
+			var id int64
+			must(tx.QueryRow(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity) SELECT $1,$2,id,sku,'Workflow plant',label,$4::jsonb,100,$5 FROM product_variants WHERE id=$3 RETURNING id`, order, product, variantID, snapshot, quantity).Scan(&id))
+			return id
+		}
+		first := insertItem(variant, 2, `{}`)
+		other := insertItem(otherVariant, 1, `{"packageLengthCm":30,"packageWidthCm":20,"packageHeightCm":40,"packageWeightGrams":1000}`)
+		repeated := insertItem(variant, 2, `{}`)
+		states, e := flow.Read(ctx, tx, []int64{order})
+		must(e)
+		want := map[string][]int64{"stock_short": {first, repeated}, "dimensions": {first, repeated}, "stock_unknown": {other}}
+		if len(states[order].Blockers) != len(want) {
+			t.Fatalf("unexpected blockers: %+v", states[order])
+		}
+		for _, blocker := range states[order].Blockers {
+			ids, ok := want[blocker.Code]
+			if !ok || !slices.Equal(blocker.OrderItemIDs, ids) {
+				t.Fatalf("same-name/grouped variant mapped incorrectly: %+v; expected %v", blocker, ids)
+			}
+		}
+	})
 	_, err = pool.Exec(ctx, `UPDATE inventory SET available_qty=3,synced_at=NOW() WHERE variant_id=$1`, variant)
 	must(err)
 	_, err = pool.Exec(ctx, `UPDATE orders SET status='new',delivery_method='pickup',payment_method='on_delivery',payment_status='on_delivery' WHERE id=$1`, order)
@@ -192,8 +278,12 @@ func TestOrderWorkflowLocalDatabase(t *testing.T) {
 		if next == "completed" {
 			payment = "paid"
 		}
-		_, err = repo.UpdateOrderStatus(ctx, actor, order, next, payment)
+		updated, e := repo.UpdateOrderStatus(ctx, actor, order, next, payment)
+		err = e
 		must(err)
+		if len(updated.Items) != 1 || updated.Items[0].ID != orderItem {
+			t.Fatalf("status update lost real item ID %d: %+v", orderItem, updated.Items)
+		}
 	}
 	must(pool.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1`, order).Scan(&status))
 	if status != "completed" {

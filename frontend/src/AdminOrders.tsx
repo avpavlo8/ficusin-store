@@ -1,9 +1,9 @@
 import { OrderProductImage } from "./OrderProductImage";
 import { OrderProductLink } from "./OrderProductLink";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
-import { api, money, paymentLabels, paymentMethodLabels, statusLabels } from "./adminShared";
+import { api, money, paymentLabels, statusLabels } from "./adminShared";
 import { currentAdminSection } from "./adminNavigation";
-import { WorkspaceState, WorkspaceStatus } from "./WorkspaceUI";
+import { WorkspaceState } from "./WorkspaceUI";
 import type { Order } from "./adminTypes";
 import "./styles/admin-orders-navigation.css";
 
@@ -67,6 +67,40 @@ function paymentLabel(order: Order) {
 
 const deliveryLabel = (value: string) =>
   value === "pickup" ? "Самовывоз" : value === "cdek" ? "СДЭК" : value;
+
+type OrderWarning = NonNullable<Order["workflow"]>["blockers"][number];
+
+function orderWarnings(order: Order): OrderWarning[] {
+  if (order.workflow) {
+    if (order.workflow.queue !== "new") return [];
+    // Payment already has its own column. Keep the remaining blockers available
+    // without repeating the same state for every line of the order.
+    return order.workflow.blockers.filter(
+      (blocker) => !["payment", "pickup_payment"].includes(blocker.code),
+    );
+  }
+  if (["cancelled", "completed", "shipped", "shipping"].includes(order.status)) return [];
+  return [
+    ...(order.hasPreorder ? [{ code: "stock_unknown", message: "Нужно проверить наличие" }] : []),
+    ...(order.deliveryFeePending
+      ? [
+          {
+            code: "delivery_fee",
+            message: order.repackRequested
+              ? "Запрошена одна коробка"
+              : "Доставка требует уточнения",
+          },
+        ]
+      : []),
+  ];
+}
+
+function shortWarning(warning: OrderWarning) {
+  if (warning.code === "dimensions") return "Нет габаритов";
+  if (warning.code === "stock_short") return "Не хватает в наличии";
+  if (warning.code === "stock_unknown") return "Проверить остаток";
+  return warning.message;
+}
 
 export function Orders({
   canRefund = false,
@@ -357,81 +391,182 @@ export function Orders({
           }
         />
       ) : (
-        <div className="orders-cards">
-          {visible.map((order) => {
-            const next = { ...navigation, orderId: String(order.id) };
-            return (
-              <article className="orders-card" key={order.id}>
-                <div className="orders-card-status">
-                  <WorkspaceStatus status={order.status}>
-                    {statusLabels[order.status] || order.status}
-                  </WorkspaceStatus>
-                  <span
-                    className={
-                      order.paymentStatus === "paid" ? "payment-state paid" : "payment-state"
-                    }
-                  >
-                    {paymentLabel(order)}
-                  </span>
-                </div>
-                <div className="orders-card-products">
-                  {order.items.map((item, index) => (
-                    <div className="orders-card-product" key={index}>
-                      <OrderProductImage item={item} />
-                      <div>
-                        <OrderProductLink item={item} />
-                        <span>{item.variantLabel || item.sku}</span>
+        <div className="orders-table-wrap">
+          <table className="orders-table" aria-label="Заказы" role="table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th scope="col" className="orders-column-order">
+                  Заказ
+                </th>
+                <th scope="col" className="orders-column-products">
+                  Товары
+                </th>
+                <th scope="col" className="orders-column-customer">
+                  Покупатель
+                </th>
+                <th scope="col" className="orders-column-delivery">
+                  Доставка
+                </th>
+                <th scope="col" className="orders-column-status">
+                  Статус
+                </th>
+                <th scope="col" className="orders-column-payment">
+                  Оплата
+                </th>
+                <th scope="col" className="orders-column-total">
+                  Сумма
+                </th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">
+              {visible.map((order) => {
+                const next = { ...navigation, orderId: String(order.id) };
+                const warnings = orderWarnings(order);
+                const itemIds = new Set(order.items.flatMap((item) => (item.id ? [item.id] : [])));
+                const generalWarnings = warnings.filter(
+                  (warning) => !warning.orderItemIds?.some((id) => itemIds.has(id)),
+                );
+                const onlyStockWarnings = generalWarnings.every((warning) =>
+                  warning.code.startsWith("stock_"),
+                );
+                const manualAssembly =
+                  order.workflow?.queue === "new" &&
+                  order.deliveryMethod === "pickup" &&
+                  order.paymentMethod === "on_delivery" &&
+                  order.paymentStatus !== "paid";
+                return (
+                  <tr className="orders-card" key={order.id} role="row">
+                    <td className="orders-cell-order" role="cell">
+                      <a
+                        className="orders-number-link"
+                        href={ordersUrl(next)}
+                        onClick={(event) => follow(event, next)}
+                      >
+                        {order.orderNumber}
+                      </a>
+                      <time dateTime={order.createdAt}>
+                        {new Date(order.createdAt).toLocaleString("ru-RU", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </time>
+                      {manualAssembly && (
+                        <small className="orders-manual-hint">Сборка вручную</small>
+                      )}
+                      {generalWarnings.length > 0 && (
+                        <details className="orders-attention">
+                          <summary>
+                            <svg
+                              viewBox="0 0 16 16"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="m6 4 4 4-4 4" />
+                            </svg>
+                            <span>
+                              {onlyStockWarnings ? "Проверить остатки" : "Нужна проверка"}
+                            </span>
+                            {generalWarnings.length > 1 && (
+                              <span className="orders-attention-count">
+                                {generalWarnings.length}
+                              </span>
+                            )}
+                          </summary>
+                          <ul
+                            className="orders-card-blockers"
+                            aria-label="Почему заказ ещё не на сборке"
+                            role="list"
+                          >
+                            {generalWarnings.map((warning, index) => (
+                              <li key={`${warning.code}:${index}`}>{warning.message}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </td>
+                    <td className="orders-cell-products" role="cell">
+                      <div className="orders-card-products">
+                        {order.items.map((item, index) => (
+                          <div className="orders-card-product" key={index}>
+                            <OrderProductImage item={item} />
+                            <div>
+                              <OrderProductLink item={item} />
+                              <span>{item.variantLabel || item.sku}</span>
+                              {warnings.some(
+                                (warning) =>
+                                  item.id !== undefined && warning.orderItemIds?.includes(item.id),
+                              ) && (
+                                <ul
+                                  className="orders-item-issues"
+                                  role="list"
+                                  aria-label={`Причины проверки: ${item.productName}, ${item.variantLabel || item.sku}`}
+                                >
+                                  {warnings
+                                    .filter(
+                                      (warning) =>
+                                        item.id !== undefined &&
+                                        warning.orderItemIds?.includes(item.id),
+                                    )
+                                    .map((warning, index) => (
+                                      <li
+                                        className="orders-item-issue"
+                                        data-code={warning.code}
+                                        key={`${warning.code}:${index}`}
+                                        title={warning.message}
+                                      >
+                                        {shortWarning(warning)}
+                                      </li>
+                                    ))}
+                                </ul>
+                              )}
+                            </div>
+                            <span className="orders-card-quantity">{item.quantity} шт.</span>
+                          </div>
+                        ))}
                       </div>
-                      <span className="orders-card-quantity">{item.quantity} шт</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="orders-card-customer">
-                  <span>{order.customerName}</span>
-                  <span>{order.phone}</span>
-                </div>
-                <div className="orders-card-meta">
-                  <span>{deliveryLabel(order.deliveryMethod)}</span>
-                  <time dateTime={order.createdAt}>
-                    {new Date(order.createdAt).toLocaleString("ru-RU")}
-                  </time>
-                </div>
-                <div className="orders-card-footer">
-                  <a
-                    className="orders-number-link"
-                    href={ordersUrl(next)}
-                    onClick={(event) => follow(event, next)}
-                  >
-                    {order.orderNumber}
-                  </a>
-                  <strong>{money.format(order.total)}</strong>
-                </div>
-                {order.trackNumber && <small>Трек: {order.trackNumber}</small>}
-                {order.workflow?.queue === "new" && order.workflow.blockers.length > 0 && (
-                  <ul className="orders-card-blockers" aria-label="Почему заказ ещё не на сборке">
-                    {order.workflow.blockers.map((blocker, index) => (
-                      <li key={`${blocker.code}:${index}`}>{blocker.message}</li>
-                    ))}
-                  </ul>
-                )}
-                {!order.workflow && order.status !== "cancelled" && order.hasPreorder && (
-                  <small className="admin-flag">Нужно проверить наличие</small>
-                )}
-                {!order.workflow && order.status !== "cancelled" && order.deliveryFeePending && (
-                  <small className="admin-flag">
-                    {order.repackRequested
-                      ? "Запрошена одна коробка"
-                      : "Доставка требует уточнения"}
-                  </small>
-                )}
-                {order.status !== "cancelled" &&
-                  order.paymentMethod &&
-                  order.paymentMethod !== "online" && (
-                    <small className="admin-flag">{paymentMethodLabels[order.paymentMethod]}</small>
-                  )}
-              </article>
-            );
-          })}
+                    </td>
+                    <td className="orders-cell-customer" data-label="Покупатель" role="cell">
+                      <span>{order.customerName}</span>
+                      <small>{order.phone}</small>
+                    </td>
+                    <td className="orders-cell-delivery" data-label="Доставка" role="cell">
+                      <span>{deliveryLabel(order.deliveryMethod)}</span>
+                      {order.trackNumber && <small>Трек: {order.trackNumber}</small>}
+                    </td>
+                    <td className="orders-cell-status" role="cell">
+                      <span className="orders-status-label" data-status={order.status}>
+                        {statusLabels[order.status] || order.status}
+                      </span>
+                    </td>
+                    <td className="orders-cell-payment" data-label="Оплата" role="cell">
+                      <span
+                        className="payment-state"
+                        data-tone={
+                          order.paymentStatus === "paid"
+                            ? "paid"
+                            : order.paymentStatus === "on_delivery" && order.status !== "cancelled"
+                              ? "on-delivery"
+                              : "neutral"
+                        }
+                      >
+                        {paymentLabel(order)}
+                      </span>
+                    </td>
+                    <td className="orders-cell-total" role="cell">
+                      <strong>{money.format(order.total)}</strong>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </section>

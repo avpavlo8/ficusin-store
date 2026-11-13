@@ -1,27 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { horizontalOverflow, mockApi, owner } from './helpers';
-
-test('@desktop @phone homepage explains loyalty and links directly to registration', async ({ page }, info) => {
-  await mockApi(page);
-  await page.goto('/');
-  const benefits = page.locator('.home-benefits');
-  await expect(benefits.getByRole('link', { name: 'Зарегистрироваться', exact: true })).toHaveAttribute('href', '/register');
-  await expect(benefits).toContainText('до 10%');
-  await expect(benefits).toContainText('10 000 ₽ выполненных заказов');
-  await expect(page.locator('.install-first-visit')).toHaveCount(0);
-  expect(await horizontalOverflow(page)).toBe(0);
-  await benefits.scrollIntoViewIfNeeded();
-  await page.screenshot({ path: info.outputPath('home-benefits.png') });
-  await benefits.getByRole('link', { name: 'Зарегистрироваться', exact: true }).click();
-  await expect(page).toHaveURL(/\/register$/);
-});
-
-test('@desktop @phone signed-in customers see their account instead of registration', async ({ page }) => {
-  await mockApi(page, owner);
-  await page.goto('/');
-  await expect(page.locator('.home-benefits').getByRole('link', { name: 'Моя скидка' })).toHaveAttribute('href', '/account');
-  await expect(page.locator('.home-benefits')).not.toContainText('Зарегистрируйтесь');
-});
+import { mockApi, owner } from './helpers';
 
 test('@desktop native install prompt is used once and installed app hides invitation', async ({ page }) => {
   await mockApi(page,undefined,{showInstallOffer:true});
@@ -57,6 +35,6 @@ test('@desktop @phone first homepage install offer closes once and stays availab
  await mockApi(page,owner,{showInstallOffer:true});await page.goto('/');
  const offer=page.getByRole('dialog',{name:'Фикусин на экране Домой'});
  await expect(offer).toBeVisible();await offer.getByRole('button',{name:'Закрыть предложение установки'}).click();
- await page.reload();await expect(page.locator('.home-benefits')).toBeVisible();await expect(offer).toHaveCount(0);
+ await page.reload();await expect(page.locator('.storefront-grid')).toBeVisible();await expect(offer).toHaveCount(0);
  await page.goto('/account/profile');await expect(page.locator('.account-app-settings .home-install')).toBeVisible();
 });

@@ -163,7 +163,12 @@ export type OrderWorkflow = {
   readyForAssembly: boolean;
   stockConfirmed: boolean;
   packagingConfirmed: boolean;
-  blockers: Array<{ code: string; message: string; view?: "items" | "delivery" | "payment" }>;
+  blockers: Array<{
+    code: string;
+    message: string;
+    view?: "items" | "delivery" | "payment";
+    orderItemIds?: number[];
+  }>;
   manualStatuses: string[];
 };
 export type Order = {
@@ -187,6 +192,7 @@ export type Order = {
   total: number;
   createdAt: string;
   items: Array<{
+    id?: number;
     productId: number;
     productCode?: string;
     sku: string;

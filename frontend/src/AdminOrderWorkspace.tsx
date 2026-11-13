@@ -53,7 +53,9 @@ export function AdminOrderWorkspace({
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
-  const workflow = review?.workflow || order.workflow;
+  // The adjustment loaded before a status mutation still describes the old
+  // stage. Keep the PATCH response visible while the editor refreshes it.
+  const workflow = review?.workflow?.status === order.status ? review.workflow : order.workflow;
   const currentStatus = workflow?.status || order.status;
   const closed = ["cancelled", "completed"].includes(currentStatus);
   const reasons = useMemo(() => {

@@ -5,7 +5,12 @@ async function mockOrders(
   page: Page,
   confirmedUnpaid = false,
   productAvailable = true,
+  longNames = false,
+  sameNameItems = false,
 ) {
+  const productName = longNames
+    ? "Аглаонема Мария с длинным названием декоративного сорта для проверки состава заказа"
+    : "Аглаонема Мария";
   const statuses = [
     "new",
     "confirmed",
@@ -62,7 +67,8 @@ async function mockOrders(
               { code: "payment", message: "Заказ не оплачен", view: "payment" },
               {
                 code: "dimensions",
-                message: "Не заполнены габариты и вес: Аглаонема Мария",
+                orderItemIds: [1],
+                message: `Не заполнены габариты и вес: ${productName}`,
                 view: "delivery",
               },
               {
@@ -84,15 +90,16 @@ async function mockOrders(
                   : []),
                 {
                   code: "stock_short",
-                  message: "Не хватает в наличии: Аглаонема Мария",
+                  orderItemIds: [1],
+                  message: `Не хватает в наличии: ${productName}`,
                   view: "items",
                 },
               ]
             : [],
       manualStatuses: [],
     },
-    subtotal: 1490,
-    total: 1490,
+    subtotal: longNames && index === 0 ? 1234567.89 : 1490,
+    total: longNames && index === 0 ? 1234567.89 : 1490,
     createdAt: "2026-10-22T09:00:00Z",
     items: [
       {
@@ -101,12 +108,30 @@ async function mockOrders(
         productCode: productAvailable ? "aglaonema-mariya" : undefined,
         sku: "1001",
         variantLabel: "D12",
-        productName: "Аглаонема Мария",
-        unitPrice: 1490,
+        productName,
+        unitPrice: longNames && index === 0 ? 1234567.89 : 1490,
         quantity: 1,
       },
     ],
   }));
+
+  if (sameNameItems) {
+    const order = orders[0];
+    order.items.push({
+      ...order.items[0],
+      id: 2,
+      sku: "1002",
+      variantLabel: "D24",
+    });
+    order.subtotal = order.total = 2980;
+    order.workflow.stockConfirmed = false;
+    order.workflow.blockers.push({
+      code: "stock_unknown",
+      orderItemIds: [2],
+      view: "items",
+      message: `Нет свежего остатка СБИС: ${productName}`,
+    });
+  }
 
   // Init-script interception also works after reload and in WebKit. Every API
   // request stays in the browser; a navigation regression cannot touch orders.
@@ -256,6 +281,113 @@ async function expectNoWrites(page: Page) {
   ).toEqual([]);
 }
 
+test("@desktop @phone orders keep table semantics, full blockers and independent links at every width", async ({
+  page,
+}) => {
+  await mockOrders(page, false, true, true);
+  await page.goto("/admin?section=orders");
+  const table = page.getByRole("table", { name: "Заказы", exact: true });
+  await expect(table).toBeVisible();
+  await expect(table.getByRole("columnheader")).toHaveText([
+    "Заказ",
+    "Товары",
+    "Покупатель",
+    "Доставка",
+    "Статус",
+    "Оплата",
+    "Сумма",
+  ]);
+  await expect(table.getByRole("row")).toHaveCount(3);
+  const row = table.getByRole("row").filter({
+    has: page.getByRole("link", { name: "0001-51", exact: true }),
+  });
+  await expect(row.getByRole("cell")).toHaveCount(7);
+  await expect(
+    row.locator(".orders-cell-status").locator(".orders-status-label"),
+  ).toHaveText("Новый");
+  await expect(
+    row.getByRole("link", {
+      name: "Аглаонема Мария с длинным названием декоративного сорта для проверки состава заказа",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "/product/aglaonema-mariya?sku=1001");
+  await expect(table.locator("a a")).toHaveCount(0);
+  const itemIssue = row.locator(".orders-card-product .orders-item-issue");
+  await expect(itemIssue).toHaveText("Нет габаритов");
+  await expect(itemIssue).toHaveAttribute(
+    "title",
+    "Не заполнены габариты и вес: Аглаонема Мария с длинным названием декоративного сорта для проверки состава заказа",
+  );
+  const reasons = row.getByRole("list", {
+    name: "Почему заказ ещё не на сборке",
+  });
+  await expect(reasons).toHaveCount(0);
+  await row.locator("details.orders-attention > summary").click();
+  await expect(reasons.getByRole("listitem")).toHaveText([
+    "Нужно рассчитать и подтвердить стоимость доставки",
+  ]);
+  for (const reason of await reasons.getByRole("listitem").all()) {
+    await expect(reason).toBeVisible();
+    expect(
+      await reason.evaluate(
+        (element) =>
+          element.scrollHeight <= element.clientHeight + 1 &&
+          element.scrollWidth <= element.clientWidth + 1,
+      ),
+      "The complete blocker must fit without clipping or an inner scrollbar",
+    ).toBe(true);
+  }
+  expect(
+    await table.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - innerWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+  await expectNoWrites(page);
+});
+
+test("@desktop @phone item issues stay on the matching order item when product names are identical", async ({
+  page,
+}) => {
+  await mockOrders(page, false, true, false, true);
+  await page.goto("/admin?section=orders");
+  const row = page
+    .getByRole("row")
+    .filter({ has: page.getByRole("link", { name: "0001-51", exact: true }) });
+  const items = row.locator(".orders-card-product");
+  await expect(items).toHaveCount(2);
+  await expect(
+    items.getByRole("link", { name: "Аглаонема Мария", exact: true }),
+  ).toHaveCount(2);
+  const first = items.filter({ hasText: "D12" });
+  const second = items.filter({ hasText: "D24" });
+  await expect(first.locator(".orders-item-issue")).toHaveText("Нет габаритов");
+  await expect(first.locator(".orders-item-issue")).toHaveAttribute(
+    "title",
+    "Не заполнены габариты и вес: Аглаонема Мария",
+  );
+  await expect(second.locator(".orders-item-issue")).toHaveText(
+    "Проверить остаток",
+  );
+  await expect(second.locator(".orders-item-issue")).toHaveAttribute(
+    "title",
+    "Нет свежего остатка СБИС: Аглаонема Мария",
+  );
+  await expect(first).not.toContainText("Проверить остаток");
+  await expect(second).not.toContainText("Нет габаритов");
+  await row.locator("details.orders-attention > summary").click();
+  await expect(
+    row
+      .getByRole("list", { name: "Почему заказ ещё не на сборке" })
+      .getByRole("listitem"),
+  ).toHaveText(["Нужно рассчитать и подтвердить стоимость доставки"]);
+  await expectNoWrites(page);
+});
+
 test("@desktop очереди отделяют новые с причинами, сборку, доставку и завершённые заказы", async ({
   page,
 }) => {
@@ -278,22 +410,31 @@ test("@desktop очереди отделяют новые с причинами,
     );
   }
 
-  const newReasons = page
-    .locator(".orders-card")
-    .filter({ has: page.getByRole("link", { name: "0001-51", exact: true }) })
-    .getByRole("list", { name: "Почему заказ ещё не на сборке" });
+  const newOrder = page.locator(".orders-card").filter({
+    has: page.getByRole("link", { name: "0001-51", exact: true }),
+  });
+  await newOrder.locator("details.orders-attention > summary").click();
+  const newReasons = newOrder.getByRole("list", {
+    name: "Почему заказ ещё не на сборке",
+  });
   await expect(newReasons.getByRole("listitem")).toHaveText([
-    "Заказ не оплачен",
-    "Не заполнены габариты и вес: Аглаонема Мария",
     "Нужно рассчитать и подтвердить стоимость доставки",
   ]);
   const confirmed = page
     .locator(".orders-card")
     .filter({ has: page.getByRole("link", { name: "0001-52", exact: true }) });
   await expect(confirmed.locator(".payment-state")).toHaveText("Оплачен");
-  await expect(confirmed.getByRole("listitem")).toHaveText([
-    "Не хватает в наличии: Аглаонема Мария",
-  ]);
+  await expect(confirmed.locator(".payment-state")).toHaveAttribute(
+    "data-tone",
+    "paid",
+  );
+  await expect(
+    confirmed.locator(".orders-card-product .orders-item-issue"),
+  ).toHaveText("Не хватает в наличии");
+  await expect(
+    confirmed.locator(".orders-card-product .orders-item-issue"),
+  ).toHaveAttribute("title", "Не хватает в наличии: Аглаонема Мария");
+  await expect(confirmed.locator("details.orders-attention")).toHaveCount(0);
 
   await statusLink(page, "В работе").click();
   await expect(page).toHaveURL(/status=in_progress/);
@@ -496,10 +637,16 @@ test("@desktop подтвержденный неоплаченный остаё�
   const confirmed = page
     .locator(".orders-card")
     .filter({ has: page.getByRole("link", { name: "0001-52", exact: true }) });
-  await expect(confirmed.getByRole("listitem")).toHaveText([
-    "Заказ не оплачен",
-    "Не хватает в наличии: Аглаонема Мария",
-  ]);
+  await expect(confirmed.locator(".payment-state")).toHaveText(
+    "Ожидает оплаты",
+  );
+  await expect(
+    confirmed.locator(".orders-card-product .orders-item-issue"),
+  ).toHaveText("Не хватает в наличии");
+  await expect(
+    confirmed.locator(".orders-card-product .orders-item-issue"),
+  ).toHaveAttribute("title", "Не хватает в наличии: Аглаонема Мария");
+  await expect(confirmed.locator("details.orders-attention")).toHaveCount(0);
   await statusLink(page, "В работе").click();
   await expect(orderLinks(page)).toHaveText(["0001-53", "0001-54"]);
   await statusLink(page, "В доставке").click();
