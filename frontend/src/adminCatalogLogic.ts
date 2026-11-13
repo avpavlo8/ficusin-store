@@ -118,12 +118,6 @@ export function readinessFor(
   return { tasks, codes, blockers, missingStage1, unknownEnums };
 }
 
-export function displayValue(value: unknown, attribute?: CategoryAttribute) {
-  if (valueMissing(value)) return "Не заполнено";
-  const values = Array.isArray(value) ? value.map(String) : [String(value)];
-  return values.map((item) => attribute?.optionLabels?.[item] || item).join(", ");
-}
-
 export function normalizeCatalogQuery(value: string) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("ru");
 }

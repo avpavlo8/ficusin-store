@@ -5,7 +5,23 @@ import type {
   ChannelCategory,
 } from "./catalogEditorChannels";
 import type { PlantPassport } from "./adminTypes";
-import type { SabyStepDraft } from "./ProductCreationSabyStep";
+// Retain the saved draft shape independently of the retired Saby step UI.
+export type SabyStepDraft = {
+  mode: "create" | "link";
+  folderId: string;
+  initialStock: string;
+  query: string;
+  selected: {
+    id: string;
+    code: string;
+    article: string;
+    name: string;
+    missing: boolean;
+    linkedVariantId?: number;
+    linkedProductId?: number;
+    mappedProductId?: number;
+  } | null;
+};
 
 type ChannelDraft = {
   enabled: boolean;

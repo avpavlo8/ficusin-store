@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BrandLogo } from "./BrandLogo";
 import { CatalogSearch } from "./CatalogSearch";
 import { useSharedCart } from "./lib/cart";
-import { useFavorites, useAvailableFavoriteCount, FAVORITES_EVENT } from "./lib/favorites";
+import { useFavorites, useAvailableFavoriteCount } from "./lib/favorites";
 import { useModalFocus } from "./lib/useModalFocus";
 import { sharedAPIJSON } from "./lib/api";
 import { orderStorefrontCategories } from "./lib/category-order";
@@ -102,10 +102,6 @@ function AccountBadge({ user }: { user: StoreUser }) {
     </span>
   );
 }
-
-// Favourites remain local for now. Cart contents are never stored here: the
-// header reads the same server-backed cart as the catalogue and checkout.
-export const STORAGE_EVENT = FAVORITES_EVENT;
 
 export function useStoreUser() {
   const [user, setUser] = useState<StoreUser | null>(null);

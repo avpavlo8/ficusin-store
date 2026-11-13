@@ -5,15 +5,6 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Role } from "./adminTypes";
 export { money } from "./lib/money";
 
-// Что товару разрешено брать из СБИС. Пусто значит «ничего»: карточка целиком наша.
-export const sabyFieldLabels: Record<string, string> = {
-  stock: "остаток",
-  price: "цена",
-  name: "название",
-  description: "описание",
-  photo: "фото",
-};
-
 export const roles: Array<{ value: Role; label: string }> = [
   { value: "", label: "Без доступа" },
   { value: "manager", label: "Менеджер" },
@@ -31,12 +22,6 @@ export const paymentLabels: Record<string, string> = {
   cancelled: "Оплата отменена",
   payment_provider_pending: "Без онлайн-оплаты",
   refunded: "Возвращён",
-};
-
-export const paymentMethodLabels: Record<string, string> = {
-  on_delivery: "Оплатит при получении",
-  invoice: "Нужен счёт на организацию",
-  manager_confirmation: "Оплата после подтверждения менеджером",
 };
 
 export const orderStatuses = [
