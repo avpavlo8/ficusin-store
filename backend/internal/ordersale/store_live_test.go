@@ -68,6 +68,16 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec(string(migration))
+	dispatcherMigration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_publications.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(string(dispatcherMigration))
+	buyerMigration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_publications_buyer.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(string(buyerMigration))
 	add := func(id int64, method, status, carrier string, variant int64, qty int) {
 		t.Helper()
 		exec(`INSERT INTO orders(id,order_number,status,delivery_method,cdek_status) VALUES($1,$2,$3,$4,$5)`, id, fmt.Sprintf("LOCAL-%d", id), status, method, carrier)
@@ -244,6 +254,7 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 			t.Fatal("duplicate prepared intent", count, err)
 		}
 	})
+	t.Run("durable publication foundation", func(t *testing.T) { testPublicationFoundation(t, pool) })
 	view, e := List(ctx, pool, "LOCAL-10", 0)
 	if e != nil || len(view.Events) != 1 || view.ExternalWritesEnabled || view.Warehouses[0].NativeMappingConfirmed {
 		t.Fatalf("view claims unsupported native capability: %+v / %v", view, e)

@@ -16,6 +16,7 @@ type orderSaleRepository interface {
 }
 
 func registerOrderSaleRoutes(mux *http.ServeMux, h adminHandlers) {
+	mux.HandleFunc("POST /api/v1/admin/order-realizations/{id}/retry", orderSaleRetryHandler(h))
 	mux.HandleFunc("GET /api/v1/admin/order-realizations", orderSaleHandler(h, false))
 	mux.HandleFunc("POST /api/v1/admin/order-realizations/prepare", orderSaleHandler(h, true))
 }
@@ -77,6 +78,44 @@ func orderSaleHandler(h adminHandlers, prepare bool) http.HandlerFunc {
 			h.failed(w, "prepare order realization", err)
 			return
 		}
-		writeJSON(w, 200, map[string]any{"events": events, "externalWritesEnabled": false})
+		writeJSON(w, 200, map[string]any{"events": events})
+	}
+}
+
+func orderSaleRetryHandler(h adminHandlers) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, actor, ok := h.authorize(w, r, admin.PermissionOrdersRead)
+		if !ok {
+			return
+		}
+		if actor.Role != admin.RoleOwner {
+			writeJSON(w, 403, errorResponse{Error: "Реализации доступны владельцу"})
+			return
+		}
+		repo, ok := h.repository.(interface {
+			RetryOrderRealization(context.Context, admin.Actor, int64) error
+		})
+		if !ok {
+			writeJSON(w, 503, errorResponse{Error: "Проверка реализации недоступна"})
+			return
+		}
+		id, ok := pathID(w, r)
+		if !ok {
+			return
+		}
+		err := repo.RetryOrderRealization(r.Context(), actor, id)
+		if errors.Is(err, ordersale.ErrRetryUnsafe) || errors.Is(err, ordersale.ErrConflict) {
+			writeJSON(w, 409, errorResponse{Error: err.Error()})
+			return
+		}
+		if errors.Is(err, ordersale.ErrInput) {
+			writeJSON(w, 400, errorResponse{Error: err.Error()})
+			return
+		}
+		if err != nil {
+			h.failed(w, "retry order realization", err)
+			return
+		}
+		writeJSON(w, 200, map[string]bool{"ok": true})
 	}
 }

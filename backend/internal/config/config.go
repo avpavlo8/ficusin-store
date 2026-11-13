@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	OrderRealization       OrderRealization
 	FileStorageMode        string
 	LocalPrivateFilesDir   string
 	StaticAssetsBaseURL    string
@@ -278,6 +279,9 @@ func Load() (Config, error) {
 		if !filepath.IsAbs(configured.LocalPrivateFilesDir) || filepath.Clean(configured.LocalPrivateFilesDir) == string(filepath.Separator) {
 			return Config{}, errors.New("LOCAL_PRIVATE_FILES_DIR must be a dedicated absolute directory")
 		}
+	}
+	if err = configureOrderRealization(&configured); err != nil {
+		return Config{}, err
 	}
 	return configured, nil
 }

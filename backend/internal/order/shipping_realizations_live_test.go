@@ -97,6 +97,16 @@ func TestShippingRealizationHooksPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec(string(migration))
+	dispatcherMigration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_publications.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(string(dispatcherMigration))
+	buyerMigration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_publications_buyer.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(string(buyerMigration))
 	carrier := &realizationReadOnlyCarrier{status: "IN_TRANSIT"}
 	worker := &ShippingWorker{pool: pool, cdek: carrier, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	// Historical shipped rows still awaiting UUID reconciliation are manual-only.

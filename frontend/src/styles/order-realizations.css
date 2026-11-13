@@ -49,6 +49,45 @@
   color: #fff;
   border-color: var(--green);
 }
+.order-realizations-actions {
+  flex-wrap: wrap;
+}
+.order-realizations-capability[data-mode="mock"] {
+  background: #fbf5eb;
+  border-color: #e7d5b7;
+  color: #765526;
+}
+.order-realizations-publication {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.order-realizations-publication-label {
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: #edf1f2;
+  color: #465864;
+}
+.order-realizations-publication-label[data-state="posted"] {
+  background: #e5f2e9;
+  color: #25613d;
+}
+.order-realizations-publication-label[data-state="needs_attention"],
+.order-realizations-publication[data-test="true"] .order-realizations-publication-label {
+  background: #faf0dd;
+  color: #805416;
+}
+.order-realizations-publication-label[data-state="failed"] {
+  background: #fae9e6;
+  color: #9a362d;
+}
+.order-realizations-state .order-realizations-proof {
+  color: #25613d;
+}
+.order-realizations-state .order-realizations-test-note {
+  color: #765526;
+}
 .order-realizations-search,
 .order-realizations-actions {
   display: flex;

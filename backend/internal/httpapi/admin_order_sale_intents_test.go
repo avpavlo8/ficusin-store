@@ -19,6 +19,39 @@ type realizationHTTPRepository struct {
 	actor               admin.Actor
 	input               ordersale.PrepareInput
 	err                 error
+	retries             int
+	retryID             int64
+}
+
+func (r *realizationHTTPRepository) RetryOrderRealization(_ context.Context, actor admin.Actor, id int64) error {
+	r.retries++
+	r.retryID, r.actor = id, actor
+	return r.err
+}
+
+func TestOrderRealizationRetryRejectsUnsafeCreationWithoutBypassingOwner(t *testing.T) {
+	for _, scenario := range []struct {
+		name, role    string
+		err           error
+		status, calls int
+	}{
+		{"manager", admin.RoleManager, nil, http.StatusForbidden, 0},
+		{"safe readback", admin.RoleOwner, nil, http.StatusOK, 1},
+		{"unknown create", admin.RoleOwner, ordersale.ErrRetryUnsafe, http.StatusConflict, 1},
+		{"missing publication", admin.RoleOwner, ordersale.ErrInput, http.StatusBadRequest, 1},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			repo := &realizationHTTPRepository{err: scenario.err}
+			response := httptest.NewRecorder()
+			NewRouter(discardLogger(), adminDependencies(repo, scenario.role, "operator@example.invalid")).ServeHTTP(response, adminRequest(http.MethodPost, "/api/v1/admin/order-realizations/7/retry", ""))
+			if response.Code != scenario.status || repo.retries != scenario.calls {
+				t.Fatalf("status=%d retries=%d: %s", response.Code, repo.retries, response.Body.String())
+			}
+			if repo.retries > 0 && (repo.actor.CustomerID != 1 || repo.retryID != 7) {
+				t.Fatalf("retry lost actor or publication: %+v", repo)
+			}
+		})
+	}
 }
 
 func (r *realizationHTTPRepository) OrderRealizations(_ context.Context, actor admin.Actor, _ string, _ int) (ordersale.View, error) {
@@ -96,7 +129,7 @@ func TestOrderRealizationPreparationReportsConflictAndNoExternalCreation(t *test
 				if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 					t.Fatal(err)
 				}
-				if string(result["externalWritesEnabled"]) != "false" || !strings.Contains(string(result["events"]), `"state":"prepared"`) {
+				if _, fabricatedCapability := result["externalWritesEnabled"]; fabricatedCapability || !strings.Contains(string(result["events"]), `"state":"prepared"`) {
 					t.Fatalf("internal preparation misrepresented: %s", response.Body.String())
 				}
 			}

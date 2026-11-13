@@ -31,6 +31,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/avpavlo8/ficusin-store/backend/internal/operations"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/photos"
@@ -232,6 +233,25 @@ func main() {
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	).WithIntegrationRequestLimiter(procurementStore)
 	adminRepository.WithEditorSabyMetadata(&integration.SabyEditorMetadataSource{Client: sabyProcurementClient, Hierarchy: &integration.SabyEditorHierarchySource{Client: sabyProcurementClient}}, cfg.Environment)
+	var realizationProvider ordersale.Provider
+	if cfg.OrderRealization.Mode == "mock" {
+		realizationProvider = ordersale.MockProvider{}
+	}
+	if cfg.OrderRealization.Mode == "live" {
+		realizationProvider = &integration.SabyOrderRealizationProvider{
+			Client: sabyProcurementClient,
+			// Ordinary realization, verified independently from retail shift totals.
+			PublicRegulationUUID: "8861254e-4354-11e1-9d64-005056a63fed",
+		}
+	}
+	realizationControl := ordersale.DispatchControl{BuyerID: cfg.OrderRealization.BuyerID, Mode: cfg.OrderRealization.Mode, Enabled: realizationProvider != nil, SiteWarehouseID: cfg.OrderRealization.SiteWarehouseID, NativeWarehouseID: cfg.OrderRealization.NativeWarehouseID, MovementWarehouseID: cfg.OrderRealization.MovementWarehouseID, OrganizationID: cfg.OrderRealization.OrganizationID, RegulationID: cfg.OrderRealization.RegulationID}
+	if err := ordersale.RefreshDispatchControl(ctx, pool, realizationControl); err != nil {
+		logger.Error("order realization configuration failed", "error", err)
+		os.Exit(1)
+	}
+	if realizationProvider != nil {
+		go ordersale.RunPublisher(ctx, pool, realizationProvider, cfg.OrderRealization.Mode, logger)
+	}
 	var catalogProvider catalogsync.Provider = sabyProcurementClient
 	if cfg.Environment == "staging" {
 		stagingProvider, err := catalogsync.NewStagingProvider(ctx, pool)

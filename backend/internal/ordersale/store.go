@@ -47,7 +47,8 @@ func readEvent(ctx context.Context, q queryer, orderID, offerID int64) (Event, e
 
 		// Handover eligibility is frozen with the intent, not inferred from a later status toggle.
 		finish(&e)
-		return e, nil
+		e.Publication, err = loadPublication(ctx, q, e.IntentID)
+		return e, err
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return e, err
@@ -134,11 +135,25 @@ func Enqueue(ctx context.Context, tx pgx.Tx, orderID, offerID int64, source stri
 		}
 	}
 	finish(&e)
+	if source == "automatic" {
+		if err = ensurePublication(ctx, tx, &e, 0, false); err != nil {
+			return e, err
+		}
+	}
 	return e, nil
 }
 
 func List(ctx context.Context, pool *pgxpool.Pool, search string, offset int) (View, error) {
 	view := View{Events: []Event{}, Warehouses: []Warehouse{}}
+	control, err := readDispatchControl(ctx, pool, false)
+	if err != nil {
+		return view, err
+	}
+	view.ExecutionMode = control.Mode
+	view.DispatchEnabled = control.Enabled
+	view.DispatchMode = control.Mode
+	view.AutoDispatchEnabled = control.Enabled && control.SiteWarehouseID > 0
+	view.ExternalWritesEnabled = control.Enabled && control.Mode == "live"
 	rows, err := pool.Query(ctx, `SELECT id,name FROM warehouses WHERE is_active<>0 ORDER BY name,id`)
 	if err != nil {
 		return view, err
@@ -149,6 +164,7 @@ func List(ctx context.Context, pool *pgxpool.Pool, search string, offset int) (V
 			rows.Close()
 			return view, err
 		}
+		w.NativeMappingConfirmed = control.Enabled && control.Mode == "live" && control.NativeWarehouseID > 0 && w.ID == control.SiteWarehouseID
 		view.Warehouses = append(view.Warehouses, w)
 	}
 	err = rows.Err()
@@ -231,6 +247,9 @@ func Prepare(ctx context.Context, pool *pgxpool.Pool, actorID int64, input Prepa
 			if e.WarehouseID != input.WarehouseID {
 				return nil, ErrConflict
 			}
+			if err = ensurePublication(ctx, tx, &e, input.WarehouseID, true); err != nil {
+				return nil, err
+			}
 			result = append(result, e)
 			continue
 		}
@@ -251,6 +270,9 @@ func Prepare(ctx context.Context, pool *pgxpool.Pool, actorID int64, input Prepa
 			return nil, err
 		}
 		finish(&e)
+		if err = ensurePublication(ctx, tx, &e, input.WarehouseID, true); err != nil {
+			return nil, err
+		}
 		result = append(result, e)
 	}
 	if err = tx.Commit(ctx); err != nil {

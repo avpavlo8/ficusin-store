@@ -1884,18 +1884,18 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [orders.read]
-      description: Owner only. Internal realization intents and explicit historical preparation candidates. Automatic intents are recorded transactionally only at verified delivery shipment or completed pickup; shipment offer lines retain exact quantities. No external document is created or stock changed. The synthetic local warehouse alias does not establish a native Saby warehouse mapping. Pagination is 50 events per page.
+      description: Owner only. Internal realization intents, immutable per-mode publication jobs and historical preparation candidates. New delivery handover and pickup completion create jobs only while dispatch control is enabled; enabling does not drain historical intents. Mock jobs remain mock permanently and never change real stock. Live posting requires a separately configured native provider and verified document-associated stock proof. Pagination is 50 events per page.
       parameters:
         - { in: query, name: q, schema: { type: string, maxLength: 100 }, description: Order number search. }
         - { in: query, name: offset, schema: { type: integer, minimum: 0, maximum: 100000 } }
       responses:
         2XX:
-          description: Current internal queue and historical candidates. externalWritesEnabled is false until a separately verified adapter exists.
+          description: Current internal queue, publication state and historical candidates. externalWritesEnabled is true only for the explicitly enabled live provider.
           content:
             application/json:
               schema:
                 type: object
-                required: [events, warehouses, hasMore, externalWritesEnabled]
+                required: [events, warehouses, hasMore, externalWritesEnabled, executionMode, dispatchEnabled, autoDispatchEnabled]
                 properties:
                   events: { type: array, items: { $ref: '#/components/schemas/OrderRealizationEvent' } }
                   warehouses:
@@ -1906,7 +1906,7 @@ paths:
                       properties:
                         id: { type: integer }
                         name: { type: string }
-                        nativeMappingConfirmed: { type: boolean, const: false }
+                        nativeMappingConfirmed: { type: boolean, description: True only for the explicitly mapped live site warehouse. }
                   hasMore: { type: boolean }
                   externalWritesEnabled: { type: boolean, const: false }
         default: { $ref: '#/components/responses/ValidationError' }
@@ -1917,7 +1917,7 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [orders.read]
-      description: Owner only. Atomically freezes internal preparation for 1–50 selected handover events and a local warehouse. Repeating the same event and warehouse returns the existing intent; changed fingerprint, ownership, mapping or warehouse is rejected. Does not dispatch a vendor request or mark an external document as created.
+      description: Owner only. Atomically freezes preparation for 1–50 selected handover events and a local warehouse. When dispatch is enabled an explicit preparation creates a durable job, including historical intents; native requests are performed only by the configured worker. Repeating the same event and warehouse returns the existing intent and job. Changed fingerprint, ownership, mapping or immutable job warehouse is rejected. The HTTP handler never claims an unverified external success.
       requestBody:
         required: true
         content:
@@ -1945,10 +1945,30 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [events, externalWritesEnabled]
+                required: [events]
                 properties:
                   events: { type: array, items: { $ref: '#/components/schemas/OrderRealizationEvent' } }
-                  externalWritesEnabled: { type: boolean, const: false }
+        default: { $ref: '#/components/responses/ValidationError' }
+  /admin/order-realizations/{id}/retry:
+    post:
+      operationId: post_admin_order_realizations_id_retry
+      x-source: backend/internal/httpapi/admin_order_sale_intents.go#orderSaleRetryHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [orders.read]
+      description: Owner only. Requeues a failed read-only stage or reconciliation of a known native document. Unknown creation without a saved document ID cannot be retried. Execution mode and original request are immutable; mock jobs cannot become live. Disabled or mismatched dispatch control rejects retry.
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, minimum: 1 }, description: Publication ID. }
+      responses:
+        2XX:
+          description: Safe verification queued; no inline vendor write.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
         default: { $ref: '#/components/responses/ValidationError' }
   /admin/orders:
     get:
@@ -6944,10 +6964,27 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    OrderRealizationPublication:
+      type: object
+      required: [id, executionMode, status, message, documentId, documentUUID, attempts, canRetry, updatedAt, siteWarehouseId, stockVerified, testMode]
+      properties:
+        id: { type: integer }
+        executionMode: { type: string, enum: [mock, live] }
+        status: { type: string, enum: [queued, processing, posted, needs_attention, failed] }
+        message: { type: string }
+        documentId: { type: string, description: Native numeric identifier in live mode; STG-SALE identifier in mock mode. }
+        documentUUID: { type: string }
+        siteWarehouseId: { type: integer }
+        stockVerified: { type: boolean, description: Verified proof from the configured provider; never a real stock deduction when testMode is true. }
+        testMode: { type: boolean }
+        attempts: { type: integer }
+        canRetry: { type: boolean }
+        updatedAt: { type: string, format: date-time }
     OrderRealizationEvent:
       type: object
       required: [key, orderId, orderNumber, shipmentOfferId, intentId, state, source, warehouseId, fingerprint, blockers, canPrepare, lines, externalDocumentId]
       properties:
+        publication: { $ref: '#/components/schemas/OrderRealizationPublication' }
         key: { type: string, description: Stable handover event identity shared by shipment and completion views. }
         orderId: { type: integer }
         orderNumber: { type: string }

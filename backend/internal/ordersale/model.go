@@ -1,5 +1,5 @@
-// Package ordersale prepares internal, durable realization intents. It has no
-// Saby client and cannot create, post or change stock in an external system.
+// Package ordersale coordinates durable handover intents and publication steps.
+// External writes require an explicitly configured provider; staging stays mock.
 package ordersale
 
 import (
@@ -26,26 +26,27 @@ type Line struct {
 	UnitPrice   string `json:"unitPrice"`
 }
 type Event struct {
-	Key                string     `json:"key"`
-	OrderID            int64      `json:"orderId"`
-	OrderNumber        string     `json:"orderNumber"`
-	ShipmentOfferID    int64      `json:"shipmentOfferId"`
-	DeliveryMethod     string     `json:"deliveryMethod"`
-	Status             string     `json:"status"`
-	CDEKStatus         string     `json:"cdekStatus"`
-	Lines              []Line     `json:"lines"`
-	IntentID           int64      `json:"intentId"`
-	State              string     `json:"state"`
-	Source             string     `json:"source"`
-	WarehouseID        int64      `json:"warehouseId"`
-	PreparedAt         *time.Time `json:"preparedAt"`
-	CreatedAt          time.Time  `json:"createdAt"`
-	MappingConflict    bool       `json:"mappingConflict"`
-	QuantityConflict   bool       `json:"quantityConflict"`
-	Fingerprint        string     `json:"fingerprint"`
-	Blockers           []string   `json:"blockers"`
-	CanPrepare         bool       `json:"canPrepare"`
-	ExternalDocumentID string     `json:"externalDocumentId"`
+	Publication        *PublicationView `json:"publication,omitempty"`
+	Key                string           `json:"key"`
+	OrderID            int64            `json:"orderId"`
+	OrderNumber        string           `json:"orderNumber"`
+	ShipmentOfferID    int64            `json:"shipmentOfferId"`
+	DeliveryMethod     string           `json:"deliveryMethod"`
+	Status             string           `json:"status"`
+	CDEKStatus         string           `json:"cdekStatus"`
+	Lines              []Line           `json:"lines"`
+	IntentID           int64            `json:"intentId"`
+	State              string           `json:"state"`
+	Source             string           `json:"source"`
+	WarehouseID        int64            `json:"warehouseId"`
+	PreparedAt         *time.Time       `json:"preparedAt"`
+	CreatedAt          time.Time        `json:"createdAt"`
+	MappingConflict    bool             `json:"mappingConflict"`
+	QuantityConflict   bool             `json:"quantityConflict"`
+	Fingerprint        string           `json:"fingerprint"`
+	Blockers           []string         `json:"blockers"`
+	CanPrepare         bool             `json:"canPrepare"`
+	ExternalDocumentID string           `json:"externalDocumentId"`
 }
 type Warehouse struct {
 	ID                     int64  `json:"id"`
@@ -53,6 +54,10 @@ type Warehouse struct {
 	NativeMappingConfirmed bool   `json:"nativeMappingConfirmed"`
 }
 type View struct {
+	ExecutionMode         string      `json:"executionMode"`
+	DispatchEnabled       bool        `json:"dispatchEnabled"`
+	DispatchMode          string      `json:"dispatchMode"`
+	AutoDispatchEnabled   bool        `json:"autoDispatchEnabled"`
 	Events                []Event     `json:"events"`
 	Warehouses            []Warehouse `json:"warehouses"`
 	HasMore               bool        `json:"hasMore"`

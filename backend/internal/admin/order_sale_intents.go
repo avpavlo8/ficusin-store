@@ -17,3 +17,10 @@ func (r *PostgresRepository) PrepareOrderRealizations(ctx context.Context, actor
 	}
 	return ordersale.Prepare(ctx, r.pool, actor.CustomerID, input)
 }
+
+func (r *PostgresRepository) RetryOrderRealization(ctx context.Context, actor Actor, id int64) error {
+	if actor.Role != RoleOwner {
+		return ErrForbidden
+	}
+	return ordersale.RetryPublication(ctx, r.pool, id)
+}
