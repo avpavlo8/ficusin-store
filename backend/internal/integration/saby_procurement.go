@@ -1042,26 +1042,6 @@ func (client *SabyClient) rpc(ctx context.Context, method string, params any, ta
 	return nil
 }
 
-func collectMaps(value any) []map[string]any {
-	result := make([]map[string]any, 0)
-	var walk func(any)
-	walk = func(current any) {
-		switch typed := current.(type) {
-		case map[string]any:
-			result = append(result, typed)
-			for _, child := range typed {
-				walk(child)
-			}
-		case []any:
-			for _, child := range typed {
-				walk(child)
-			}
-		}
-	}
-	walk(value)
-	return result
-}
-
 func nestedString(value any, path ...string) string {
 	if len(path) == 0 {
 		return strings.TrimSpace(fmt.Sprint(value))

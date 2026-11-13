@@ -46,14 +46,3 @@ func TestSalesWorkerLeavesWildberriesToItsDedicatedMirror(t *testing.T) {
 		t.Fatalf("replaced = %+v", store.replaced)
 	}
 }
-
-func TestNormalizeSalesRecordsAggregatesSameProductAndDay(t *testing.T) {
-	from := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
-	items, err := normalizeSalesRecords([]SalesRecord{
-		{Date: from.Add(time.Hour), ExternalID: "A", Units: 2, GrossRUB: 200},
-		{Date: from.Add(2 * time.Hour), ExternalID: "A", Units: -1, GrossRUB: -100},
-	}, from, from)
-	if err != nil || len(items) != 1 || items[0].Units != 1 || items[0].GrossRUB != 100 {
-		t.Fatalf("items = %+v, err = %v", items, err)
-	}
-}

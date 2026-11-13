@@ -4,9 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"log/slog"
-	"strings"
 	"time"
 )
 
@@ -254,44 +252,4 @@ func day(value time.Time) time.Time {
 
 func validSalesChannel(value string) bool {
 	return value == "site" || value == "saby" || value == "wb" || value == "ozon"
-}
-
-func normalizeSalesRecords(records []SalesRecord, from, to time.Time) ([]SalesRecord, error) {
-	type key struct {
-		date       string
-		externalID string
-	}
-	aggregated := make(map[key]SalesRecord, len(records))
-	for _, record := range records {
-		record.Date = day(record.Date)
-		record.ExternalID = strings.TrimSpace(record.ExternalID)
-		record.SabyID = strings.TrimSpace(record.SabyID)
-		if record.ExternalID == "" || record.Date.Before(from) || record.Date.After(to) {
-			return nil, ErrInvalidInput
-		}
-		itemKey := key{date: record.Date.Format("2006-01-02"), externalID: record.ExternalID}
-		item := aggregated[itemKey]
-		item.Date, item.ExternalID = record.Date, record.ExternalID
-		if record.SabyID != "" {
-			item.SabyID = record.SabyID
-		}
-		item.Units += record.Units
-		minor, amountErr := money.Minor(record.GrossRUB)
-		if amountErr != nil {
-			return nil, ErrInvalidInput
-		}
-		previous, amountErr := money.Minor(item.GrossRUB)
-		if amountErr != nil || minor > money.MaxMinor-previous || minor < -money.MaxMinor-previous {
-			return nil, ErrInvalidInput
-		}
-		item.GrossRUB = money.Rubles(previous + minor)
-		aggregated[itemKey] = item
-	}
-	result := make([]SalesRecord, 0, len(aggregated))
-	for _, record := range aggregated {
-		if record.Units != 0 || record.GrossRUB != 0 {
-			result = append(result, record)
-		}
-	}
-	return result, nil
 }

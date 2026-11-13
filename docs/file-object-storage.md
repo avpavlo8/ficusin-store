@@ -8,11 +8,11 @@ Avatar, return/discount photos, procurement invoices, new review media and chat 
 
 Existing review object keys originally pointed at the public photo bucket. New `storage_scope` defaults to `legacy-public` for these rows, while new uploads write `private`. `WithLegacyMediaStorage(photoStorage)` preserves reads from the original bucket. An explicit old-key copy migration may be added later; do not reinterpret old keys inside the new bucket.
 
-The finance import table has a new optional object reference and is supported by the migration command. There is no active Go finance upload/read handler in this checkout; no new financial workflow was invented or executed.
+The retired finance import table is preserved in `legacy_archive.finance_imports`, including its original bytes and object references. It is excluded from the active file migration command.
 
 ## Legacy bytea migration
 
-`go -C backend run ./cmd/migrate-file-assets` is **dry-run by default**, using `DATABASE_URL` and the same private S3 configuration. It reports kind, row ID, size and checksum; never file contents or credentials. Optional `--kinds avatars,returns,procurement,finance,reviews,chat` and `--limit 100` bound the inventory.
+`go -C backend run ./cmd/migrate-file-assets` is **dry-run by default**, using `DATABASE_URL` and the same private S3 configuration. It reports kind, row ID, size and checksum; never file contents or credentials. Optional `--kinds avatars,returns,procurement,reviews,chat` and `--limit 100` bound the inventory.
 
 Only an explicit `--apply` performs copies. Every file is PUT, GET and checksummed before a compare-and-set object reference update. Concurrently replaced rows are skipped. **Source bytea is retained**, including after success; repeated runs skip committed references. Cleanup/retention is a separate task, not a migration side effect. Existing public review object keys stay in the legacy reader and are not part of this bytea-only copier.
 

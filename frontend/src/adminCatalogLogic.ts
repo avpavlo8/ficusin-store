@@ -191,12 +191,3 @@ export const channelLabels: Record<string, string> = {
   site: "Сайт",
   ficusin: "Фикусин",
 };
-export const mappingLabels: Record<string, string> = {
-  code: "Код СБИС",
-  id: "Идентификатор",
-  uuid: "Идентификатор СБИС",
-  vendor_code: "Артикул продавца",
-  offer_id: "Артикул продавца",
-  nm_id: "Код карточки",
-  legacy_sku: "Прежний артикул",
-};
