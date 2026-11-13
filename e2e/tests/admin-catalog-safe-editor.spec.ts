@@ -185,6 +185,26 @@ test('@desktop @phone creation keeps a local draft until an explicit create and 
  await e.getByRole('button',{name:'Создать товар',exact:true}).click();await expect(page).toHaveURL(/product=1001/);await expect(e.getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('11.3');expect(f.plans.get(1001).variants[0].saby.category.id).toBe('fixture-category');expect(f.mutations.filter(r=>r.path==='/api/v1/admin/products')).toHaveLength(1);
 });
 
+test('@desktop @phone a completed creation starts a fresh draft and never overwrites the first product',async({page})=>{
+ const f=await fixture(page);await open(page);const e=page.locator('.editor-page');
+ for(const [index,name] of ['Первый новый товар','Второй новый товар'].entries()){
+  await page.getByRole('button',{name:'Добавить товар',exact:true}).click();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('');
+  await e.getByLabel('Название товара *',{exact:true}).fill(name);await chooseCategory(e);await sabyFields(e);await e.getByLabel('Диаметр горшка',{exact:true}).fill(String(12+index));await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill(String(1500+index));
+  await e.getByRole('button',{name:'Создать товар',exact:true}).click();await expect(page).toHaveURL(new RegExp(`product=${1001+index*2}`));await expect(e.getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();
+  expect(await page.evaluate(()=>localStorage.getItem('ficusin:product-creation-draft:v1'))).toBeNull();
+  expect(await page.evaluate(id=>JSON.parse(localStorage.getItem(`ficusin:product-edit-draft:v1:${id}`)!).name,1001+index*2)).toBe(name);
+  await e.getByRole('button',{name:'Закрыть редактор',exact:true}).click();
+ }
+ const creates=f.mutations.filter(r=>r.path==='/api/v1/admin/products'&&r.method==='POST');expect(creates).toHaveLength(2);expect(creates[0].body.creationId).not.toBe(creates[1].body.creationId);expect(f.creations.size).toBe(2);
+ expect(f.updates.filter(row=>row.id===1001).every(row=>row.body.name!=='Второй новый товар')).toBe(true);
+ await page.getByRole('link',{name:'Первый новый товар',exact:true}).click();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Первый новый товар');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('12');
+});
+
+test('@desktop @phone closing an unfinished creation keeps its draft for the next opening',async({page})=>{
+ const f=await fixture(page);await open(page);await page.getByRole('button',{name:'Добавить товар',exact:true}).click();const e=page.locator('.editor-page');await e.getByLabel('Название товара *',{exact:true}).fill('Незавершённый товар');await chooseCategory(e);await e.getByLabel('Диаметр горшка',{exact:true}).fill('14');
+ await e.getByRole('button',{name:'Закрыть редактор',exact:true}).click();await page.getByRole('button',{name:'Добавить товар',exact:true}).click();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Незавершённый товар');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('14');expect(f.creations.size).toBe(0);expect(f.updates).toHaveLength(0);
+});
+
 test('@desktop a lost creation response survives reload and retries the persisted creation identity',async({page})=>{
  const f=await fixture(page,{loseCreateResponse:true});await open(page);await page.getByRole('button',{name:'Добавить товар',exact:true}).click();const e=page.locator('.editor-page');await e.getByLabel('Название товара *',{exact:true}).fill('Один товар после потери ответа');await chooseCategory(e);await sabyFields(e);await e.getByLabel('Диаметр горшка',{exact:true}).fill('12');await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1500');await e.getByRole('button',{name:'Создать товар',exact:true}).click();await expect(e.getByRole('alert')).toContainText('Ответ создания потерян');expect(f.creations.size).toBe(1);
  const first=f.mutations.find(r=>r.path==='/api/v1/admin/products')!.body.creationId;expect(first).toMatch(/^[0-9a-f-]{36}$/);await page.reload();await e.getByRole('button',{name:'Создать товар',exact:true}).click();await expect(page).toHaveURL(/product=1001/);expect(f.creations.size).toBe(1);expect(f.mutations.filter(r=>r.path==='/api/v1/admin/products').map(r=>r.body.creationId)).toEqual([first,first]);expect(f.variants.get(1001)).toHaveLength(1);

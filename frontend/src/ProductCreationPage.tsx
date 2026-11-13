@@ -1006,6 +1006,9 @@ export function ProductCreationPage({
           { ...latest.current, remoteInitialized: true },
           `ficusin:product-edit-draft:v1:${targetProduct.id}`,
         );
+        // The receipt remains recoverable until every creation step succeeds.
+        // Afterwards the next new card needs its own draft and creation identity.
+        localStorage.removeItem(draftStorageKey);
         onSaved?.(original.current || targetProduct);
       }
       setRemoteNotice(
