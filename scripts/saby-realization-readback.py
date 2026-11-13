@@ -107,6 +107,13 @@ def main():
                 if isinstance(v,dict):return {k:action_summary(val) for k,val in v.items() if k in ('Идентификатор','Название','Действие','ТребуетПодписания','ТребуетКомментария','ТребуемоеДействие','Состояние')}
                 return v
             print(json.dumps({'testPublic':{'id':public_test.get('Идентификатор'),'regulation':public_test.get('Регламент'),'revision':action_summary(public_test.get('Редакция')),'stages':action_summary(public_test.get('Этап')),'extension':public_test.get('Расширение'),'keys':list(public_test)}},ensure_ascii=False))
+        missing=request(SERVICE,{'jsonrpc':'2.0','protocol':3,'method':'СБИС.ПрочитатьДокумент','params':{'Документ':{'Идентификатор':'66fb5550-828a-4f6b-bf77-51f8e79ef776'}},'id':1},token)
+        if missing.get('error'):
+            import re
+            err=missing['error'];msg=' '.join(str(err.get(k,'')) for k in ('message','details'))
+            msg=re.sub(r'[0-9a-fA-F]{8}-[0-9a-fA-F-]{27,}', '[UUID]',msg)
+            msg=re.sub(r'(?<![0-9a-zA-Z])[0-9]{10,12}(?![0-9a-zA-Z])','[ID]',msg)
+            print(json.dumps({'missingDocumentError':{'code':err.get('code'),'data':{k:(err.get('data')or{}).get(k)for k in ('classid','error_code')},'message':msg[:1000]}},ensure_ascii=False))
         warehouses=rpc('sabyWarehouse.List',{'filter':{'limit':100,'page':0}},token,6)
         print(json.dumps({'warehouseShape':shape(warehouses),'warehouseIDs':[{k:w.get(k) for k in ('id','warehouseId')} for w in (warehouses or {}).get('warehouses',[])]},ensure_ascii=False))
         return 0
