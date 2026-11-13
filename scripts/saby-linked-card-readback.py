@@ -69,3 +69,28 @@ else:
         print("Verified folder metadata:",json.dumps({"id":entity.get("@Номенклатура"),"name":entity.get("Наименование"),"type":entity.get("ТипНоменклатуры")},ensure_ascii=False))
     else:
         print("Folder identity not confirmed; no values printed")
+
+def describe(value, depth=0):
+    if depth > 3: return {"type":type(value).__name__}
+    if isinstance(value,dict):
+        if isinstance(value.get("s"),list) and isinstance(value.get("d"),list):
+            return {"schema":value["s"],"fields":{key:describe(val,depth+1) for key,val in fields(value).items()}}
+        return {"fields":{key:describe(val,depth+1) for key,val in list(value.items())[:40]}}
+    if isinstance(value,list):
+        return {"length":len(value),"firstShape":describe(value[0],depth+1) if value else None}
+    return {"type":type(value).__name__}
+
+native = request("https://online.sbis.ru/service/?srv=1", {"jsonrpc":"2.0", "protocol":6, "method":"Nomenclature.Read", "params":{"Id":1101,"AdditionalFields":["CodeList","Images","ImageData","PriceData","Category","CategoryName","CategoryObject","Number","Name","NameBase","Description","Identifier","IsDraft","VAT","MeasureUnit","Path"],"Option":{"_type":"record","s":[],"d":[]}}, "id":4}, {"X-SBISAccessToken":token})
+if native.get("error"):
+    print("Native read rejected:",native["error"].get("code"))
+else:
+    native_record=native.get("result",{})
+    flat_native=fields(native_record)
+    print("Native record schema:",json.dumps(native_record.get("s",[]),ensure_ascii=False))
+    if str(flat_native.get("Id")) == "1101" and flat_native.get("Number") == "X269652448" and flat_native.get("Identifier") == "0f56c2bd-2669-473f-9b94-875d521998a7":
+        print("Native identity verified")
+        for name in ["CodeList","Images","ImageData","PriceData","Category","CategoryObject","Folder","VAT","MeasureUnit"]:
+            print("Native field shape:",json.dumps({"field":name,"shape":describe(flat_native.get(name))},ensure_ascii=False))
+        print("Native draft flag:",json.dumps(flat_native.get("IsDraft")))
+    else:
+        print("Native identity not confirmed; no native values printed")
