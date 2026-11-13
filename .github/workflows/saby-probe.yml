@@ -4,6 +4,11 @@ name: Saby probe
 on:
   workflow_dispatch:
     inputs:
+      production_readiness:
+        description: Read production configuration presence without secrets
+        type: boolean
+        required: false
+        default: false
       snapshot_staging:
         description: Cache verified existing Saby links in isolated staging only
         type: boolean
@@ -29,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Probe Saby nomenclature
-        if: inputs.receipt_id == '' && !inputs.snapshot_staging
+        if: inputs.receipt_id == '' && !inputs.snapshot_staging && !inputs.production_readiness
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -38,7 +43,7 @@ jobs:
           SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-linked-card-readback.py
       - name: Probe existing receipt response schema without values
-        if: inputs.receipt_id != '' && !inputs.snapshot_staging
+        if: inputs.receipt_id != '' && !inputs.snapshot_staging && !inputs.production_readiness
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -47,13 +52,30 @@ jobs:
           SABY_RECEIPT_GUID: ${{ inputs.receipt_guid }}
         run: python3 scripts/saby-receipt-probe.py
       - name: Install staging cache client
-        if: inputs.snapshot_staging
+        if: inputs.snapshot_staging && !inputs.production_readiness
         run: python3 -m pip install 'psycopg[binary]==3.2.13'
       - name: Cache verified Saby editor metadata in isolated staging
-        if: inputs.snapshot_staging
+        if: inputs.snapshot_staging && !inputs.production_readiness
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/saby-editor-staging-snapshot.py --apply --max-items 1000 --time-budget-seconds 600
+      - name: Inspect production release prerequisites without exposing secrets
+        if: inputs.production_readiness
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: |
+          python3 - <<'PYREAD'
+          import os,json,urllib.request
+          req=urllib.request.Request('https://api.timeweb.cloud/api/v1/apps/229223',headers={'Authorization':'Bearer '+os.environ['TIMEWEB_CLOUD_TOKEN']})
+          with urllib.request.urlopen(req,timeout=30) as response: app=json.load(response)['app']
+          assert app['id']==229223
+          env=app['envs']
+          safe={key:app.get(key) for key in ('id','name','branch_name','commit_sha','status')}
+          safe['configuration']={key:env.get(key,'') for key in ('APP_ENV','FILE_STORAGE_MODE','CATALOG_PUBLICATION_MODE','CATALOG_PUBLICATION_LIVE_ENABLED')}
+          safe['configured']={key:bool(env.get(key,'').strip()) for key in ('SABY_APP_CLIENT_ID','SABY_APP_SECRET','SABY_SECRET_KEY','S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY','PRIVATE_S3_BUCKET','PRIVATE_S3_ACCESS_KEY','PRIVATE_S3_SECRET_KEY')}
+          safe['separatePrivateBucket']=bool(env.get('PRIVATE_S3_BUCKET')) and env.get('PRIVATE_S3_BUCKET')!=env.get('S3_BUCKET')
+          print(json.dumps(safe))
+          PYREAD
