@@ -2,12 +2,17 @@
 import json
 import os
 import re
+import urllib.error
 import urllib.request
 
 def request(url, body, headers=None):
     content_type = "application/json-rpc;charset=utf-8" if "method" in body else "application/json;charset=utf-8"
     req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": content_type, "Accept":"application/json", **(headers or {})}, method="POST")
-    with urllib.request.urlopen(req, timeout=45) as response:
+    try:
+        response = urllib.request.urlopen(req, timeout=45)
+    except urllib.error.HTTPError as error:
+        response = error
+    with response:
         raw = response.read()
         try:
             text = raw.decode(response.headers.get_content_charset() or "utf-8")
@@ -44,9 +49,9 @@ for name, value in flat.items():
             print("Category/folder identifier:", json.dumps({"field":name,"value":safe,"schema":next((s for s in record.get("s",[]) if s.get("n")==name),{})},ensure_ascii=False))
 
 for role, entity_id in (("category", 1041), ("folder", 3333)):
-    lookup = request("https://online.sbis.ru/service/?srv=1", {"jsonrpc":"2.0", "protocol":6, "method":"Иерархия.Прочитать", "params":{"ИдО":entity_id, "Расширение":None}, "id":2}, {"X-SBISAccessToken":token})
+    lookup = request("https://online.sbis.ru/service/?srv=1", {"jsonrpc":"2.0", "protocol":6, "method":"Иерархия.Прочитать", "params":{"ИдО":[entity_id], "Расширение":None}, "id":2}, {"X-SBISAccessToken":token})
     if lookup.get("error"):
-        print("Hierarchy read rejected:", role, lookup["error"].get("code"))
+        print("Hierarchy read rejected:", role, lookup["error"].get("code"),str(lookup["error"].get("message",""))[:600],str(lookup["error"].get("details",""))[:600])
         continue
     entity = fields(lookup.get("result",{}))
     print("Hierarchy schema:", role, json.dumps(list(entity),ensure_ascii=False))
