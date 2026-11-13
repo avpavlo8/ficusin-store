@@ -4,6 +4,11 @@ name: Saby probe
 on:
   workflow_dispatch:
     inputs:
+      snapshot_staging:
+        description: Cache verified existing Saby links in isolated staging only
+        type: boolean
+        required: false
+        default: false
       search:
         description: Название товара для поиска (например, Араукария)
         required: false
@@ -24,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Probe Saby nomenclature
-        if: inputs.receipt_id == ''
+        if: inputs.receipt_id == '' && !inputs.snapshot_staging
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -33,7 +38,7 @@ jobs:
           SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-linked-card-readback.py
       - name: Probe existing receipt response schema without values
-        if: inputs.receipt_id != ''
+        if: inputs.receipt_id != '' && !inputs.snapshot_staging
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -41,3 +46,14 @@ jobs:
           SABY_RECEIPT_ID: ${{ inputs.receipt_id }}
           SABY_RECEIPT_GUID: ${{ inputs.receipt_guid }}
         run: python3 scripts/saby-receipt-probe.py
+      - name: Install staging cache client
+        if: inputs.snapshot_staging
+        run: python3 -m pip install 'psycopg[binary]==3.2.13'
+      - name: Cache verified Saby editor metadata in isolated staging
+        if: inputs.snapshot_staging
+        env:
+          SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
+          SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
+          SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 scripts/saby-editor-staging-snapshot.py --apply --max-items 1000 --time-budget-seconds 600
