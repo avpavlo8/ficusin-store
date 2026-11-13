@@ -26,6 +26,7 @@ WITH facts AS (
  SELECT p.id,p.provider_payment_id,ROUND(p.amount*100)::bigint amount_minor,
  p.receipt_status,p.receipt_checked_at,p.created_at,COALESCE(so.status,o.status) effective_status,
  p.request_payload->'ReceiptEnabled' receipt_enabled,
+ (p.request_payload IS NULL) snapshot_absent,
  COALESCE(jsonb_path_query_array(p.request_payload,'$.Items[*].Mode'),'[]'::jsonb) || COALESCE(jsonb_path_query_array(p.request_payload,'$.items[*].payment_mode'),'[]'::jsonb) request_modes,
  COALESCE(sr.status,'') settlement_status,(sr.provider_receipt_id IS NOT NULL AND sr.provider_receipt_id<>'') settlement_reference,
  (p.created_at<CURRENT_TIMESTAMP-INTERVAL '15 minutes' AND
@@ -147,6 +148,7 @@ def reconcile(rows, reader):
                 warnings[group] += 1
                 groups[json.dumps({'warning': group, **info}, sort_keys=True)] += 1
     return {'ok': True, 'readOnly': True, 'databaseWrites': False, 'providerWrites': False, 'paymentCount': len(rows),
+            'ownerConfirmedLegacyBackfillMatches': sum(1 for row in rows if row.get('snapshot_absent') is True and row['effective_status'] == 'cancelled' and row['created_at'].strftime('%Y-%m') == '2026-08' and row['receipt_status'] == '' and row['settlement_status'] == ''),
             'warnings': dict(warnings), 'groups': [{**json.loads(key), 'count': count} for key, count in sorted(groups.items())]}
 
 
