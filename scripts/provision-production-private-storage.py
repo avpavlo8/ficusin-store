@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Prepare, or explicitly apply, the capped Ficusin private S3 rollout.
 
-Default dry-run: GET only. --apply permits one exact 1 RUB preset creation,
+Default dry-run: GET only. --apply permits one exact approved 2.20 RUB cold preset creation,
 private canary bytes, deletion of that canary, and an env-only app PATCH.
 No database/business writes, public ACL changes, security users or tariff
 fallbacks. Credentials remain in memory; only fixed status fields are logged.
@@ -15,6 +15,7 @@ import os
 import re
 from pathlib import Path
 import secrets
+import statistics
 import time
 import urllib.error
 import urllib.parse
@@ -29,8 +30,8 @@ APP_ID = 229223
 APP_NAME = "ficusin-store"
 EXPECTED_COMMIT = "15989cc1f2d46baad54ce7ebbf379531c86c7f23"
 TARGET = "ficusin-private"
-PRESET = 5127
-MAX_PRICE = Decimal("1")
+PRESET = 5143
+MAX_PRICE = Decimal("2.20")
 API = "https://api.timeweb.cloud/api/v1"
 ALLOWED_ENV_CHANGES = frozenset(("PRIVATE_S3_BUCKET", "PRIVATE_S3_ACCESS_KEY", "PRIVATE_S3_SECRET_KEY"))
 STATE = {"phase": "startup", "created": False, "createOutcomeUnknown": False, "canaryCleanupVerified": False, "canaryWriteAttempted": False, "environmentPatched": False}
@@ -77,16 +78,16 @@ def check_preset(reply):
         raise ProvisionError("invalid_preset_price") from None
     if (not price.is_finite() or price < 0 or price > MAX_PRICE
             or preset.get("disk") != 1024 or preset.get("location") != "ru-1"
-            or preset.get("storage_class") != "hot"):
+            or preset.get("storage_class") != "cold"):
         raise ProvisionError("preset_exceeds_exact_approved_scope")
-    return {"id": PRESET, "disk": 1024, "priceMonthlyRub": str(price), "location": "ru-1", "storage_class": "hot"}
+    return {"id": PRESET, "disk": 1024, "priceMonthlyRub": str(price), "location": "ru-1", "storage_class": "cold"}
 
 
 def check_bucket(bucket, require_no_auto_upgrade=True):
     if (not isinstance(bucket, dict) or bucket.get("name") != TARGET
             or not isinstance(bucket.get("id"), int) or isinstance(bucket["id"], bool) or bucket["id"] <= 0
             or bucket.get("type") != "private" or bucket.get("preset_id") != PRESET
-            or bucket.get("location") != "ru-1" or bucket.get("storage_class") != "hot"
+            or bucket.get("location") != "ru-1" or bucket.get("storage_class") != "cold"
             or bucket.get("status") != "created"):
         raise ProvisionError("target_bucket_outside_approved_scope")
     # Official Create/UpdateStorageRequest does NOT document a way to set this
@@ -230,7 +231,7 @@ def check_anonymous_denied(endpoint, key):
 def canary(client, endpoint):
     STATE["canaryWriteAttempted"] = False
     key = "ops-canary/private-storage/" + uuid.uuid4().hex + ".bin"
-    body = b"Ficusin private storage canary\n" + secrets.token_bytes(128)
+    body = b"Ficusin private storage canary\n" + secrets.token_bytes(1024 * 1024)
     try:
         client.head_object(Bucket=TARGET, Key=key)
     except Exception as error:
@@ -243,6 +244,7 @@ def canary(client, endpoint):
         STATE["canaryWriteAttempted"] = True
         client.put_object(Bucket=TARGET, Key=key, Body=body, ContentType="application/octet-stream",
                           ACL="private", CacheControl="private, no-store")
+        started = time.perf_counter()
         reply = client.get_object(Bucket=TARGET, Key=key)
         stream = reply["Body"]
         try:
@@ -251,6 +253,25 @@ def canary(client, endpoint):
             stream.close()
         if len(actual) != len(body) or hashlib.sha256(actual).digest() != hashlib.sha256(body).digest():
             raise ProvisionError("canary_checksum_mismatch")
+        durations = [time.perf_counter() - started]
+        for _ in range(2):
+            started = time.perf_counter()
+            reply = client.get_object(Bucket=TARGET, Key=key)
+            with reply["Body"] as stream:
+                repeated = stream.read(len(body) + 1)
+            durations.append(time.perf_counter() - started)
+            if hashlib.sha256(repeated).digest() != hashlib.sha256(body).digest():
+                raise ProvisionError("canary_repeat_checksum_mismatch")
+        started = time.perf_counter()
+        partial = client.get_object(Bucket=TARGET, Key=key, Range="bytes=0-65535")
+        with partial["Body"] as stream:
+            partial_bytes = stream.read(65537)
+        range_seconds = time.perf_counter() - started
+        if partial.get("ResponseMetadata", {}).get("HTTPStatusCode") != 206 or partial_bytes != body[:65536]:
+            raise ProvisionError("canary_range_read_mismatch")
+        STATE["speedCheck"] = {"bytes":len(body),"reads":len(durations),"medianReadMs":round(statistics.median(durations)*1000),"maxReadMs":round(max(durations)*1000),"rangeReadMs":round(range_seconds*1000)}
+        if statistics.median(durations) > 1.0 or max(durations) > 2.0 or range_seconds > 1.5:
+            raise ProvisionError("cold_storage_speed_below_required_threshold")
         check_anonymous_denied(endpoint, key)
     finally:
         # The absence check preceded any PUT. Delete only this invocation's

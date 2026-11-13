@@ -162,6 +162,11 @@ def database_report(connection, settings, diagnostics=None):
         else:
             rows = [(None, status, count) for status, count in connection.execute("SELECT status,count(*) FROM public.catalog_editor_publications WHERE status=ANY(%s) GROUP BY status ORDER BY status", (list(PENDING),)).fetchall()]
         publications["pending"] = [{"executionMode": mode if mode in (None, "disabled", "mock", "live") else "unknown", "status": status, "count": int(count)} for mode, status, count in rows]
+    mark_phase(diagnostics, "saby_folder_identity_inventory")
+    folders = {"tableExists": bool(connection.execute("SELECT to_regclass('public.saby_catalog_folders') IS NOT NULL").fetchone()[0])}
+    if folders["tableExists"]:
+        total,numeric,requested = connection.execute("SELECT count(*),count(*) FILTER(WHERE saby_id ~ '^[1-9][0-9]*$'),count(*) FILTER(WHERE saby_id='3333' AND name='Цветы маркетплейс') FROM saby_catalog_folders WHERE missing_since IS NULL").fetchone()
+        folders.update(count=int(total),numericIds=int(numeric),requestedFolderNameMatches=bool(requested))
     # This is explicitly a conservative superset, not a duplicated stock/box
     # evaluation. Zero proves no old flagged CDEK order can be unlocked; nonzero
     # requires reviewing the canonical workflow facts before deployment.
@@ -177,7 +182,7 @@ def database_report(connection, settings, diagnostics=None):
     return {
         "databaseIdentityVerified": True, "transactionReadOnly": True,
         "databaseOwner": bool(owner), "publicSchemaUsage": bool(schema_access), "superuser": bool(superuser),
-        "migrations": migrations, "catalogPublications": publications,
+        "migrations": migrations, "catalogPublications": publications, "sabyFolders": folders,
         "shipping": {"paidNewConfirmedUnshippedCdekCount": int(paid_cdek),
                      "flaggedPreorderCount": int(flagged_preorders),
                      "autoTransitionCandidateUpperBound": int(candidate_upper_bound),

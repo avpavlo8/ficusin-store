@@ -136,3 +136,9 @@ else:
         print('Scoped PriceData schema:',json.dumps(scoped.get('PriceData',{}).get('s',[]),ensure_ascii=False))
         print('Scoped PriceData controlled rows:',json.dumps([{**{key:row.get(key) for key in ('Id','PriceList','MeasureUnit','CanEdit','IsUpdated')},'PriceValueType':type(row.get('Price')).__name__} for row in recordset_rows(scoped.get('PriceData'))],ensure_ascii=False))
     else: print('Scoped price identity not confirmed; no values printed')
+if 'flat_native' in globals() and str(flat_native.get('Id'))=='1101' and flat_native.get('Number')=='X269652448' and flat_native.get('Identifier')=='0f56c2bd-2669-473f-9b94-875d521998a7':
+    description=flat_native.get('Description')
+    if isinstance(description,list) and description and isinstance(description[0],list) and len(description[0])>1 and isinstance(description[0][1],dict):
+        version=description[0][1].get('version')
+        if isinstance(version,str) and re.fullmatch('[0-9]{1,2}',version):
+            print('Native Description static version:',version)
