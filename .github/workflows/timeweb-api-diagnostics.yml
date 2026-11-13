@@ -1,29 +1,73 @@
-name: Guard isolated staging realization mock settings
+name: Guarded isolated staging realization worker smoke
 on:
   workflow_dispatch:
     inputs:
-      apply:
-        description: Apply only the three approved mock realization settings to staging app 280757
+      source_sha:
+        description: Exact deployed staging commit (40 lowercase hexadecimal characters)
+        type: string
+        required: true
+      run_smoke:
+        description: Explicitly insert and clean only this run's synthetic hidden fixture
         type: boolean
         default: false
 permissions:
   contents: read
 concurrency:
-  group: isolated-staging-order-sale-modes-280757
+  group: isolated-staging-order-sale-smoke-280757
   cancel-in-progress: false
 jobs:
-  staging-modes:
+  staging-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: ops
+      - name: Validate exact immutable source input
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          python3 - <<'PY'
+          import os,re
+          if not re.fullmatch(r'[0-9a-f]{40}', os.environ['SOURCE_SHA']):
+              raise SystemExit('exact_source_sha_required')
+          PY
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install read-only database preflight client
+      - name: Install read-only preflight database client
         run: python3 -m pip install 'psycopg[binary]==3.2.13'
-      - name: Inspect or explicitly apply only approved staging mock settings
+      - name: Inspect deployed staging source and mock control (read-only)
+        working-directory: ops
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          APPLY_STAGING_ORDER_MODES: ${{ inputs.apply }}
-        run: python3 scripts/timeweb-staging-order-sale-modes.py
+          SMOKE_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: python3 scripts/timeweb-staging-order-sale-smoke.py
+      - uses: actions/checkout@v4
+        if: inputs.run_smoke
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        if: inputs.run_smoke
+        with:
+          go-version-file: candidate/backend/go.mod
+          cache-dependency-path: candidate/backend/go.sum
+      - name: Prepare exact source dependencies before database credentials
+        if: inputs.run_smoke
+        working-directory: candidate/backend
+        env:
+          GOENV: 'off'
+          GOWORK: 'off'
+          GOTOOLCHAIN: local
+        run: go mod download
+      - name: Explicit synthetic fixture, real mock worker, bounded cleanup
+        if: inputs.run_smoke
+        working-directory: ops
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          SMOKE_SOURCE_SHA: ${{ inputs.source_sha }}
+          SMOKE_CANDIDATE: ../candidate
+          RUN_STAGING_ORDER_SMOKE: 'true'
+        run: python3 scripts/timeweb-staging-order-sale-smoke.py
