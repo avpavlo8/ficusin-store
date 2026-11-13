@@ -1,0 +1,353 @@
+{
+  "d": [
+    null,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    -1,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    "WHDNomList/grid:config-v1-columns-OutflowMainList",
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    null,
+    null,
+    true,
+    1,
+    3899,
+    "{\"base\": {\"qty\": 1, \"abbr\": \"шт\", \"code\": \"796\", \"name\": \"Штука\"}}",
+    null,
+    42807,
+    null
+  ],
+  "s": [
+    {
+      "t": "Строка",
+      "n": "ParcelCode"
+    },
+    {
+      "t": "Логическое",
+      "n": "add_discounts_dn_info"
+    },
+    {
+      "t": "Логическое",
+      "n": "add_nom_ipack"
+    },
+    {
+      "t": "Логическое",
+      "n": "add_rnpt_data"
+    },
+    {
+      "t": "Логическое",
+      "n": "add_rnpt_data_by_state"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_access_editing_price"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_actual"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_auto_excise_info"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_category"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_category_totals"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_char_groups"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_characteristic_params"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_content"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_content_list_add_empty_record"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_exp_date"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_ext_params"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_ext_totals"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_full_sn_totals"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_gift"
+    },
+    {
+      "t": "Число целое",
+      "n": "calc_group"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_init_measure"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_is_production_configured"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_item_type"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_modifiers"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_only_manual_parts"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_outflow_diffs"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_outflow_filter_totals"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_outflow_product_id"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_outflow_warehouse_name"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_outflow_wh_names"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_parts"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_pics"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_price_totals"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_producer_info"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_prt_price"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_serial_number"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_serial_number_inv"
+    },
+    {
+      "t": "Логическое",
+      "n": "calc_traceability_visible"
+    },
+    {
+      "t": "Строка",
+      "n": "column_config_id"
+    },
+    {
+      "t": "Логическое",
+      "n": "create_composition_actual"
+    },
+    {
+      "t": "Логическое",
+      "n": "create_composition_analogs"
+    },
+    {
+      "t": "Логическое",
+      "n": "create_composition_income_settings"
+    },
+    {
+      "t": "Логическое",
+      "n": "create_composition_sebest"
+    },
+    {
+      "t": "Логическое",
+      "n": "create_composition_service_fields"
+    },
+    {
+      "t": "Логическое",
+      "n": "extract_gtin_and_article"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_container_info"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_cost_vat_wo_recalc"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_currency_data"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_currency_totals"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_mercury_fields"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_nom"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_nom_product"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_recorded_characteristics_sets"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_selected_nom_set_data"
+    },
+    {
+      "t": "Логическое",
+      "n": "init_vat_in_init_price_force"
+    },
+    {
+      "t": "Логическое",
+      "n": "outflow_list"
+    },
+    {
+      "t": "Логическое",
+      "n": "recalculate_invariants"
+    },
+    {
+      "t": "Логическое",
+      "n": "set_category_in_totals"
+    },
+    {
+      "t": "Логическое",
+      "n": "set_default_prices_for_present"
+    },
+    {
+      "t": "Логическое",
+      "n": "set_have_expire_date_in_part"
+    },
+    {
+      "t": "Строка",
+      "n": "ВходящееНаименование.Наименование"
+    },
+    {
+      "t": "Строка",
+      "n": "ВходящееНаименование.НомНомер"
+    },
+    {
+      "t": "Логическое",
+      "n": "ВызовИзБраузера"
+    },
+    {
+      "t": "Число целое",
+      "n": "Количество"
+    },
+    {
+      "t": "Число целое",
+      "n": "Номенклатура"
+    },
+    {
+      "t": "Строка",
+      "n": "НоменклатураДокументаРасш.ЕИУ"
+    },
+    {
+      "t": "Строка",
+      "n": "Раздел"
+    },
+    {
+      "t": "Число целое",
+      "n": "СкладскойДокумент"
+    },
+    {
+      "t": "Строка",
+      "n": "Цена"
+    }
+  ],
+  "_type": "record",
+  "f": 0
+}

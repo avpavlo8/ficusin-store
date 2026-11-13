@@ -47,7 +47,7 @@ on:
       realization_test_action:
         description: Run a fixed owned realization test action (never a customer order)
         type: choice
-        options: [none, bind-header, post-once]
+        options: [none, bind-header, post-once, prepare-price-only]
         required: false
         default: none
       production_readiness:
@@ -185,7 +185,13 @@ jobs:
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/saby-realization-action-probe.py --expected-commit "$EXPECTED_COMMIT" --action "${{ inputs.realization_test_action }}"
+          REALIZATION_ACTION: ${{ inputs.realization_test_action }}
+        run: |
+          if [ "$REALIZATION_ACTION" = "prepare-price-only" ]; then
+            python3 scripts/saby-realization-prepare-price-only.py --expected-commit "$EXPECTED_COMMIT"
+          else
+            python3 scripts/saby-realization-action-probe.py --expected-commit "$EXPECTED_COMMIT" --action "$REALIZATION_ACTION"
+          fi
       - uses: actions/upload-artifact@v4
         if: always() && inputs.realization_test_action != 'none' && inputs.realization_test_action != ''
         with:
