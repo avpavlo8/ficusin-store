@@ -42,6 +42,12 @@ class AuditTest(unittest.TestCase):
         for key,value in [('APP_ENV','production'),('DATABASE_URL','postgres://gen_user:x@db.invalid/default_db')]:
             data=app();data['envs'][key]=value
             with self.assertRaises(audit.SafetyError):audit.guard(data)
+    def test_alternate_branch_metadata_shape_does_not_relax_database_guard(self):
+        data=app();data['branch']=data.pop('branch_name')
+        self.assertEqual(audit.branch_name(data),'staging')
+        self.assertEqual(audit.guard(data)['APP_ENV'],'staging')
+        data['envs']['DATABASE_URL']='postgres://gen_user:x@db.invalid/default_db'
+        with self.assertRaises(audit.SafetyError):audit.guard(data)
     def test_only_read_only_sql_and_safe_report(self):
         connection=Connection()
         def connect(dsn,**kwargs):

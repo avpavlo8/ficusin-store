@@ -46,14 +46,24 @@ def read_app():
     return json.loads(raw)['app']
 
 
+def branch_name(app):
+    value=app.get('branch_name') or app.get('branch')
+    if isinstance(value,dict):value=value.get('name')
+    return value if isinstance(value,str) and re.fullmatch(r'[A-Za-z0-9_./-]{1,200}',value) else None
+
+
 def guard(app):
     if app.get('id') != 280757 or app.get('name') != 'ficusin-staging':
         raise SafetyError('wrong_application')
     env = app.get('envs')
     if not isinstance(env, dict) or env.get('APP_ENV') != 'staging':
         raise SafetyError('wrong_environment')
-    if env.get('SITE_URL', '').rstrip('/') != SITE or app.get('branch_name') != 'staging':
-        raise SafetyError('wrong_staging_origin_or_branch')
+    if env.get('SITE_URL', '').rstrip('/') != SITE:
+        raise SafetyError('wrong_staging_origin')
+    # Some App API revisions omit branch_name or return branch instead. Its
+    # absence is reported, never fabricated, and does not relax database guards.
+    if branch_name(app) not in (None,'staging'):
+        raise SafetyError('wrong_staging_branch')
     parsed = urllib.parse.urlsplit(env.get('DATABASE_URL', ''))
     if (parsed.scheme not in ('postgres', 'postgresql') or
             urllib.parse.unquote(parsed.path) != '/' + DATABASE or
@@ -90,6 +100,9 @@ def database_options(env, directory):
 
 def inspect(connect=None):
     app = read_app()
+    if app.get('id')==280757 and app.get('name')=='ficusin-staging':
+        envs=app.get('envs') or {}
+        print(json.dumps({'probe':'stage_metadata','siteHost':urllib.parse.urlsplit(envs.get('SITE_URL','')).hostname,'branch':branch_name(app),'branchFieldsPresent':[key for key in ('branch','branch_name') if key in app]}))
     env = guard(app)
     if connect is None:
         import psycopg
@@ -120,7 +133,7 @@ def inspect(connect=None):
                 if mode not in ('disabled', 'mock', 'live'):
                     raise SafetyError('unexpected_control_mode')
                 control = {'executionMode': mode, 'enabled': bool(enabled), 'siteWarehouseId': site_id}
-    return {'appId': 280757, 'application': 'ficusin-staging', 'branch': 'staging',
+    return {'appId': 280757, 'application': 'ficusin-staging', 'branch': branch_name(app) or '<unreported>',
             'commit': app.get('commit_sha'), 'status': app.get('status'),
             'healthCheckEmpty': not app.get('health_check'),
             'databaseIsolated': True, 'databaseReadOnly': True, 'rolePrivileged': False,
