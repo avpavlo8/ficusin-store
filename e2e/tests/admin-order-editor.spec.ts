@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { owner } from "./helpers";
 
-async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination" | "prepared", dimensionsKnown = false, refundRole?: "owner" | "manager", linkNotice = {email:"queued",push:"sent"}) {
+async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination" | "prepared", dimensionsKnown = false, refundRole?: "owner" | "manager", linkNotice = {email:"queued",push:"sent"}, needsRecheck = false) {
   const dimensions = dimensionsKnown ? { packageLengthCm: 20, packageWidthCm: 20, packageHeightCm: 40, packageWeightGrams: 700 } : {};
   const order = {
     id: 30,
@@ -35,7 +35,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
     deliveryPayee: order.deliveryPayee,
     deliveryMethod: "cdek",
     deliveryFeePending: true,
-    hasPreorder: false,
+    hasPreorder: needsRecheck,
     status: "new",
     items: [...order.items],
     cdekCreateState: stockShortage ? "manual_review" : "",
@@ -150,11 +150,16 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       ] });
       if (path === "/api/v1/admin/orders/30/contents" && init?.method === "PATCH") {
         const body = JSON.parse(String(init.body || "{}")) as {
+          recheckAvailability?: boolean;
           items: Array<{ sku: string; quantity: number }>;
           deliveryFee?: number;
           discount?: { type: "fixed" | "percent"; value: number };
         };
         (window as typeof window & { __savedOrderEdit?: typeof body }).__savedOrderEdit = body;
+        if (body.recheckAvailability) {
+          adjustment.hasPreorder = false;
+          return json({order, adjustment, payment: {total: order.total, paid:0, due:order.total, ready:false, paymentStatus:"pending", issues:[]}});
+        }
         adjustment.items = body.items.map((line) => {
           if (line.sku === "1001") return { id: 11, productId: 1, sku: line.sku, variantLabel: "D9", productName: "Азалия D9", unitPrice: 790, quantity: line.quantity };
           if (line.sku === "1002") return { id: 12, productId: 2, sku: line.sku, variantLabel: "D6", productName: "Алоказия D6", unitPrice: 690, quantity: line.quantity };
@@ -735,3 +740,13 @@ for (const email of ["no_email", "disabled", "failed"]) {
     expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe("https://pay.example.test/new");
   });
 }
+
+
+test("@desktop @phone recheck availability sends no composition or price changes", async ({page}) => {
+ const state = await mockOrderEditor(page, false, undefined, false, undefined, {email:"queued",push:"sent"}, true);
+ await page.goto("/admin?section=orders&order=30&edit=items");
+ await page.getByRole("button", {name:"Перепроверить наличие",exact:true}).click();
+ await expect.poll(() => state.savedEdit()).toEqual({recheckAvailability:true});
+ await expect(page.getByRole("button",{name:"Перепроверить наличие",exact:true})).toHaveCount(0);
+ expect(await state.paymentLinkCalls()).toBe(0);
+});

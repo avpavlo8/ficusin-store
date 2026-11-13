@@ -7669,6 +7669,9 @@ components:
       type: object
     admin.OrderEdit:
       properties:
+        recheckAvailability:
+          type: boolean
+          description: Recheck existing stock without changing items, prices, shipping or payment attempts. Must not be combined with other edit fields.
         deliveryFee:
           anyOf:
             - type: number
@@ -8292,6 +8295,9 @@ components:
       type: object
     order.Item:
       properties:
+        productSlug:
+          type: string
+          description: Published product code for the customer product page; omitted when unavailable.
         originalUnitPrice:
           $ref: "#/components/schemas/RUBAmount"
         productName:

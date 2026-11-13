@@ -63,6 +63,7 @@ type Detail struct {
 }
 
 type Item struct {
+	ProductSlug       string  `json:"productSlug,omitempty"`
 	ProductName       string  `json:"productName"`
 	UnitPrice         float64 `json:"unitPrice"`
 	OriginalUnitPrice float64 `json:"originalUnitPrice,omitempty"`

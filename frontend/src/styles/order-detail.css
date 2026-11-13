@@ -633,3 +633,14 @@ main.order-detail-page ::selection {
       linear-gradient(180deg, transparent, #000 18%, #000 78%, transparent);
   }
 }
+
+.order-review-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 8px;
+  text-decoration: none;
+  text-align: center;
+}

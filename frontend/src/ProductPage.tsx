@@ -39,7 +39,7 @@ const PdpAdminTools = lazy(() =>
 
 type ProductTab = "about" | "care" | "characteristics" | "reviews" | "questions";
 function linkedProductTab(hash: string, product: ProductDetail): ProductTab | null {
-  if (hash === "#reviews") return "reviews";
+  if (hash === "#reviews" || hash === "#write-review") return "reviews";
   if (product.catalogSection !== "plants")
     return hash === "#characteristics" ? "characteristics" : null;
   if (hash.startsWith("#plant-about")) return "about";
@@ -62,6 +62,7 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [revision, setRevision] = useState(0);
 
   const [activeTab, setActiveTab] = useState<ProductTab>("about");
@@ -134,6 +135,7 @@ export default function ProductPage({ slug }: { slug: string }) {
             null,
         );
         setActiveImage(0);
+        setReviewOpen(window.location.hash === "#write-review");
         setActiveTab(
           linkedProductTab(window.location.hash, normalized) ??
             (normalized.catalogSection === "plants" ? "about" : "characteristics"),
@@ -204,8 +206,12 @@ export default function ProductPage({ slug }: { slug: string }) {
     const followLinkedSection = () => {
       const tab = linkedProductTab(window.location.hash, product);
       if (!tab) return;
+      if (window.location.hash === "#write-review") setReviewOpen(true);
       try {
-        linkedCareTarget.current = decodeURIComponent(window.location.hash.slice(1));
+        linkedCareTarget.current =
+          window.location.hash === "#write-review"
+            ? "reviews"
+            : decodeURIComponent(window.location.hash.slice(1));
       } catch {
         return;
       }
@@ -498,6 +504,8 @@ export default function ProductPage({ slug }: { slug: string }) {
                 rating={product.rating}
                 count={product.reviewsCount}
                 onOpenReviews={openReviews}
+                open={reviewOpen}
+                onOpenChange={setReviewOpen}
               />
             </Suspense>
           }
@@ -642,7 +650,7 @@ export default function ProductPage({ slug }: { slug: string }) {
             aria-labelledby="pdp-tab-reviews"
           >
             <Suspense fallback={<p role="status">Загружаем отзывы…</p>}>
-              <ProductReviews reviews={product.reviews} />
+              <ProductReviews reviews={product.reviews} onWriteReview={() => setReviewOpen(true)} />
             </Suspense>
           </div>
           {isPlant && hasPlantFAQ && (

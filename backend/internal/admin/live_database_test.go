@@ -283,13 +283,43 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant); err != nil {
 			t.Fatal(err)
 		}
-		edited, err = repository.EditOrder(ctx, actor, orderID, OrderEdit{Items: &items})
+		snapshot := func() string {
+			t.Helper()
+			var result string
+			err := pool.QueryRow(ctx, `SELECT jsonb_build_object('revision',shipment_revision,'total',total,'deliveryFee',delivery_fee,'feePending',delivery_fee_pending,'items',(SELECT jsonb_agg(to_jsonb(i)-'is_preorder' ORDER BY i.id) FROM order_items i WHERE order_id=o.id))::text FROM orders o WHERE id=$1`, orderID).Scan(&result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return result
+		}
+		beforeRecheck := snapshot()
+		if _, err = repository.EditOrder(ctx, actor, orderID, OrderEdit{RecheckAvailability: true, Items: &items}); err == nil {
+			t.Fatal("recheck accepted composition mutation")
+		}
+		if _, err = repository.EditOrder(ctx, Actor{Role: "customer"}, orderID, OrderEdit{RecheckAvailability: true}); err != ErrForbidden {
+			t.Fatalf("recheck permission: %v", err)
+		}
+		edited, err = repository.EditOrder(ctx, actor, orderID, OrderEdit{RecheckAvailability: true})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if edited.HasPreorder {
 			t.Fatal("после свежей сверки достаточный остаток должен разрешить обычный заказ")
 		}
+		if after := snapshot(); after != beforeRecheck {
+			t.Fatalf("recheck changed order identity/prices/shipping: before %s after %s", beforeRecheck, after)
+		}
+		if _, err = pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		edited, err = repository.EditOrder(ctx, actor, orderID, OrderEdit{RecheckAvailability: true})
+		if err != nil || !edited.HasPreorder {
+			t.Fatalf("stale stock accepted: %+v %v", edited, err)
+		}
+		if _, err = pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE variant_id=$1`, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+
 	})
 
 	t.Run("отмена закрывает неоплаченную отправку и её письмо", func(t *testing.T) {

@@ -195,7 +195,8 @@ test("@desktop PDP сохраняет коммерческую иерархию 
   await expect(page.locator(".pdp-anchor-nav").getByRole("tab")).toHaveCount(4);
   await expect(page.locator(".pdp-anchor-nav")).not.toContainText("Паспорт");
   await expect(page.locator(".review-modal")).toHaveCount(0);
-  await page.getByRole("radio", { name: "5 из 5" }).click();
+  await page.getByRole("tab", { name: /Отзывы/ }).click();
+  await page.locator("#reviews").getByRole("button", { name: "Написать отзыв" }).click();
   await expect(page.locator(".review-modal")).toBeVisible();
   await expect(page.getByLabel("Ваш отзыв")).toBeFocused();
   await expect(page.locator(".review-media-button input")).toHaveAttribute("accept", /video\/mp4/);
@@ -291,7 +292,8 @@ test("@desktop незаполненные темы ухода и вопросы 
   await expect(page.getByRole("tab", { name: "Вопросы", exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: "Отзывы", exact: true }).click();
   await expect(page.locator("#reviews")).toContainText("Здесь пока тихо");
-  await expect(page.locator(".purchase-review-meta")).toContainText("Оставить первый отзыв");
+  await expect(page.locator(".purchase-review-meta")).toContainText("Пока нет отзывов");
+  await expect(page.locator("#reviews").getByRole("button", { name: "Написать отзыв" })).toBeVisible();
 });
 
 test("@desktop фотография открывается в полноэкранной галерее", async ({ page }) => {
