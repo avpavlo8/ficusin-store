@@ -42,3 +42,15 @@ for name, value in flat.items():
         elif isinstance(value, list):
             safe = value if len(value) <= 8 and all(v is None or isinstance(v,(str,int,float,bool)) for v in value) else {"items":len(value)}
             print("Category/folder identifier:", json.dumps({"field":name,"value":safe,"schema":next((s for s in record.get("s",[]) if s.get("n")==name),{})},ensure_ascii=False))
+
+for role, entity_id in (("category", 1041), ("folder", 3333)):
+    lookup = request("https://online.sbis.ru/service/?srv=1", {"jsonrpc":"2.0", "protocol":6, "method":"Иерархия.Прочитать", "params":{"ИдО":entity_id, "Расширение":None}, "id":2}, {"X-SBISAccessToken":token})
+    if lookup.get("error"):
+        print("Hierarchy read rejected:", role, lookup["error"].get("code"))
+        continue
+    entity = fields(lookup.get("result",{}))
+    print("Hierarchy schema:", role, json.dumps(list(entity),ensure_ascii=False))
+    if str(entity.get("@Иерархия")) != str(entity_id):
+        print("Hierarchy identity not confirmed; no values printed:", role)
+        continue
+    print("Verified hierarchy metadata:", json.dumps({"role":role,"id":entity_id,"name":entity.get("Наименование"),"title":entity.get("Название")},ensure_ascii=False))
