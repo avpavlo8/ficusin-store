@@ -206,8 +206,9 @@ func main() {
 	shippingWorker := order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger)
 	orderService.WithShipmentWake(shippingWorker.Wake)
 	adminRepository := admin.NewPostgresRepository(pool).WithFileStorage(privateStorage).WithNotifier(pushService).WithShipmentQuotes(cdekClient).WithPriceChannelsConfigured(map[string]bool{
-		"wb":    cfg.Marketplaces.WBToken != "",
-		"ozon":  cfg.Marketplaces.OzonClientID != "" && cfg.Marketplaces.OzonAPIKey != "",
+		"wb":    cfg.CatalogMarketplaces.WBToken != "",
+		"ozon":  cfg.CatalogMarketplaces.OzonClientID != "" && cfg.CatalogMarketplaces.OzonAPIKey != "",
+		"saby":  cfg.Saby.AppClientID != "" && cfg.Saby.AppSecret != "" && cfg.Saby.SecretKey != "",
 		"avito": cfg.Marketplaces.AvitoClientID != "" && cfg.Marketplaces.AvitoClientSecret != "",
 	})
 	paymentService := payment.NewService(
@@ -242,6 +243,7 @@ func main() {
 	go catalogeditor.RunPreview(ctx, pool, cfg.Environment, logger)
 	adminRepository.WithEditorPublicationMode(cfg.CatalogPublicationMode)
 	editorReferences := integration.NewMarketplaceExecutor(cfg.CatalogMarketplaces.WBToken, cfg.CatalogMarketplaces.OzonClientID, cfg.CatalogMarketplaces.OzonAPIKey).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
+	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	var editorPublisher catalogeditor.Publisher
 	if cfg.CatalogPublicationMode == "mock" {
 		mockPublisher, err := integration.NewPersistentMockCatalog(ctx, pool)
@@ -260,10 +262,10 @@ func main() {
 		}
 	}
 	if editorPublisher != nil {
+		editorPublisher = &integration.EditorPublisher{Cards: editorPublisher, Prices: &integration.EditorPricePublisher{Marketplaces: editorReferences, Saby: sabyProcurementClient, Avito: avitoService, Mock: cfg.CatalogPublicationMode == "mock"}}
 		go catalogeditor.RunPublisher(ctx, pool, editorPublisher, cfg.CatalogPublicationMode, logger)
 	}
 
-	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient, avitoService).
 		WithSabyCatalogSync(sabyService)
 	salesExecutor := integration.NewSalesExecutor(marketplaceExecutor, sabyProcurementClient)

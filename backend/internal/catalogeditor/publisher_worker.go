@@ -20,6 +20,7 @@ func RunPublisher(ctx context.Context, pool *pgxpool.Pool, publisher Publisher, 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
+		logPriceStep(ctx, pool, publisher, mode, logger)
 		if err := PublicationStep(ctx, pool, publisher, mode); err != nil && ctx.Err() == nil {
 			logger.Error("catalog publication worker", "error", err)
 		}
@@ -49,6 +50,16 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	}
 	if e != nil {
 		return e
+	}
+	var priceBusy bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_editor_price_publications WHERE variant_id=$1 AND status IN('queued','processing','needs_attention'))`, variant).Scan(&priceBusy); e != nil {
+		return e
+	}
+	if priceBusy {
+		if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET next_attempt_at=NOW()+INTERVAL '10 seconds' WHERE variant_id=$1 AND channel=$2`, variant, channel); e != nil {
+			return e
+		}
+		return tx.Commit(ctx)
 	}
 	var request Request
 	var progress Progress

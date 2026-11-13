@@ -37,7 +37,7 @@ func TestCatalogEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM procurement_action_batches WHERE manual_variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
+		_, _ = pool.Exec(ctx, `DELETE FROM catalog_editor_price_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
 		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, actorID)
 		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, product.ID)
 		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID)

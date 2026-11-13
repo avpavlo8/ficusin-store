@@ -668,10 +668,10 @@ func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items
 	}
 	prices := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		price := strconv.FormatInt(int64(item.NewValue), 10)
+		price := strconv.FormatFloat(item.NewValue, 'f', -1, 64)
 		oldPrice := "0"
 		if item.CompareAtValue != nil && *item.CompareAtValue > item.NewValue {
-			oldPrice = strconv.FormatInt(int64(*item.CompareAtValue), 10)
+			oldPrice = strconv.FormatFloat(*item.CompareAtValue, 'f', -1, 64)
 		}
 		// Optional empty fields are deliberately omitted: Ozon validates an
 		// explicitly supplied min_price/enum even when the seller did not set it.

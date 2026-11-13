@@ -243,6 +243,13 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 		if err = moveMergedEditorPlan(ctx, tx, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move catalog editor plan: %w", err)
 		}
+		var priceBusy bool
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM catalog_editor_price_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=ANY($1::bigint[])) AND status IN('queued','processing','needs_attention'))", append(request.SourceProductIDs, target.ID)).Scan(&priceBusy); err != nil {
+			return err
+		}
+		if priceBusy {
+			return fmt.Errorf("%w: дождитесь завершения изменения цены", ErrInvalidInput)
+		}
 		if _, err = tx.Exec(ctx, `UPDATE catalog_product_creation_requests SET product_id=$1 WHERE product_id=$2`, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move creation receipts: %w", err)
 		}

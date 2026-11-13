@@ -6,6 +6,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "./adminShared";
 import { useProductMarketplacePricing } from "./useProductMarketplacePricing";
+import { EditorPricePublications } from "./EditorPricePublications";
 import { NumericInput } from "./NumericInput";
 import { AutoTextarea } from "./AutoTextarea";
 import { categoryVariantName } from "./variantNaming";
@@ -360,6 +361,7 @@ export function ProductCreationPage({
         config: {
           variants: Array<{
             variantId: number;
+            priceMode?: "auto" | "manual";
             saby: SabyEditorConfig;
             marketplace: MarketplaceCommon;
           }>;
@@ -407,7 +409,12 @@ export function ProductCreationPage({
                     defaults: { category: current.sabyCategory, folder: current.sabyFolder },
                   })
                 : undefined;
-            const next = { ...row, marketplace: row.marketplace || saved?.marketplace, sabyEditor };
+            const next = {
+              ...row,
+              marketplacePriceMode: row.marketplacePriceMode ?? saved?.priceMode,
+              marketplace: row.marketplace || saved?.marketplace,
+              sabyEditor,
+            };
             return JSON.stringify(next) === JSON.stringify(row) ? row : next;
           });
           if (hydrated?.some((row, index) => row !== current.variants?.[index]))
@@ -981,6 +988,7 @@ export function ProductCreationPage({
         .filter((row) => row.serverId && !row.archived && !row.removePending)
         .map((row) => ({
           variantId: row.serverId,
+          priceMode: row.marketplacePriceMode || "auto",
           saby: sabyOf(row, latest.current),
           marketplace: marketplaceOf(row, latest.current),
           ozonPrice: (row.ozon || latest.current.ozon).price,
@@ -1519,6 +1527,10 @@ export function ProductCreationPage({
                     </label>
                   )}
                   {priceField}
+                  <p className="editor-secondary">
+                    Цены площадок подтверждаются отдельно во вкладке «Маркетплейсы» после
+                    сохранения.
+                  </p>
                   <label>
                     Оптовый минимум, шт.
                     <NumericInput
@@ -1806,6 +1818,16 @@ export function ProductCreationPage({
                   wb: variant.wb?.price || draft.wb.price,
                 }}
               />
+              {typeof productId === "number" && productId > 0 && (
+                <EditorPricePublications
+                  productId={productId}
+                  variantId={variant.serverId}
+                  draftPriceMinor={Math.round(Number(variant.price) * 100)}
+                  saving={saving}
+                  revision={collectionsRevision}
+                  canManage={canManage}
+                />
+              )}
               {channelStatuses
                 .filter((status) => status.variantId === variant.serverId)
                 .map((status) => (

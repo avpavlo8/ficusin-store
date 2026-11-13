@@ -53,6 +53,7 @@ func TestSabyEditorPublicationLocalDatabase(t *testing.T) {
 	actor := Actor{CustomerID: actorID, Role: RoleOwner}
 	var products, variants []int64
 	defer func() {
+		pool.Exec(ctx, `DELETE FROM catalog_editor_price_publications WHERE variant_id=ANY($1::bigint[])`, variants)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id=ANY($1::bigint[])`, variants)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id=ANY($1::bigint[])`, variants)
 		pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, actorID)

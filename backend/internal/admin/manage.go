@@ -635,6 +635,7 @@ func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, a
 	if err = tx.QueryRow(ctx, `
 		SELECT COUNT(*) FROM products p
 		WHERE p.id = ANY($1::bigint[]) AND p.status = 'draft'
+		AND NOT EXISTS(SELECT 1 FROM catalog_editor_price_publications price JOIN product_variants v ON v.id=price.variant_id WHERE v.product_id=p.id)
 		AND NOT EXISTS(SELECT 1 FROM product_variants v JOIN legacy_archive.catalog_saby_exports e ON e.variant_id=v.id WHERE v.product_id=p.id AND (e.attempted_at IS NOT NULL OR e.remote_id<>''))
 		AND NOT EXISTS (
 			SELECT 1 FROM product_variants pv
@@ -684,9 +685,9 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err != nil {
 		return Product{}, err
 	}
-	var manualPriceVariantID, manualOldPrice int64
+	var priceVariantID, oldPriceMinor int64
 	if update.PriceMinor != nil {
-		if err := tx.QueryRow(ctx, `SELECT id,base_price_minor FROM product_variants WHERE product_id=$1 ORDER BY is_active DESC,id LIMIT 1 FOR UPDATE`, id).Scan(&manualPriceVariantID, &manualOldPrice); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		if err := tx.QueryRow(ctx, `SELECT id,base_price_minor FROM product_variants WHERE product_id=$1 ORDER BY is_active DESC,id LIMIT 1 FOR UPDATE`, id).Scan(&priceVariantID, &oldPriceMinor); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return Product{}, err
 		}
 	}
@@ -876,13 +877,13 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err != nil {
 		return Product{}, err
 	}
-	if update.PriceMinor != nil && manualPriceVariantID > 0 {
+	if update.PriceMinor != nil && priceVariantID > 0 {
 		var actualPrice int64
-		if err := tx.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, manualPriceVariantID).Scan(&actualPrice); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, priceVariantID).Scan(&actualPrice); err != nil {
 			return Product{}, err
 		}
-		if actualPrice != manualOldPrice {
-			if err := createManualPriceProposals(ctx, tx, actor, manualPriceVariantID, manualOldPrice, actualPrice); err != nil {
+		if actualPrice != oldPriceMinor {
+			if err := stageEditorPriceProposals(ctx, tx, actor, priceVariantID, actualPrice); err != nil {
 				return Product{}, err
 			}
 		}

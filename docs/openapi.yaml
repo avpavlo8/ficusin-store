@@ -10,6 +10,108 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /admin/products/{productId}/editor-prices:
+    get:
+      operationId: get_admin_editor_prices
+      x-source: backend/internal/httpapi/admin_editor_prices.go#editorPricesHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.read]
+      parameters:
+        - in: path
+          name: productId
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Persisted price publications and publication mode; no writes or approvals. Readiness is checked against current site prices, channel identity and formula.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prices, publicationMode]
+                properties:
+                  prices:
+                    type: array
+                    items: { $ref: "#/components/schemas/EditorPricePublication" }
+                  publicationMode: { type: string, enum: [disabled, mock, live] }
+        "409":
+          description: Proposal is stale or publication is unavailable.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/products/{productId}/editor-prices/{priceId}/approve:
+    post:
+      operationId: post_admin_editor_prices_approve
+      x-source: backend/internal/httpapi/admin_editor_prices.go#editorPriceMutationHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.manage]
+      parameters:
+        - in: path
+          name: productId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: priceId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fingerprint]
+              properties:
+                fingerprint: { type: string }
+      responses:
+        "200":
+          description: Owner queued this exact frozen price. Approval never changes the payload or approves other channels.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditorPricePublication" }
+        "409":
+          description: Proposal is stale or publication is unavailable.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/products/{productId}/editor-prices/{priceId}/retry:
+    post:
+      operationId: post_admin_editor_prices_retry
+      x-source: backend/internal/httpapi/admin_editor_prices.go#editorPriceMutationHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.manage]
+      parameters:
+        - in: path
+          name: productId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: priceId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fingerprint]
+              properties:
+                fingerprint: { type: string }
+      responses:
+        "200":
+          description: Owner queued a safe retry. A needs_attention receipt resumes read-only price verification in its original mode, preserving payload, fingerprint and approval even when site prices have changed. Known rejected writes require current snapshot validation before a new attempt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditorPricePublication" }
+        "409":
+          description: Proposal is stale or publication is unavailable.
+        default:
+          $ref: "#/components/responses/ValidationError"
   /staging/media/{key}:
     get:
       operationId: get_staging_media_key
@@ -2478,78 +2580,6 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.ShipmentOfferInput"
-  /admin/price-proposals/{proposalId}/approve:
-    post:
-      operationId: post_admin_price_proposals_proposalId_approve
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_price_proposals.go#approveManualPriceProposalHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.manage
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage."
-      parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema:
-            type: string
-  /admin/price-proposals/{proposalId}/retry:
-    post:
-      operationId: post_admin_price_proposals_proposalId_retry
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_price_proposals.go#retryManualPriceProposalHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.manage
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage."
-      parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema:
-            type: string
-  /admin/price-proposals/{proposalId}/saby-xlsx:
-    get:
-      operationId: get_admin_price_proposals_proposalId_saby_xlsx
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_price_proposals.go#manualSabyPriceXLSXHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.read
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.read."
-      parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema:
-            type: string
   /admin/procurement:
     get:
       operationId: get_admin_procurement
@@ -3902,6 +3932,10 @@ paths:
                             { type: object, additionalProperties: true }
                           ozonPrice: { type: string }
                           wbPrice: { type: string }
+                          priceMode:
+                            type: string
+                            enum: [auto, manual]
+                            description: Auto prices must match the current formula and retain formula freshness guards. Manual prices freeze an explicit target. Omitted legacy values infer the origin without promoting stale calculations.
   /admin/products/{id}/marketplace-cards:
     get:
       operationId: get_admin_products_id_marketplace_cards
@@ -5254,30 +5288,6 @@ paths:
                 marketplaceScope:
                   type: string
               type: object
-  /admin/variants/{variantId}/price-proposals:
-    get:
-      operationId: get_admin_variants_variantId_price_proposals
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_price_proposals.go#manualPriceProposalsHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.read
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.read."
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema:
-            type: string
   /admin/variants/{variantId}/saby-link:
     post:
       operationId: post_admin_variants_variantId_saby_link
@@ -6684,6 +6694,25 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    EditorPricePublication:
+      type: object
+      required: [id, variantId, channel, targetId, priceMinor, compareAtMinor, expectedSitePriceMinor, status, message, fingerprint, executionMode, canApprove, canRetry, blockReason, createdAt]
+      properties:
+        id: { type: integer }
+        variantId: { type: integer }
+        channel: { type: string, enum: [wb, ozon, saby, avito] }
+        targetId: { type: string, description: "Exact WB nmID, Ozon offer ID, Saby business code or Avito listing ID." }
+        priceMinor: { type: integer, minimum: 1, description: "Frozen calculated target in kopecks. WB receives whole-ruble base and integer discount; the UI shows the effective rounded price before approval." }
+        compareAtMinor: { type: [integer, "null"], description: "Frozen compare-at amount in kopecks; WB base/discount or Ozon old_price." }
+        expectedSitePriceMinor: { type: integer }
+        status: { type: string, enum: [draft, queued, processing, synced, superseded, failed, needs_attention] }
+        message: { type: string }
+        fingerprint: { type: string, description: "SHA-256 of the immutable PostgreSQL jsonb payload." }
+        executionMode: { type: string, enum: [disabled, mock, live] }
+        canApprove: { type: boolean }
+        canRetry: { type: boolean, description: "For needs_attention this permits only read-only reconciliation, never another price POST." }
+        blockReason: { type: string }
+        createdAt: { type: string, format: date-time }
     ChatReferenceInput:
       type: object
       required: [kind, id]

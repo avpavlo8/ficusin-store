@@ -27,6 +27,19 @@ The bottom checkboxes only select new destinations and are hidden for establishe
 
 Publication leases, attempts and progress are persisted. The latest edit is queued in a separate pending snapshot while an earlier operation is in flight, and promoted once the receipt is resolved. Lost create responses and expired create leases are reconciled by exact article plus barcode, never blindly resent. An unresolved creation becomes `needs_attention`. Confirmed validation failures can be corrected and saved; `POST /admin/products/{id}/editor-publications/{channel}/retry` resumes failed work without losing receipts. External links are unique per marketplace and mode. Publication success means a card exists; it does not assert moderation approval, required documents, sale eligibility or stock availability.
 
+## Existing-card prices
+
+Existing-card content saves preserve seller prices: WB skips the price stages,
+Ozon re-reads and retains its current price/old_price tuple in the content import,
+and Saby omits PriceData from content Update. Initial card creation still sets
+its initial price. Subsequent price changes are separate immutable draft commands
+in the same editor publication process, explicitly approved by the owner.
+WB keeps base price/integer discount, Ozon keeps exact kopecks and old_price, and
+Avito uses its direct price API with fresh-stock/minimum-price checks. Card receipts
+and price receipts remain separate; price-only actions never create or rebind cards.
+See [editor-price-publications.md](editor-price-publications.md) for the UI, mode
+gates, target serialization, recovery and migration from retired manual proposals.
+
 ## Native Saby publication
 
 An explicit Save/Create in enabled production queues Saby through the same durable publication worker. Disabled preparations remain disabled, while local/staging Saby simulation remains isolated. The retired CommerceML exporter and its HTTP endpoint have been removed; all editor catalogue writes use the native publisher.

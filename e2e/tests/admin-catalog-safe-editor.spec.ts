@@ -370,3 +370,78 @@ for (const width of [768, 1024, 1280]) {
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   });
 }
+
+test('@desktop @phone saved price proposals require an explicit channel confirmation with the saved fingerprint',async({page})=>{
+ await fixture(page);
+ let approvals=0;
+ let price={id:91,variantId:10,channel:'wb',targetId:'WB-price-fixture',priceMinor:250000,compareAtMinor:300000,expectedSitePriceMinor:149000,status:'draft',message:'Готово к проверке',fingerprint:'exact-price-snapshot',executionMode:'live',canApprove:true,canRetry:false,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{prices:[price],publicationMode:'live'}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/91/approve',route=>{approvals++;expect(route.request().postDataJSON()).toEqual({fingerprint:'exact-price-snapshot'});price={...price,status:'queued',canApprove:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeEnabled();await expect(panel).toContainText('Базовая цена WB');expect(approvals).toBe(0);
+ await saveEditor(e);await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeEnabled();expect(approvals).toBe(0);
+ await panel.getByRole('button',{name:'Подтвердить цену',exact:true}).click();await expect(panel).toContainText('В очереди');expect(approvals).toBe(1);
+ await e.getByRole('tab',{name:'Товар',exact:true}).click();await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();expect(approvals).toBe(1);
+});
+
+test('@desktop price confirmation conflict remains visible and never discards the unsaved editor draft',async({page})=>{
+ await fixture(page);
+ let approvals=0;
+ const price={id:92,variantId:10,channel:'avito',targetId:'AVITO-price-fixture',priceMinor:250000,compareAtMinor:null,expectedSitePriceMinor:149000,status:'draft',message:'Готово',fingerprint:'stale-snapshot',executionMode:'live',canApprove:true,canRetry:false,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{prices:[price],publicationMode:'live'}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/92/approve',route=>{approvals++;return route.fulfill({status:409,json:{error:'Предложение цены изменилось'}})});
+ await open(page);const e=await edit(page);await e.getByLabel('Название товара *',{exact:true}).fill('Несохранённое имя');await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await panel.getByRole('button',{name:'Подтвердить цену',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('Предложение цены изменилось');expect(approvals).toBe(1);
+ await e.getByRole('tab',{name:'Товар',exact:true}).click();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Несохранённое имя');
+ await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1600');await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeDisabled();expect(approvals).toBe(1);
+});
+
+test('@desktop disabled publication keeps migrated price drafts unapproved',async({page})=>{
+ await fixture(page);let approvals=0;
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'disabled',prices:[{id:93,variantId:10,channel:'ozon',targetId:'OZON-migrated',priceMinor:250000,compareAtMinor:320000,expectedSitePriceMinor:149000,status:'draft',message:'Перенесённый черновик',fingerprint:'migrated',executionMode:'disabled',canApprove:false,canRetry:false,blockReason:'Отправка отключена'}]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/*/approve',route=>{approvals++;return route.fulfill({json:{}})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});await expect(panel).toContainText('Перенесённый черновик');await expect(panel).toContainText('Отправка цен отключена');await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toHaveCount(0);expect(approvals).toBe(0);
+});
+
+test('@desktop mock price retry stays explicit and uses the operation fingerprint',async({page})=>{
+ await fixture(page);let retries=0;
+ let price={id:94,variantId:10,channel:'ozon',targetId:'OZON-local',priceMinor:250000,compareAtMinor:320000,expectedSitePriceMinor:149000,status:'failed',message:'Локальная ошибка',fingerprint:'exact-retry',executionMode:'mock',canApprove:false,canRetry:true,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'mock',prices:[price]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/94/retry',route=>{retries++;expect(route.request().postDataJSON()).toEqual({fingerprint:'exact-retry'});price={...price,status:'queued',canRetry:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});await expect(panel).toContainText('Реальные цены площадок не меняются');expect(retries).toBe(0);await panel.getByRole('button',{name:'Повторить отправку',exact:true}).click();await expect(panel).toContainText('В очереди');expect(retries).toBe(1);
+});
+
+
+test('@desktop WB price confirmation shows the effective integer-discount price before approval',async({page})=>{
+ await fixture(page);let approvals=0;
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'live',prices:[{id:95,variantId:10,channel:'wb',targetId:'WB-rounded',priceMinor:150025,compareAtMinor:200000,expectedSitePriceMinor:149000,status:'draft',message:'Проверьте округление',fingerprint:'rounded-price',executionMode:'live',canApprove:true,canRetry:false,blockReason:''}]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/95/approve',route=>{approvals++;return route.fulfill({json:{}})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Расчётная цена'})}).last().locator('dd')).toContainText(/1\s?500,25/);
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Скидка WB'})}).last().locator('dd')).toHaveText('24%');
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Цена WB после округления скидки'})}).last().locator('dd')).toContainText(/1\s?520/);
+ expect(approvals).toBe(0);
+});
+
+
+test('@desktop read-only price reconciliation keeps the frozen fingerprint after the site price changes',async({page})=>{
+ const f=await fixture(page);f.variants.get(1)![0].price=1600;let checks=0;
+ let price={id:96,variantId:10,channel:'wb',targetId:'WB-inflight',priceMinor:250000,compareAtMinor:300000,expectedSitePriceMinor:149000,status:'needs_attention',message:'Ответ не получен',fingerprint:'frozen-old-request',executionMode:'live',canApprove:false,canRetry:true,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'live',prices:[price]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/96/retry',route=>{checks++;expect(route.request().postDataJSON()).toEqual({fingerprint:'frozen-old-request'});price={...price,status:'queued',canRetry:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});const check=panel.getByRole('button',{name:'Проверить результат',exact:true});await expect(check).toBeEnabled();await check.click();await expect(panel).toContainText('В очереди');expect(checks).toBe(1);
+});
+
+test('@desktop editor price mode is explicit in saved plans and restored without losing local intent',async({page})=>{
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,priceMode:'manual'}]});await open(page);const e=await edit(page);const modes=e.getByRole('group',{name:'Режим цен маркетплейсов'});
+ await expect(modes.getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('manual');
+ await modes.getByRole('button',{name:'Авто',exact:true}).click();await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('auto');
+ await page.reload();await expect(page.locator('.editor-page').getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Авто',exact:true})).toHaveAttribute('aria-pressed','true');
+});
+
+test('@desktop late saved manual price mode cannot overwrite an explicit auto draft choice',async({page})=>{
+ const f=await fixture(page);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/v1/admin/products/1/editor-plan',async route=>{if(route.request().method()!=='GET')return route.fallback();await held;return route.fulfill({json:{config:{variants:[{variantId:10,priceMode:'manual'}]},publications:[],links:{},barcodes:{},publicationMode:'disabled'}})});
+ await open(page);const e=await edit(page);const auto=e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Авто',exact:true});await auto.click();release();await expect(auto).toHaveAttribute('aria-pressed','true');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('auto');
+});

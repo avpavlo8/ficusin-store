@@ -6,11 +6,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
-	"github.com/jackc/pgx/v5"
+	"math"
 	urlpkg "net/url"
 	"regexp"
+	"strconv"
 	"strings"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
+	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
+	"github.com/jackc/pgx/v5"
 )
 
 var editorPotSuffix = regexp.MustCompile(`(?i)\s+[dд]\s*\d+(?:[.,]\d+)?(?:\s*см)?$`)
@@ -28,6 +33,7 @@ type EditorChannel = catalogeditor.Channel
 type EditorMarketplace = catalogeditor.Marketplace
 type EditorSaby = catalogeditor.Saby
 type EditorVariantPlan struct {
+	PriceMode   string            `json:"priceMode,omitempty"`
 	VariantID   int64             `json:"variantId"`
 	Saby        EditorSaby        `json:"saby"`
 	Marketplace EditorMarketplace `json:"marketplace"`
@@ -141,6 +147,9 @@ func ValidateEditorPlan(plan EditorPlan, submit bool) error {
 			return fmt.Errorf("%w: проверьте варианты товара", ErrInvalidInput)
 		}
 		seen[v.VariantID] = true
+		if v.PriceMode != "" && v.PriceMode != "auto" && v.PriceMode != "manual" {
+			return ErrInvalidInput
+		}
 		for _, mode := range []string{v.Saby.Mode, v.Marketplace.Ozon.Mode, v.Marketplace.WB.Mode} {
 			if mode != "" && mode != "create" && mode != "link" {
 				return ErrInvalidInput
@@ -210,6 +219,9 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 		}
 		if !submit {
 			continue
+		}
+		if err = catalogeditor.GuardContentPriceConflict(ctx, tx, v.VariantID); err != nil {
+			return EditorPlanView{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 		}
 		linked, err := editorLinkedChannels(ctx, tx, v.VariantID, r.editorPublicationMode)
 		if err != nil {
@@ -370,6 +382,41 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 			if channel != "saby" && action == "create" {
 				if price <= 0 || len(images) == 0 {
 					return EditorPlanView{}, fmt.Errorf("%w: для площадки нужны цена и фото", ErrInvalidInput)
+				}
+			}
+			if existing != "" && (channel == "wb" || channel == "ozon") {
+				text := v.WBPrice
+				if channel == "ozon" {
+					text = v.OzonPrice
+				}
+				value, e := strconv.ParseFloat(text, 64)
+				if e != nil {
+					return EditorPlanView{}, ErrInvalidInput
+				}
+				minor, e := money.Minor(value)
+				if e != nil || minor <= 0 {
+					return EditorPlanView{}, ErrInvalidInput
+				}
+				var strike float64
+				if e = tx.QueryRow(ctx, "SELECT marketplace_strike_markup::float8 FROM procurement_pricing_settings WHERE id=1").Scan(&strike); e != nil {
+					return EditorPlanView{}, e
+				}
+				compare := procurement.CompareAtPrice(int64(math.Ceil(value)), strike) * 100
+				origin := "explicit"
+				wanted, formulaCompare, available, e := catalogeditor.PriceFormula(ctx, tx, v.VariantID, channel, price)
+				if e != nil {
+					return EditorPlanView{}, e
+				}
+				if v.PriceMode == "auto" {
+					if !available || wanted != minor {
+						return EditorPlanView{}, fmt.Errorf("%w: формула цены изменилась; пересчитайте цену %s перед сохранением", ErrInvalidInput, channel)
+					}
+					origin, compare = "formula", formulaCompare
+				} else if v.PriceMode == "" && available && wanted == minor {
+					origin, compare = "formula", formulaCompare
+				}
+				if e = stageEditorPrice(ctx, tx, actor, productID, v.VariantID, channel, existing, price, minor, &compare, origin); e != nil {
+					return EditorPlanView{}, e
 				}
 			}
 			channelBarcode := barcode

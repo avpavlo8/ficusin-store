@@ -99,6 +99,10 @@ func TestRetiredCatalogRoutesAreNotRegistered(t *testing.T) {
 		{"POST", "/api/v1/admin/variants/1/copy"},
 		{"POST", "/api/v1/admin/variants/1/archive"},
 		{"GET", "/api/v1/admin/products/1/relationships"},
+		{"GET", "/api/v1/admin/variants/1/price-proposals"},
+		{"POST", "/api/v1/admin/price-proposals/1/approve"},
+		{"POST", "/api/v1/admin/price-proposals/1/retry"},
+		{"GET", "/api/v1/admin/price-proposals/1/saby-xlsx"},
 	} {
 		t.Run(operation.method+" "+operation.path, func(t *testing.T) {
 			response := httptest.NewRecorder()

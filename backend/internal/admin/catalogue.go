@@ -508,6 +508,13 @@ func (repository *PostgresRepository) MergeDraftProducts(ctx context.Context, ac
 		if status != "draft" || blocked {
 			return fmt.Errorf("%w: объединять можно только черновики без истории", ErrInvalidInput)
 		}
+		var priceBusy bool
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM catalog_editor_price_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id IN($1,$2)) AND status IN('queued','processing','needs_attention'))", request.TargetProductID, sourceID).Scan(&priceBusy); err != nil {
+			return err
+		}
+		if priceBusy {
+			return fmt.Errorf("%w: дождитесь завершения изменения цены", ErrInvalidInput)
+		}
 		if _, err = tx.Exec(ctx, `UPDATE product_variants SET product_id=$1,updated_at=CURRENT_TIMESTAMP WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
 			return fmt.Errorf("move variants: %w", err)
 		}

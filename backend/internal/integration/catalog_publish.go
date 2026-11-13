@@ -411,6 +411,23 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 	if s.Stage == "" {
 		s.Stage = "check"
 	}
+	if ch == "wb" && r.Action == "updating" && (s.Stage == "price" || s.Stage == "price-readback") {
+		ids, err := p.lookup(ctx, ch, r.SellerArticle(ch), true)
+		if err != nil {
+			return ce.Result{Progress: s}, err
+		}
+		if ids.ProductID != s.IDs.ProductID {
+			return result("needs_attention", "Связь WB изменилась. Цена не отправлялась")
+		}
+		if ids.ImageCount < len(r.Images) {
+			s.Checks++
+			if s.Checks > 90 {
+				return result("needs_attention", "WB не подтвердил фотографии обновлённой карточки")
+			}
+			return result("queued", "Ожидаем фотографии WB. Цена и скидка не менялись")
+		}
+		return result("synced", "Контент WB обновлён. Цена и скидка сохранены; изменения цен подтверждаются отдельно")
+	}
 	switch s.Stage {
 	case "check", "reconcile":
 		ids, e := p.lookup(ctx, ch, r.SellerArticle(ch), true)
@@ -462,6 +479,15 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			body, e := BuildOzonCard(r, p.Mock)
 			if e != nil {
 				return ce.Result{Progress: ce.Progress{Stage: "check"}}, e
+			}
+			if updating {
+				price, oldPrice, err := p.Executor.readEditorOzonPrice(ctx, s.IDs.OfferID)
+				if err != nil {
+					return ce.Result{Progress: s}, err
+				}
+				item := body["items"].([]any)[0].(map[string]any)
+				item["price"] = strconv.FormatFloat(price, 'f', 2, 64)
+				item["old_price"] = strconv.FormatFloat(oldPrice, 'f', 2, 64)
 			}
 			var out struct {
 				Result struct {
