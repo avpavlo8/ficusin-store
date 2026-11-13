@@ -85,21 +85,28 @@ def main():
         token=auth.get('token')
         if not token: raise guards.PreflightError('saby_auth_failed')
         print('::add-mask::'+token)
-        filter_record=record([('rp_doc','Логическое',True),('usePages','Строка','full'),('НазваниеТипаДокумента','Строка','ДокОтгрИсх'),('ФильтрПоЛицуИзСписка','Строка','Нет'),('ФильтрПоМаске','Строка','')])
+        filter_record=record([('rp_doc','Логическое',True),('usePages','Строка','full'),('НазваниеТипаДокумента','Строка','ДокОтгрИсх'),('ФильтрПоЛицуИзСписка','Строка','Нет'),('ФильтрПоМаске','Строка','FCT-20261113-1')])
         navigation=record([('ЕстьЕще','Логическое',True),('РазмерСтраницы','Число целое',5),('Страница','Число целое',0)])
         listing=rpc('ДокОтгрИсх.СписокХраним',{'Фильтр':filter_record,'Сортировка':None,'Навигация':navigation,'ДопПоля':[]},token)
-        print(json.dumps({'readOnly':True,'providerWrites':False,'listShape':shape(listing),'documentTypes':[summary(row) for row in rows(listing)]},ensure_ascii=False))
+        print(json.dumps({'readOnly':True,'providerWrites':False,'testDraftCandidates':[summary(row) for row in rows(listing)]},ensure_ascii=False))
         for row in rows(listing)[:3]:
             identity=row.get('@Документ')
             if isinstance(identity,list) and len(identity)==2 and isinstance(identity[0],int) and identity[0]>0: identity=identity[0]
             if isinstance(identity,bool) or not isinstance(identity,int) or identity<=0: continue
             doc=rpc('ДокОтгрИсх.Прочитать',{'ИдО':identity,'ИмяМетода':'ДокОтгрИсх.Список'},token)
-            print(json.dumps({'documentShape':shape(doc),'identifiers':summary(fields(doc))},ensure_ascii=False))
+            print(json.dumps({'identifiers':summary(fields(doc)),'stockConfig':{k:fields(doc).get(k) for k in ('Склад.@Лицо','Склад.Склад','Склад.НашаОрганизация','СкладскойДокумент.Склад.Склад','ДокументНашаОрганизация','Регламент.Название','Регламент.Идентификатор')}},ensure_ascii=False))
             if row == rows(listing)[0]:
                 detail=rpc('РеалИсх.DocNomList',{'Фильтр':record([('СкладскойДокумент','Число целое',identity),('Тип','Число целое',1),('ЭтоРасходы','Логическое',False),('Раздел','Число целое',None)]),'Сортировка':None,'Навигация':record([('ЕстьЕще','Логическое',True),('Страница','Число целое',0),('РазмерСтраницы','Число целое',100)]),'ДопПоля':[]},token,6)
-                print(json.dumps({'outgoingLineShape':shape(detail),'lineProof':{'rowCount':len(rows(detail)),'documentIDs':list({r.get('СкладскойДокумент') for r in rows(detail)}),'warehouses':list({r.get('Склад') for r in rows(detail)}),'directions':list({r.get('Тип') for r in rows(detail)}),'closedAll':all(r.get('Закрыто') is True for r in rows(detail)) if rows(detail) else False}},ensure_ascii=False))
+                print(json.dumps({'lineSchemaNames':[x['n'] for x in (detail or {}).get('s',[])],'lineProof':{'rowCount':len(rows(detail)),'documentIDs':list({r.get('СкладскойДокумент') for r in rows(detail)}),'warehouses':list({r.get('Склад') for r in rows(detail)}),'directions':list({r.get('Тип') for r in rows(detail)}),'closedAll':all(r.get('Закрыто') is True for r in rows(detail)) if rows(detail) else False}},ensure_ascii=False))
                 public=rpc('СБИС.ПрочитатьДокумент',{'Документ':{'Идентификатор':fields(doc).get('ДокументРасширение.ИдентификаторВИ')}},token,3)
                 print(json.dumps({'publicReadShape':shape(public),'regulation':(public or {}).get('Регламент')},ensure_ascii=False))
+        public_test=rpc('СБИС.ПрочитатьДокумент',{'Документ':{'Идентификатор':'1eacfa69-a5be-4790-8b9a-a198b3493220','ДопПоля':'ЭтапВернутьВсеСертификаты'}},token,3)
+        if public_test:
+            def action_summary(v):
+                if isinstance(v,list):return [action_summary(i) for i in v]
+                if isinstance(v,dict):return {k:action_summary(val) for k,val in v.items() if k in ('Идентификатор','Название','Действие','ТребуетПодписания','ТребуетКомментария','ТребуемоеДействие','Состояние')}
+                return v
+            print(json.dumps({'testPublic':{'id':public_test.get('Идентификатор'),'regulation':public_test.get('Регламент'),'revision':action_summary(public_test.get('Редакция')),'stages':action_summary(public_test.get('Этап')),'extension':public_test.get('Расширение'),'keys':list(public_test)}},ensure_ascii=False))
         warehouses=rpc('sabyWarehouse.List',{'filter':{'limit':100,'page':0}},token,6)
         print(json.dumps({'warehouseShape':shape(warehouses),'warehouseIDs':[{k:w.get(k) for k in ('id','warehouseId')} for w in (warehouses or {}).get('warehouses',[])]},ensure_ascii=False))
         return 0
