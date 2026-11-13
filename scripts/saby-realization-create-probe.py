@@ -37,6 +37,7 @@ def safe_error(error,env):
     for key,value in env.items():
         if isinstance(value,str) and value and any(x in key for x in ('SECRET','TOKEN','KEY','PASSWORD','DATABASE_URL')):text=text.replace(value,'[redacted]')
     text=re.sub(r'https?://\S+','[URL]',text)
+    text=re.sub(r'(?<![0-9a-zA-Z])[0-9]{10,12}(?![0-9a-zA-Z])','[identifier]',text)
     text=re.sub(r'\b[^\s@]+@[^\s@]+\.[^\s@]+','[email]',text)
     return {'code':error.get('code'),'class':(error.get('data') or {}).get('classid'),'errorCode':(error.get('data') or {}).get('error_code'),'message':text[:1200]}
 
@@ -53,7 +54,9 @@ def main():
         def rpc(method,params,protocol=3):return request(SERVICE,{'jsonrpc':'2.0','protocol':protocol,'method':method,'params':params,'id':1},token)
         warehouses=rpc('sabyWarehouse.List',{'filter':{'limit':100,'page':0}},6)
         found=[w for w in (warehouses.get('result') or {}).get('warehouses',[]) if w.get('warehouseId')==283 and w.get('id')=='8da0aa36-f206-4b65-a0d4-00000000011b']
-        if len(found)!=1:raise guards.PreflightError('known_warehouse_not_verified')
+        if len(found)!=1:
+            print(json.dumps({'warehousePreflight':{'rootKeys':list(warehouses),'error':safe_error(warehouses['error'],env) if warehouses.get('error') else None,'resultType':type(warehouses.get('result')).__name__,'identifiers':[{k:w.get(k) for k in ('id','warehouseId')} for w in (warehouses.get('result') or {}).get('warehouses',[])]}},ensure_ascii=False))
+            raise guards.PreflightError('known_warehouse_not_verified')
         org=found[0].get('organization') or {};inn=org.get('inn','')
         if not re.fullmatch(r'\d{12}',inn):raise guards.PreflightError('own_organization_not_verified')
         existing=rpc('СБИС.ПрочитатьДокумент',{'Документ':{'Идентификатор':DOC_UUID}})
