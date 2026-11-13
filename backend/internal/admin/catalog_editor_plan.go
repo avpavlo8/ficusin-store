@@ -465,13 +465,25 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 				}
 			}
 			uncertainWB := channel == "wb" && priorStatus == "failed" && (priorProgress.Ambiguous || priorProgress.CreateAttempted && priorProgress.IDs.ProductID == "")
-			if priorHash != "" && priorHash != hash && priorMode == mode && (priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention" || uncertainWB) {
+			resetProgress := []byte(`{}`)
+			sabyRevision := false
+			if channel == "saby" && priorStatus == "failed" && priorHash != hash && priorMode == mode {
+				var previous, next catalogeditor.Request
+				if json.Unmarshal(priorPayload, &previous) == nil && json.Unmarshal(raw, &next) == nil {
+					if retry, ok := catalogeditor.SabyPublicationRevision(previous, next, priorProgress); ok {
+						resetProgress, _ = json.Marshal(retry)
+						sabyRevision = true
+					}
+				}
+			}
+			uncertainSaby := channel == "saby" && priorStatus == "failed" && !sabyRevision && (priorProgress.Ambiguous || priorProgress.CreateAttempted || priorProgress.IDs.ProductID != "")
+			uncertainOzon := channel == "ozon" && priorStatus == "failed" && catalogeditor.OzonReapplyOutcomeUnknown(priorProgress)
+			if priorHash != "" && priorHash != hash && priorMode == mode && (priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention" || uncertainWB || uncertainSaby || uncertainOzon) {
 				if _, err = tx.Exec(ctx, `UPDATE catalog_editor_publications SET pending_payload=$3,pending_fingerprint=$4,updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, v.VariantID, channel, raw, hash); err != nil {
 					return EditorPlanView{}, err
 				}
 				continue
 			}
-			resetProgress := []byte(`{}`)
 			if channel == "ozon" && priorStatus == "failed" && priorHash != hash && priorMode == mode {
 				var previous, next catalogeditor.Request
 				if json.Unmarshal(priorPayload, &previous) == nil && json.Unmarshal(raw, &next) == nil {

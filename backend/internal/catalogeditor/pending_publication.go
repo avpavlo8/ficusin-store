@@ -10,6 +10,15 @@ func PendingPublicationProgress(channel, status string, previous, next Request, 
 	if (channel == "wb" || channel == "ozon") && (next.SellerArticle(channel) == "" || next.Barcode == "") {
 		return Progress{}, false
 	}
+	if channel == "ozon" && OzonReapplyOutcomeUnknown(receipt) {
+		return Progress{}, false
+	}
+	if channel == "saby" && receipt.IDs.ProductID != "" {
+		if status != "created" && status != "synced" && status != "linked" && status != "failed" {
+			return Progress{}, false
+		}
+		return SabyPublicationRevision(previous, next, receipt)
+	}
 	if status == "created" || status == "synced" || status == "linked" {
 		return Progress{}, true
 	}

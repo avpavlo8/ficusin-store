@@ -183,6 +183,66 @@ func TestSabyEditorPublicationLocalDatabase(t *testing.T) {
 		}
 		exec(`DELETE FROM catalog_saby_exports WHERE variant_id=$1`, variant)
 	})
+	t.Run("new content retains a created native Id before Number is available", func(t *testing.T) {
+		repo, product, plan := newCard("live")
+		_, e := repo.SaveEditorPlan(ctx, actor, product.ID, plan, true)
+		must(e)
+		variant := plan.Variants[0].VariantID
+		ids := ce.RemoteIDs{ProductID: fmt.Sprintf("880000%d", variant), UUID: fmt.Sprintf("00000000-0000-4000-8000-%012d", variant), SKU: "fixture", Barcode: "2000000000015"}
+		receipt := ce.Progress{Stage: "hydrate", CreateAttempted: true, IDs: ids, Native: json.RawMessage(`{"created":true,"preparedHash":"old-content"}`)}
+		exec(`UPDATE catalog_editor_publications SET status='queued',progress=$2 WHERE variant_id=$1 AND channel='saby'`, variant, receipt)
+		exec(`UPDATE products SET description='Pending corrected content' WHERE id=$1`, product.ID)
+		_, e = repo.SaveEditorPlan(ctx, actor, product.ID, plan, true)
+		must(e)
+		var pending bool
+		must(pool.QueryRow(ctx, `SELECT pending_payload IS NOT NULL FROM catalog_editor_publications WHERE variant_id=$1 AND channel='saby'`, variant).Scan(&pending))
+		if !pending {
+			t.Fatal("fixture did not save a pending revision")
+		}
+		calls := 0
+		boundary := editorPublisherFunc(func(_ context.Context, ch string, r ce.Request, p ce.Progress) (ce.Result, error) {
+			calls++
+			if ch != "saby" || p.Stage != "hydrate" || p.IDs != ids || !p.CreateAttempted {
+				t.Fatalf("revision would create another native card: %+v", p)
+			}
+			if calls > 1 && (len(p.Native) != 0 || r.Description != "Pending corrected content") {
+				t.Fatal("revision reused old prepared content")
+			}
+			return ce.Result{Progress: p}, errors.New("isolated native Read failure before Number is available")
+		})
+		step(boundary)
+		var progress ce.Progress
+		var state string
+		must(pool.QueryRow(ctx, `SELECT status,progress,pending_payload IS NOT NULL FROM catalog_editor_publications WHERE variant_id=$1 AND channel='saby'`, variant).Scan(&state, &progress, &pending))
+		if state != "prepared" || pending || progress.IDs != ids || progress.Stage != "hydrate" || len(progress.Native) != 0 {
+			t.Fatalf("failed draft dropped its only native identity: %s/%+v", state, progress)
+		}
+		step(boundary)
+		var links int
+		must(pool.QueryRow(ctx, `SELECT count(*) FROM catalog_editor_remote_links WHERE variant_id=$1 AND channel='saby'`, variant).Scan(&links))
+		if calls != 2 || links != 0 {
+			t.Fatal("fixture did not exercise a native Id without a remote-link row")
+		}
+		// An explicit changed Save after the failure has the same obligation.
+		exec(`UPDATE products SET description='Explicit corrected content' WHERE id=$1`, product.ID)
+		_, e = repo.SaveEditorPlan(ctx, actor, product.ID, plan, true)
+		must(e)
+		must(pool.QueryRow(ctx, `SELECT status,progress FROM catalog_editor_publications WHERE variant_id=$1 AND channel='saby'`, variant).Scan(&state, &progress))
+		if state != "prepared" || progress.Stage != "hydrate" || progress.IDs != ids || len(progress.Native) != 0 {
+			t.Fatal("explicit changed Save discarded a known native Id")
+		}
+		// Unknown writes cannot become fresh content merely because an Id exists.
+		progress.Ambiguous = true
+		progress.Stage = "verify"
+		exec(`UPDATE catalog_editor_publications SET status='failed',progress=$2 WHERE variant_id=$1 AND channel='saby'`, variant, progress)
+		exec(`UPDATE products SET description='Later content waits for unknown write' WHERE id=$1`, product.ID)
+		_, e = repo.SaveEditorPlan(ctx, actor, product.ID, plan, true)
+		must(e)
+		must(pool.QueryRow(ctx, `SELECT status,progress,pending_payload IS NOT NULL FROM catalog_editor_publications WHERE variant_id=$1 AND channel='saby'`, variant).Scan(&state, &progress, &pending))
+		if state != "failed" || !pending || !progress.Ambiguous || progress.Stage != "verify" || progress.IDs != ids {
+			t.Fatal("Save bypassed an unknown native write")
+		}
+	})
 	t.Run("unknown create and changed mode keep the irreversible receipt", func(t *testing.T) {
 		repo, product, plan := newCard("live")
 		_, e := repo.SaveEditorPlan(ctx, actor, product.ID, plan, true)

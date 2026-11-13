@@ -11,7 +11,7 @@ func TestOzonCreationRetryRequiresUnchangedCreationIdentity(t *testing.T) {
 	if !ok || retry.Stage != "reconcile" || !retry.ReapplyPayload || !retry.CreateAttempted || !retry.Ambiguous || retry.TaskID != 123 || retry.UpdateRequest != nil || retry.Checks != 0 {
 		t.Fatalf("creation receipt was not retained for read-before-update: %+v", retry)
 	}
-	for _, name := range []string{"unattempted", "product", "variant", "article", "barcode", "empty barcode", "link", "resolve"} {
+	for _, name := range []string{"unattempted", "product", "variant", "article", "barcode", "empty barcode", "link", "resolve", "unknown corrected import", "interrupted corrected import"} {
 		t.Run(name, func(t *testing.T) {
 			candidate, proof := next, receipt
 			switch name {
@@ -31,6 +31,10 @@ func TestOzonCreationRetryRequiresUnchangedCreationIdentity(t *testing.T) {
 				candidate.Channel.Mode = "link"
 			case "resolve":
 				candidate.Action = "resolve"
+			case "unknown corrected import":
+				proof.Stage, proof.ReapplyPayload = "ozon-reapply-unknown", true
+			case "interrupted corrected import":
+				proof.Stage, proof.ReapplyPayload = "update", true
 			}
 			if _, ok := OzonCreationRetry(previous, candidate, proof); ok {
 				t.Fatal("unproven creation identity accepted")

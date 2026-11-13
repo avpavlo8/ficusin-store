@@ -17,6 +17,8 @@ func TestPendingPublicationDoesNotDiscardUnknownCreation(t *testing.T) {
 		{"still processing", "wb", "queued", Progress{}, false},
 		{"Ozon rejected draft", "ozon", "failed", Progress{Stage: "ozon-poll", CreateAttempted: true, TaskID: 123}, true},
 		{"Ozon lost create response", "ozon", "failed", Progress{Stage: "reconcile", CreateAttempted: true, Ambiguous: true}, true},
+		{"Ozon lost corrected import response", "ozon", "failed", Progress{Stage: "ozon-reapply-unknown", CreateAttempted: true, ReapplyPayload: true, Ambiguous: true, IDs: RemoteIDs{ProductID: "known"}}, false},
+		{"Ozon interrupted corrected import", "ozon", "failed", Progress{Stage: "update", CreateAttempted: true, ReapplyPayload: true, Ambiguous: true, IDs: RemoteIDs{ProductID: "known"}}, false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			got, ok := PendingPublicationProgress(scenario.channel, scenario.status, before, next, scenario.progress)

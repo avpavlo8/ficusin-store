@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -142,6 +143,35 @@ func TestOzonRejectedSavePreservesCreationReceiptOnLocalDatabase(t *testing.T) {
 	must(ce.PublicationStep(ctx, pool, readOnlyBoundary, "mock"))
 	if !recovered {
 		t.Fatal("expired corrected import was not recovered")
+	}
+	// A read error in the unknown-update boundary may set failed, but neither
+	// another Save nor a pending revision can turn ownership into proof that
+	// the previous corrected import finished.
+	unknownUpdate := ce.Progress{Stage: "ozon-reapply-unknown", ReapplyPayload: true, CreateAttempted: true, Ambiguous: true, TaskID: 123, IDs: ce.RemoteIDs{ProductID: "990000111", OfferID: plan.Variants[0].Marketplace.Article}}
+	unknownUpdateRaw, _ := json.Marshal(unknownUpdate)
+	_, err = pool.Exec(ctx, `UPDATE catalog_editor_publications SET progress=$2,status='failed' WHERE variant_id=$1 AND channel='ozon'`, variantID, unknownUpdateRaw)
+	must(err)
+	plan.Variants[0].OzonPrice = "1200"
+	_, err = repo.SaveEditorPlan(ctx, actor, productID, plan, true)
+	must(err)
+	var pendingUnknown bool
+	must(pool.QueryRow(ctx, `SELECT status,progress,pending_payload IS NOT NULL FROM catalog_editor_publications WHERE variant_id=$1 AND channel='ozon'`, variantID).Scan(&status, &progress, &pendingUnknown))
+	if status != "failed" || !pendingUnknown || progress.Stage != "ozon-reapply-unknown" || !progress.Ambiguous || progress.IDs != unknownUpdate.IDs || progress.TaskID != 123 {
+		t.Fatal("changed Save discarded the unknown corrected import")
+	}
+	must(repo.RetryEditorPublication(ctx, actor, productID, variantID, "ozon"))
+	unknownReads := 0
+	failedReadBoundary := editorPublisherFunc(func(_ context.Context, ch string, _ ce.Request, p ce.Progress) (ce.Result, error) {
+		unknownReads++
+		if ch != "ozon" || p.Stage != "ozon-reapply-unknown" || !p.Ambiguous {
+			t.Fatalf("retry would repost an unknown corrected import: %+v", p)
+		}
+		return ce.Result{Progress: p}, errors.New("isolated unknown-import read failure")
+	})
+	must(ce.PublicationStep(ctx, pool, failedReadBoundary, "mock"))
+	must(pool.QueryRow(ctx, `SELECT status,progress,pending_payload IS NOT NULL FROM catalog_editor_publications WHERE variant_id=$1 AND channel='ozon'`, variantID).Scan(&status, &progress, &pendingUnknown))
+	if unknownReads != 1 || status != "failed" || !pendingUnknown || progress.Stage != "ozon-reapply-unknown" || !progress.Ambiguous || progress.IDs != unknownUpdate.IDs {
+		t.Fatal("a failed read promoted pending content over an unknown import")
 	}
 	// A later Save must not erase an accepted-but-unconfirmed WB upload either.
 	wbSchema, err := mock.Executor.ReadEditorReference(ctx, "wb", "attributes", 900003, 0, 0, "")
