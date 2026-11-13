@@ -16,6 +16,10 @@ type liveOrderNotifier struct{}
 
 func (liveOrderNotifier) SendOrder(context.Context, integration.TelegramOrder) error { return nil }
 
+type liveCommerceExpirySettings struct{}
+
+func (liveCommerceExpirySettings) Number(string) int { return 24 }
+
 // TestCommerceLifecycleOnLiveDatabase is the release-level proof that the
 // migrated schema and the real order service still agree. It deliberately
 // exercises the atomic facts that cannot be inferred from a 201 response:
@@ -166,7 +170,19 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		t.Fatalf("independent consent evidence missing: %d %v", documentCount, err)
 	}
 
-	worker := &ExpiryWorker{pool: pool, logger: quietLogger()}
+	worker := NewExpiryWorker(pool, liveCommerceExpirySettings{}, nil, quietLogger())
+	// Pickup payment at handover must remain available for a staff decision;
+	// only an abandoned, overdue online payment may expire automatically.
+	if err := worker.cancel(ctx, orderID); err != nil {
+		t.Fatalf("inspect pickup expiry: %v", err)
+	}
+	var pickupStatus string
+	if err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1`, orderID).Scan(&pickupStatus); err != nil || pickupStatus != "new" {
+		t.Fatalf("pickup was automatically cancelled: %s %v", pickupStatus, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE orders SET payment_method='online',payment_status='pending',created_at=CURRENT_TIMESTAMP-INTERVAL '25 hours' WHERE id=$1`, orderID); err != nil {
+		t.Fatal(err)
+	}
 	if err := worker.cancel(ctx, orderID); err != nil {
 		t.Fatalf("cancel order: %v", err)
 	}
