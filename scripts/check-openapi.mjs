@@ -13,6 +13,11 @@ const spec = YAML.parse(readFileSync(new URL("../docs/openapi.yaml", import.meta
 const inventory = JSON.parse(execFileSync("go", ["run", "./cmd/api-contract"], {
   cwd: `${root}backend`, encoding: "utf8", maxBuffer: 16 * 1024 * 1024,
 }));
+// Qualified component names represent Go DTOs; deleted source types must not
+// survive as misleading schemas after a route/domain cleanup.
+for (const name of Object.keys(spec.components.schemas)) {
+  if (name.includes(".")) assert(inventory.schemas[name], `OpenAPI schema names a removed Go type: ${name}`);
+}
 const methods = new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
 const expected = new Set(inventory.routes.map(route => `${route.method.toLowerCase()} ${route.path.startsWith("/api/v1/") ? route.path.slice(7) : route.path}`));
 const documented = new Set();

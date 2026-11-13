@@ -28,7 +28,6 @@ type adminRepository interface {
 	UpdateProduct(context.Context, admin.Actor, int64, admin.ProductUpdate) (admin.Product, error)
 	CreateProduct(context.Context, admin.Actor, admin.ProductCreate) (admin.Product, error)
 	ImportProducts(context.Context, admin.Actor, admin.ImportRequest) (admin.ImportResult, error)
-	SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error)
 	ListCategories(context.Context) ([]admin.Category, error)
 	CreateCategory(context.Context, admin.Actor, admin.CategoryCreate) (admin.Category, error)
 	UpdateCategory(context.Context, admin.Actor, int64, admin.CategoryUpdate) (admin.Category, error)
@@ -591,17 +590,6 @@ func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, reques
 	writeJSON(response, http.StatusOK, map[string]any{"ok": true})
 }
 
-type effectiveAttributeProvider interface {
-	EffectiveCategoryAttributes(context.Context, int64) ([]admin.EffectiveCategoryAttribute, error)
-}
-
-func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request *http.Request) {
-	if _, _, ok := handlers.authorize(response, request, admin.PermissionProductsSync); !ok {
-		return
-	}
-	writeJSON(response, http.StatusGone, errorResponse{Error: "Контент и цена хранятся на сайте. Остатки обновляются автоматически из СБИС."})
-}
-
 func (handlers adminHandlers) categories(response http.ResponseWriter, request *http.Request) {
 	_, _, ok := handlers.authorize(response, request, admin.PermissionProductsRead)
 	if !ok {
@@ -739,7 +727,7 @@ func permissionsFor(role string) []string {
 		admin.PermissionChat, admin.PermissionDashboard, admin.PermissionCustomersRead, admin.PermissionCustomersEdit,
 		admin.PermissionRolesEdit, admin.PermissionDiscountsEdit, admin.PermissionOrdersRead,
 		admin.PermissionOrdersEdit, admin.PermissionPaymentsRefund, admin.PermissionPaymentsManage, admin.PermissionProductsRead, admin.PermissionProductsEdit,
-		admin.PermissionProductsSync, admin.PermissionProcurementRead,
+		admin.PermissionProcurementRead,
 		admin.PermissionProcurementEdit, admin.PermissionIntegrationsEdit,
 		admin.PermissionAnalyticsRead, admin.PermissionProductsManage, admin.PermissionDelete,
 		admin.PermissionReturnsRead, admin.PermissionReturnsEdit, admin.PermissionReturnsReceipt, admin.PermissionReturnsDelete,

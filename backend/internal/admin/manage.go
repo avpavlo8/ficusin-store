@@ -1077,18 +1077,6 @@ func (repository *PostgresRepository) categoryByID(ctx context.Context, id int64
 	return c, err
 }
 
-// SyncProducts подтягивает выбранные поля из справочника СБИС.
-//
-// Это разовое действие по кнопке, а не подписка: подтянув описание один раз,
-// товар не начинает получать его при каждом обмене. Постоянную связь задаёт
-// список разрешённых полей у самого товара.
-func (repository *PostgresRepository) SyncProducts(ctx context.Context, actor Actor, request SyncRequest) (SyncResult, error) {
-	if !Can(actor.Role, PermissionProductsSync) {
-		return SyncResult{}, ErrForbidden
-	}
-	return SyncResult{}, fmt.Errorf("%w: контент и цена принадлежат сайту; остаток обновляет складской обмен СБИС", ErrInvalidInput)
-}
-
 // replacePhotos ставит карточке весь набор снимков из СБИС, а не первый:
 // у растения обычно несколько ракурсов, и терять их при подтягивании обидно.
 func replacePhotos(ctx context.Context, repository *PostgresRepository, id int64, name string, images []string) error {

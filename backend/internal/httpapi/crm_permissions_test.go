@@ -29,7 +29,6 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 		{"POST", "/api/v1/admin/procurement/orders/18/saby-prices.xlsx", `{ "firstPrices": [{"sabyId":"3892","priceRub":636}] }`},
 		{"GET", "/api/v1/admin/procurement/orders/18/receiving.pdf", ""},
 		{"POST", "/api/v1/admin/procurement/batches/1/retry", "{}"},
-		{"POST", "/api/v1/admin/products/sync", `{"productIds":[1],"fields":["price"]}`},
 		{"POST", "/api/v1/admin/products/import", `{"codes":["a"]}`},
 		{"POST", "/api/v1/admin/products", "{}"}, {"POST", "/api/v1/admin/products/merge", "{}"},
 		{"DELETE", "/api/v1/admin/products", `{"productIds":[1]}`},
@@ -82,7 +81,7 @@ func TestCRMContentEditPreservesGallery(t *testing.T) {
 func TestCRMManagerPermissionResponse(t *testing.T) {
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), adminDependencies(&adminRepositoryStub{}, admin.RoleManager, "")).ServeHTTP(response, adminRequest("GET", "/api/v1/admin/dashboard", ""))
-	for _, forbidden := range []string{"analytics.read", "procurement.edit", "products.sync", "products.manage", "catalog.delete"} {
+	for _, forbidden := range []string{"analytics.read", "procurement.edit", "products.manage", "catalog.delete"} {
 		if strings.Contains(response.Body.String(), forbidden) {
 			t.Fatalf("leaked permission %s", forbidden)
 		}

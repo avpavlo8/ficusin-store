@@ -4370,24 +4370,6 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.BulkPublishProductsRequest"
-  /admin/products/sync:
-    post:
-      operationId: post_admin_products_sync
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin.go#syncProducts
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.sync
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.sync."
   /admin/return-photos/{id}:
     get:
       operationId: get_admin_return_photos_id
@@ -7385,25 +7367,6 @@ components:
         type:
           type: string
       type: object
-    admin.FinanceCashInput:
-      properties:
-        linkedTransactionId:
-          anyOf:
-            - type: integer
-            - type: "null"
-      type: object
-    admin.FinanceClassification:
-      properties: {}
-      type: object
-    admin.FinanceReconciliation:
-      properties:
-        actual:
-          type: number
-        comment:
-          type: string
-        date:
-          type: string
-      type: object
     admin.ImportRequest:
       properties:
         categoryId:
@@ -7416,39 +7379,6 @@ components:
           type: array
         dryRun:
           type: boolean
-      type: object
-    admin.MarketplaceAdjustmentInput:
-      properties:
-        amount:
-          type: number
-        channel:
-          type: string
-        effect:
-          type: integer
-        kind:
-          type: string
-        linkedTransactionId:
-          anyOf:
-            - type: integer
-            - type: "null"
-        operationDate:
-          type: string
-        periodEnd:
-          type: string
-        periodStart:
-          type: string
-        periodStatus:
-          type: string
-        sourceDocumentId:
-          type: string
-        sourceHash:
-          type: string
-        sourceLineId:
-          type: string
-        status:
-          type: string
-        unmatchedRows:
-          type: integer
       type: object
     admin.MergeProductsRequest:
       properties:
@@ -7781,53 +7711,6 @@ components:
           type: integer
         quantity:
           type: integer
-      type: object
-    admin.SupplierAccountInput:
-      properties:
-        comment:
-          type: string
-        kind:
-          type: string
-        linkedTopupId:
-          anyOf:
-            - type: integer
-            - type: "null"
-        operationDate:
-          type: string
-        originalAmountEur:
-          type: number
-        procurementOrderId:
-          anyOf:
-            - type: integer
-            - type: "null"
-        sourceReference:
-          type: string
-      type: object
-    admin.SupplierReconciliationInput:
-      properties:
-        comment:
-          type: string
-        date:
-          type: string
-        originalBalanceEur:
-          type: number
-        reservedEur:
-          anyOf:
-            - type: number
-            - type: "null"
-        sourceReference:
-          type: string
-      type: object
-    admin.TaxPeriodInput:
-      properties:
-        actualTax:
-          type: number
-        from:
-          type: string
-        source:
-          type: string
-        to:
-          type: string
       type: object
     admin.VariantInput:
       properties:

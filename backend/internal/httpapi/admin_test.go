@@ -55,7 +55,6 @@ type adminRepositoryStub struct {
 	deletedDraftIDs     []int64
 	publishedDraftIDs   []int64
 	updateCustomerCalls int
-	syncCalls           int
 	createCategoryCalls int
 	deliveryFee         float64
 	customerPageQuery   string
@@ -146,10 +145,6 @@ func (stub *adminRepositoryStub) MergeDraftProducts(_ context.Context, _ admin.A
 	return nil
 }
 
-func (stub *adminRepositoryStub) SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error) {
-	stub.syncCalls++
-	return admin.SyncResult{Updated: 1, Skipped: []int64{}}, nil
-}
 func (stub *adminRepositoryStub) ListCategories(context.Context) ([]admin.Category, error) {
 	return []admin.Category{}, nil
 }
@@ -209,38 +204,6 @@ func TestAdminOwnerCannotCreateAnotherOwner(t *testing.T) {
 	}
 	if repository.updateCustomerCalls != 0 {
 		t.Fatal("repository must not be called for owner role assignment")
-	}
-}
-
-func TestAdminManagerCannotBulkSync(t *testing.T) {
-	t.Parallel()
-
-	repository := &adminRepositoryStub{}
-	request := adminRequest(http.MethodPost, "/api/v1/admin/products/sync", `{"productIds":[1,2],"fields":["price"]}`)
-	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
-
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusForbidden, response.Body.String())
-	}
-	if repository.syncCalls != 0 {
-		t.Fatalf("sync calls = %d, want 0", repository.syncCalls)
-	}
-}
-
-func TestAdminManagerCannotSyncOneProduct(t *testing.T) {
-	t.Parallel()
-
-	repository := &adminRepositoryStub{}
-	request := adminRequest(http.MethodPost, "/api/v1/admin/products/sync", `{"productIds":[1],"fields":["price"]}`)
-	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
-
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusForbidden, response.Body.String())
-	}
-	if repository.syncCalls != 0 {
-		t.Fatalf("sync calls = %d, want 0", repository.syncCalls)
 	}
 }
 

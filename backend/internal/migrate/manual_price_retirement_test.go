@@ -26,7 +26,11 @@ func TestManualPricesMoveToEditorDraftsOnDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"drafts", "attempted", "submitted", "queued", "receipt reference", "lease"} {
+	cleanup, err := os.ReadFile("../../../timeweb/migrations/20261113_zzzzzzzz_remove_retired_price_columns.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []string{"drafts", "no legacy", "attempted", "submitted", "queued", "receipt reference", "lease"} {
 		t.Run(scenario, func(t *testing.T) {
 			tx, err := pool.Begin(ctx)
 			if err != nil {
@@ -55,6 +59,8 @@ INSERT INTO procurement_action_items(id,batch_id,channel,external_article,new_va
 INSERT INTO procurement_action_batches(id,source,procurement_order_id) VALUES(20,'procurement',999);
 INSERT INTO procurement_action_items(id,batch_id,channel,external_article,new_value,status,attempts,external_operation_id) VALUES(21,20,'wb','untouched',42,'queued',99,'existing-receipt');`)
 			switch scenario {
+			case "no legacy":
+				exec("DELETE FROM procurement_action_items WHERE batch_id=10; DELETE FROM procurement_action_batches WHERE id=10")
 			case "attempted":
 				exec("UPDATE procurement_action_items SET attempts=1 WHERE id=11")
 			case "submitted":
@@ -69,7 +75,7 @@ INSERT INTO procurement_action_items(id,batch_id,channel,external_article,new_va
 			exec("SAVEPOINT retirement")
 			sql := strings.ReplaceAll(string(raw), "legacy_archive", archive)
 			_, err = tx.Exec(ctx, sql)
-			if scenario != "drafts" {
+			if scenario != "drafts" && scenario != "no legacy" {
 				if err == nil {
 					t.Fatal("unsafe manual state was retired")
 				}
@@ -84,6 +90,17 @@ INSERT INTO procurement_action_items(id,batch_id,channel,external_article,new_va
 				t.Fatal(err)
 			}
 			var n int
+			cleanupSQL := strings.ReplaceAll(string(cleanup), "legacy_archive", archive)
+			if scenario == "no legacy" {
+				exec(cleanupSQL)
+				if err := tx.QueryRow(ctx, "SELECT (SELECT count(*) FROM catalog_editor_price_publications)+(SELECT count(*) FROM "+archive+".manual_price_items)+(SELECT count(*) FROM "+archive+".manual_price_batches)").Scan(&n); err != nil || n != 0 {
+					t.Fatalf("empty legacy history gained rows: %d %v", n, err)
+				}
+				if err := tx.QueryRow(ctx, "SELECT count(*) FROM procurement_action_items WHERE id=21 AND status='queued' AND external_operation_id='existing-receipt' AND attempts=99").Scan(&n); err != nil || n != 1 {
+					t.Fatalf("empty-history cleanup changed procurement: %d %v", n, err)
+				}
+				return
+			}
 			if err := tx.QueryRow(ctx, "SELECT count(*) FROM catalog_editor_price_publications WHERE status='draft' AND execution_mode='disabled' AND approved_by IS NULL AND approved_at IS NULL AND attempts=0 AND expected_site_price_minor=123456 AND created_by=1 AND price_origin='formula' AND fingerprint=encode(sha256(convert_to(payload::TEXT,'UTF8')),'hex')").Scan(&n); err != nil || n != 3 {
 				t.Fatalf("draft migration changed approval/fingerprint: %d %v", n, err)
 			}
@@ -116,12 +133,49 @@ INSERT INTO procurement_action_items(id,batch_id,channel,external_article,new_va
 				t.Fatal("cached old producer can create manual source")
 			}
 			exec("ROLLBACK TO SAVEPOINT old_producer")
-			exec("UPDATE catalog_editor_price_publications SET execution_mode='live',status='queued' WHERE legacy_proposal_id=11")
+			exec(`UPDATE catalog_editor_price_publications SET execution_mode='live',status='queued',claim_token='preserved-token',attempts=2,progress='{"stage":"price-verify","ambiguous":true}' WHERE legacy_proposal_id=11`)
 			exec("SAVEPOINT second_claim")
 			if _, err := tx.Exec(ctx, "INSERT INTO catalog_editor_price_publications(product_id,variant_id,channel,target_id,execution_mode,status,fingerprint,expected_site_price_minor,price_minor,payload) VALUES(1,101,'wb','123','live','needs_attention','different',123456,222,'{}')"); err == nil {
 				t.Fatal("shared remote target has two busy price operations")
 			}
 			exec("ROLLBACK TO SAVEPOINT second_claim")
+			snapshotSQL := `SELECT jsonb_build_object(
+ 'batches',(SELECT jsonb_agg(to_jsonb(b)-'source' ORDER BY id) FROM procurement_action_batches b),
+ 'items',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM procurement_action_items i),
+ 'prices',(SELECT jsonb_agg(to_jsonb(p)-'old_value_minor' ORDER BY id) FROM catalog_editor_price_publications p),
+ 'archiveBatches',(SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM ` + archive + `.manual_price_batches b),
+ 'archiveItems',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM ` + archive + `.manual_price_items i))::text`
+			var before, after string
+			if err := tx.QueryRow(ctx, snapshotSQL).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
+			exec("SAVEPOINT unarchived_price")
+			exec("UPDATE catalog_editor_price_publications SET old_value_minor=999999 WHERE legacy_proposal_id=11")
+			if _, err := tx.Exec(ctx, cleanupSQL); err == nil {
+				t.Fatal("cleanup discarded an unarchived historical price")
+			}
+			exec("ROLLBACK TO SAVEPOINT unarchived_price")
+			exec(cleanupSQL)
+			if err := tx.QueryRow(ctx, snapshotSQL).Scan(&after); err != nil || before != after {
+				t.Fatalf("cleanup changed working or archived rows: %v", err)
+			}
+			if err := tx.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND ((table_name='procurement_action_batches' AND column_name='source') OR(table_name='catalog_editor_price_publications' AND column_name='old_value_minor'))`, active).Scan(&n); err != nil || n != 0 {
+				t.Fatalf("retired price columns remain: %d %v", n, err)
+			}
+			if err := tx.QueryRow(ctx, "SELECT count(*) FROM "+archive+".manual_price_items i JOIN "+archive+".manual_price_batches b ON b.id=i.batch_id WHERE i.old_value=20 AND b.source='manual'").Scan(&n); err != nil || n != 3 {
+				t.Fatalf("cleanup lost original price provenance: %d %v", n, err)
+			}
+			if err := tx.QueryRow(ctx, "SELECT count(*) FROM catalog_editor_price_publications WHERE legacy_proposal_id=11 AND status='queued' AND execution_mode='live' AND price_minor=123 AND fingerprint=encode(sha256(convert_to(payload::text,'UTF8')),'hex')").Scan(&n); err != nil || n != 1 {
+				t.Fatalf("cleanup changed active publication: %d %v", n, err)
+			}
+			if err := tx.QueryRow(ctx, "SELECT count(*) FROM procurement_action_items WHERE id=21 AND status='queued' AND external_operation_id='existing-receipt' AND attempts=99").Scan(&n); err != nil || n != 1 {
+				t.Fatalf("cleanup changed procurement operation: %d %v", n, err)
+			}
+			exec("SAVEPOINT retired_producer")
+			if _, err := tx.Exec(ctx, "INSERT INTO procurement_action_batches(id,source,procurement_order_id) VALUES(99,'manual',999)"); err == nil {
+				t.Fatal("cleanup allowed a cached old producer")
+			}
+			exec("ROLLBACK TO SAVEPOINT retired_producer")
 		})
 	}
 }

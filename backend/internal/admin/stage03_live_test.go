@@ -53,7 +53,7 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 		for index := 0; index < 2; index++ {
-			if _, err := repository.SyncProducts(ctx, owner, SyncRequest{ProductIDs: []int64{productA}, Fields: []string{"price"}}); !errors.Is(err, ErrInvalidInput) {
+			if _, err := repository.UpdateProduct(ctx, owner, productA, ProductUpdate{SabyFields: &[]string{"price"}}); !errors.Is(err, ErrInvalidInput) {
 				t.Fatalf("Saby must not overwrite site prices: %v", err)
 			}
 		}
@@ -151,7 +151,7 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		if _, err := pool.Exec(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,unit_price,quantity) SELECT $1,$2,id,sku,'Историческое имя','P15 H35',120,1 FROM product_variants WHERE id=$3`, orderID, productB, variantB); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := repository.UpdateVariantContent(ctx, manager, variantB, VariantContentUpdate{Attributes: map[string]any{code: float64(17.5)}}); err != nil {
+		if _, err := repository.UpdateProduct(ctx, manager, productB, ProductUpdate{Variants: []VariantEdit{{ID: variantB, Attributes: map[string]any{code: float64(17.5)}}}}); err != nil {
 			t.Fatal(err)
 		}
 		var products int

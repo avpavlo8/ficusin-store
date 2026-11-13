@@ -28,7 +28,6 @@ const (
 	PermissionPaymentsManage   = "payments.manage"
 	PermissionProductsRead     = "products.read"
 	PermissionProductsEdit     = "products.edit"
-	PermissionProductsSync     = "products.sync"
 	PermissionProductsManage   = "products.manage"
 	PermissionDelete           = "catalog.delete"
 	PermissionReturnsDelete    = "returns.delete"
@@ -385,16 +384,6 @@ type CategoryAttribute struct {
 	SortOrder         int               `json:"sortOrder"`
 }
 
-type SyncRequest struct {
-	ProductIDs []int64  `json:"productIds"`
-	Fields     []string `json:"fields"`
-}
-
-type SyncResult struct {
-	Updated int     `json:"updated"`
-	Skipped []int64 `json:"skipped"`
-}
-
 type DeleteDraftProductsRequest struct {
 	ProductIDs []int64 `json:"productIds"`
 }
@@ -424,7 +413,6 @@ type Repository interface {
 	UpdateProduct(context.Context, Actor, int64, ProductUpdate) (Product, error)
 	CreateProduct(context.Context, Actor, ProductCreate) (Product, error)
 	ImportProducts(context.Context, Actor, ImportRequest) (ImportResult, error)
-	SyncProducts(context.Context, Actor, SyncRequest) (SyncResult, error)
 	ListCategories(context.Context) ([]Category, error)
 	CreateCategory(context.Context, Actor, CategoryCreate) (Category, error)
 	UpdateCategory(context.Context, Actor, int64, CategoryUpdate) (Category, error)

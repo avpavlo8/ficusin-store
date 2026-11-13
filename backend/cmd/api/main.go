@@ -240,7 +240,9 @@ func main() {
 		}
 		go stock.Run(ctx, logger)
 	}
-	go catalogeditor.RunPreview(ctx, pool, cfg.Environment, logger)
+	if cfg.CatalogPublicationMode == "mock" {
+		go catalogeditor.RunPreview(ctx, pool, cfg.Environment, logger)
+	}
 	adminRepository.WithEditorPublicationMode(cfg.CatalogPublicationMode)
 	editorReferences := integration.NewMarketplaceExecutor(cfg.CatalogMarketplaces.WBToken, cfg.CatalogMarketplaces.OzonClientID, cfg.CatalogMarketplaces.OzonAPIKey).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
 	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)

@@ -1,5 +1,5 @@
-// Package catalogeditor runs the first-version publication preview in isolated
-// local/staging databases. It never calls the real marketplaces.
+// Saby preview simulates explicit mock publications in isolated local/staging
+// databases. Disabled snapshots remain inert; the real Saby API is not called.
 package catalogeditor
 
 import (
@@ -47,7 +47,7 @@ func step(ctx context.Context, pool *pgxpool.Pool) error {
 	var id int64
 	var channel string
 	var raw []byte
-	err = tx.QueryRow(ctx, `SELECT variant_id,channel FROM catalog_editor_publications WHERE status='prepared' AND channel='saby' ORDER BY updated_at LIMIT 1`).Scan(&id, &channel)
+	err = tx.QueryRow(ctx, `SELECT variant_id,channel FROM catalog_editor_publications WHERE status='prepared' AND execution_mode='mock' AND channel='saby' ORDER BY updated_at LIMIT 1`).Scan(&id, &channel)
 	if err == pgx.ErrNoRows {
 		return nil
 	}
@@ -62,7 +62,7 @@ func step(ctx context.Context, pool *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
-	err = tx.QueryRow(ctx, `SELECT payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 AND status='prepared' FOR UPDATE`, id, channel).Scan(&raw)
+	err = tx.QueryRow(ctx, `SELECT payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 AND status='prepared' AND execution_mode='mock' FOR UPDATE`, id, channel).Scan(&raw)
 	if err == pgx.ErrNoRows {
 		return nil
 	}

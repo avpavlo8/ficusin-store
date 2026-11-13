@@ -215,11 +215,6 @@ export async function mockApi(page: Page, session: Session = guest, options: { s
   });
 
   await context.route("**/api/v1/delivery/cdek?action=status", (route) => route.fulfill({ json: { connected: true } }));
-  await context.route("**/api/v1/delivery/post?action=status", (route) => route.fulfill({ json: { connected: true } }));
-  await context.route("**/api/v1/delivery/yandex?action=status", (route) => route.fulfill({ json: { connected: true } }));
-  await context.route("**/api/v1/delivery/cdek?action=quote", (route) => route.fulfill({ json: { amount: 590, currency: "RUB", daysMin: 2, daysMax: 4 } }));
-  await context.route("**/api/v1/delivery/post?action=quote", (route) => route.fulfill({ json: { amount: 450, currency: "RUB", daysMin: 3, daysMax: 7 } }));
-  await context.route("**/api/v1/delivery/yandex?action=quote", (route) => route.fulfill({ json: { amount: 390, currency: "RUB", daysMin: 0, daysMax: 1 } }));
 
   await context.route("**/api/v1/orders", (route) => route.fulfill({ status: 201, json: {
     order: { id: 101, status: "new", paymentStatus: "payment_provider_pending" },
