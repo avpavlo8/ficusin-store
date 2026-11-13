@@ -102,6 +102,15 @@ func Enqueue(ctx context.Context, tx pgx.Tx, orderID, offerID int64, source stri
 	if source != "automatic" && source != "manual" {
 		return Event{}, fmt.Errorf("invalid realization source")
 	}
+	// Status/cancellation paths lock the parent before the realization advisory
+	// lock. Follow that order for manual preparation and carrier milestones too.
+	var lockedOrder int64
+	if err := tx.QueryRow(ctx, `SELECT id FROM orders WHERE id=$1 FOR UPDATE`, orderID).Scan(&lockedOrder); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Event{}, nil
+		}
+		return Event{}, err
+	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('order-sale:'||$1::BIGINT::TEXT,0))`, orderID); err != nil {
 		return Event{}, err
 	}

@@ -135,3 +135,32 @@ func cancellationStage(stage string) bool {
 	}
 	return false
 }
+
+// Carrier cancellation and Saby reversal are independent workers. Local CREATED
+// is not evidence that the carrier has not already received the physical goods.
+func carrierCancellationState(ctx context.Context, q queryer, orderID int64) (string, error) {
+	var uuid, createState, cancelState, status string
+	if err := q.QueryRow(ctx, `SELECT COALESCE(cdek_uuid,''),COALESCE(cdek_create_state,''),COALESCE(cdek_cancel_state,''),UPPER(COALESCE(cdek_status,'')) FROM orders WHERE id=$1`, orderID).Scan(&uuid, &createState, &cancelState, &status); err != nil {
+		return "", err
+	}
+	var unsafeOffer bool
+	if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=$1 AND (cdek_create_state IN ('creating','unknown') OR (delivery_method='cdek' AND status IN ('paid','shipping') AND UPPER(COALESCE(cdek_status,''))<>'REMOVED') OR (COALESCE(cdek_uuid,'')<>'' AND UPPER(COALESCE(cdek_status,''))<>'REMOVED')))`, orderID).Scan(&unsafeOffer); err != nil {
+		return "", err
+	}
+	if unsafeOffer {
+		return "manual", nil
+	}
+	if cancelState == "manual_review" && status != "REMOVED" {
+		return "manual", nil
+	}
+	if createState == "creating" || createState == "unknown" {
+		return "pending", nil
+	}
+	if status == "REMOVED" || cancelState == "cancelled" {
+		return "clear", nil
+	}
+	if uuid != "" {
+		return "pending", nil
+	}
+	return "clear", nil
+}

@@ -64,6 +64,21 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, provider Provider,
 		return true, markInvalidClaim(ctx, tx, id, "Товар уже передан; требуется проверка физического возврата")
 	}
 	if desired == "cancelled" {
+		carrier, carrierErr := carrierCancellationState(ctx, tx, request.Event.OrderID)
+		if carrierErr != nil {
+			return true, carrierErr
+		}
+		if carrier == "manual" {
+			return true, markInvalidClaim(ctx, tx, id, "Отмена СДЭК не подтверждена; требуется ручная сверка доставки, остаток не возвращён")
+		}
+		if carrier == "pending" {
+			if _, err = tx.Exec(ctx, `UPDATE order_sale_publications SET status='queued',message='Ожидаем подтверждение отмены СДЭК; остаток пока не возвращён',lease_token='',lease_until=NULL,next_attempt_at=NOW()+INTERVAL '30 seconds',updated_at=NOW() WHERE id=$1`, id); err != nil {
+				return true, err
+			}
+			return true, tx.Commit(ctx)
+		}
+	}
+	if desired == "cancelled" {
 		if !createAttempted && progress.DocumentID == "" {
 			progress.Stage = "cancelled"
 			progress.Unknown = false

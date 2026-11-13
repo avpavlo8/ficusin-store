@@ -61,6 +61,17 @@ func loadPublication(ctx context.Context, q queryer, intentID int64) (*Publicati
 	progress.DesiredState = v.DesiredState
 	v.TestMode = v.ExecutionMode == "mock"
 	v.CanRetry = !cancellationBlocked && enabled && mode == v.ExecutionMode && retrySafe(v.Status, progress)
+	if v.CanRetry && v.DesiredState == "cancelled" {
+		var orderID int64
+		if err = q.QueryRow(ctx, `SELECT order_id FROM order_sale_intents WHERE id=$1`, intentID).Scan(&orderID); err != nil {
+			return nil, err
+		}
+		carrier, e := carrierCancellationState(ctx, q, orderID)
+		if e != nil {
+			return nil, e
+		}
+		v.CanRetry = carrier == "clear"
+	}
 	return &v, nil
 }
 func ensurePublication(ctx context.Context, tx pgx.Tx, e *Event, warehouseID int64, explicit bool) error {
@@ -153,6 +164,19 @@ func RetryPublication(ctx context.Context, pool *pgxpool.Pool, id int64) error {
 	var p Progress
 	if err = json.Unmarshal(raw, &p); err != nil {
 		return err
+	}
+	if desired == "cancelled" {
+		var orderID int64
+		if err = tx.QueryRow(ctx, `SELECT i.order_id FROM order_sale_intents i JOIN order_sale_publications p ON p.intent_id=i.id WHERE p.id=$1`, id).Scan(&orderID); err != nil {
+			return err
+		}
+		carrier, e := carrierCancellationState(ctx, tx, orderID)
+		if e != nil {
+			return e
+		}
+		if carrier != "clear" {
+			return ErrRetryUnsafe
+		}
 	}
 	p.DesiredState = desired
 	if !retrySafe(status, p) {

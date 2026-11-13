@@ -1960,7 +1960,7 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [orders.read]
-      description: Owner only. Requeues a failed read-only stage or reconciliation of a known native document. Unknown creation without a saved document ID cannot be retried. Execution mode and original request are immutable; mock jobs cannot become live. Disabled or mismatched dispatch control rejects retry.
+      description: Owner only. Requeues safe verification of a retained request. Unknown creation cannot be submitted again; a cancellation may only discover its owned document by the retained public UUID. Unknown cancellation is reconciled read-only. Unresolved carrier cancellation, physical handover, identity conflicts and disabled or mismatched dispatch control block retry. Execution mode and original request are immutable; mock jobs cannot become live.
       parameters:
         - { in: path, name: id, required: true, schema: { type: integer, minimum: 1 }, description: Publication ID. }
       responses:

@@ -272,4 +272,74 @@ func testCreatedLifecycle(t *testing.T, pool *pgxpool.Pool) {
 		exec(`UPDATE saby_nomenclature SET missing_since=NULL WHERE saby_id='3980'`)
 	})
 
+	t.Run("carrier removal gates every reversal and local no-remote completion", func(t *testing.T) {
+		exec(`UPDATE inventory SET available_qty=1000,synced_at=NOW() WHERE warehouse_id=1 AND variant_id=1`)
+		for n, mode := range []string{"main-pending", "main-creating", "main-unknown", "main-removed-unknown", "main-manual", "offer-uuid", "offer-creating", "offer-paid", "confirmed-removal"} {
+			id := int64(9200 + n)
+			e := create(id)
+			switch mode {
+			case "main-pending":
+				exec(`UPDATE orders SET cdek_uuid='fixture-carrier',cdek_status='CREATED',cdek_cancel_state='pending' WHERE id=$1`, id)
+			case "main-creating":
+				exec(`UPDATE orders SET cdek_create_state='creating' WHERE id=$1`, id)
+			case "main-unknown":
+				exec(`UPDATE orders SET cdek_create_state='unknown' WHERE id=$1`, id)
+			case "main-removed-unknown":
+				exec(`UPDATE orders SET cdek_create_state='unknown',cdek_status='REMOVED',cdek_cancel_state='cancelled' WHERE id=$1`, id)
+			case "main-manual":
+				exec(`UPDATE orders SET cdek_uuid='fixture-carrier',cdek_cancel_state='manual_review' WHERE id=$1`, id)
+			case "offer-uuid":
+				exec(`INSERT INTO shipment_offers(id,order_id,status,delivery_method,cdek_status,cdek_uuid)VALUES($1,$1,'cancelled','cdek','CREATED','fixture-offer')`, id)
+			case "offer-creating":
+				exec(`INSERT INTO shipment_offers(id,order_id,status,delivery_method,cdek_status,cdek_create_state)VALUES($1,$1,'shipping','cdek','','creating')`, id)
+			case "offer-paid":
+				exec(`INSERT INTO shipment_offers(id,order_id,status,delivery_method,cdek_status)VALUES($1,$1,'paid','cdek','')`, id)
+			case "confirmed-removal":
+				exec(`UPDATE orders SET cdek_uuid='fixture-carrier',cdek_cancel_state='cancelled',cdek_status='CREATED' WHERE id=$1`, id)
+			}
+			cancel(id)
+			calls := 0
+			step(publicationProviderFunc(func(context.Context, Request, Progress) (Result, error) {
+				calls++
+				return Result{}, errors.New("carrier gate must prevent provider")
+			}))
+			p := pub(e)
+			if mode == "confirmed-removal" {
+				if p.Status != "cancelled" || !p.CancellationVerified {
+					t.Fatal("confirmed carrier removal did not release never-created deduction", p)
+				}
+			} else {
+				if p.CancellationVerified || calls != 0 || p.CanRetry {
+					t.Fatal("unresolved carrier allowed stock restoration", mode, p, calls)
+				}
+				if mode == "main-pending" || mode == "main-creating" || mode == "main-unknown" || mode == "main-removed-unknown" {
+					if p.Status != "queued" {
+						t.Fatal("carrier wait not queued", mode, p)
+					}
+					exec(`UPDATE orders SET cdek_uuid='fixture-carrier',cdek_create_state='registered',cdek_cancel_state='cancelled' WHERE id=$1`, id)
+					exec(`UPDATE order_sale_publications SET next_attempt_at=NOW() WHERE id=$1`, p.ID)
+					step(MockProvider{})
+					if !pub(e).CancellationVerified {
+						t.Fatal("confirmed carrier cancellation did not resume", mode, pub(e))
+					}
+				}
+			}
+		}
+		// No publication exists for this missing-map order: that fast path must not
+		// bypass carrier evidence and free the site's logical stock hold.
+		exec(`INSERT INTO product_variants(id,saby_id)VALUES(9299,NULL);INSERT INTO orders(id,order_number,status,delivery_method,cdek_uuid,cdek_status)VALUES(9299,'CARRIER-NO-PUB','new','cdek','fixture-carrier','CREATED');INSERT INTO order_items VALUES(9299,9299,9299,'Unlinked','D13',1,1)`)
+		tx, _ := pool.Begin(ctx)
+		event, err := EnqueueCreated(ctx, tx, 9299)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tx.Commit(ctx)
+		cancel(9299)
+		var verified, blocked bool
+		pool.QueryRow(ctx, `SELECT cancellation_verified,cancellation_blocked FROM order_sale_intents WHERE id=$1`, event.IntentID).Scan(&verified, &blocked)
+		if verified || !blocked {
+			t.Fatal("missing-map no-publication path bypassed carrier gate", verified, blocked)
+		}
+	})
+
 }

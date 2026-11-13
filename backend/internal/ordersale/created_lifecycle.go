@@ -17,6 +17,9 @@ func EnqueueCreated(ctx context.Context, tx pgx.Tx, orderID int64) (Event, error
 	if !c.Enabled || c.Mode == "disabled" {
 		return Event{}, nil
 	}
+	if _, err = tx.Exec(ctx, `SELECT id FROM orders WHERE id=$1 FOR UPDATE`, orderID); err != nil {
+		return Event{}, err
+	}
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('order-sale:'||$1::BIGINT::TEXT,0))`, orderID); err != nil {
 		return Event{}, err
 	}
@@ -57,6 +60,9 @@ func EnqueueCreated(ctx context.Context, tx pgx.Tx, orderID int64) (Event, error
 // RequestCancellation records a desired state only. It shares the transaction
 // with cancellation and must run before overwriting the prior physical status.
 func RequestCancellation(ctx context.Context, tx pgx.Tx, orderID int64) error {
+	if _, err := tx.Exec(ctx, `SELECT id FROM orders WHERE id=$1 FOR UPDATE`, orderID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('order-sale:'||$1::BIGINT::TEXT,0))`, orderID); err != nil {
 		return err
 	}
@@ -83,6 +89,14 @@ func RequestCancellation(ctx context.Context, tx pgx.Tx, orderID int64) error {
 	}
 	_, err = tx.Exec(ctx, `UPDATE order_sale_publications SET desired_state='cancelled',cancellation_blocked=cancellation_blocked OR $2,status=CASE WHEN status='processing' THEN status WHEN $2 THEN 'needs_attention' ELSE 'queued' END,message=CASE WHEN $2 THEN 'Товар уже передан; требуется проверка физического возврата' ELSE 'Запрошена отмена реализации' END,next_attempt_at=NOW(),updated_at=NOW() WHERE intent_id=$1 AND status<>'cancelled'`, intentID, physical)
 	if err != nil {
+		return err
+	}
+	carrier, err := carrierCancellationState(ctx, tx, orderID)
+	if err != nil {
+		return err
+	}
+	if carrier != "clear" {
+		_, err = tx.Exec(ctx, `UPDATE order_sale_intents i SET cancellation_blocked=TRUE WHERE id=$1 AND NOT EXISTS(SELECT 1 FROM order_sale_publications p WHERE p.intent_id=i.id)`, intentID)
 		return err
 	}
 	// No publication means no remote writer could ever have been claimed.

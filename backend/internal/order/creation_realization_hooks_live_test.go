@@ -27,6 +27,12 @@ func (creationRealizationSettings) Number(key string) int {
 	return 0
 }
 
+type expiryPaymentRaceCanceller func(context.Context, int64) error
+
+func (f expiryPaymentRaceCanceller) CancelPending(ctx context.Context, orderID int64) error {
+	return f(ctx, orderID)
+}
+
 // Exercises the real checkout and expiry entry points in a unique schema. No
 // external client is present; only the future-only durable queue is asserted.
 func TestCreationRealizationHooksPostgres(t *testing.T) {
@@ -78,9 +84,9 @@ func TestCreationRealizationHooksPostgres(t *testing.T) {
  CREATE FUNCTION shipping_package_dimension(BIGINT,TEXT)RETURNS NUMERIC LANGUAGE SQL IMMUTABLE AS 'SELECT 20::NUMERIC';
  CREATE TABLE orders(id BIGSERIAL PRIMARY KEY,order_number TEXT UNIQUE,customer_id BIGINT,customer_name TEXT,phone TEXT,email TEXT,address TEXT,comment TEXT,
  delivery_method TEXT,delivery_fee NUMERIC,delivery_fee_pending INTEGER DEFAULT 0,delivery_repack_requested INTEGER DEFAULT 0,cdek_city_code INTEGER,cdek_city_name TEXT,cdek_office_code TEXT,cdek_tariff_code INTEGER,subtotal NUMERIC,total NUMERIC,
- payment_method TEXT,payment_status TEXT,has_preorder INTEGER DEFAULT 0,status TEXT,delivery_payee TEXT,cdek_checkout_requested INTEGER,guest_payment_token_hash TEXT,cdek_status TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),stock_released_at TIMESTAMPTZ,cancellation_reason TEXT);
+ payment_method TEXT,payment_status TEXT,has_preorder INTEGER DEFAULT 0,status TEXT,delivery_payee TEXT,cdek_checkout_requested INTEGER,guest_payment_token_hash TEXT,cdek_status TEXT DEFAULT '',cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT 'new',cdek_cancel_state TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),stock_released_at TIMESTAMPTZ,cancellation_reason TEXT);
  CREATE TABLE order_items(id BIGSERIAL PRIMARY KEY,order_id BIGINT,product_id BIGINT,variant_id BIGINT,sku TEXT,product_name TEXT,variant_label TEXT,variant_snapshot JSONB,unit_price NUMERIC(12,2),quantity INTEGER,is_preorder INTEGER,reserved_qty INTEGER);
- CREATE TABLE shipment_offers(id BIGINT PRIMARY KEY,order_id BIGINT,status TEXT,delivery_method TEXT,cdek_status TEXT,created_at TIMESTAMPTZ DEFAULT now(),checkout_locked_until TIMESTAMPTZ,updated_at TIMESTAMPTZ);
+ CREATE TABLE shipment_offers(id BIGINT PRIMARY KEY,order_id BIGINT,status TEXT,delivery_method TEXT,cdek_status TEXT,cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT 'new',created_at TIMESTAMPTZ DEFAULT now(),checkout_locked_until TIMESTAMPTZ,updated_at TIMESTAMPTZ);
  CREATE TABLE shipment_offer_items(order_item_id BIGINT,shipment_offer_id BIGINT,variant_id BIGINT,product_name TEXT,sku TEXT,quantity INTEGER,unit_price NUMERIC(12,2));
  CREATE TABLE procurement_requests(kind TEXT,saby_id TEXT,requested_name TEXT,quantity INTEGER,customer_order_id BIGINT,status TEXT,notes TEXT);
  CREATE TABLE consent_events(customer_id BIGINT,order_id BIGINT,event TEXT,documents TEXT,document_version TEXT,phone TEXT,ip_address TEXT,user_agent TEXT);
@@ -147,6 +153,29 @@ func TestCreationRealizationHooksPostgres(t *testing.T) {
 	var status, desired string
 	if err = pool.QueryRow(ctx, `SELECT o.status,p.desired_state FROM orders o JOIN order_sale_intents i ON i.order_id=o.id JOIN order_sale_publications p ON p.intent_id=i.id WHERE o.id=$1`, id).Scan(&status, &desired); err != nil || status != "cancelled" || desired != "cancelled" {
 		t.Fatal("expiry lost durable undo intent", status, desired, err)
+	}
+	// A capture can win after the worker selected an eligible unpaid order.
+	// CancelPending skips an already-paid attempt, so the final locked order
+	// check must prevent both cancellation and a queued physical stock undo.
+	paidRace := checkout("online")
+	exec(`UPDATE orders SET created_at=now()-INTERVAL '25 hours' WHERE id=$1`, paidRace)
+	providerCalls := 0
+	racingWorker := NewExpiryWorker(pool, creationRealizationSettings{}, expiryPaymentRaceCanceller(func(ctx context.Context, orderID int64) error {
+		providerCalls++
+		if orderID != paidRace {
+			return fmt.Errorf("wrong race order")
+		}
+		_, err := pool.Exec(ctx, `UPDATE orders SET payment_status='paid' WHERE id=$1`, orderID)
+		return err
+	}), quietLogger())
+	if err = racingWorker.cancel(ctx, paidRace); err != nil {
+		t.Fatal(err)
+	}
+	var paymentStatus string
+	var undoRequested, released bool
+	var retainedQuantity int
+	if err = pool.QueryRow(ctx, `SELECT o.status,o.payment_status,p.desired_state,i.cancellation_requested_at IS NOT NULL,o.stock_released_at IS NOT NULL,(SELECT SUM(quantity)::INTEGER FROM order_sale_intent_lines WHERE intent_id=i.id) FROM orders o JOIN order_sale_intents i ON i.order_id=o.id JOIN order_sale_publications p ON p.intent_id=i.id WHERE o.id=$1`, paidRace).Scan(&status, &paymentStatus, &desired, &undoRequested, &released, &retainedQuantity); err != nil || providerCalls != 1 || status != "new" || paymentStatus != "paid" || desired != "posted" || undoRequested || released || retainedQuantity != 2 {
+		t.Fatal("capture racing expiry cancelled a paid order or released its hold", status, paymentStatus, desired, undoRequested, released, retainedQuantity, providerCalls, err)
 	}
 	cash := checkout("on_delivery")
 	exec(`UPDATE orders SET created_at=now()-INTERVAL '25 hours' WHERE id=$1`, cash)
