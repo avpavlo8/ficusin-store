@@ -7,16 +7,6 @@ import type {
 import type { PlantPassport } from "./adminTypes";
 import type { SabyStepDraft } from "./ProductCreationSabyStep";
 
-export const creationSteps = [
-  { id: "main", label: "Основное" },
-  { id: "saby", label: "СБИС" },
-  { id: "ozon", label: "Озон" },
-  { id: "wb", label: "Валдберес" },
-  { id: "attributes", label: "Характеристики" },
-  { id: "media", label: "Медиа" },
-  { id: "care", label: "Уход и FAQ" },
-] as const;
-export type CreationStep = (typeof creationSteps)[number]["id"];
 type ChannelDraft = {
   enabled: boolean;
   name: string;
@@ -72,7 +62,6 @@ export type ProductCreationDraft = {
   sabyFolder?: ChannelCategory;
   version: 1;
   updatedAt: string;
-  step: CreationStep;
   name: string;
   pot: string;
   height: string;
@@ -110,7 +99,6 @@ const channel = (): ChannelDraft => ({
 export const emptyProductDraft = (): ProductCreationDraft => ({
   version: 1,
   updatedAt: "",
-  step: "main",
   name: "",
   pot: "",
   height: "",

@@ -285,20 +285,6 @@ jobs:
             exit 1
           fi
 
-          enrichment_queue="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
-            "SELECT COUNT(*) FROM catalog_ai_enrichment_jobs WHERE text_status IN ('pending','processing')")"
-          if [[ "$enrichment_queue" != "0" ]]; then
-            echo "Paid text generation remains queued after removal." >&2
-            exit 1
-          fi
-
-          automatic_covers="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
-            "SELECT COUNT(*) FROM catalog_ai_enrichment_jobs WHERE image_status IN ('pending','processing','failed')")"
-          if [[ "$automatic_covers" != "0" ]]; then
-            echo "Automatic paid cover generation was not fully disabled: ${automatic_covers} jobs remain." >&2
-            exit 1
-          fi
-
           category_matrix="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
             SELECT COUNT(*) FROM (VALUES
               ('plants','height_cm'),('plants','flowering'),('soil','soil_type'),('soil','ph_min'),
@@ -378,7 +364,7 @@ jobs:
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/migrate -run '^TestAgreedMeasurementsAtomicImport$|^TestLegacyArchivePreservesDataAndActiveWorkflows$' -v
+        run: go test ./internal/migrate -run '^TestAgreedMeasurementsAtomicImport$|^TestLegacyArchivePreservesDataAndActiveWorkflows$|^TestRetiredCatalogArchivePreservesHistory$' -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest

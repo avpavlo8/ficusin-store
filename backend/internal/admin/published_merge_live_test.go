@@ -37,7 +37,7 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	avitoID := fmt.Sprintf("merge-avito-%d", unique)
 	var targetID, sourceID, targetCode, sourceCode, targetVariantID, sourceVariantID, ownerID, orderID, reviewID, orderItemID, categoryID int64
 	defer func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM product_creation_drafts WHERE id=$1`, fmt.Sprintf("merge-creation-%d", unique))
+		_, _ = pool.Exec(ctx, `DELETE FROM legacy_archive.product_creation_drafts WHERE id=$1`, fmt.Sprintf("merge-creation-%d", unique))
 		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE action='product.published.merge' AND entity_id=$1`, fmt.Sprint(targetID))
 		_, _ = pool.Exec(ctx, `DELETE FROM product_reviews WHERE id=$1`, reviewID)
 		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, orderID)
@@ -69,7 +69,7 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 		RETURNING id,product_code`, sourceSaby, sourceSlug, categoryID).Scan(&sourceID, &sourceCode); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO product_creation_drafts(id,customer_id,product_id,data) VALUES($1,$2,$3,'{"name":"Original source creation"}')`, fmt.Sprintf("merge-creation-%d", unique), ownerID, sourceID); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO legacy_archive.product_creation_drafts(id,customer_id,product_id,data) VALUES($1,$2,$3,'{"name":"Original source creation"}')`, fmt.Sprintf("merge-creation-%d", unique), ownerID, sourceID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -274,11 +274,11 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	}
 	var creationProduct int64
 	var creationName string
-	if err := pool.QueryRow(ctx, `SELECT product_id,data->>'name' FROM product_creation_drafts WHERE id=$1`, fmt.Sprintf("merge-creation-%d", unique)).Scan(&creationProduct, &creationName); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT product_id,data->>'name' FROM legacy_archive.product_creation_drafts WHERE id=$1`, fmt.Sprintf("merge-creation-%d", unique)).Scan(&creationProduct, &creationName); err != nil {
 		t.Fatal(err)
 	}
-	if creationProduct != targetID || creationName != "Original source creation" {
-		t.Fatalf("creation history lost during merge: %d %q", creationProduct, creationName)
+	if creationProduct != sourceID || creationName != "Original source creation" {
+		t.Fatalf("archived creation history changed during merge: %d %q", creationProduct, creationName)
 	}
 
 	var planCount int

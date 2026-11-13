@@ -108,3 +108,64 @@ CREATE TRIGGER orders_actual_shipment_time BEFORE INSERT ON orders FOR EACH ROW 
 		})
 	}
 }
+
+func TestRetiredCatalogArchivePreservesHistory(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	raw, err := os.ReadFile("../../../timeweb/migrations/20261113_zzz_archive_retired_catalog_workflows.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	exec := func(sql string) {
+		t.Helper()
+		if _, err := tx.Exec(ctx, sql); err != nil {
+			t.Fatal(err)
+		}
+	}
+	active := fmt.Sprintf("catalog_retirement_%d", time.Now().UnixNano())
+	archive := active + "_archive"
+	exec("CREATE SCHEMA " + active + "; SET LOCAL search_path=" + active)
+	exec(`CREATE TABLE products(id BIGINT PRIMARY KEY);
+CREATE TABLE customers(id BIGINT PRIMARY KEY);
+INSERT INTO products VALUES(1); INSERT INTO customers VALUES(1);
+CREATE TABLE product_creation_drafts(id TEXT PRIMARY KEY,product_id BIGINT REFERENCES products(id),customer_id BIGINT REFERENCES customers(id),data JSONB);
+CREATE TABLE catalog_ai_enrichment_jobs(product_id BIGINT PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE,text_status TEXT,cover_prompt TEXT);
+CREATE TABLE catalog_product_creation_requests(id BIGINT PRIMARY KEY,product_id BIGINT REFERENCES products(id));
+INSERT INTO product_creation_drafts VALUES('historical',1,1,'{"name":"Original draft"}');
+INSERT INTO catalog_ai_enrichment_jobs VALUES(1,'done','Original prompt');
+INSERT INTO catalog_product_creation_requests VALUES(1,1);`)
+	exec(strings.ReplaceAll(strings.ReplaceAll(string(raw), "legacy_archive", archive), "public", active))
+	// Current idempotency receipts retain their live FK and row.
+	var receipts int
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM catalog_product_creation_requests").Scan(&receipts); err != nil || receipts != 1 {
+		t.Fatalf("current receipts changed: %d %v", receipts, err)
+	}
+	exec("DELETE FROM catalog_product_creation_requests; DELETE FROM products; DELETE FROM customers")
+	var product int64
+	var name, status, prompt string
+	if err := tx.QueryRow(ctx, "SELECT product_id,data->>'name' FROM "+archive+".product_creation_drafts WHERE id='historical'").Scan(&product, &name); err != nil || product != 1 || name != "Original draft" {
+		t.Fatalf("draft history lost: %d %q %v", product, name, err)
+	}
+	if err := tx.QueryRow(ctx, "SELECT product_id,text_status,cover_prompt FROM "+archive+".catalog_ai_enrichment_jobs").Scan(&product, &status, &prompt); err != nil || product != 1 || status != "done" || prompt != "Original prompt" {
+		t.Fatalf("AI history lost: %d %q %q %v", product, status, prompt, err)
+	}
+	for _, table := range []string{"product_creation_drafts", "catalog_ai_enrichment_jobs"} {
+		var exists bool
+		if err := tx.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", active+"."+table).Scan(&exists); err != nil || exists {
+			t.Fatalf("retired table still active: %s %v", table, err)
+		}
+	}
+}
