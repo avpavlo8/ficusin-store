@@ -373,6 +373,9 @@ jobs:
           createdb -h 127.0.0.1 -U postgres ficusin_order_sale_test
           go -C backend test -p 1 ./internal/ordersale -count=1
           go -C backend test ./internal/order -run '^TestShippingRealizationHooksPostgres$' -count=1
+          go -C backend test ./internal/order -run '^TestCreationRealizationHooksPostgres$' -count=1
+          go -C backend test ./internal/admin -run '^TestCreationRealizationEditGuardPostgres$' -count=1
+          go -C backend test ./internal/payment -run '^TestOwnedOrderStockQueriesPostgres$' -count=1
 
       - name: Verify durable Saby catalogue commands and duplicate guards
         working-directory: backend

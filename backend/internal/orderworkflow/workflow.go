@@ -146,8 +146,8 @@ const factsSQL = `
      COALESCE(NULLIF((oi.variant_snapshot->>'packageHeightCm')::numeric,0),shipping_package_dimension(oi.variant_id,'package_height_cm'),0)>0 AND
      COALESCE(NULLIF((oi.variant_snapshot->>'packageWeightGrams')::numeric,0),variant_numeric_attribute(oi.variant_id,'package_weight_grams'),0)>0) dimensions
     FROM order_items oi WHERE oi.order_id=o.id GROUP BY oi.variant_id) lines
-   LEFT JOIN LATERAL (SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))::int available,COUNT(*)>0 known
-    FROM inventory i JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
+   LEFT JOIN LATERAL (SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(o.id,i.warehouse_id,i.variant_id),0))::int available,COUNT(*)>0 known
+    FROM order_sale_inventory i JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
     JOIN product_variants v ON v.id=i.variant_id JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
     JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
     WHERE i.variant_id=lines.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours') stock ON TRUE),'[]'::jsonb),

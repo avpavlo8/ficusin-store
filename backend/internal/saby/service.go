@@ -216,6 +216,10 @@ const syncCharacteristicsSQL = `
 // остаток; название, описание, цена и фотографии — лишь если это поле
 // отмечено у товара.
 func (service *Service) sync(ctx context.Context, items []normalizedItem, rawItems []CatalogItem) error {
+	stockObservedAt, err := stockSnapshotObservedAt(ctx, time.Now())
+	if err != nil {
+		return err
+	}
 	tx, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin Saby sync: %w", err)
@@ -427,8 +431,8 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 	}
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO inventory (warehouse_id, variant_id, available_qty, reserved_qty, synced_at)
-		SELECT warehouse.id, pv.id, source.balance, 0, CURRENT_TIMESTAMP
+		INSERT INTO inventory (warehouse_id, variant_id, available_qty, reserved_qty, synced_at, stock_observed_at)
+		SELECT warehouse.id, pv.id, source.balance, 0, CURRENT_TIMESTAMP, $1::TIMESTAMPTZ
 		FROM product_variants pv
 		JOIN products p ON p.id = pv.product_id
 		JOIN saby_nomenclature source ON source.saby_id = pv.saby_id
@@ -436,8 +440,11 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		WHERE 'stock' = ANY(p.saby_fields)
 		ON CONFLICT (warehouse_id, variant_id) DO UPDATE SET
 			available_qty = EXCLUDED.available_qty,
-			synced_at = CURRENT_TIMESTAMP
-	`); err != nil {
+			synced_at = CURRENT_TIMESTAMP,
+			stock_observed_at = EXCLUDED.stock_observed_at
+		WHERE inventory.stock_observed_at IS NULL OR
+		 (EXCLUDED.stock_observed_at IS NOT NULL AND EXCLUDED.stock_observed_at>=inventory.stock_observed_at)
+	`, stockObservedAt); err != nil {
 		return fmt.Errorf("update Saby stock: %w", err)
 	}
 

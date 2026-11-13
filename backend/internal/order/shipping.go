@@ -149,7 +149,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			AND (EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NOT NULL
 					GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
-						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(o.id,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 						JOIN product_variants v ON v.id=i.variant_id
 						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -169,7 +169,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			AND (EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
 					GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(so.order_id,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 						JOIN product_variants v ON v.id=i.variant_id
 						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -188,7 +188,7 @@ func (worker *ShippingWorker) orderStockShort(ctx context.Context, orderID int64
 		EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=$1 AND oi.variant_id IS NULL)
 		OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=$1 AND oi.variant_id IS NOT NULL
 			GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
-				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($1,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 				JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 				JOIN product_variants v ON v.id=i.variant_id
 				JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -204,7 +204,7 @@ func (worker *ShippingWorker) offerStockShort(ctx context.Context, offerID int64
 		EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 AND soi.variant_id IS NULL)
 		OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 AND soi.variant_id IS NOT NULL
 			GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity((SELECT order_id FROM shipment_offers WHERE id=$1),i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 				JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 				JOIN product_variants v ON v.id=i.variant_id
 				JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -228,7 +228,7 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 					AND NOT EXISTS (
 						SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
 						GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-							SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+							SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(so.order_id,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 							JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 							JOIN product_variants v ON v.id=i.variant_id
 							JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -650,8 +650,8 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 					WHERE oi.order_id = o.id AND oi.variant_id IS NOT NULL
 					GROUP BY oi.variant_id
 					HAVING SUM(oi.quantity) > COALESCE((
-						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty, 0))
-						FROM inventory i
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(o.id,i.warehouse_id,i.variant_id), 0))
+						FROM order_sale_inventory i
 						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 						JOIN product_variants v ON v.id=i.variant_id
 						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)

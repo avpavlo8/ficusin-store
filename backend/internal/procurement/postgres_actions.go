@@ -652,7 +652,7 @@ func (store *PostgresStore) PrepareBatch(ctx context.Context, actor Actor, order
 					FROM product_variants v
 					JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
 					JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
-					JOIN inventory i ON i.variant_id=v.id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
+					JOIN order_sale_inventory i ON i.variant_id=v.id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 					WHERE v.is_active<>0 AND v.archived_at IS NULL
 				), affected AS (

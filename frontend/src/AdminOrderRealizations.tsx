@@ -7,7 +7,9 @@ type Publication = {
   id: number;
   executionMode: "mock" | "live";
   testMode?: boolean;
-  status: "queued" | "processing" | "posted" | "needs_attention" | "failed";
+  status: "queued" | "processing" | "posted" | "needs_attention" | "failed" | "cancelled";
+  desiredState?: "posted" | "cancelled";
+  cancellationVerified?: boolean;
   message: string;
   documentId: string;
   documentUUID: string;
@@ -80,21 +82,35 @@ function PublicationState({
     publication.status === "posted" &&
     publication.stockVerified &&
     Boolean(publication.documentId.trim() && publication.documentUUID.trim());
+  const cancellation =
+    publication.desiredState === "cancelled" || publication.status === "cancelled";
   const title =
-    publication.status === "posted"
+    publication.status === "cancelled"
       ? test
-        ? "Тестовая реализация завершена"
-        : verified
-          ? "Проведено в СБИС"
-          : "Проведение не подтверждено"
-      : {
-          queued: "В очереди обмена",
-          processing: "Обрабатывается",
-          needs_attention: "Нужна сверка",
-          failed: "Ошибка обмена",
-        }[publication.status];
+        ? "Тестовая отмена завершена"
+        : publication.cancellationVerified
+          ? "Отмена списания подтверждена"
+          : "Отмена не подтверждена"
+      : cancellation && ["queued", "processing"].includes(publication.status)
+        ? "Проверяем отмену списания"
+        : publication.status === "posted"
+          ? test
+            ? "Тестовая реализация завершена"
+            : verified
+              ? "Проведено в СБИС"
+              : "Проведение не подтверждено"
+          : {
+              queued: "В очереди обмена",
+              processing: "Обрабатывается",
+              needs_attention: "Нужна сверка",
+              failed: "Ошибка обмена",
+            }[publication.status];
   const state =
-    publication.status === "posted" && !test && !verified ? "needs_attention" : publication.status;
+    !test &&
+    ((publication.status === "posted" && !verified) ||
+      (publication.status === "cancelled" && !publication.cancellationVerified))
+      ? "needs_attention"
+      : publication.status;
   return (
     <div
       className="order-realizations-publication"
@@ -112,6 +128,12 @@ function PublicationState({
       {test ? (
         <p className="order-realizations-test-note">
           Документ СБИС и реальные списания не создавались.
+        </p>
+      ) : publication.status === "cancelled" ? (
+        <p>
+          {publication.cancellationVerified
+            ? "Списание остановлено или проведение снято. Остаток обновляется из СБИС."
+            : "Нет подтверждения отмены. Требуется проверка."}
         </p>
       ) : publication.status === "posted" && !verified ? (
         <p>Нет подтверждения документа и складского движения. Требуется проверка.</p>
@@ -333,15 +355,15 @@ function Realizations() {
         </button>
       </header>
       <p className="order-realizations-note">
-        Доставка автоматически попадает сюда при передаче СДЭК, самовывоз — после выдачи. Старые
-        заказы можно подготовить вручную.
+        Новые заказы попадают сюда при оформлении, включая неоплаченные. При отмене проверяем
+        возврат остатка. Старые заказы можно подготовить вручную.
       </p>
       {view && (
         <p className="order-realizations-capability" data-mode={mode}>
           {mode === "mock"
             ? "Тестовый обмен. Проверяем создание реализаций без документов и реальных списаний в СБИС."
             : mode === "live"
-              ? `Обмен с СБИС включён. ${view.autoDispatchEnabled ? "Новые подтверждённые отправки обрабатываются автоматически." : "Выбранные заказы можно отправить вручную."} Проведение подтверждаем по документу и складскому движению.`
+              ? `Обмен с СБИС включён. ${view.autoDispatchEnabled ? "Новые заказы обрабатываются автоматически." : "Выбранные заказы можно отправить вручную."} Проведение подтверждаем по документу и складскому движению.`
               : "Сейчас доступна подготовка на сайте. Создание реализации и изменение остатков в СБИС ещё не подключены. Связь склада сайта со складом СБИС требует настройки."}
         </p>
       )}
@@ -418,8 +440,8 @@ function Realizations() {
           {view.events.length === 0 ? (
             <WorkspaceState
               kind="empty"
-              title="Переданных заказов нет"
-              detail="Здесь появятся заказы, переданные СДЭК или выданные покупателю."
+              title="Реализаций пока нет"
+              detail="Здесь появятся новые заказы и результаты обмена с СБИС."
             />
           ) : (
             <ul className="order-realizations-list" aria-label="Отправки для реализации">

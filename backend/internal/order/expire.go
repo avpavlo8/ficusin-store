@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,8 +25,8 @@ type paymentCanceller interface {
 
 // ExpiryWorker cancels orders nobody paid for.
 //
-// Checkout no longer reserves plants. Expiry still closes abandoned online
-// payments so customers cannot pay from an old payment link indefinitely.
+// Expiry closes abandoned online payments and requests cancellation of an
+// order's early realization. Physical stock returns only after verified undo.
 type ExpiryWorker struct {
 	pool     *pgxpool.Pool
 	settings settingsReader
@@ -107,9 +108,10 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 	}
 }
 
-// cancel returns the plants to the shelf and closes the unfinished payment.
-// Everything happens in one transaction: stock released without the order
-// being cancelled would let the same plants be sold twice.
+// cancel closes the unfinished payment, then atomically cancels the order,
+// releases historical local reservations and queues any required Saby undo.
+// The worker confirms physical stock return separately; this transaction never
+// fabricates a returned balance while an external operation is unresolved.
 func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 	// Recheck a selected candidate under the preparation lock. A manager may
 	// have confirmed packing after the worker selected this older order.
@@ -151,6 +153,9 @@ func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 		return err
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
+	if err := ordersale.RequestCancellation(ctx, transaction, orderID); err != nil {
+		return err
+	}
 	if _, err := transaction.Exec(ctx, `
 		UPDATE orders
 		SET status = 'cancelled', payment_status = 'cancelled',

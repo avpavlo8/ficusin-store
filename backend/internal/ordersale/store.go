@@ -18,11 +18,14 @@ type queryer interface {
 func readEvent(ctx context.Context, q queryer, orderID, offerID int64) (Event, error) {
 	e := Event{Key: eventKey(orderID, offerID), OrderID: orderID, ShipmentOfferID: offerID, Lines: []Line{}, State: "not_prepared"}
 	var stored []byte
-	err := q.QueryRow(ctx, `SELECT i.id,i.snapshot,i.state,i.source,COALESCE(i.warehouse_id,0),i.prepared_at,i.created_at FROM order_sale_intents i WHERE event_key=$1 AND order_id=$2 AND COALESCE(shipment_offer_id,0)=$3`, e.Key, orderID, offerID).Scan(&e.IntentID, &stored, &e.State, &e.Source, &e.WarehouseID, &e.PreparedAt, &e.CreatedAt)
+	err := q.QueryRow(ctx, `SELECT i.id,i.snapshot,i.state,i.source,COALESCE(i.warehouse_id,0),i.prepared_at,i.created_at,i.event_trigger,(i.cancellation_requested_at IS NOT NULL),i.cancellation_blocked FROM order_sale_intents i WHERE event_key=$1 AND order_id=$2 AND COALESCE(shipment_offer_id,0)=$3`, e.Key, orderID, offerID).Scan(&e.IntentID, &stored, &e.State, &e.Source, &e.WarehouseID, &e.PreparedAt, &e.CreatedAt, &e.Trigger, &e.CancellationRequested, &e.CancellationBlocked)
 	if err == nil {
 		var original Event
 		if err = json.Unmarshal(stored, &original); err != nil {
 			return e, err
+		}
+		if e.Trigger == "handover" {
+			e.Trigger = ""
 		}
 		e.OrderNumber = original.OrderNumber
 		e.DeliveryMethod = original.DeliveryMethod
@@ -102,6 +105,16 @@ func Enqueue(ctx context.Context, tx pgx.Tx, orderID, offerID int64, source stri
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('order-sale:'||$1::BIGINT::TEXT,0))`, orderID); err != nil {
 		return Event{}, err
 	}
+	// The whole new order already owns its quantities. Later physical milestones
+	// must never create a second realization for a partial shipment.
+	var createdID int64
+	err := tx.QueryRow(ctx, `SELECT id FROM order_sale_intents WHERE order_id=$1 AND event_trigger='created'`, orderID).Scan(&createdID)
+	if err == nil {
+		return readEvent(ctx, tx, orderID, 0)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return Event{}, err
+	}
 	e, err := readEvent(ctx, tx, orderID, offerID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Event{}, nil
@@ -174,7 +187,7 @@ func List(ctx context.Context, pool *pgxpool.Pool, search string, offset int) (V
 	}
 	rows, err = pool.Query(ctx, `WITH events AS (
  SELECT o.id AS order_id,0::BIGINT AS offer_id,o.order_number,o.created_at FROM orders o WHERE o.status IN ('shipped','completed') AND NOT EXISTS(SELECT 1 FROM shipment_offers so WHERE so.order_id=o.id AND so.status NOT IN ('cancelled','expired','stale'))
- UNION SELECT so.order_id,so.id,o.order_number,so.created_at FROM shipment_offers so JOIN orders o ON o.id=so.order_id WHERE so.status IN ('shipped','completed')
+ UNION SELECT so.order_id,so.id,o.order_number,so.created_at FROM shipment_offers so JOIN orders o ON o.id=so.order_id WHERE so.status IN ('shipped','completed') AND NOT EXISTS(SELECT 1 FROM order_sale_intents ci WHERE ci.order_id=o.id AND ci.event_trigger='created')
  UNION SELECT i.order_id,COALESCE(i.shipment_offer_id,0),o.order_number,i.created_at FROM order_sale_intents i JOIN orders o ON o.id=i.order_id
  ) SELECT order_id,offer_id FROM events WHERE ($1='' OR order_number ILIKE '%'||$1||'%') GROUP BY order_id,offer_id ORDER BY MAX(created_at) DESC,order_id DESC,offer_id DESC LIMIT 51 OFFSET $2`, search, offset)
 	if err != nil {

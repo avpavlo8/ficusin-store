@@ -27,16 +27,19 @@ type SabyOrderRealizationProvider struct {
 }
 
 type sabyRealizationProviderReceipt struct {
-	Version       int                              `json:"version"`
-	RequestHash   string                           `json:"requestHash"`
-	CreatePayload json.RawMessage                  `json:"createPayload"`
-	Phase         string                           `json:"phase"`
-	LineIndex     int                              `json:"lineIndex"`
-	Prepared      *SabyOrderRealizationPreparedRow `json:"prepared,omitempty"`
-	KnownLines    []SabyOrderRealizationPricedLine `json:"knownLines,omitempty"`
-	SavedRowID    int64                            `json:"savedRowId,omitempty"`
-	Polls         int                              `json:"polls"`
-	LastReceipt   json.RawMessage                  `json:"lastReceipt,omitempty"`
+	Version         int                              `json:"version"`
+	RequestHash     string                           `json:"requestHash"`
+	CreatePayload   json.RawMessage                  `json:"createPayload"`
+	Phase           string                           `json:"phase"`
+	LineIndex       int                              `json:"lineIndex"`
+	Prepared        *SabyOrderRealizationPreparedRow `json:"prepared,omitempty"`
+	KnownLines      []SabyOrderRealizationPricedLine `json:"knownLines,omitempty"`
+	SavedRowID      int64                            `json:"savedRowId,omitempty"`
+	Polls           int                              `json:"polls"`
+	LastReceipt     json.RawMessage                  `json:"lastReceipt,omitempty"`
+	PostingVerified bool                             `json:"postingVerified,omitempty"`
+	CancelSawPosted bool                             `json:"cancelSawPosted,omitempty"`
+	CancelPolls     int                              `json:"cancelPolls,omitempty"`
 }
 
 func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersale.Request, progress ordersale.Progress) (ordersale.Result, error) {
@@ -47,6 +50,13 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 		result.State = "needs_attention"
 		result.Message = message
 		return result, nil
+	}
+	seenOwned := map[int64]bool{}
+	for _, id := range progress.OwnedRowIDs {
+		if id <= 0 || seenOwned[id] || len(progress.OwnedRowIDs) > 4096 {
+			return attention("Сохранённые идентификаторы строк повреждены; требуется сверка")
+		}
+		seenOwned[id] = true
 	}
 	if p == nil || !p.Client.Configured() || request.ExecutionMode != "live" || !sabyOrderRealizationUUID.MatchString(p.PublicRegulationUUID) ||
 		request.IntentID <= 0 || request.Event.OrderID <= 0 || !sabyRealizationFingerprint.MatchString(request.Event.Fingerprint) || !request.Event.CanPrepare || request.SiteWarehouseID <= 0 || request.NativeWarehouseID <= 0 || request.MovementWarehouseID <= 0 || request.OrganizationID <= 0 || request.RegulationID <= 0 || request.BuyerID <= 0 || !sabyOrderRealizationUUID.MatchString(request.OperationKey) {
@@ -61,14 +71,19 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 	requestHash := hex.EncodeToString(sum[:])
 	var receipt sabyRealizationProviderReceipt
 	if len(progress.Native) > 0 {
-		if json.Unmarshal(progress.Native, &receipt) != nil || receipt.Version != 1 || receipt.RequestHash != requestHash || len(receipt.CreatePayload) == 0 || receipt.Polls < 0 || receipt.Polls > 10 || receipt.LineIndex < 0 || receipt.LineIndex > len(plan) {
+		if json.Unmarshal(progress.Native, &receipt) != nil || receipt.Version != 1 || receipt.RequestHash != requestHash || len(receipt.CreatePayload) == 0 || receipt.Polls < 0 || receipt.Polls > 10 || receipt.CancelPolls < 0 || receipt.CancelPolls > 10 || receipt.LineIndex < 0 || receipt.LineIndex > len(plan) {
 			return attention("Сохранённое подтверждение реализации повреждено или относится к другому заказу")
 		}
 		if !sabyRealizationProviderPreparedCreateMatches(receipt.CreatePayload, request) {
 			return attention("Сохранённый запрос создания не совпал с операцией; запись не выполнялась")
 		}
+	} else if progress.DesiredState == "cancelled" && !progress.CreateAttempted && !progress.PostAttempted && progress.DocumentID == "" && progress.DocumentUUID == "" && len(progress.OwnedRowIDs) == 0 {
+		return sabyRealizationProviderCancelled(result, receipt, "no_remote", nil)
 	} else if progress.Stage != "inspect" || progress.DocumentID != "" || progress.Unknown {
 		return attention("Отсутствует сохранённое подтверждение этапа; повторная запись не выполнялась")
+	}
+	if progress.DesiredState == "cancelled" {
+		return p.cancelStep(ctx, request, result, receipt, plan)
 	}
 	commit := func(stage, phase, message string) (ordersale.Result, error) {
 		receipt.Phase = phase
@@ -79,7 +94,9 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 		return result, nil
 	}
 	wait := func(message string) (ordersale.Result, error) {
-		receipt.Polls++
+		if receipt.Polls < 10 {
+			receipt.Polls++
+		}
 		result.RetryAfter = 5 * time.Second
 		result.Progress.Native, _ = json.Marshal(receipt)
 		result.Message = message
@@ -206,6 +223,9 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 		receipt.SavedRowID = 0
 		receipt.LineIndex = next
 		receipt.KnownLines = lines
+		for _, line := range lines {
+			result.Progress.OwnedRowIDs = sabyRealizationProviderOwnIDs(result.Progress.OwnedRowIDs, line.ID)
+		}
 		if next == len(plan) {
 			return commit("post", "post", "Все товары и цены проверены; ожидает проведения")
 		}
@@ -263,6 +283,7 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 				return attention("Сохранённая строка не прошла повторную проверку; добавление не выполнялось")
 			}
 			receipt.SavedRowID = saved.RowID
+			result.Progress.OwnedRowIDs = sabyRealizationProviderOwnIDs(result.Progress.OwnedRowIDs, saved.RowID)
 			return commit("verify-fill", "saved", "Строка записана; проверяем фактический состав")
 		}
 		return attention("Неизвестен сохранённый этап заполнения реализации")
@@ -324,6 +345,7 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 		}
 		result.Progress.Unknown = false
 		result.Progress.Stage = "verified"
+		receipt.PostingVerified = true
 		result.Progress.Native, _ = json.Marshal(receipt)
 		result.State = "posted"
 		result.StockVerified = true
@@ -697,4 +719,224 @@ func sabyRealizationProviderRetainsLines(prior, current []SabyOrderRealizationPr
 		}
 	}
 	return true
+}
+
+func sabyRealizationProviderOwnIDs(prior []int64, added ...int64) []int64 {
+	seen := map[int64]bool{}
+	for _, id := range prior {
+		if id > 0 {
+			seen[id] = true
+		}
+	}
+	for _, id := range added {
+		if id > 0 {
+			seen[id] = true
+		}
+	}
+	ids := make([]int64, 0, len(seen))
+	for id := range seen {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+// Cancellation is a separate desired state injected by the durable worker.
+// It never edits the frozen request, resumes a fill, or repeats a post/create.
+func (p *SabyOrderRealizationProvider) cancelStep(ctx context.Context, request ordersale.Request, result ordersale.Result, receipt sabyRealizationProviderReceipt, plan []SabyOrderRealizationFillLine) (ordersale.Result, error) {
+	attention := func(message string) (ordersale.Result, error) {
+		result.State = "needs_attention"
+		result.Message = message
+		result.Progress.Native, _ = json.Marshal(receipt)
+		return result, nil
+	}
+	wait := func(message string) (ordersale.Result, error) {
+		if receipt.CancelPolls < 10 {
+			receipt.CancelPolls++
+		}
+		result.State = "queued"
+		result.Message = message
+		result.RetryAfter = 5 * time.Second
+		result.Progress.Native, _ = json.Marshal(receipt)
+		if receipt.CancelPolls >= 10 {
+			result.State = "needs_attention"
+			result.Message += "; после 10 проверок требуется ручная сверка"
+		}
+		return result, nil
+	}
+	queue := func(stage, message string) (ordersale.Result, error) {
+		receipt.CancelPolls = 0
+		result.Progress.Stage = stage
+		result.Progress.Native, _ = json.Marshal(receipt)
+		result.State = "queued"
+		result.Message = message
+		return result, nil
+	}
+	if !result.Progress.CreateAttempted && !result.Progress.PostAttempted && result.Progress.DocumentID == "" && result.Progress.DocumentUUID == "" && len(result.Progress.OwnedRowIDs) == 0 && len(receipt.KnownLines) == 0 && receipt.SavedRowID == 0 {
+		return sabyRealizationProviderCancelled(result, receipt, "no_remote", nil)
+	}
+	if !result.Progress.CreateAttempted {
+		return attention("Сохранённая попытка создания не подтверждена; отмена требует сверки")
+	}
+	if result.Progress.DocumentID == "" {
+		result.Progress.Unknown = true
+		result.Progress.Stage = "discover-cancel"
+		public, exists, err := p.readPublic(ctx, request.OperationKey)
+		if err != nil || !exists {
+			return wait("Проверяем неизвестный результат создания; повторное создание и списание запрещены")
+		}
+		if !p.publicMatches(public, request, receipt.CreatePayload) {
+			return attention("UUID отменяемой операции принадлежит другому документу; требуется сверка")
+		}
+		snapshot, found, err := p.discover(ctx, request, receipt.CreatePayload)
+		if err != nil || !found {
+			return wait("Ищем точную нативную привязку отменяемой операции; новые документы не создаются")
+		}
+		result.Progress.DocumentID = strconv.FormatInt(snapshot.ID, 10)
+		result.Progress.DocumentUUID = snapshot.UUID
+		return queue("inspect-cancel", "Найдена нативная реализация; проверяем необходимость отмены проведения")
+	}
+	identity, err := sabyRealizationProviderIdentity(request, result.Progress)
+	if err != nil {
+		return attention("Нет точной нативной привязки для отмены; изменение не выполнялось")
+	}
+	snapshot, err := p.Client.ReadOrderRealizationWithLines(ctx, identity)
+	if err != nil {
+		return wait("Не удалось прочитать состояние отменяемой реализации")
+	}
+	if p.validateHeader(snapshot, request, receipt.CreatePayload) != nil {
+		return attention("Реквизиты отменяемой реализации изменились; требуется сверка")
+	}
+	face, faceErr := sabyInt64Field(snapshot.document, "Лицо3")
+	if faceErr != nil || face != request.OrganizationID || snapshot.BuyerID != 0 && snapshot.BuyerID != request.BuyerID {
+		return attention("Покупатель или организация отменяемой реализации не совпали")
+	}
+	prices, err := p.Client.ReadOrderRealizationPricedLines(ctx, identity)
+	if err != nil {
+		return wait("Не удалось проверить строки и цены отменяемой реализации")
+	}
+	if !sabyRealizationProviderCancelSameReads(snapshot.Lines, prices) {
+		return wait("Строки отменяемой реализации изменились между проверками")
+	}
+	next, err := sabyRealizationProviderNext(plan, prices)
+	if err != nil {
+		return attention("В отменяемой реализации обнаружены лишние или изменённые товары и цены")
+	}
+	owned := append([]int64(nil), result.Progress.OwnedRowIDs...)
+	for _, line := range receipt.KnownLines {
+		owned = sabyRealizationProviderOwnIDs(owned, line.ID)
+	}
+	owned = sabyRealizationProviderOwnIDs(owned, receipt.SavedRowID)
+	result.Progress.OwnedRowIDs = owned
+	currentIDs := map[int64]bool{}
+	for _, line := range prices {
+		currentIDs[line.ID] = true
+	}
+	for _, id := range owned {
+		if !currentIDs[id] {
+			return wait("Ожидаем ранее подтверждённую строку отменяемой реализации; её связь не заменяется")
+		}
+	}
+	if !sabyRealizationProviderRetainsLines(receipt.KnownLines, prices) {
+		return attention("Подтверждённые строки отменяемой реализации изменились")
+	}
+	for _, line := range prices {
+		result.Progress.OwnedRowIDs = sabyRealizationProviderOwnIDs(result.Progress.OwnedRowIDs, line.ID)
+	}
+	if snapshot.PostingErrors || snapshot.StaleEntries {
+		return attention("СБИС сообщил об ошибках проводок; обратное движение требует сверки")
+	}
+	if snapshot.PostingQueued || snapshot.EntriesQueued {
+		return wait("Ожидаем завершение неизвестного проведения; повторное списание и отмена не отправляются")
+	}
+	allOpen := true
+	for _, line := range prices {
+		allOpen = allOpen && !line.Closed
+	}
+	if !snapshot.Posted && !snapshot.HasEntries && allOpen {
+		if !result.Progress.PostAttempted && !receipt.CancelSawPosted && !receipt.PostingVerified {
+			proof := sabyRealizationProviderCancellationDocument(request, result.Progress, snapshot, prices)
+			return sabyRealizationProviderCancelled(result, receipt, "unposted_draft", &proof)
+		}
+		if next == len(plan) && result.Progress.PostAttempted && (receipt.CancelSawPosted || receipt.PostingVerified) && sabyCancelCleared(snapshot, prices) {
+			proof := sabyRealizationProviderCancellationDocument(request, result.Progress, snapshot, prices)
+			return sabyRealizationProviderCancelled(result, receipt, "unposted_full", &proof)
+		}
+		return wait("Исходная попытка проведения ещё не разрешена; отсутствие движения пока не считается отменой")
+	}
+	if !snapshot.HeaderPosted || !snapshot.ClosedOutgoingLines || next != len(plan) || snapshot.BuyerID != request.BuyerID {
+		return attention("Не подтверждён полный проведённый состав собственной реализации; отмена не выполнялась")
+	}
+	if !result.Progress.PostAttempted {
+		return attention("Документ проведён вне сохранённой попытки обмена; требуется сверка")
+	}
+	receipt.CancelSawPosted = true
+	if result.Progress.Stage == "verify-cancel" || result.Progress.Stage == "reconcile-cancel" {
+		result.Progress.Unknown = true
+		return wait("Проверяем неизвестный результат отмены проведения; повторная отмена не отправляется")
+	}
+	if result.Progress.Stage != "cancel" {
+		// This fresh positive proof resolves any older unknown create/post. It
+		// does not describe an attempted cancel; the first cancel may now be leased.
+		result.Progress.Unknown = false
+		return queue("cancel", "Полный проведённый состав проверен; подготовлена единственная отмена проведения")
+	}
+	// The prior read-only stage committed the exact positive row IDs before this
+	// write-stage lease. The low-level adapter repeats all ownership checks.
+	postLines := make([]SabyOrderRealizationPostLine, 0, len(plan))
+	for _, line := range plan {
+		postLines = append(postLines, SabyOrderRealizationPostLine{NomenclatureID: line.NomenclatureID, Quantity: line.Quantity, UnitPrice: line.UnitPrice})
+	}
+	cancelled, cancelErr := p.Client.CancelOrderRealizationPosting(ctx, SabyOrderRealizationCancelRequest{Identity: identity, PublicUUID: request.OperationKey, OrganizationID: request.OrganizationID, RegulationID: request.RegulationID, BuyerID: request.BuyerID, Lines: postLines, ExpectedRowIDs: result.Progress.OwnedRowIDs})
+	receipt.LastReceipt = cancelled.Receipt
+	result.Progress.Unknown = true
+	if cancelErr != nil {
+		return queue("verify-cancel", "Результат отмены проведения проверяется чтением; повторная запись запрещена")
+	}
+	return queue("verify-cancel", "Отмена проведения отправлена; проверяем открытые складские строки")
+}
+
+func sabyRealizationProviderCancelled(result ordersale.Result, receipt sabyRealizationProviderReceipt, kind string, document *ordersale.StockProof) (ordersale.Result, error) {
+	result.State = "cancelled"
+	result.CancellationVerified = true
+	result.StockVerified = false
+	result.StockProof = nil
+	result.CancellationProof, _ = json.Marshal(ordersale.CancellationProof{Kind: kind, Document: document})
+	result.Progress.Stage = "cancelled"
+	result.Progress.Unknown = false
+	receipt.CancelPolls = 0
+	result.Progress.Native, _ = json.Marshal(receipt)
+	result.Message = "Списание отменено; подтверждено отсутствие проведённого движения"
+	if kind == "no_remote" {
+		result.Message = "Отмена подтверждена; запрос создания реализации не отправлялся"
+	}
+	return result, nil
+}
+
+func sabyRealizationProviderCancellationDocument(request ordersale.Request, progress ordersale.Progress, snapshot SabyOrderRealizationSnapshot, lines []SabyOrderRealizationPricedLine) ordersale.StockProof {
+	proof := ordersale.StockProof{Version: 1, ExecutionMode: "live", IntentID: request.IntentID, EventKey: request.Event.Key, EventFingerprint: request.Event.Fingerprint, OperationKey: request.OperationKey, DocumentID: progress.DocumentID, DocumentUUID: progress.DocumentUUID, SiteWarehouseID: request.SiteWarehouseID, NativeWarehouseID: snapshot.WarehouseID, MovementWarehouseID: request.MovementWarehouseID, OrganizationID: snapshot.OrganizationID, RegulationID: snapshot.RegulationID, BuyerID: snapshot.BuyerID, Posted: snapshot.Posted, HasEntries: snapshot.HasEntries, PostingErrors: snapshot.PostingErrors, StaleEntries: snapshot.StaleEntries, PostingQueued: snapshot.PostingQueued, EntriesQueued: snapshot.EntriesQueued, Lines: []ordersale.StockProofLine{}}
+	for _, line := range lines {
+		proof.Lines = append(proof.Lines, ordersale.StockProofLine{ID: line.ID, DocumentID: progress.DocumentID, NomenclatureID: strconv.FormatInt(line.NomenclatureID, 10), WarehouseID: line.WarehouseID, Direction: line.Direction, Quantity: line.Quantity, UnitPrice: line.UnitPrice, LineSum: line.LineSum, Closed: line.Closed})
+	}
+	return proof
+}
+
+func sabyRealizationProviderCancelSameReads(base []SabyOrderRealizationLine, priced []SabyOrderRealizationPricedLine) bool {
+	if len(base) != len(priced) {
+		return false
+	}
+	seen := map[int64]SabyOrderRealizationLine{}
+	for _, line := range base {
+		seen[line.ID] = line
+	}
+	for _, line := range priced {
+		prior, ok := seen[line.ID]
+		a, av := new(big.Rat).SetString(string(prior.Quantity))
+		b, bv := new(big.Rat).SetString(string(line.Quantity))
+		if !ok || !av || !bv || a.Cmp(b) != 0 || prior.NomenclatureID != line.NomenclatureID || prior.DocumentID != line.DocumentID || prior.WarehouseID != line.WarehouseID || prior.Direction != line.Direction || prior.Closed != line.Closed {
+			return false
+		}
+		delete(seen, line.ID)
+	}
+	return len(seen) == 0
 }

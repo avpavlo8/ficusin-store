@@ -1884,7 +1884,7 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [orders.read]
-      description: Owner only. Internal realization intents, immutable per-mode publication jobs and historical preparation candidates. New delivery handover and pickup completion create jobs only while dispatch control is enabled; enabling does not drain historical intents. Mock jobs remain mock permanently and never change real stock. Live posting requires a separately configured native provider and verified document-associated stock proof. Pagination is 50 events per page.
+      description: Owner only. Internal realization intents, immutable per-mode publication jobs and historical preparation candidates. All new orders create jobs at checkout while dispatch control is enabled, including unpaid orders. Cancellation records a separate desired state and verified undo before releasing the hold; physical handover requires manual return review. Enabling does not backfill historical orders or drain old intents. Mock jobs remain mock permanently and never change real Saby stock. Live posting requires a separately configured native provider and verified document-associated stock proof. Pagination is 50 events per page.
       parameters:
         - { in: query, name: q, schema: { type: string, maxLength: 100 }, description: Order number search. }
         - { in: query, name: offset, schema: { type: integer, minimum: 0, maximum: 100000 } }
@@ -1908,7 +1908,11 @@ paths:
                         name: { type: string }
                         nativeMappingConfirmed: { type: boolean, description: True only for the explicitly mapped live site warehouse. }
                   hasMore: { type: boolean }
-                  externalWritesEnabled: { type: boolean, const: false }
+                  externalWritesEnabled: { type: boolean, description: True only for the enabled live provider. }
+                  executionMode: { type: string, enum: [disabled, mock, live] }
+                  dispatchMode: { type: string, enum: [disabled, mock, live] }
+                  dispatchEnabled: { type: boolean }
+                  autoDispatchEnabled: { type: boolean }
         default: { $ref: '#/components/responses/ValidationError' }
   /admin/order-realizations/prepare:
     post:
@@ -6466,6 +6470,10 @@ paths:
               required:
                 - items
               properties:
+                stockObservedAt:
+                  type: string
+                  format: date-time
+                  description: UTC collection start before provider reads; snapshots older than two hours or in the future are rejected. Omission cannot release pending realization holds.
                 items:
                   type: array
                   maxItems: 2000
@@ -6966,11 +6974,16 @@ components:
   schemas:
     OrderRealizationPublication:
       type: object
-      required: [id, executionMode, status, message, documentId, documentUUID, attempts, canRetry, updatedAt, siteWarehouseId, stockVerified, testMode]
+      required: [id, executionMode, status, message, documentId, documentUUID, attempts, canRetry, updatedAt, siteWarehouseId, stockVerified, testMode, desiredState, cancellationVerified]
       properties:
         id: { type: integer }
         executionMode: { type: string, enum: [mock, live] }
-        status: { type: string, enum: [queued, processing, posted, needs_attention, failed] }
+        status: { type: string, enum: [queued, processing, posted, needs_attention, failed, cancelled] }
+        desiredState: { type: string, enum: [posted, cancelled] }
+        cancellationVerified: { type: boolean, description: Verified stop before posting or verified removal of posting; cached stock is refreshed independently. }
+        cancellationKind: { type: string, enum: [no_remote, unposted_draft, unposted_full] }
+        stockVerifiedAt: { type: string, format: date-time }
+        cancellationVerifiedAt: { type: string, format: date-time }
         message: { type: string }
         documentId: { type: string, description: Native numeric identifier in live mode; STG-SALE identifier in mock mode. }
         documentUUID: { type: string }
@@ -6995,6 +7008,9 @@ components:
         cdekStatus: { type: string }
         state: { type: string, enum: [not_prepared, queued, prepared] }
         source: { type: string }
+        trigger: { type: string, enum: [created, handover], description: Creation-time cohort is frozen only for orders placed after activation. }
+        cancellationRequested: { type: boolean }
+        cancellationBlocked: { type: boolean }
         warehouseId: { type: integer }
         preparedAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }

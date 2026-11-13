@@ -453,7 +453,7 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 		return OrderPackingState{}, errors.New("заказ уже передан в обработку или имеет активную частичную отправку")
 	}
 	var short bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_items oi WHERE order_id=$1 GROUP BY variant_id HAVING variant_id IS NULL OR SUM(quantity)>COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1 JOIN product_variants v ON v.id=i.variant_id JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields) JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL WHERE i.variant_id=oi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0))`, id).Scan(&short); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_items oi WHERE order_id=$1 GROUP BY variant_id HAVING variant_id IS NULL OR SUM(quantity)>COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($1,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1 JOIN product_variants v ON v.id=i.variant_id JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields) JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL WHERE i.variant_id=oi.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0))`, id).Scan(&short); err != nil {
 		return OrderPackingState{}, err
 	}
 	if short {

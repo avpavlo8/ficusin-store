@@ -26,27 +26,30 @@ type Line struct {
 	UnitPrice   string `json:"unitPrice"`
 }
 type Event struct {
-	Publication        *PublicationView `json:"publication,omitempty"`
-	Key                string           `json:"key"`
-	OrderID            int64            `json:"orderId"`
-	OrderNumber        string           `json:"orderNumber"`
-	ShipmentOfferID    int64            `json:"shipmentOfferId"`
-	DeliveryMethod     string           `json:"deliveryMethod"`
-	Status             string           `json:"status"`
-	CDEKStatus         string           `json:"cdekStatus"`
-	Lines              []Line           `json:"lines"`
-	IntentID           int64            `json:"intentId"`
-	State              string           `json:"state"`
-	Source             string           `json:"source"`
-	WarehouseID        int64            `json:"warehouseId"`
-	PreparedAt         *time.Time       `json:"preparedAt"`
-	CreatedAt          time.Time        `json:"createdAt"`
-	MappingConflict    bool             `json:"mappingConflict"`
-	QuantityConflict   bool             `json:"quantityConflict"`
-	Fingerprint        string           `json:"fingerprint"`
-	Blockers           []string         `json:"blockers"`
-	CanPrepare         bool             `json:"canPrepare"`
-	ExternalDocumentID string           `json:"externalDocumentId"`
+	Trigger               string           `json:"trigger,omitempty"`
+	CancellationRequested bool             `json:"cancellationRequested,omitempty"`
+	CancellationBlocked   bool             `json:"cancellationBlocked,omitempty"`
+	Publication           *PublicationView `json:"publication,omitempty"`
+	Key                   string           `json:"key"`
+	OrderID               int64            `json:"orderId"`
+	OrderNumber           string           `json:"orderNumber"`
+	ShipmentOfferID       int64            `json:"shipmentOfferId"`
+	DeliveryMethod        string           `json:"deliveryMethod"`
+	Status                string           `json:"status"`
+	CDEKStatus            string           `json:"cdekStatus"`
+	Lines                 []Line           `json:"lines"`
+	IntentID              int64            `json:"intentId"`
+	State                 string           `json:"state"`
+	Source                string           `json:"source"`
+	WarehouseID           int64            `json:"warehouseId"`
+	PreparedAt            *time.Time       `json:"preparedAt"`
+	CreatedAt             time.Time        `json:"createdAt"`
+	MappingConflict       bool             `json:"mappingConflict"`
+	QuantityConflict      bool             `json:"quantityConflict"`
+	Fingerprint           string           `json:"fingerprint"`
+	Blockers              []string         `json:"blockers"`
+	CanPrepare            bool             `json:"canPrepare"`
+	ExternalDocumentID    string           `json:"externalDocumentId"`
 }
 type Warehouse struct {
 	ID                     int64  `json:"id"`
@@ -96,8 +99,17 @@ func eventKey(orderID, offerID int64) string {
 }
 func finish(event *Event) {
 	event.Blockers = []string{}
-	event.CanPrepare = HandedOver(event.DeliveryMethod, event.Status, event.CDEKStatus) && len(event.Lines) > 0
-	if !HandedOver(event.DeliveryMethod, event.Status, event.CDEKStatus) {
+	eligible := event.Trigger == "created" || HandedOver(event.DeliveryMethod, event.Status, event.CDEKStatus)
+	event.CanPrepare = eligible && len(event.Lines) > 0
+	if event.CancellationRequested {
+		event.CanPrepare = false
+		event.Blockers = append(event.Blockers, "Заказ отменён; проверяется отмена реализации")
+	}
+	if event.CancellationBlocked {
+		event.CanPrepare = false
+		event.Blockers = append(event.Blockers, "Товар уже передан; требуется проверка физического возврата")
+	}
+	if !eligible {
 		event.Blockers = append(event.Blockers, "Передача покупателю или СДЭК не подтверждена")
 	}
 	if len(event.Lines) == 0 {
@@ -120,9 +132,10 @@ func finish(event *Event) {
 
 	// Exclude mutable status/timestamps: shipped -> completed is the same event.
 	payload, _ := json.Marshal(struct {
-		Key   string
-		Lines []Line
-	}{event.Key, event.Lines})
+		Key     string
+		Lines   []Line
+		Trigger string `json:"Trigger,omitempty"`
+	}{event.Key, event.Lines, event.Trigger})
 	sum := sha256.Sum256(payload)
 	event.Fingerprint = hex.EncodeToString(sum[:])
 }

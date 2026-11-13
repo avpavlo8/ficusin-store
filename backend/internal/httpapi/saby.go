@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/saby"
 )
@@ -38,14 +39,24 @@ func sabyCatalogSyncHandler(logger *slog.Logger, service sabySyncService) http.H
 		}
 
 		var body struct {
-			Items []saby.CatalogItem `json:"items"`
+			Items           []saby.CatalogItem `json:"items"`
+			StockObservedAt *time.Time         `json:"stockObservedAt"`
 		}
 		if err := decodeJSONWithLimit(request, &body, 16<<20); err != nil ||
 			body.Items == nil || len(body.Items) > 2000 {
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный каталог"})
 			return
 		}
-		result, err := service.Sync(request.Context(), body.Items)
+		ctx := request.Context()
+		if body.StockObservedAt != nil {
+			now := time.Now()
+			if body.StockObservedAt.IsZero() || body.StockObservedAt.After(now) || body.StockObservedAt.Before(now.Add(-2*time.Hour)) {
+				writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректное время снимка остатков"})
+				return
+			}
+			ctx = saby.WithStockSnapshotObservedAt(ctx, *body.StockObservedAt)
+		}
+		result, err := service.Sync(ctx, body.Items)
 		if err != nil {
 			if err.Error() == "empty Saby catalog" {
 				writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Каталог Saby пуст"})

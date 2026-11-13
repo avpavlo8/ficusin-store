@@ -228,3 +228,26 @@ test('@desktop a paused mock dispatcher keeps preparation local', async ({ page 
   await expect(page.getByRole('button', { name: 'Подготовить на сайте', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /Создать тестовую реализацию/ })).toHaveCount(0);
 });
+
+
+test('@desktop @phone cancellation never claims a return before proof', async ({ page }) => {
+  const f = await fixture(page, { mode: 'live' });
+  f.events[0].publication = makePublication({ executionMode: 'live', testMode: false, desiredState: 'cancelled', status: 'queued', stockVerified: true, documentId: '42807', documentUUID: '00000000-0000-4000-8000-000000042807' });
+  f.events[1].publication = makePublication({ id: 118, desiredState: 'cancelled', status: 'cancelled', cancellationVerified: true });
+  await page.goto('/admin?section=orders&view=realizations');
+  const panel = page.getByRole('region', { name: 'Реализация по заказам', exact: true });
+  const real = panel.locator('[data-event="order:17"]');
+  await expect(real).toContainText('Проверяем отмену списания');
+  await expect(panel.locator('[data-event="shipment:301"]')).toContainText('Тестовая отмена завершена');
+  Object.assign(f.events[0].publication!, { status: 'cancelled', cancellationVerified: false });
+  await panel.getByRole('button', { name: 'Обновить', exact: true }).click();
+  await expect(real).toContainText('Отмена не подтверждена');
+  await expect(real.getByText('Отмена списания подтверждена', { exact: true })).toHaveCount(0);
+  Object.assign(f.events[0].publication!, { cancellationVerified: true });
+  await panel.getByRole('button', { name: 'Обновить', exact: true }).click();
+  await expect(real).toContainText('Отмена списания подтверждена');
+  await expect(real).toContainText('Остаток обновляется из СБИС');
+  expect(f.mutations).toEqual([]);
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+  expect(f.runtimeErrors).toEqual([]);
+});

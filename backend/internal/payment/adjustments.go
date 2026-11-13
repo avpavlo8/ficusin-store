@@ -129,14 +129,14 @@ func (service *Service) moneyStateByOrderNumber(ctx context.Context, orderNumber
 }
 
 // checkOrderStock verifies the current Saby-derived stock snapshot immediately
-// before issuing a payment link. Orders do not reserve plants.
+// before issuing a payment link, including the order's own early stock hold.
 func (service *Service) checkOrderStock(ctx context.Context, orderID int64) error {
 	var unavailable int
 	err := service.pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT oi.variant_id, SUM(oi.quantity) AS wanted,
-				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i
+				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($1,i.warehouse_id,i.variant_id),0))
+					FROM order_sale_inventory i
 					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 					JOIN product_variants v ON v.id=i.variant_id
 					JOIN products p ON p.id=v.product_id
@@ -162,8 +162,8 @@ func (service *Service) checkOfferStock(ctx context.Context, offerID int64) erro
 	if err := service.pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT soi.variant_id, SUM(soi.quantity) AS wanted,
-				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i
+				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity((SELECT order_id FROM shipment_offers WHERE id=$1),i.warehouse_id,i.variant_id),0))
+					FROM order_sale_inventory i
 					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 					JOIN product_variants v ON v.id=i.variant_id
 					JOIN products p ON p.id=v.product_id
@@ -472,13 +472,14 @@ func (service *Service) reserveOfferAndCreatePayment(ctx context.Context, offerI
 	if status != "offered" {
 		return 0, errors.New("предложение уже обрабатывается")
 	}
-	// Payment requires current availability, but no order or offer reserves stock.
+	// Require fresh availability including the parent order's own early hold;
+	// the offer does not create a second reservation for those same plants.
 	var unavailable int
 	err = tx.QueryRow(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT soi.variant_id, SUM(soi.quantity) AS wanted,
-				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i
+				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($2,i.warehouse_id,i.variant_id),0))
+					FROM order_sale_inventory i
 					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 					JOIN product_variants v ON v.id=i.variant_id
 					JOIN products p ON p.id=v.product_id
@@ -487,7 +488,7 @@ func (service *Service) reserveOfferAndCreatePayment(ctx context.Context, offerI
 						AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0) AS available
 			FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 GROUP BY soi.variant_id
 		) stock WHERE stock.variant_id IS NULL OR stock.available < stock.wanted
-	`, offerID).Scan(&unavailable)
+	`, offerID, orderID).Scan(&unavailable)
 	if err != nil {
 		return 0, err
 	}

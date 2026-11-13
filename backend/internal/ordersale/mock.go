@@ -2,6 +2,7 @@ package ordersale
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 )
 
@@ -14,6 +15,9 @@ func (MockProvider) Step(_ context.Context, r Request, p Progress) (Result, erro
 		return Result{}, fmt.Errorf("staging realization provider rejects live requests")
 	}
 	next := Result{Progress: p, State: "queued", Message: "Тестовый обмен СБИС; реальные остатки не меняются"}
+	if p.DesiredState == "cancelled" {
+		return mockCancel(r, p)
+	}
 	switch p.Stage {
 	case "inspect":
 		if !r.Event.CanPrepare || r.SiteWarehouseID <= 0 {
@@ -28,6 +32,9 @@ func (MockProvider) Step(_ context.Context, r Request, p Progress) (Result, erro
 		next.Progress.Stage = "fill"
 		next.Progress.Unknown = false
 	case "fill", "reconcile-fill":
+		for i := range r.Event.Lines {
+			next.Progress.OwnedRowIDs = appendUniqueMockID(next.Progress.OwnedRowIDs, int64(i+1))
+		}
 		next.Progress.Stage = "post"
 		next.Progress.Unknown = false
 	case "post", "reconcile-post":
@@ -47,4 +54,52 @@ func (MockProvider) Step(_ context.Context, r Request, p Progress) (Result, erro
 		return Result{Progress: p, State: "needs_attention", Message: "Неизвестный этап тестового обмена"}, nil
 	}
 	return next, nil
+}
+
+func appendUniqueMockID(ids []int64, id int64) []int64 {
+	for _, old := range ids {
+		if old == id {
+			return ids
+		}
+	}
+	return append(ids, id)
+}
+func mockCancel(r Request, p Progress) (Result, error) {
+	result := Result{Progress: p, State: "cancelled", CancellationVerified: true, Message: "Тестовая отмена: реальный документ и остатки СБИС не изменялись"}
+	result.Progress.Stage = "cancelled"
+	result.Progress.Unknown = false
+	if !p.CreateAttempted && p.DocumentID == "" {
+		result.CancellationProof = []byte(`{"kind":"no_remote"}`)
+		return result, nil
+	}
+	if p.DocumentID == "" {
+		result.Progress.DocumentID = fmt.Sprintf("STG-SALE-%d", r.IntentID)
+		result.Progress.DocumentUUID = r.OperationKey
+	}
+	raw, err := mockStockProof(r, result.Progress)
+	if err != nil {
+		return Result{}, err
+	}
+	var proof StockProof
+	if err = json.Unmarshal(raw, &proof); err != nil {
+		return Result{}, err
+	}
+	proof.Posted = false
+	proof.HasEntries = false
+	rows := []StockProofLine{}
+	for _, line := range proof.Lines {
+		for _, id := range p.OwnedRowIDs {
+			if line.ID == id {
+				line.Closed = false
+				rows = append(rows, line)
+			}
+		}
+	}
+	proof.Lines = rows
+	kind := "unposted_draft"
+	if p.PostAttempted {
+		kind = "unposted_full"
+	}
+	result.CancellationProof, err = json.Marshal(CancellationProof{Kind: kind, Document: &proof})
+	return result, err
 }

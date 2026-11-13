@@ -55,11 +55,14 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	exec(`CREATE TABLE customers(id BIGINT PRIMARY KEY);INSERT INTO customers VALUES(1);
- CREATE TABLE warehouses(id BIGINT PRIMARY KEY,name TEXT,is_active INTEGER);INSERT INTO warehouses VALUES(1,'Warehouse',1),(2,'Other warehouse',1);
+	exec(`CREATE TABLE inventory(id BIGSERIAL PRIMARY KEY,warehouse_id BIGINT,variant_id BIGINT,available_qty INTEGER,reserved_qty INTEGER NOT NULL DEFAULT 0,synced_at TIMESTAMPTZ);
+ CREATE TABLE customers(id BIGINT PRIMARY KEY);INSERT INTO customers VALUES(1);
+ CREATE TABLE warehouses(id BIGINT PRIMARY KEY,name TEXT,is_active INTEGER,saby_id TEXT DEFAULT 'saby-ryazan-main');INSERT INTO warehouses VALUES(1,'Warehouse',1),(2,'Other warehouse',1);
  CREATE TABLE orders(id BIGINT PRIMARY KEY,order_number TEXT,status TEXT,delivery_method TEXT,cdek_status TEXT,created_at TIMESTAMPTZ DEFAULT now());
  CREATE TABLE product_external_ids(variant_id BIGINT,provider TEXT,id_type TEXT,status TEXT,external_id TEXT);
- CREATE TABLE product_variants(id BIGINT PRIMARY KEY,saby_id TEXT);INSERT INTO product_variants VALUES(1,'3980'),(2,NULL);
+ CREATE TABLE products(id BIGINT PRIMARY KEY,saby_fields TEXT[]);INSERT INTO products VALUES(1,ARRAY['stock']);
+ CREATE TABLE saby_nomenclature(saby_id TEXT PRIMARY KEY,missing_since TIMESTAMPTZ);INSERT INTO saby_nomenclature VALUES('3980',NULL),('3981',NULL),('4000',NULL);
+ CREATE TABLE product_variants(id BIGINT PRIMARY KEY,saby_id TEXT,product_id BIGINT DEFAULT 1);INSERT INTO product_variants VALUES(1,'3980'),(2,NULL);
  CREATE TABLE order_items(id BIGINT PRIMARY KEY,order_id BIGINT,variant_id BIGINT,product_name TEXT,sku TEXT,quantity INTEGER,unit_price NUMERIC(12,2));
  CREATE TABLE shipment_offers(id BIGINT PRIMARY KEY,order_id BIGINT,status TEXT,delivery_method TEXT,cdek_status TEXT,created_at TIMESTAMPTZ DEFAULT now());
  CREATE TABLE shipment_offer_items(order_item_id BIGINT,shipment_offer_id BIGINT,variant_id BIGINT,product_name TEXT,sku TEXT,quantity INTEGER,unit_price NUMERIC(12,2));`)
@@ -78,6 +81,14 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec(string(buyerMigration))
+	for _, name := range []string{"20261113_order_sale_publications_lifecycle.sql", "20261113_order_sale_zz_stock_visibility.sql"} {
+		raw, e := os.ReadFile("../../../timeweb/migrations/" + name)
+		if e != nil {
+			t.Fatal(e)
+		}
+		exec(string(raw))
+	}
+
 	add := func(id int64, method, status, carrier string, variant int64, qty int) {
 		t.Helper()
 		exec(`INSERT INTO orders(id,order_number,status,delivery_method,cdek_status) VALUES($1,$2,$3,$4,$5)`, id, fmt.Sprintf("LOCAL-%d", id), status, method, carrier)
@@ -255,6 +266,8 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 		}
 	})
 	t.Run("durable publication foundation", func(t *testing.T) { testPublicationFoundation(t, pool) })
+	t.Run("early creation lifecycle", func(t *testing.T) { testCreatedLifecycle(t, pool) })
+	runEarlyStockVisibilityTests(t, ctx, pool)
 	view, e := List(ctx, pool, "LOCAL-10", 0)
 	if e != nil || len(view.Events) != 1 || view.ExternalWritesEnabled || view.Warehouses[0].NativeMappingConfirmed {
 		t.Fatalf("view claims unsupported native capability: %+v / %v", view, e)

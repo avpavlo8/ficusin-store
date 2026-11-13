@@ -513,7 +513,7 @@ func decodeStrings(raw []byte) []string {
 func (repository *PostgresRepository) ListProductVariants(ctx context.Context, productID int64) ([]AdminVariant, error) {
 	rows, err := repository.pool.Query(ctx, `
 		SELECT v.id,v.product_id,v.sku,v.label,v.base_price_minor,
-			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=v.id),0)::INTEGER,
+			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM order_sale_inventory i WHERE i.variant_id=v.id),0)::INTEGER,
 			v.wholesale_min_qty,v.is_active=1,v.archived_at IS NOT NULL,
 			COALESCE((SELECT jsonb_object_agg(d.code,av.value) FROM variant_attribute_values av JOIN attribute_definitions d ON d.id=av.attribute_id WHERE av.variant_id=v.id),'{}'::jsonb),
 			COALESCE((SELECT jsonb_agg(jsonb_build_object('provider',e.provider,'type',e.id_type,'externalId',e.external_id) ORDER BY e.provider,e.id_type) FROM product_external_ids e WHERE e.variant_id=v.id AND e.status='active' AND NOT (e.provider='wildberries' AND e.id_type IN ('sku','nm_id'))),'[]'::jsonb),

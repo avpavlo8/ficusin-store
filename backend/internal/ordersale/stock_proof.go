@@ -60,6 +60,9 @@ var stockProofQuantity = regexp.MustCompile(`^[0-9]{1,18}(?:\.[0-9]{1,9})?(?:[eE
 var stockProofMoney = regexp.MustCompile(`^(?:0|[1-9][0-9]{0,17})(?:\.[0-9]{1,2})?$`)
 
 func validStockProof(request Request, result Result) bool {
+	return validStockEvidence(request, result, false, false)
+}
+func validStockEvidence(request Request, result Result, cancellation, partial bool) bool {
 	if result.State != "posted" || !result.StockVerified || result.Progress.Unknown || result.Progress.IdentityConflict || len(result.StockProof) == 0 || len(result.StockProof) > maxStockProofBytes {
 		return false
 	}
@@ -79,8 +82,8 @@ func validStockProof(request Request, result Result) bool {
 	}
 	if proof.Version != 1 || proof.ExecutionMode != request.ExecutionMode || proof.IntentID != request.IntentID || proof.EventKey != request.Event.Key || proof.EventFingerprint != request.Event.Fingerprint ||
 		!strings.EqualFold(proof.OperationKey, request.OperationKey) || proof.DocumentID != result.Progress.DocumentID || !stockProofUUID.MatchString(proof.DocumentUUID) || !strings.EqualFold(proof.DocumentUUID, result.Progress.DocumentUUID) ||
-		proof.SiteWarehouseID != request.SiteWarehouseID || proof.NativeWarehouseID != request.NativeWarehouseID || proof.MovementWarehouseID != request.MovementWarehouseID || proof.OrganizationID != request.OrganizationID || proof.RegulationID != request.RegulationID || proof.BuyerID != request.BuyerID ||
-		!proof.Posted || !proof.HasEntries || proof.PostingErrors || proof.StaleEntries || proof.PostingQueued || proof.EntriesQueued {
+		proof.SiteWarehouseID != request.SiteWarehouseID || proof.NativeWarehouseID != request.NativeWarehouseID || proof.MovementWarehouseID != request.MovementWarehouseID || proof.OrganizationID != request.OrganizationID || proof.RegulationID != request.RegulationID || (proof.BuyerID != request.BuyerID && !(partial && proof.BuyerID == 0)) ||
+		proof.Posted == cancellation || proof.HasEntries == cancellation || proof.PostingErrors || proof.StaleEntries || proof.PostingQueued || proof.EntriesQueued {
 		return false
 	}
 	if request.ExecutionMode == "mock" {
@@ -90,7 +93,7 @@ func validStockProof(request Request, result Result) bool {
 	} else if proof.Test || !canonicalStockID(proof.DocumentID) || request.NativeWarehouseID <= 0 || request.MovementWarehouseID <= 0 || request.OrganizationID <= 0 || request.RegulationID <= 0 || request.BuyerID <= 0 {
 		return false
 	}
-	if len(request.Event.Lines) == 0 || len(request.Event.Lines) > maxStockProofLines || len(proof.Lines) == 0 || len(proof.Lines) > maxStockProofLines {
+	if len(request.Event.Lines) == 0 || len(request.Event.Lines) > maxStockProofLines || (!partial && len(proof.Lines) == 0) || len(proof.Lines) > maxStockProofLines {
 		return false
 	}
 	expected := map[string]*big.Rat{}
@@ -127,7 +130,7 @@ func validStockProof(request Request, result Result) bool {
 				return false
 			}
 		}
-		if !completeProofObject(envelope.Lines[i], "id", "documentId", "nomenclatureId", "warehouseId", "direction", "quantity", "unitPrice", "lineSum", "closed") || line.ID <= 0 || seen[line.ID] || !line.Closed || line.Direction != 1 ||
+		if !completeProofObject(envelope.Lines[i], "id", "documentId", "nomenclatureId", "warehouseId", "direction", "quantity", "unitPrice", "lineSum", "closed") || line.ID <= 0 || seen[line.ID] || line.Closed == cancellation || line.Direction != 1 ||
 			line.DocumentID != proof.DocumentID || line.WarehouseID != request.MovementWarehouseID || !validProofNomenclature(line.NomenclatureID, request.ExecutionMode) || !stockProofQuantity.MatchString(string(line.Quantity)) {
 			return false
 		}
@@ -150,11 +153,14 @@ func validStockProof(request Request, result Result) bool {
 		}
 		actual[key].Add(actual[key], quantity)
 	}
-	if len(actual) != len(expected) {
+	if !partial && len(actual) != len(expected) {
 		return false
 	}
 	for id, quantity := range expected {
-		if actual[id] == nil || actual[id].Cmp(quantity) != 0 {
+		if partial && actual[id] == nil {
+			continue
+		}
+		if actual[id] == nil || (!partial && actual[id].Cmp(quantity) != 0) || (partial && actual[id].Cmp(quantity) > 0) {
 			return false
 		}
 	}

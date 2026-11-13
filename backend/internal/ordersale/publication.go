@@ -27,6 +27,11 @@ type Request struct {
 // Native is a durable schema-labelled receipt. RawMessage avoids float64 loss
 // when PostgreSQL JSONB normalizes a prepared native record between steps.
 type Progress struct {
+	StockBlocked          bool            `json:"stockBlocked,omitempty"`
+	DesiredState          string          `json:"desiredState,omitempty"`
+	CreateAttempted       bool            `json:"createAttempted,omitempty"`
+	PostAttempted         bool            `json:"postAttempted,omitempty"`
+	OwnedRowIDs           []int64         `json:"ownedRowIds,omitempty"`
 	ConflictingStockProof json.RawMessage `json:"conflictingStockProof,omitempty"`
 	IdentityConflict      bool            `json:"identityConflict,omitempty"`
 	Stage                 string          `json:"stage"`
@@ -36,15 +41,17 @@ type Progress struct {
 	Unknown               bool            `json:"unknown,omitempty"`
 }
 type Result struct {
-	Progress      Progress
-	State         string
-	Message       string
-	StockVerified bool
-	StockProof    json.RawMessage
-	RetryAfter    time.Duration
+	CancellationVerified bool
+	CancellationProof    json.RawMessage
+	Progress             Progress
+	State                string
+	Message              string
+	StockVerified        bool
+	StockProof           json.RawMessage
+	RetryAfter           time.Duration
 }
 
-// Only create/fill/post may write. Every other stage, including reconcile-*,
+// Only create/fill/post/cancel may write. Every other stage, including reconcile-*,
 // must be read-only. A returned next write stage is committed before invocation.
 type Provider interface {
 	Step(context.Context, Request, Progress) (Result, error)
@@ -60,18 +67,23 @@ type DispatchControl struct {
 	RegulationID        int64
 }
 type PublicationView struct {
-	StockVerified   bool      `json:"stockVerified"`
-	TestMode        bool      `json:"testMode"`
-	SiteWarehouseID int64     `json:"siteWarehouseId"`
-	ID              int64     `json:"id"`
-	ExecutionMode   string    `json:"executionMode"`
-	Status          string    `json:"status"`
-	Message         string    `json:"message"`
-	DocumentID      string    `json:"documentId"`
-	DocumentUUID    string    `json:"documentUUID"`
-	Attempts        int       `json:"attempts"`
-	CanRetry        bool      `json:"canRetry"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	CancellationKind       string     `json:"cancellationKind,omitempty"`
+	DesiredState           string     `json:"desiredState"`
+	CancellationVerified   bool       `json:"cancellationVerified"`
+	StockVerifiedAt        *time.Time `json:"stockVerifiedAt,omitempty"`
+	CancellationVerifiedAt *time.Time `json:"cancellationVerifiedAt,omitempty"`
+	StockVerified          bool       `json:"stockVerified"`
+	TestMode               bool       `json:"testMode"`
+	SiteWarehouseID        int64      `json:"siteWarehouseId"`
+	ID                     int64      `json:"id"`
+	ExecutionMode          string     `json:"executionMode"`
+	Status                 string     `json:"status"`
+	Message                string     `json:"message"`
+	DocumentID             string     `json:"documentId"`
+	DocumentUUID           string     `json:"documentUUID"`
+	Attempts               int        `json:"attempts"`
+	CanRetry               bool       `json:"canRetry"`
+	UpdatedAt              time.Time  `json:"updatedAt"`
 }
 
 var ErrRetryUnsafe = errors.New("неизвестный результат создания требует ручной сверки; новый документ не создавался")
@@ -93,7 +105,9 @@ func requestHash(request Request) (string, error) {
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:]), nil
 }
-func writeStage(stage string) bool { return stage == "create" || stage == "fill" || stage == "post" }
+func writeStage(stage string) bool {
+	return stage == "create" || stage == "fill" || stage == "post" || stage == "cancel"
+}
 func recoverProgress(progress Progress) (Progress, bool) {
 	if !writeStage(progress.Stage) {
 		return progress, true
@@ -108,6 +122,12 @@ func recoverProgress(progress Progress) (Progress, bool) {
 func retrySafe(status string, progress Progress) bool {
 	if progress.IdentityConflict {
 		return false
+	}
+	if status == "needs_attention" && progress.StockBlocked && !progress.PostAttempted {
+		return true
+	}
+	if progress.DesiredState == "cancelled" && (status == "failed" || status == "needs_attention") {
+		return true
 	}
 	if progress.Unknown && progress.DocumentID == "" {
 		return false

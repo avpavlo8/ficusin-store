@@ -46,7 +46,8 @@ func loadPublication(ctx context.Context, q queryer, intentID int64) (*Publicati
 	var raw []byte
 	var enabled bool
 	var mode string
-	err := q.QueryRow(ctx, `SELECT p.id,p.execution_mode,p.status,p.message,p.document_id,p.document_uuid,p.attempts,p.updated_at,p.progress,c.enabled,c.execution_mode,(p.request->>'siteWarehouseId')::BIGINT,p.stock_verified FROM order_sale_publications p CROSS JOIN order_sale_dispatch_control c WHERE p.intent_id=$1 AND c.singleton`, intentID).Scan(&v.ID, &v.ExecutionMode, &v.Status, &v.Message, &v.DocumentID, &v.DocumentUUID, &v.Attempts, &v.UpdatedAt, &raw, &enabled, &mode, &v.SiteWarehouseID, &v.StockVerified)
+	var cancellationBlocked bool
+	err := q.QueryRow(ctx, `SELECT p.id,p.execution_mode,p.status,p.message,p.document_id,p.document_uuid,p.attempts,p.updated_at,p.progress,c.enabled,c.execution_mode,(p.request->>'siteWarehouseId')::BIGINT,p.stock_verified,p.desired_state,p.cancellation_verified,p.stock_verified_at,p.cancellation_verified_at,p.cancellation_blocked,COALESCE(p.cancellation_proof->>'kind','') FROM order_sale_publications p CROSS JOIN order_sale_dispatch_control c WHERE p.intent_id=$1 AND c.singleton`, intentID).Scan(&v.ID, &v.ExecutionMode, &v.Status, &v.Message, &v.DocumentID, &v.DocumentUUID, &v.Attempts, &v.UpdatedAt, &raw, &enabled, &mode, &v.SiteWarehouseID, &v.StockVerified, &v.DesiredState, &v.CancellationVerified, &v.StockVerifiedAt, &v.CancellationVerifiedAt, &cancellationBlocked, &v.CancellationKind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -57,8 +58,9 @@ func loadPublication(ctx context.Context, q queryer, intentID int64) (*Publicati
 	if err = json.Unmarshal(raw, &progress); err != nil {
 		return nil, err
 	}
+	progress.DesiredState = v.DesiredState
 	v.TestMode = v.ExecutionMode == "mock"
-	v.CanRetry = enabled && mode == v.ExecutionMode && retrySafe(v.Status, progress)
+	v.CanRetry = !cancellationBlocked && enabled && mode == v.ExecutionMode && retrySafe(v.Status, progress)
 	return &v, nil
 }
 func ensurePublication(ctx context.Context, tx pgx.Tx, e *Event, warehouseID int64, explicit bool) error {
@@ -82,7 +84,7 @@ func ensurePublication(ctx context.Context, tx pgx.Tx, e *Event, warehouseID int
 	}
 	// Keep the intent visible but do not freeze an unusable request. After a
 	// missing mapping is fixed, explicit preparation can create its first job.
-	if !e.CanPrepare {
+	if !e.CanPrepare || e.CancellationRequested {
 		return nil
 	}
 	if !explicit {
@@ -135,25 +137,35 @@ func RetryPublication(ctx context.Context, pool *pgxpool.Pool, id int64) error {
 		return err
 	}
 	var status, mode string
+	var cancellationBlocked bool
+	var desired string
 	var raw []byte
-	err = tx.QueryRow(ctx, `SELECT status,execution_mode,progress FROM order_sale_publications WHERE id=$1 FOR UPDATE`, id).Scan(&status, &mode, &raw)
+	err = tx.QueryRow(ctx, `SELECT status,execution_mode,progress,cancellation_blocked,desired_state FROM order_sale_publications WHERE id=$1 FOR UPDATE`, id).Scan(&status, &mode, &raw, &cancellationBlocked, &desired)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrInput
 	}
 	if err != nil {
 		return err
 	}
-	if !c.Enabled || c.Mode != mode {
+	if cancellationBlocked || !c.Enabled || c.Mode != mode {
 		return ErrRetryUnsafe
 	}
 	var p Progress
 	if err = json.Unmarshal(raw, &p); err != nil {
 		return err
 	}
+	p.DesiredState = desired
 	if !retrySafe(status, p) {
 		return ErrRetryUnsafe
 	}
-	if writeStage(p.Stage) {
+	if desired == "cancelled" {
+		if p.Stage == "cancel" {
+			p.Stage = "reconcile-cancel"
+			p.Unknown = true
+		} else if !cancellationStage(p.Stage) {
+			p.Stage = "inspect-cancel"
+		}
+	} else if writeStage(p.Stage) {
 		var safe bool
 		p, safe = recoverProgress(p)
 		if !safe {

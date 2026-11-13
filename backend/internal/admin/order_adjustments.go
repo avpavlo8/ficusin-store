@@ -102,21 +102,21 @@ func releaseOrderReservationsForEdit(ctx context.Context, tx pgx.Tx, orderID int
 	return nil
 }
 
-func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, variantID int64, quantity int) (int, bool, error) {
+func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, orderID, variantID int64, quantity int) (int, bool, error) {
 	// The availability snapshot decides whether manager review is needed.
 	// Use confirmed Saby stock: other warehouses and stale local values cannot
 	// turn a request into an immediately payable order. No reservation is made.
 	var available int
 	var fresh bool
 	if err := tx.QueryRow(ctx, `
-		SELECT COALESCE(SUM(GREATEST(i.available_qty-i.reserved_qty,0)),0)::INTEGER, COUNT(*)>0
-		FROM inventory i
+		SELECT COALESCE(SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($2,i.warehouse_id,i.variant_id),0)),0)::INTEGER, COUNT(*)>0
+		FROM order_sale_inventory i
 		JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 		JOIN product_variants v ON v.id=i.variant_id
 		JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
 		JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
 		WHERE i.variant_id=$1 AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
-	`, variantID).Scan(&available, &fresh); err != nil {
+	`, variantID, orderID).Scan(&available, &fresh); err != nil {
 		return 0, false, err
 	}
 	return 0, !fresh || available < quantity, nil
@@ -218,6 +218,9 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	if status == "cancelled" || status == "completed" || status == "shipped" {
 		return Order{}, fmt.Errorf("состав уже закрытого или отправленного заказа менять нельзя")
 	}
+	if err := guardCreationRealizationEdit(ctx, tx, id, &edit); err != nil {
+		return Order{}, err
+	}
 	if edit.RecheckAvailability {
 		rows, err := tx.Query(ctx, `SELECT id,variant_id,quantity,reserved_qty FROM order_items WHERE order_id=$1 ORDER BY id FOR UPDATE`, id)
 		if err != nil {
@@ -252,7 +255,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 				if needed < 0 {
 					needed = 0
 				}
-				_, preorder, err = reserveVariantForEdit(ctx, tx, *line.variant, needed)
+				_, preorder, err = reserveVariantForEdit(ctx, tx, id, *line.variant, needed)
 				if err != nil {
 					return Order{}, err
 				}
@@ -370,7 +373,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 				}
 				line.price = float64(minor) / 100
 			}
-			line.reserved, line.preorder, err = reserveVariantForEdit(ctx, tx, line.variantID, line.quantity)
+			line.reserved, line.preorder, err = reserveVariantForEdit(ctx, tx, id, line.variantID, line.quantity)
 			if err != nil {
 				return Order{}, err
 			}

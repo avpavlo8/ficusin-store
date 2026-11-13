@@ -400,8 +400,8 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 				FROM order_items WHERE order_id=$1 GROUP BY variant_id
 			), available AS (
 				SELECT i.variant_id,
-					SUM(GREATEST(i.available_qty-i.reserved_qty,0))::int AS quantity
-				FROM inventory i
+					SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($1,i.warehouse_id,i.variant_id),0))::int AS quantity
+				FROM order_sale_inventory i
 				JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 				JOIN product_variants v ON v.id=i.variant_id
 				JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -432,6 +432,13 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	}
 	if status == "shipped" && (currentStatus != "ready" || currentPaymentStatus != "paid") {
 		return Order{}, fmt.Errorf("%w: отправить можно только подготовленный и оплаченный заказ", ErrInvalidInput)
+	}
+	if status == "cancelled" {
+		// Preserve the previous physical milestone for the stock-return guard.
+		// Both the desired cancellation and the status change commit together.
+		if err := ordersale.RequestCancellation(ctx, tx, id); err != nil {
+			return Order{}, fmt.Errorf("queue realization cancellation: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders SET status = COALESCE(NULLIF($2, ''), status),
@@ -514,7 +521,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 				ORDER BY pm.is_primary DESC, pm.sort_order LIMIT 1), ''),
 			COALESCE(pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
 			COALESCE((SELECT SUM(GREATEST(available_qty - reserved_qty, 0))
-				FROM inventory WHERE variant_id = pv.id), 0)::INTEGER,
+				FROM order_sale_inventory WHERE variant_id = pv.id), 0)::INTEGER,
 			COALESCE(pv.sku, ''), COALESCE(pv.label, ''), pv.height_cm,
 			pv.pot_diameter_cm, shipping_package_dimension(pv.id, 'package_length_cm')::INTEGER, shipping_package_dimension(pv.id, 'package_width_cm')::INTEGER,
 			shipping_package_dimension(pv.id, 'package_height_cm')::INTEGER, variant_numeric_attribute(pv.id,'package_weight_grams')::INTEGER,
@@ -559,9 +566,9 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 				)
 			),
             (SELECT COUNT(*) FROM product_variants v WHERE v.product_id=p.id AND v.archived_at IS NULL),
-            (SELECT CASE WHEN COUNT(*)=COUNT(i.synced_at) AND MIN(i.synced_at)>TIMESTAMPTZ '1970-01-02' THEN MIN(i.synced_at) END FROM product_variants v LEFT JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0),
+            (SELECT CASE WHEN COUNT(*)=COUNT(i.synced_at) AND MIN(i.synced_at)>TIMESTAMPTZ '1970-01-02' THEN MIN(i.synced_at) END FROM product_variants v LEFT JOIN order_sale_inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0),
             p.updated_at,
-            COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM product_variants v JOIN inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL),0)::int,
+            COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM product_variants v JOIN order_sale_inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL),0)::int,
             COALESCE((SELECT MIN(base_price_minor)::double precision/100 FROM product_variants WHERE product_id=p.id AND is_active<>0 AND archived_at IS NULL),0),
             COALESCE((SELECT MAX(base_price_minor)::double precision/100 FROM product_variants WHERE product_id=p.id AND is_active<>0 AND archived_at IS NULL),0),
             EXISTS(SELECT 1 FROM product_variants WHERE product_id=p.id AND is_active<>0 AND archived_at IS NULL) AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=p.id AND is_active<>0 AND archived_at IS NULL AND base_price_minor<=0),

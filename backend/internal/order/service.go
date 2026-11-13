@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"log/slog"
+	"sort"
 	"strings"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/consent"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/jackc/pgx/v5"
@@ -129,7 +131,8 @@ type purchasableItem struct {
 	// Preorder means the shelf could not cover this line. The order still
 	// goes through; the manager names the date.
 	Preorder bool
-	// Checkout currently does not reserve any stock. This remains zero for new orders.
+	// Legacy inventory reservations remain zero. Creation-time holds are tracked
+	// by order_sale_intents and the effective inventory view instead.
 	Reserved int
 }
 
@@ -322,8 +325,21 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		deliveryMinor = int64(priced[0].Price) * 100
 	}
 
-	// Availability is a checkout snapshot only. No order reserves stock; availability
-	// must be checked again before payment or fulfilment.
+	// Competing checkouts serialize the availability snapshot and durable
+	// creation-time hold for the same variants. Always acquire in sorted order.
+	variantIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		variantIDs = append(variantIDs, item.VariantID)
+	}
+	sort.Slice(variantIDs, func(i, j int) bool { return variantIDs[i] < variantIDs[j] })
+	for index, variantID := range variantIDs {
+		if index > 0 && variantID == variantIDs[index-1] {
+			continue
+		}
+		if _, err := transaction.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('order-stock:'||$1::BIGINT::TEXT,0))`, variantID); err != nil {
+			return Created{}, fmt.Errorf("lock checkout stock: %w", err)
+		}
+	}
 	hasPreorder := false
 	for index := range items {
 		preorder, err := needsPreorder(ctx, transaction, items[index])
@@ -427,6 +443,11 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	}); err != nil {
 		return Created{}, err
 	}
+	// The creation-time opt-in is frozen with the order. The worker handles
+	// Saby after commit; enabling it later never backfills historical orders.
+	if _, err := ordersale.EnqueueCreated(ctx, transaction, orderID); err != nil {
+		return Created{}, fmt.Errorf("queue creation realization: %w", err)
+	}
 	// The checkout contact is surname-first. Only the structured profile is
 	// an unambiguous source of a given name; guests get a neutral greeting.
 	var letterName string
@@ -475,7 +496,7 @@ func needsPreorder(ctx context.Context, transaction pgx.Tx, item purchasableItem
 	var available int
 	err := transaction.QueryRow(ctx, `
 		SELECT COALESCE(SUM(GREATEST(i.available_qty - i.reserved_qty, 0)), 0)::INTEGER
-		FROM inventory i
+		FROM order_sale_inventory i
 		JOIN warehouses w ON w.id = i.warehouse_id AND w.saby_id = 'saby-ryazan-main' AND w.is_active = 1
 		JOIN product_variants v ON v.id = i.variant_id
 		JOIN products p ON p.id = v.product_id

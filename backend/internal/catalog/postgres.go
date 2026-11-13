@@ -35,7 +35,7 @@ func (repository *PostgresRepository) CartProducts(ctx context.Context, skus []s
 			), '/assets/product-photo-pending-graphite-v1.svg'),
 			COALESCE((
 				SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0))
-				FROM inventory item
+				FROM order_sale_inventory item
 				JOIN warehouses warehouse ON warehouse.id=item.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
 				WHERE item.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
@@ -152,7 +152,7 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 
 	variantRows, err := repository.pool.Query(ctx, `
 		SELECT pv.id, pv.sku, pv.label, pv.base_price_minor,
-			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM order_sale_inventory i
 				JOIN warehouses warehouse ON warehouse.id=i.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 				JOIN saby_nomenclature source ON source.saby_id=pv.saby_id AND source.missing_since IS NULL
 				WHERE i.variant_id=pv.id AND 'stock'=ANY(product.saby_fields)
@@ -381,7 +381,7 @@ const recommendationsQuery = `
 	JOIN LATERAL (
 		SELECT variant.id,variant.sku,variant.label,variant.base_price_minor,
 			COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0))
-				FROM inventory
+				FROM order_sale_inventory inventory
 				JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
 				WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
@@ -390,7 +390,7 @@ const recommendationsQuery = `
 		WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
 		ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0))
-			FROM inventory
+			FROM order_sale_inventory inventory
 			JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 			JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
 			WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
@@ -529,7 +529,7 @@ const catalogListQuery = `
 		FROM products product
 		JOIN LATERAL (
 			SELECT variant.id,variant.sku,variant.label,variant.base_price_minor,
-				COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory
+				COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM order_sale_inventory inventory
 					JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 					JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
 					WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
@@ -541,7 +541,7 @@ const catalogListQuery = `
 			 WHERE (collection.mode='manual' AND EXISTS (SELECT 1 FROM collection_products member
 			   WHERE member.collection_id=collection.id AND member.product_id=product.id))
 			 OR (collection.mode='dynamic' AND collection_rules_match_variant(product.id,variant.id,collection.rules))))
-			ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM inventory
+			ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM order_sale_inventory inventory
 				JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
 				WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
@@ -700,7 +700,7 @@ func (repository *PostgresRepository) ListFeedOffers(ctx context.Context) ([]Fee
 		SELECT product.product_code::TEXT,variant.sku,product.name,variant.label,
 			COALESCE(NULLIF(product.description,''),''),
 			variant.base_price_minor,
-			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM inventory item
+			COALESCE((SELECT SUM(GREATEST(item.available_qty-item.reserved_qty,0)) FROM order_sale_inventory item
 				JOIN warehouses warehouse ON warehouse.id=item.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
 				WHERE item.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)

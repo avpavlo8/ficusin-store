@@ -66,7 +66,7 @@ func currentAvitoProposal(ctx context.Context, query interface {
 		SELECT listed.id,listed.base_price_minor,GREATEST(i.available_qty-i.reserved_qty,0) qty
 		FROM listed JOIN products p ON p.id=listed.product_id AND 'stock'=ANY(p.saby_fields)
 		JOIN saby_nomenclature n ON n.saby_id=listed.saby_id AND n.missing_since IS NULL
-		JOIN inventory i ON i.variant_id=listed.id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
+		JOIN order_sale_inventory i ON i.variant_id=listed.id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 		JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 	)
 	SELECT EXISTS(SELECT 1 FROM listed WHERE id=$2)
@@ -193,7 +193,7 @@ func createManualPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, var
 			FROM product_variants variant
 			JOIN products product ON product.id=variant.product_id AND 'stock'=ANY(product.saby_fields)
 			JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
-			JOIN inventory stock ON stock.variant_id=variant.id AND stock.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
+			JOIN order_sale_inventory stock ON stock.variant_id=variant.id AND stock.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 			JOIN warehouses warehouse ON warehouse.id=stock.warehouse_id
 				AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 			WHERE variant.is_active<>0 AND variant.archived_at IS NULL

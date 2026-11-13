@@ -26,6 +26,11 @@ type realizationProviderHarness struct {
 	loseCreate, loseSave, foreignOnly bool
 	provider                          *SabyOrderRealizationProvider
 	publicReadError                   map[string]any
+	calls                             []string
+	cancelRequested                   bool
+	loseCancel                        bool
+	cancelNoEffect                    bool
+	cancelDelayHeaders                int
 }
 
 func realizationProviderRequest() ordersale.Request {
@@ -85,6 +90,7 @@ func newRealizationProviderHarness(t *testing.T) *realizationProviderHarness {
 			return
 		}
 		var reply any
+		h.calls = append(h.calls, q.Method)
 		switch q.Method {
 		case "sabyWarehouse.List":
 			reply = map[string]any{"warehouses": []any{map[string]any{"warehouseId": int64(283), "organization": map[string]any{"inn": "123456789012"}}}}
@@ -136,7 +142,18 @@ func newRealizationProviderHarness(t *testing.T) *realizationProviderHarness {
 				reply = copyDoc
 				break
 			}
-			if h.postRequested {
+			if h.cancelRequested && h.cancelDelayHeaders == 0 {
+				flags := sabyRecordField(h.header, "ДокументРасширение.Состояние").([]any)
+				for _, i := range []int{10, 11, 14, 16, 18, 27} {
+					flags[i] = false
+				}
+				for _, raw := range h.rows {
+					raw.([]any)[6] = false
+				}
+			} else if h.postRequested {
+				if h.cancelRequested && h.cancelDelayHeaders > 0 {
+					h.cancelDelayHeaders--
+				}
 				flags := sabyRecordField(h.header, "ДокументРасширение.Состояние").([]any)
 				if h.queueAfterPost > 0 {
 					h.queueAfterPost--
@@ -207,6 +224,23 @@ func newRealizationProviderHarness(t *testing.T) *realizationProviderHarness {
 			}
 			h.postRequested = true
 			reply = nil // Actual live successful asynchronous reply.
+		case "Документ.CancelPosting":
+			h.writes[q.Method]++
+			if q.Protocol != 7 {
+				t.Error("cancel protocol changed")
+			}
+			doc, _ := params["docRec"].(map[string]any)
+			id, e := sabyInt64Field(doc, "@Документ")
+			if e != nil || id != 42737 || len(doc["s"].([]any)) != 1 || params["eventRec"] != nil {
+				t.Error("cancel sends other document or unexpected fields")
+			}
+			h.cancelRequested = !h.cancelNoEffect
+			if h.loseCancel {
+				connection, _, _ := w.(http.Hijacker).Hijack()
+				connection.Close()
+				return
+			}
+			reply = sabyRecord(map[string]any{"НеактуальныеПроводки": false, "ВОчередиНаПроведение": false, "ВОчередиНаРасчетПроводок": false, "operationResult": true, "message": ""})
 		default:
 			t.Errorf("unverified RPC %s", q.Method)
 			w.WriteHeader(400)
@@ -238,14 +272,30 @@ func providerWriteCount(h *realizationProviderHarness) int {
 
 func runProviderStep(t *testing.T, h *realizationProviderHarness, r ordersale.Request, p ordersale.Progress) ordersale.Result {
 	t.Helper()
+	if p.DesiredState == "" {
+		p.DesiredState = "posted"
+	}
+	if p.DesiredState == "posted" && p.Stage == "create" {
+		p.CreateAttempted = true
+	}
+	if p.DesiredState == "posted" && p.Stage == "post" {
+		p.PostAttempted = true
+	}
+	if p.Stage == "cancel" && p.Unknown {
+		p.Stage = "reconcile-cancel"
+	}
 	before := providerWriteCount(h)
+	beforeCancel := h.writeCount("Документ.CancelPosting")
 	result, err := h.provider.Step(context.Background(), r, p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	writes := providerWriteCount(h) - before
-	if writes > 1 || writes > 0 && p.Stage != "create" && p.Stage != "fill" && p.Stage != "post" {
+	if writes > 1 || writes > 0 && p.Stage != "create" && p.Stage != "fill" && p.Stage != "post" && p.Stage != "cancel" {
 		t.Fatalf("provider violated durable one-write stage boundary: %s %d", p.Stage, writes)
+	}
+	if p.DesiredState == "cancelled" && writes != h.writeCount("Документ.CancelPosting")-beforeCancel {
+		t.Fatal("cancel desire caused a create/fill/post mutation")
 	}
 	// Recreate persisted JSON at every boundary, retaining native integer values.
 	raw, _ := json.Marshal(result.Progress)
@@ -565,4 +615,203 @@ func (h *realizationProviderHarness) writeCount(method string) int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.writes[method]
+}
+
+func providerToStage(t *testing.T, h *realizationProviderHarness, r ordersale.Request, want string) ordersale.Progress {
+	t.Helper()
+	p := ordersale.Progress{Stage: "inspect"}
+	for i := 0; i < 35; i++ {
+		if p.Stage == want {
+			return p
+		}
+		result := runProviderStep(t, h, r, p)
+		if result.State != "queued" && result.State != "posted" {
+			t.Fatalf("did not reach stage%s: %s %s", want, result.State, result.Message)
+		}
+		p = result.Progress
+	}
+	t.Fatal("stage bound exceeded", want)
+	return p
+}
+
+func providerCancelUntilStopped(t *testing.T, h *realizationProviderHarness, r ordersale.Request, p ordersale.Progress) ordersale.Result {
+	t.Helper()
+	p.DesiredState = "cancelled"
+	if p.Stage != "verify-cancel" && p.Stage != "reconcile-cancel" {
+		p.Stage = "inspect-cancel"
+	}
+	var result ordersale.Result
+	for i := 0; i < 20; i++ {
+		result = runProviderStep(t, h, r, p)
+		p = result.Progress
+		if result.State != "queued" {
+			return result
+		}
+	}
+	t.Fatal("cancellation polled forever")
+	return result
+}
+
+func TestSabyRealizationProviderCancelBeforeCreateSendsNoRPC(t *testing.T) {
+	h := newRealizationProviderHarness(t)
+	r := realizationProviderRequest()
+	p := runProviderStep(t, h, r, ordersale.Progress{Stage: "inspect"}).Progress
+	h.mu.Lock()
+	before := len(h.calls)
+	h.mu.Unlock()
+	result := providerCancelUntilStopped(t, h, r, p)
+	h.mu.Lock()
+	after := len(h.calls)
+	h.mu.Unlock()
+	var proof ordersale.CancellationProof
+	json.Unmarshal(result.CancellationProof, &proof)
+	if result.State != "cancelled" || !result.CancellationVerified || proof.Kind != "no_remote" || proof.Document != nil || before != after || providerWriteCount(h) != 0 {
+		t.Fatalf("never-sent create was not cancelled locally: %+v", result)
+	}
+}
+
+func TestSabyRealizationProviderCancelUnknownCreateDiscoversOnlyByFrozenVI(t *testing.T) {
+	for _, mode := range []string{"found-own", "not-found", "foreign"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newRealizationProviderHarness(t)
+			h.loseCreate = true
+			r := realizationProviderRequest()
+			p := providerToStage(t, h, r, "create")
+			created := runProviderStep(t, h, r, p)
+			p = created.Progress
+			if !p.Unknown || p.DocumentID != "" || !p.CreateAttempted {
+				t.Fatal("not an unknown create fixture")
+			}
+			h.mu.Lock()
+			if mode == "not-found" {
+				h.public = nil
+			}
+			if mode == "foreign" {
+				h.foreignOnly = true
+			}
+			h.mu.Unlock()
+			result := providerCancelUntilStopped(t, h, r, p)
+			if mode == "found-own" {
+				var proof ordersale.CancellationProof
+				json.Unmarshal(result.CancellationProof, &proof)
+				if result.State != "cancelled" || !result.CancellationVerified || result.Progress.DocumentID != "42737" || proof.Kind != "unposted_draft" || proof.Document == nil || proof.Document.BuyerID != 0 || len(proof.Document.Lines) != 0 {
+					t.Fatalf("own unknown-create draft was not reconciled: %+v", result)
+				}
+			} else if result.State != "needs_attention" || result.CancellationVerified || !result.Progress.Unknown {
+				t.Fatalf("unknown creation was falsely abandoned: %+v", result)
+			}
+			if h.writeCount("СБИС.ЗаписатьДокумент") != 1 || providerWriteCount(h) != 1 {
+				t.Fatal("cancellation replayed create or performed other writes", h.writes)
+			}
+		})
+	}
+}
+
+func TestSabyRealizationProviderCancelPartialNeverPostedDraft(t *testing.T) {
+	h := newRealizationProviderHarness(t)
+	r := realizationProviderRequest()
+	r.Event.Lines = append(r.Event.Lines, ordersale.Line{OrderItemID: 100, VariantID: 12, SabyID: "1102", Quantity: 1, UnitPrice: "5.00"})
+	p := ordersale.Progress{Stage: "inspect"}
+	for i := 0; i < 20; i++ {
+		var n sabyRealizationProviderReceipt
+		json.Unmarshal(p.Native, &n)
+		if p.Stage == "verify-fill" && n.Phase == "saved" {
+			break
+		}
+		p = runProviderStep(t, h, r, p).Progress
+	}
+	if len(p.OwnedRowIDs) != 1 || p.PostAttempted {
+		t.Fatal("not a retained partial never-posted fixture", p)
+	}
+	before := providerWriteCount(h)
+	rawBefore, _ := json.Marshal(r)
+	result := providerCancelUntilStopped(t, h, r, p)
+	rawAfter, _ := json.Marshal(r)
+	var proof ordersale.CancellationProof
+	json.Unmarshal(result.CancellationProof, &proof)
+	if result.State != "cancelled" || !result.CancellationVerified || proof.Kind != "unposted_draft" || proof.Document == nil || len(proof.Document.Lines) != 1 || providerWriteCount(h) != before || string(rawBefore) != string(rawAfter) {
+		t.Fatalf("partial draft required full fill or was mutated: %+v", result)
+	}
+}
+
+func TestSabyRealizationProviderCancelPostedOnceWithLostOrDelayedReply(t *testing.T) {
+	for _, mode := range []string{"acknowledged", "lost", "delayed"} {
+		t.Run(mode, func(t *testing.T) {
+			h := newRealizationProviderHarness(t)
+			r := realizationProviderRequest()
+			p := providerToStage(t, h, r, "verified")
+			h.mu.Lock()
+			h.loseCancel = mode == "lost"
+			if mode == "delayed" {
+				h.cancelDelayHeaders = 3
+			}
+			h.mu.Unlock()
+			result := providerCancelUntilStopped(t, h, r, p)
+			var proof ordersale.CancellationProof
+			json.Unmarshal(result.CancellationProof, &proof)
+			if result.State != "cancelled" || !result.CancellationVerified || result.Progress.Unknown || proof.Kind != "unposted_full" || proof.Document == nil || proof.Document.Posted || proof.Document.HasEntries || len(proof.Document.Lines) != 1 || proof.Document.Lines[0].Closed || proof.Document.Lines[0].UnitPrice != "10.20" {
+				t.Fatalf("posted cancellation not proven: %+v", result)
+			}
+			if h.writeCount("Документ.CancelPosting") != 1 || h.writeCount("Документ.PostAsync") != 1 || h.writeCount("РеалИсх.CustomDocNomUpdate") != 1 || h.writeCount("СБИС.ЗаписатьДокумент") != 1 {
+				t.Fatal("cancellation repeated a stock or creation mutation", h.writes)
+			}
+			again := providerCancelUntilStopped(t, h, r, result.Progress)
+			if again.State != "cancelled" || h.writeCount("Документ.CancelPosting") != 1 {
+				t.Fatal("verified cancellation was sent again")
+			}
+		})
+	}
+}
+
+func TestSabyRealizationProviderUnknownCancelNeverReplays(t *testing.T) {
+	h := newRealizationProviderHarness(t)
+	r := realizationProviderRequest()
+	p := providerToStage(t, h, r, "verified")
+	h.mu.Lock()
+	h.cancelNoEffect = true
+	h.mu.Unlock()
+	result := providerCancelUntilStopped(t, h, r, p)
+	if result.State != "needs_attention" || result.CancellationVerified || !result.Progress.Unknown || h.writeCount("Документ.CancelPosting") != 1 {
+		t.Fatal("unresolved cancellation was replayed or falsely confirmed", result)
+	}
+	for i := 0; i < 2; i++ {
+		result = providerCancelUntilStopped(t, h, r, result.Progress)
+	}
+	if h.writeCount("Документ.CancelPosting") != 1 {
+		t.Fatal("manual read retry replayed cancellation")
+	}
+}
+
+func TestSabyRealizationProviderCancelUnknownPostWaitsForActualPostingBeforeUndo(t *testing.T) {
+	h := newRealizationProviderHarness(t)
+	r := realizationProviderRequest()
+	p := providerToStage(t, h, r, "post")
+	p.PostAttempted = true
+	p.Unknown = true
+	result := providerCancelUntilStopped(t, h, r, p)
+	if result.State != "needs_attention" || result.CancellationVerified || h.writeCount("Документ.CancelPosting") != 0 || h.writeCount("Документ.PostAsync") != 0 {
+		t.Fatal("absence while post outcome unknown was treated as cancellation", result)
+	}
+	// The original outbound request completes later. Only now is an undo safe.
+	h.mu.Lock()
+	h.postRequested = true
+	h.writes["Документ.PostAsync"] = 1
+	h.mu.Unlock()
+	result = providerCancelUntilStopped(t, h, r, result.Progress)
+	if result.State != "cancelled" || !result.CancellationVerified || h.writeCount("Документ.CancelPosting") != 1 || h.writeCount("Документ.PostAsync") != 1 {
+		t.Fatal("late original post was not undone once", result)
+	}
+}
+
+func TestSabyRealizationProviderCancelMissingAcknowledgedRowCannotUndoReplacement(t *testing.T) {
+	h := newRealizationProviderHarness(t)
+	r := realizationProviderRequest()
+	p := providerToStage(t, h, r, "verified")
+	h.mu.Lock()
+	h.rows[0].([]any)[0] = int64(700099)
+	h.mu.Unlock()
+	result := providerCancelUntilStopped(t, h, r, p)
+	if result.State != "needs_attention" || result.CancellationVerified || h.writeCount("Документ.CancelPosting") != 0 || len(result.Progress.OwnedRowIDs) != 1 || result.Progress.OwnedRowIDs[0] != 700001 {
+		t.Fatal("cancelled another row with identical totals", result)
+	}
 }
