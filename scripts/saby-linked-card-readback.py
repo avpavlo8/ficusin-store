@@ -5,9 +5,15 @@ import re
 import urllib.request
 
 def request(url, body, headers=None):
-    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json", **(headers or {})}, method="POST")
+    content_type = "application/json-rpc;charset=utf-8" if "method" in body else "application/json;charset=utf-8"
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers={"Content-Type": content_type, "Accept":"application/json", **(headers or {})}, method="POST")
     with urllib.request.urlopen(req, timeout=45) as response:
-        return json.load(response)
+        raw = response.read()
+        try:
+            text = raw.decode(response.headers.get_content_charset() or "utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("cp1251")
+        return json.loads(text)
 
 def fields(record):
     schema = record.get("s", [])
