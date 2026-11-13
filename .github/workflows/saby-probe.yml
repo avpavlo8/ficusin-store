@@ -177,4 +177,4 @@ jobs:
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/production-catalog-publication-audit.py --expected-commit "$EXPECTED_COMMIT"
+        run: python3 scripts/saby-realization-readback.py --expected-commit "$EXPECTED_COMMIT"
