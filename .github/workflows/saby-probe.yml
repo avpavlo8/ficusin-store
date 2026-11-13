@@ -29,8 +29,8 @@ on:
         type: boolean
         required: false
         default: false
-      provision_private_storage:
-        description: Provision the capped private bucket and verify access before release
+      redeploy_exact:
+        description: Redeploy the exact verified production SHA after saved environment changes
         type: boolean
         required: false
         default: false
@@ -73,7 +73,7 @@ jobs:
           python3 - <<'PYONE'
           import json,os
           values=json.loads(os.environ['INPUTS_JSON'])
-          flags=['activate_publishing','publish_static_assets','marketplace_readiness','provision_private_storage','production_backup','production_storage_readiness','production_preflight','production_readiness']
+          flags=['activate_publishing','publish_static_assets','marketplace_readiness','redeploy_exact','production_backup','production_storage_readiness','production_preflight','production_readiness']
           selected=sum(values.get(k) in (True,'true') for k in flags)+(values.get('production_files','none') not in ('none',''))
           if selected != 1:
               raise SystemExit('Select exactly one scoped operation')
@@ -96,7 +96,7 @@ jobs:
           print(json.dumps(safe))
           PYREAD
       - name: Install production prerequisite clients
-        if: (inputs.production_storage_readiness || inputs.production_preflight || inputs.provision_private_storage) && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
+        if: (inputs.production_storage_readiness || inputs.production_preflight) && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         run: python3 -m pip install 'boto3==1.40.18' 'psycopg[binary]==3.2.13'
       - name: Inspect production private storage without writes
         if: inputs.production_storage_readiness && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
@@ -113,18 +113,13 @@ jobs:
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/production-release-backup.py --apply
-      - name: Provision and verify the approved private file storage
-        if: inputs.provision_private_storage && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: python3 scripts/provision-production-private-storage.py --apply
       - name: Verify marketplace category reads without creating cards
         if: inputs.marketplace_readiness && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/production-marketplace-readiness.py
       - name: Validate post-release operation target
-        if: inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        if: inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: |
@@ -148,7 +143,7 @@ jobs:
         with:
           node-version: 24
       - name: Install post-release operation clients
-        if: inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
+        if: inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
         run: python3 -m pip install 'boto3==1.40.18' 'psycopg[binary]==3.2.13'
       - name: Activate only future explicit production catalog saves
         if: inputs.activate_publishing
@@ -176,3 +171,9 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
         run: python3 scripts/production-static-assets.py --expected-commit "$EXPECTED_COMMIT" --apply
+      - name: Deploy exact verified production revision after saved settings
+        if: inputs.redeploy_exact
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: python3 scripts/production-redeploy-exact.py --expected-commit "$EXPECTED_COMMIT" --apply
