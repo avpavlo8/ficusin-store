@@ -229,6 +229,16 @@ def storage_plan(bucket_reply, presets_reply, public_bucket, original_count):
         cold.append({"id": identity, "disk": disk, "price": price, "location": location, "storage_class": "cold"})
     cold.sort(key=lambda preset: (preset["price"], preset["disk"], preset["id"]))
     current = {"id": 541777, "name": public_bucket, "location": location}
+    stats = bucket.get("disk_stats")
+    current["diskStatsPresent"] = isinstance(stats, dict)
+    if isinstance(stats, dict):
+        current["diskStats"] = {key: stats.get(key) for key in ("size", "used", "is_unlimited")
+            if stats.get(key) is None or isinstance(stats.get(key), (int, bool))}
+    current["autoUpgrade"] = bucket.get("is_allow_auto_upgrade") if isinstance(bucket.get("is_allow_auto_upgrade"), bool) else None
+    selected = next((item for item in presets if item.get("id") == bucket.get("preset_id")), None)
+    if selected:
+        current["selectedPreset"] = {key: selected[key] for key in ("id", "disk", "price")
+            if isinstance(selected.get(key), (int, float)) and not isinstance(selected.get(key), bool)}
     if isinstance(bucket.get("preset_id"), int) and not isinstance(bucket["preset_id"], bool):
         current["preset_id"] = bucket["preset_id"]
     if bucket.get("storage_class") in ("hot", "cold"):
