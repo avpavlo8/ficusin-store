@@ -28,7 +28,7 @@ jobs:
       - run: npm run format:check
       - run: npm run lint
       - run: npm run test:phone && npm run test:payment-result && npm run test:money
-      - run: node --experimental-strip-types --test tests/plant-characteristics.test.mjs tests/plant-warning-text.test.mjs tests/product-marketplace-pricing.test.mjs tests/catalog-editor-channels.test.mjs tests/saby-editor-hydration.test.mjs tests/admin-api-error.test.mjs tests/admin-fetch.test.mjs tests/app-discovery.test.mjs tests/chat-reference.test.mjs tests/customer-order-list.test.mjs tests/gallery-upload.test.mjs tests/pull-to-refresh.test.mjs tests/variant-naming.test.mjs tests/gallery-persistence.test.mjs
+      - run: node --experimental-strip-types --test tests/plant-characteristics.test.mjs tests/plant-warning-text.test.mjs tests/product-marketplace-pricing.test.mjs tests/catalog-editor-channels.test.mjs tests/saby-editor-hydration.test.mjs tests/admin-api-error.test.mjs tests/admin-fetch.test.mjs tests/app-discovery.test.mjs tests/chat-reference.test.mjs tests/customer-order-list.test.mjs tests/gallery-upload.test.mjs tests/pull-to-refresh.test.mjs tests/variant-naming.test.mjs tests/gallery-persistence.test.mjs tests/packaging-weight.test.mjs
       - run: node ../e2e/verify-chat-notification-worker.mjs
       - run: npm run build
       - run: npm run budget
@@ -362,6 +362,8 @@ jobs:
           go -C backend test ./internal/admin -run '^TestEditorPublicationLocalDatabase$' -count=1
           go -C backend test ./internal/admin -run '^TestEditorSabyLinksReadMirrorWithoutChangingIdentityOrSavedPlan$' -count=1
           go -C backend test ./internal/admin -run '^TestSabyEditorPublicationLocalDatabase$' -count=1
+          go -C backend test ./internal/admin -run '^TestOzonRejectedSavePreservesCreationReceiptOnLocalDatabase$|^TestPendingWBRevisionRunsAfterDefinitivePreflightFailureOnLocalDatabase$|^TestEditorMarketplaceLinksExcludeSabyReceiptsPostgres$' -count=1
+          go -C backend test ./internal/integration ./internal/catalogeditor -run '^TestSabyEditorPreparedReceiptPostgresJSONBRoundTrip$|^TestSabyPublicationDecodeKeepsExactNumbersAfterJSONB$' -count=1
           go -C backend test -p 1 ./internal/fileassets ./internal/chat -count=1
 
       - name: Verify durable Saby catalogue commands and duplicate guards

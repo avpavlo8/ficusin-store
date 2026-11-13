@@ -26,7 +26,8 @@ func (r *PostgresRepository) RetryEditorPublication(ctx context.Context, actor A
 	}
 	var status string
 	var progress ce.Progress
-	if e = tx.QueryRow(ctx, `SELECT status,progress FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 FOR UPDATE`, variantID, channel).Scan(&status, &progress); e == pgx.ErrNoRows {
+	var payload []byte
+	if e = tx.QueryRow(ctx, `SELECT status,progress,payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 FOR UPDATE`, variantID, channel).Scan(&status, &progress, &payload); e == pgx.ErrNoRows {
 		return ErrInvalidInput
 	} else if e != nil {
 		return e
@@ -36,6 +37,14 @@ func (r *PostgresRepository) RetryEditorPublication(ctx context.Context, actor A
 	}
 	if progress.CreateAttempted && progress.IDs.ProductID == "" && progress.TaskID == 0 {
 		progress.Stage = "reconcile"
+	}
+	if channel == "ozon" && status == "failed" && progress.TaskID > 0 && !progress.Ambiguous {
+		var request ce.Request
+		if json.Unmarshal(payload, &request) == nil {
+			if retry, ok := ce.OzonCreationRetry(request, request, progress); ok {
+				progress = retry
+			}
+		}
 	}
 	progress.Checks = 0
 	raw, _ := json.Marshal(progress)

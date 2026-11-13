@@ -158,10 +158,10 @@ test('@desktop route editor has product, marketplace and FAQ tabs without obsole
 });
 
 test('@desktop unified product and two variant edits survive reload',async({page})=>{
- const f=await fixture(page);await open(page);let e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Новое описание');await e.getByLabel('Диаметр горшка',{exact:true}).fill('13');await e.getByLabel('Вес, г',{exact:true}).fill('1250');
- await e.locator('.editor-variant-card').getByRole('button',{name:/^D17/}).click();await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1990');await e.locator('.editor-variant-card').getByRole('button',{name:/^D13/}).click();await expect(e.getByLabel('Вес, г',{exact:true})).toHaveValue('1250');await saveEditor(e);
+ const f=await fixture(page);await open(page);let e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Новое описание');await e.getByLabel('Диаметр горшка',{exact:true}).fill('13');await e.getByLabel('Вес, кг',{exact:true}).fill('1.25');
+ await e.locator('.editor-variant-card').getByRole('button',{name:/^D17/}).click();await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1990');await e.locator('.editor-variant-card').getByRole('button',{name:/^D13/}).click();await expect(e.getByLabel('Вес, кг',{exact:true})).toHaveValue('1.25');await saveEditor(e);
  expect(f.updates).toHaveLength(1);expect(f.updates[0].body.description).toBe('Новое описание');expect(f.updates[0].body.variants).toHaveLength(2);expect(f.variants.get(1)?.[0].attributes.package_weight_grams).toBe(1250);expect(f.variants.get(1)?.[1].price).toBe(1990);
- await page.reload();e=page.locator('.editor-page');await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Новое описание');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('13');await expect(e.getByLabel('Вес, г',{exact:true})).toHaveValue('1250');
+ await page.reload();e=page.locator('.editor-page');await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Новое описание');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('13');await expect(e.getByLabel('Вес, кг',{exact:true})).toHaveValue('1.25');
 });
 
 test('@desktop failed save preserves the draft across reload',async({page})=>{

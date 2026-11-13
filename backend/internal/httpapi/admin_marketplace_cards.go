@@ -85,6 +85,11 @@ func editorMarketplaceCardsHandler(h adminHandlers, source editorReferenceSource
 		pending := make(chan answer, 2)
 		count := 0
 		for channel, identifier := range links {
+			// A receipt from another provider must never be sent to the WB/Ozon
+			// reader or reported as a marketplace credential failure.
+			if channel != "wb" && channel != "ozon" {
+				continue
+			}
 			if identifier == "!ambiguous" {
 				failures[channel] = "Найдено несколько связей. Уточните соответствие карточки."
 				continue

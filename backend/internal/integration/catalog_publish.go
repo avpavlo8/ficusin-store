@@ -392,6 +392,10 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 		r = *s.UpdateRequest
 	}
 	if e := validateCatalogRequest(ch, r, p.Mock); e != nil {
+		if s.ReapplyPayload {
+			s.Stage = "reconcile"
+			return ce.Result{Progress: s}, e
+		}
 		return ce.Result{Progress: ce.Progress{Stage: "check"}}, e
 	}
 	result := func(status, message string) (ce.Result, error) {
@@ -424,15 +428,23 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			if ids.Barcode != r.Barcode {
 				return ce.Result{}, errors.New("артикул найден, но штрихкод не совпадает; нужна проверка связи")
 			}
+			if s.ReapplyPayload && s.IDs.ProductID != "" && ids.ProductID != s.IDs.ProductID {
+				return ce.Result{}, errors.New("идентификатор ранее созданной карточки изменился; нужна проверка связи")
+			}
 			s.IDs = ids
-			if ch == "wb" {
+			if ch == "ozon" && s.ReapplyPayload {
+				s.Stage = "update"
+				s.Ambiguous = false
+				return result("queued", "Созданная этой попыткой карточка проверена. Отправим исправленные данные.")
+			} else if ch == "wb" {
 				s.Stage = "media"
 			} else {
 				s.Stage = "ozon-readback"
 			}
 			return result("queued", "Карточка найдена. Проверяем результат.")
 		}
-		if s.Stage == "reconcile" {
+		if s.Stage == "reconcile" || s.ReapplyPayload {
+			s.Stage = "reconcile"
 			s.Checks++
 			if s.Checks > 90 {
 				return result("needs_attention", "Площадка не подтвердила создание. Повторная отправка заблокирована во избежание дубля; проверьте кабинет.")
@@ -456,11 +468,18 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			if ids.ProductID != s.IDs.ProductID || ids.OfferID != r.SellerArticle(ch) {
 				return ce.Result{}, errors.New("связанный товар изменился; артикул созданной карточки менять нельзя")
 			}
+			if s.ReapplyPayload && (r.Barcode == "" || ids.Barcode != r.Barcode) {
+				return ce.Result{}, errors.New("штрихкод ранее созданной карточки не подтверждён; нужна явная проверка связи")
+			}
 		}
 		s.CreateAttempted = true
 		if ch == "ozon" {
 			body, e := BuildOzonCard(r, p.Mock)
 			if e != nil {
+				if s.ReapplyPayload {
+					s.Stage = "reconcile"
+					return ce.Result{Progress: s}, e
+				}
 				return ce.Result{Progress: ce.Progress{Stage: "check"}}, e
 			}
 			var out struct {
@@ -474,16 +493,26 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 					s.Stage = "reconcile"
 					if updating {
 						s.Stage = "update"
+						if s.ReapplyPayload {
+							s.Stage = "ozon-reapply-unknown"
+						}
 					}
 					s.Ambiguous = true
 					return result("queued", "Ответ на создание не получен; проверяем товар без повторной отправки.")
 				}
-				s.CreateAttempted = false
-				s.Stage = "check"
+				if s.ReapplyPayload {
+					s.Stage = "reconcile"
+				} else {
+					s.CreateAttempted = false
+					s.Stage = "check"
+				}
 				return ce.Result{Progress: s}, e
 			}
 			if out.Result.TaskID <= 0 {
 				s.Stage = "reconcile"
+				if updating && s.ReapplyPayload {
+					s.Stage = "ozon-reapply-unknown"
+				}
 				s.Ambiguous = true
 				return result("queued", "Нет номера задания Ozon; проверяем товар по артикулу.")
 			}
@@ -569,6 +598,18 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			return result("needs_attention", "Ozon долго обрабатывает задание. Повторная отправка не выполнялась.")
 		}
 		return result("queued", "Ожидаем результат задания Ozon.")
+	case "ozon-reapply-unknown":
+		// No task receipt means the corrected import may already be in flight.
+		// Read ownership again, but do not claim its content was applied or
+		// blindly repeat an import based only on the existence of an old card.
+		ids, err := p.lookup(ctx, ch, r.SellerArticle(ch), true)
+		if err != nil {
+			return ce.Result{}, err
+		}
+		if ids.ProductID != s.IDs.ProductID || ids.Barcode != r.Barcode || r.Barcode == "" {
+			return result("needs_attention", "Результат обновления и связь карточки не подтверждены. Проверьте кабинет Ozon; повтор не отправлен.")
+		}
+		return result("needs_attention", "Карточка найдена, но результат исправленного импорта неизвестен. Проверьте задание Ozon; повтор не отправлен.")
 	case "ozon-readback":
 		ids, e := p.lookup(ctx, ch, r.SellerArticle(ch), true)
 		if e != nil {
@@ -576,6 +617,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 		}
 		if ids.ProductID == "" {
 			return result("queued", "Ожидаем синхронизацию карточки Ozon.")
+		}
+		if s.ReapplyPayload && (ids.ProductID != s.IDs.ProductID || r.Barcode == "" || ids.Barcode != r.Barcode) {
+			return result("needs_attention", "Ozon не подтвердил идентификаторы обновлённой карточки. Проверьте связь; повтор не отправлен.")
 		}
 		s.IDs = ids
 		if ids.ImageCount == 0 {

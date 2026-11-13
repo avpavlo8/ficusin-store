@@ -1,4 +1,5 @@
 import { NumericInput } from "./NumericInput";
+import { gramsToKilograms, kilogramsToGrams, packagingWeightInput } from "./packagingWeight";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { api, money } from "./adminShared";
 import { VariantMediaManager } from "./VariantMediaManager";
@@ -998,22 +999,15 @@ function DynamicValue({
 }) {
   const title = `${attribute.name}${attribute.unit ? `, ${attribute.unit}` : ""}${attribute.required ? " *" : ""}`;
   if (attribute.code === "package_weight_grams") {
-    const kilograms = value == null || value === "" ? "" : String(Number(value) / 1000);
+    const kilograms = gramsToKilograms(value);
     return (
       <label>
         Вес упаковки, кг{attribute.required ? " *" : ""}
         <NumericInput
-          min="0.01"
-          step="0.01"
+          {...packagingWeightInput}
           inputMode="decimal"
           value={kilograms}
-          onChange={(event) =>
-            onChange(
-              event.target.value === ""
-                ? null
-                : Math.round(Number(event.target.value.replace(",", ".")) * 1000),
-            )
-          }
+          onChange={(event) => onChange(kilogramsToGrams(event.target.value))}
         />
       </label>
     );

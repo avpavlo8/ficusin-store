@@ -453,7 +453,8 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 			// configured providers consume this durable plan without re-reading a draft.
 			var priorStatus, priorHash, priorMode string
 			var priorProgress catalogeditor.Progress
-			priorErr := tx.QueryRow(ctx, `SELECT status,fingerprint,execution_mode,progress FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 FOR UPDATE`, v.VariantID, channel).Scan(&priorStatus, &priorHash, &priorMode, &priorProgress)
+			var priorPayload []byte
+			priorErr := tx.QueryRow(ctx, `SELECT status,fingerprint,execution_mode,progress,payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 FOR UPDATE`, v.VariantID, channel).Scan(&priorStatus, &priorHash, &priorMode, &priorProgress, &priorPayload)
 			if priorErr != nil && priorErr != pgx.ErrNoRows {
 				return EditorPlanView{}, priorErr
 			}
@@ -463,13 +464,23 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 					return EditorPlanView{}, fmt.Errorf("%w: предыдущая отправка площадки не завершена; сначала проверьте её результат", ErrInvalidInput)
 				}
 			}
-			if priorHash != "" && priorHash != hash && priorMode == mode && (priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention") {
+			uncertainWB := channel == "wb" && priorStatus == "failed" && (priorProgress.Ambiguous || priorProgress.CreateAttempted && priorProgress.IDs.ProductID == "")
+			if priorHash != "" && priorHash != hash && priorMode == mode && (priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention" || uncertainWB) {
 				if _, err = tx.Exec(ctx, `UPDATE catalog_editor_publications SET pending_payload=$3,pending_fingerprint=$4,updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, v.VariantID, channel, raw, hash); err != nil {
 					return EditorPlanView{}, err
 				}
 				continue
 			}
-			if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,status,message,execution_mode) VALUES($1,$2,$3,$4,'prepared','Подготовлено к созданию',$5) ON CONFLICT(variant_id,channel) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,payload=EXCLUDED.payload,execution_mode=EXCLUDED.execution_mode,pending_payload=NULL,pending_fingerprint=NULL,progress=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.progress ELSE '{}'::jsonb END,next_attempt_at=NOW(),status=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode AND catalog_editor_publications.status<>'cancelled' THEN catalog_editor_publications.status ELSE 'prepared' END,message=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.message ELSE EXCLUDED.message END,updated_at=NOW()`, v.VariantID, channel, hash, raw, mode); err != nil {
+			resetProgress := []byte(`{}`)
+			if channel == "ozon" && priorStatus == "failed" && priorHash != hash && priorMode == mode {
+				var previous, next catalogeditor.Request
+				if json.Unmarshal(priorPayload, &previous) == nil && json.Unmarshal(raw, &next) == nil {
+					if retry, ok := catalogeditor.OzonCreationRetry(previous, next, priorProgress); ok {
+						resetProgress, _ = json.Marshal(retry)
+					}
+				}
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,status,message,execution_mode) VALUES($1,$2,$3,$4,'prepared','Подготовлено к созданию',$5) ON CONFLICT(variant_id,channel) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,payload=EXCLUDED.payload,execution_mode=EXCLUDED.execution_mode,pending_payload=NULL,pending_fingerprint=NULL,progress=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.progress ELSE $6::jsonb END,next_attempt_at=NOW(),status=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode AND catalog_editor_publications.status<>'cancelled' THEN catalog_editor_publications.status ELSE 'prepared' END,message=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.message ELSE EXCLUDED.message END,updated_at=NOW()`, v.VariantID, channel, hash, raw, mode, resetProgress); err != nil {
 				return EditorPlanView{}, err
 			}
 		}
