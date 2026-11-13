@@ -94,8 +94,10 @@ def execute(source_sha, candidate, run_smoke=False, reader=None, inspector=None,
     app = (reader or audit.read_app)()
     env = preflight(app, source_sha, inspector)
     if not run_smoke:
+        report = (inspector or audit.inspect_app)(app, emit_metadata=False)
+        expiry = {key: report[key] for key in ('orderAutoCancelHours', 'orderAutoCancelSource', 'orderAutoCancelEnabled') if key in report}
         return {'probe': 'staging_sale_smoke_plan', 'appId': 280757, 'sourceSha': source_sha,
-                'executionMode': 'mock', 'siteWarehouseId': 1, 'applied': False}
+                'executionMode': 'mock', 'siteWarehouseId': 1, 'dispatchControl': report['dispatchControl'], 'applied': False, **expiry}
     # A second GET immediately before inserting rejects a concurrent deployment
     # or environment drift after the read-only database check.
     fresh = (reader or audit.read_app)()

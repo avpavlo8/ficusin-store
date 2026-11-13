@@ -85,6 +85,22 @@ def safe_flags(env):
     return result
 
 
+def safe_expiry(row):
+    # Match settings.Service.Number: missing/invalid values use default24;
+    # zero or negative values disable expiry. Never print the raw DB value.
+    if row is None:
+        return {'orderAutoCancelHours': 24, 'orderAutoCancelSource': 'default', 'orderAutoCancelEnabled': True}
+    raw = str(row[0]).strip()
+    value = None
+    if len(raw) <= 128 and re.fullmatch(r'[+-]?[0-9]+', raw):
+        parsed = int(raw)
+        if -(1 << 63) <= parsed < (1 << 63):
+            value = parsed
+    if value is None:
+        return {'orderAutoCancelHours': 24, 'orderAutoCancelSource': 'invalid_fallback', 'orderAutoCancelEnabled': True}
+    return {'orderAutoCancelHours': value, 'orderAutoCancelSource': 'stored', 'orderAutoCancelEnabled': value > 0}
+
+
 def database_options(env, directory):
     options = {'connect_timeout': 20,
                'options': '-c default_transaction_read_only=on -c statement_timeout=10000 -c lock_timeout=3000',
@@ -127,6 +143,7 @@ def inspect_app(app, connect=None, emit_metadata=True):
             ).fetchall()
             if len(warehouses) > 100 or any(row[0] <= 0 for row in warehouses):
                 raise SafetyError('unexpected_warehouse_directory')
+            expiry = safe_expiry(connection.execute("SELECT value FROM public.settings WHERE key='orders.auto_cancel_hours'").fetchone())
             control = None
             exists = connection.execute("SELECT to_regclass('public.order_sale_dispatch_control') IS NOT NULL").fetchone()[0]
             if exists:
@@ -142,7 +159,7 @@ def inspect_app(app, connect=None, emit_metadata=True):
             'databaseIsolated': True, 'databaseReadOnly': True, 'rolePrivileged': False,
             'flags': safe_flags(env),
             'activeWarehouses': [{'id': row[0], 'name': row[1]} for row in warehouses],
-            'dispatchControl': control}
+            'dispatchControl': control, **expiry}
 
 
 def main():

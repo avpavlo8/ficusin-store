@@ -31,6 +31,7 @@ class Connection:
         if 'pg_roles' in query:return Cursor((False,False,False))
         if 'warehouses' in query:return Cursor([(7,'Test warehouse')])
         if 'to_regclass' in query:return Cursor((False,))
+        if 'public.settings' in query:return Cursor(('0',))
         raise AssertionError('unexpected SQL')
 
 
@@ -60,6 +61,14 @@ class AuditTest(unittest.TestCase):
         self.assertNotIn('not-for-output',str(result))
         self.assertNotIn('db.invalid',str(result))
         self.assertTrue(all(q.startswith('SELECT ') for q in connection.queries))
+        self.assertEqual(result['orderAutoCancelHours'],0)
+        self.assertFalse(result['orderAutoCancelEnabled'])
+        self.assertEqual(result['orderAutoCancelSource'],'stored')
+    def test_expiry_default_disabled_numeric_and_invalid_are_safe(self):
+        for row,hours,source,enabled in [(None,24,'default',True),(('24',),24,'stored',True),((' 0 ',),0,'stored',False),(('-1',),-1,'stored',False),(('+12',),12,'stored',True),(('misplaced-secret',),24,'invalid_fallback',True),(('9223372036854775808',),24,'invalid_fallback',True)]:
+            result=audit.safe_expiry(row)
+            self.assertEqual(result,{'orderAutoCancelHours':hours,'orderAutoCancelSource':source,'orderAutoCancelEnabled':enabled})
+            self.assertNotIn('secret',str(result))
     def test_malformed_flags_cannot_leak_misplaced_secret(self):
         report=audit.safe_flags({'APP_ENV':'staging','ORDER_REALIZATION_MODE':'secret-text','ORDER_REALIZATION_SITE_WAREHOUSE_ID':'secret-value'})
         self.assertNotIn('secret',str(report))

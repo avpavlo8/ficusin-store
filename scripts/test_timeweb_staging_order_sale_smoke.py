@@ -20,13 +20,15 @@ def app():
         'ORDER_REALIZATION_MODE':'mock','ORDER_REALIZATION_LIVE_ENABLED':'false','ORDER_REALIZATION_SITE_WAREHOUSE_ID':'1'}}
 
 def inspect(*args,**kwargs):
-    return {'dispatchControl':{'executionMode':'mock','enabled':True,'siteWarehouseId':1},'activeWarehouses':[{'id':1,'name':'Основной склад'}]}
+    return {'dispatchControl':{'executionMode':'mock','enabled':True,'siteWarehouseId':1},'activeWarehouses':[{'id':1,'name':'Основной склад'}], 'orderAutoCancelHours':0,'orderAutoCancelSource':'stored','orderAutoCancelEnabled':False}
 
 class SmokeSafety(unittest.TestCase):
     def test_default_is_read_only_and_does_not_launch_or_need_candidate(self):
         writes=[]
         result=smoke.execute(SHA,'/absent',reader=app,inspector=inspect,launcher=lambda *_:writes.append(True))
         self.assertFalse(result['applied']);self.assertEqual(writes,[])
+        self.assertEqual(result['orderAutoCancelHours'],0)
+        self.assertFalse(result['orderAutoCancelEnabled'])
     def test_every_target_guard_precedes_fixture_runner(self):
         for mutate in (lambda a:a.update(id=229223),lambda a:a.update(branch='main'),lambda a:a.update(commit_sha='b'*40),lambda a:a['envs'].update(APP_ENV='production'),lambda a:a['envs'].update(ORDER_REALIZATION_MODE='live'),lambda a:a['envs'].update(ORDER_REALIZATION_LIVE_ENABLED='true'),lambda a:a['envs'].update(DATABASE_URL='postgres://wrong@host/prod')):
             value=app();mutate(value);writes=[]
