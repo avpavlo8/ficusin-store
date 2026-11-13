@@ -94,3 +94,11 @@ else:
         print("Native draft flag:",json.dumps(flat_native.get("IsDraft")))
     else:
         print("Native identity not confirmed; no native values printed")
+
+category_list = request("https://online.sbis.ru/service/?srv=1", {"jsonrpc":"2.0","protocol":6,"method":"NomenclatureCategory.List","params":{"Фильтр":{"_type":"record","s":[],"d":[]},"Сортировка":None,"Навигация":{"_type":"record","s":[{"n":"Страница","t":"Число целое"},{"n":"РазмерСтраницы","t":"Число целое"},{"n":"ЕстьЕще","t":"Логическое"}],"d":[0,1,True]},"ДопПоля":["Name","IsFolderUI","TypeObject","StateSystem","ContainsAnyItem","HasCharacteristicAccounting","CharacteristicsAccounting","Deleted","IsCategory"]},"id":5}, {"X-SBISAccessToken":token})
+if category_list.get("error"):
+    print("Category list rejected:",category_list["error"].get("code"))
+else:
+    result=category_list.get("result",{})
+    print("Category list schema:",json.dumps(result.get("s",[]),ensure_ascii=False))
+    print("Category list count:",len(result.get("d",[])))
