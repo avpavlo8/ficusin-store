@@ -188,6 +188,60 @@ class PreflightTests(unittest.TestCase):
             reader.get(f"/dbs/{module.DATABASE_ID}/backups/create")
         self.assertEqual(len(opener.requests), 2)
 
+    def test_sql_failure_reports_phase_class_state_without_exception_text(self):
+        class UndefinedColumn(Exception):
+            sqlstate = "42703"
+
+        class BrokenConnection(Connection):
+            def execute(self, query, params=()):
+                if "max(name)" in query:
+                    raise UndefinedColumn("postgres://real-user:do-not-print@host/private query/value")
+                return super().execute(query, params)
+
+        diagnostics = {}
+        with self.assertRaises(UndefinedColumn) as caught:
+            module.inspect(Reader(), lambda settings: BrokenConnection(), module.EXPECTED_COMMIT, diagnostics)
+        report = module.safe_failure(caught.exception, diagnostics)
+        self.assertEqual(report["phase"], "migrations_inventory")
+        self.assertEqual(report["exceptionClass"], "UndefinedColumn")
+        self.assertEqual(report["sqlstate"], "42703")
+        self.assertNotIn("real-user", json.dumps(report))
+        self.assertNotIn("query/value", json.dumps(report))
+
+    def test_connection_failure_reports_specific_phase_without_driver_message(self):
+        class OperationalError(Exception):
+            pass
+
+        class Driver:
+            def connect(self, *args, **kwargs):
+                raise OperationalError("password=DO_NOT_PRINT host=PRIVATE_HOST")
+
+        diagnostics = {}
+        with tempfile.TemporaryDirectory() as directory, self.assertRaises(OperationalError) as caught:
+            module.connect_production(app_fixture()["envs"], directory, driver=Driver(), diagnostics=diagnostics)
+        report = module.safe_failure(caught.exception, diagnostics)
+        self.assertEqual(report["phase"], "database_connect")
+        self.assertEqual(report["exceptionClass"], "OperationalError")
+        self.assertNotIn("DO_NOT_PRINT", json.dumps(report))
+        self.assertNotIn("PRIVATE_HOST", json.dumps(report))
+
+    def test_http_failure_only_exposes_status_and_phase(self):
+        error = urllib.error.HTTPError("https://private.invalid/DO_NOT_PRINT", 401, "SECRET_DETAIL", {}, None)
+        report = module.safe_failure(error, {"phase": "timeweb_application_get"})
+        self.assertEqual(report["httpStatus"], 401)
+        self.assertNotIn("DO_NOT_PRINT", json.dumps(report))
+        self.assertNotIn("SECRET_DETAIL", json.dumps(report))
+
+    def test_exact_commit_guard_allows_verified_null_branch_and_dict_branch(self):
+        app = app_fixture()
+        app["branch_name"] = None
+        self.assertEqual(module.production_settings(app, module.EXPECTED_COMMIT), app["envs"])
+        app["branch"] = {"name": "main"}
+        self.assertEqual(module.production_settings(app, module.EXPECTED_COMMIT), app["envs"])
+        app["branch"]["name"] = "staging"
+        with self.assertRaises(module.PreflightError):
+            module.production_settings(app, module.EXPECTED_COMMIT)
+
 
 if __name__ == "__main__":
     unittest.main()

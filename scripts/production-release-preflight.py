@@ -26,7 +26,31 @@ PENDING = ("prepared", "queued", "processing")
 
 
 class PreflightError(Exception):
-    pass
+    def __init__(self, code):
+        self.safe_code = code if isinstance(code, str) and re.fullmatch(r"[a-z_]{1,80}", code) else "preflight_guard_failed"
+        super().__init__()
+
+
+def mark_phase(diagnostics, phase):
+    if diagnostics is not None:
+        diagnostics["phase"] = phase
+
+
+def safe_failure(error, diagnostics):
+    report = {"ok": False, "error": "production_preflight_failed",
+              "phase": diagnostics.get("phase", "unknown"),
+              "exceptionClass": type(error).__name__}
+    if isinstance(error, PreflightError):
+        report["reason"] = error.safe_code
+    try:
+        state = getattr(error, "sqlstate", None)
+    except Exception:
+        state = None
+    if isinstance(state, str) and re.fullmatch(r"[0-9A-Z]{5}", state):
+        report["sqlstate"] = state
+    if isinstance(error, urllib.error.HTTPError) and isinstance(error.code, int) and 100 <= error.code <= 599:
+        report["httpStatus"] = error.code
+    return report
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -78,9 +102,11 @@ def production_settings(app, expected_commit):
     return settings
 
 
-def connect_production(settings, directory, driver=None):
+def connect_production(settings, directory, driver=None, diagnostics=None):
     if driver is None:
+        mark_phase(diagnostics, "database_driver_import")
         import psycopg as driver
+    mark_phase(diagnostics, "database_tls_configuration")
     options = {
         "connect_timeout": 20, "autocommit": False,
         "options": "-c statement_timeout=10000 -c lock_timeout=3000 -c default_transaction_read_only=on",
@@ -93,32 +119,41 @@ def connect_production(settings, directory, driver=None):
         path.touch(mode=0o600)
         path.write_text(ca)
         options["sslrootcert"] = str(path)
+    mark_phase(diagnostics, "database_connect")
     connection = driver.connect(settings["DATABASE_URL"], **options)
+    mark_phase(diagnostics, "database_set_readonly")
     connection.read_only = True
     return connection
 
 
-def database_report(connection, settings):
+def database_report(connection, settings, diagnostics=None):
+    mark_phase(diagnostics, "database_identity")
     expected_user = urllib.parse.unquote(urllib.parse.urlsplit(settings["DATABASE_URL"]).username)
     identity = connection.execute("SELECT current_database(),current_user,current_setting('transaction_read_only'),current_setting('default_transaction_read_only')").fetchone()
     if identity != (DATABASE, expected_user, "on", "on"):
         raise PreflightError("wrong_database_identity_or_readonly_state")
+    mark_phase(diagnostics, "database_ownership")
     owner, schema_access, superuser = connection.execute("""
       SELECT pg_get_userbyid(d.datdba)=current_user,
         has_schema_privilege(current_user,'public','USAGE'),
         (SELECT rolsuper FROM pg_roles WHERE rolname=current_user)
       FROM pg_database d WHERE d.datname=current_database()
     """).fetchone()
+    mark_phase(diagnostics, "migrations_table_presence")
     migrations_exist = connection.execute("SELECT to_regclass('public.schema_migrations') IS NOT NULL").fetchone()[0]
     migrations = {"tableExists": bool(migrations_exist)}
     if migrations_exist:
+        mark_phase(diagnostics, "migrations_inventory")
         count, latest = connection.execute("SELECT count(*),max(name) FROM public.schema_migrations").fetchone()
         migrations.update(count=int(count), latest=latest)
+    mark_phase(diagnostics, "publications_table_presence")
     publications_exist = connection.execute("SELECT to_regclass('public.catalog_editor_publications') IS NOT NULL").fetchone()[0]
     publications = {"tableExists": bool(publications_exist), "pending": []}
     if publications_exist:
+        mark_phase(diagnostics, "publications_mode_column")
         has_mode = connection.execute("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='catalog_editor_publications' AND column_name='execution_mode')").fetchone()[0]
         publications["executionModeColumnExists"] = bool(has_mode)
+        mark_phase(diagnostics, "publications_pending_counts")
         if has_mode:
             rows = connection.execute("SELECT execution_mode,status,count(*) FROM public.catalog_editor_publications WHERE status=ANY(%s) GROUP BY execution_mode,status ORDER BY execution_mode,status", (list(PENDING),)).fetchall()
         else:
@@ -127,6 +162,7 @@ def database_report(connection, settings):
     # This is explicitly a conservative superset, not a duplicated stock/box
     # evaluation. Zero proves no old flagged CDEK order can be unlocked; nonzero
     # requires reviewing the canonical workflow facts before deployment.
+    mark_phase(diagnostics, "shipping_candidate_counts")
     paid_cdek, flagged_preorders, candidate_upper_bound = connection.execute("""
       SELECT count(*),count(*) FILTER(WHERE has_preorder=1),
         count(*) FILTER(WHERE has_preorder=1 AND delivery_fee_pending=0 AND delivery_repack_requested=0
@@ -169,19 +205,26 @@ def safe_backups(payload):
     return {"available": True, "count": len(safe), "backups": safe}
 
 
-def inspect(reader, connection_factory, expected_commit):
+def inspect(reader, connection_factory, expected_commit, diagnostics=None):
+    mark_phase(diagnostics, "timeweb_application_get")
     app = reader.get(f"/apps/{APP_ID}").get("app", {})
+    mark_phase(diagnostics, "production_application_guards")
     settings = production_settings(app, expected_commit)
+    mark_phase(diagnostics, "database_connect")
     connection = connection_factory(settings)
     try:
         if not connection.read_only:
             raise PreflightError("database_connection_not_readonly")
+        mark_phase(diagnostics, "database_readonly_transaction")
         with connection.transaction():
-            report = database_report(connection, settings)
+            report = database_report(connection, settings, diagnostics)
     finally:
         connection.close()
     try:
-        backups = safe_backups(reader.get(f"/dbs/{DATABASE_ID}/backups"))
+        mark_phase(diagnostics, "timeweb_backup_list_get")
+        payload = reader.get(f"/dbs/{DATABASE_ID}/backups")
+        mark_phase(diagnostics, "backup_metadata_whitelist")
+        backups = safe_backups(payload)
     except urllib.error.HTTPError as error:
         backups = {"available": False, "httpStatus": error.code}
     report.update(appId=APP_ID, appName=APP_NAME, commit=expected_commit, backups=backups)
@@ -192,19 +235,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-commit", default=EXPECTED_COMMIT, help="Exact deployed main commit, including an explicitly selected post-release SHA")
     args = parser.parse_args()
+    diagnostics = {"phase": "github_actions_guard"}
     try:
         if os.environ.get("GITHUB_ACTIONS") != "true":
             raise PreflightError("github_actions_only")
+        mark_phase(diagnostics, "timeweb_reader_configuration")
         reader = TimewebReader(os.environ.get("TIMEWEB_CLOUD_TOKEN", ""))
         with tempfile.TemporaryDirectory(prefix="ficusin-production-preflight-") as directory:
-            report = inspect(reader, lambda settings: connect_production(settings, directory), args.expected_commit)
+            report = inspect(reader, lambda settings: connect_production(settings, directory, diagnostics=diagnostics), args.expected_commit, diagnostics)
         print(json.dumps(report, ensure_ascii=False, sort_keys=True))
         return 0
-    except PreflightError as error:
-        print(json.dumps({"ok": False, "error": str(error)}))
-    except Exception:
+    except Exception as error:
         # Driver/HTTP exceptions may embed credentials, DSNs or server data.
-        print(json.dumps({"ok": False, "error": "production_preflight_failed"}))
+        print(json.dumps(safe_failure(error, diagnostics)))
     return 1
 
 
