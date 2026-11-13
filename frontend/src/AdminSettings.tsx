@@ -2,7 +2,7 @@ import "./styles/admin-settings-switches.css";
 import { NumericInput } from "./NumericInput";
 import { useCallback, useEffect, useState } from "react";
 import { PageHeading, api } from "./adminShared";
-import type { Order, SettingDefinition, ProcurementData, ProcurementSettings } from "./adminTypes";
+import type { SettingDefinition, ProcurementData, ProcurementSettings } from "./adminTypes";
 
 import { ProcurementSettingsPanel } from "./AdminProcurementPanels";
 
@@ -167,49 +167,5 @@ export function Settings({ onError }: { onError: (value: string) => void }) {
         )}
       </div>
     </>
-  );
-}
-
-// The manager names the delivery price for an order the shop could not
-// quote. Kept as its own component so the field holds what is being typed
-// without re-rendering the whole order table on every keystroke.
-export function DeliveryFeeForm({
-  order,
-  onSubmit,
-}: {
-  order: Order;
-  onSubmit: (order: Order, fee: number) => void;
-}) {
-  const [value, setValue] = useState("");
-  return (
-    <form
-      className="admin-fee-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const fee = Number(value);
-        if (Number.isFinite(fee) && fee >= 0) onSubmit(order, fee);
-      }}
-    >
-      <strong>
-        {order.repackRequested
-          ? "Покупатель просит упаковать в одну коробку"
-          : "Доставку нужно посчитать вручную"}
-      </strong>
-      <p>Укажите стоимость доставки — покупатель получит уведомление и сможет оплатить заказ.</p>
-      <label>
-        Доставка, ₽
-        <NumericInput
-          min="0"
-          step="1"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          placeholder="0"
-          required
-        />
-      </label>
-      <button className="primary" type="submit">
-        Сохранить и уведомить
-      </button>
-    </form>
   );
 }

@@ -44,13 +44,6 @@ export function WorkspaceTable({ label, children }: { label: string; children: R
     </>
   );
 }
-export function WorkspaceStatus({ children, status }: { children: ReactNode; status: string }) {
-  return (
-    <span className="workspace-status" data-status={status}>
-      {children}
-    </span>
-  );
-}
 export function WorkspaceTasks({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="workspace-panel">

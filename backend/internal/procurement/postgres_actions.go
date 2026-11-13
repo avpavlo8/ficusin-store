@@ -1658,14 +1658,6 @@ func countUnits(lines []ParsedLine) int {
 	return units
 }
 
-func planSabyIDs(items []PlanItem) []string {
-	result := make([]string, 0, len(items))
-	for _, item := range items {
-		result = append(result, item.SabyID)
-	}
-	return result
-}
-
 type auditExecutor interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }

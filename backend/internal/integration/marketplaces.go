@@ -205,11 +205,6 @@ func (executor *MarketplaceExecutor) fetchWBOperationalSalesPaged(ctx context.Co
 	return nil, fmt.Errorf("Wildberries вернул больше %d страниц продаж; синхронизация остановлена до полного чтения", maxPages)
 }
 
-func isRateLimit(err error) bool {
-	var remote *remoteError
-	return errors.As(err, &remote) && remote.Status == http.StatusTooManyRequests
-}
-
 func ozonPostingCountsAsSale(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "driver_pickup", "delivering", "last_mile", "delivered":

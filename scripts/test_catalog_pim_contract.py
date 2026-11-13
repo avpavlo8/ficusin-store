@@ -115,13 +115,13 @@ class CatalogPIMContractTest(unittest.TestCase):
     def test_sku_media_has_repository_routes_and_admin_ui(self):
         repository = text("backend/internal/admin/variant_media.go")
         routes = text("backend/internal/httpapi/admin_catalog_routes.go")
-        ui = text("frontend/src/VariantMediaManager.tsx")
-        pim = text("frontend/src/AdminPim.tsx")
+        ui = text("frontend/src/ProductCreationPage.tsx")
         self.assertIn("variant_id", repository)
         self.assertIn('GET /api/v1/admin/variants/{id}/media', routes)
         self.assertIn('POST /api/v1/admin/variants/{id}/media', routes)
-        self.assertIn("Фото SKU имеют приоритет", ui)
-        self.assertIn("VariantMediaManager", pim)
+        self.assertIn("`/api/v1/admin/variants/${row.id}/media`", ui)
+        self.assertIn("`/api/v1/admin/variants/${item.serverId}/media`", ui)
+        self.assertIn("variantMediaToPersist", ui)
 
     def test_review_backfill_avoids_illegal_update_target_lateral_reference(self):
         migration = text("timeweb/migrations/055_catalog_spu_sku_attributes.sql")

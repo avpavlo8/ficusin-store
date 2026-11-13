@@ -154,15 +154,6 @@ export function loadProductDraft(
 export function saveProductDraft(draft: ProductCreationDraft, key = draftStorageKey) {
   localStorage.setItem(key, JSON.stringify(draft));
 }
-export function readCreationStep(fallback: CreationStep): CreationStep {
-  const id = new URLSearchParams(location.search).get("step");
-  return (
-    creationSteps.find((step) => step.id === id)?.id ||
-    creationSteps.find((step) => step.id === fallback)?.id ||
-    "main"
-  );
-}
-
 // Files are stored separately from the synchronous text journal so large media
 // cannot exhaust localStorage or delay a keystroke's save.
 function mediaDB(): Promise<IDBDatabase> {

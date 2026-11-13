@@ -314,29 +314,6 @@ func validateRequiredAttributes(ctx context.Context, tx pgx.Tx, productID int64)
 	return nil
 }
 
-func clearLegacyAttribute(ctx context.Context, tx pgx.Tx, productID int64, code string) error {
-	productColumns := map[string]string{
-		"light_level": "light_level", "watering": "watering", "care_level": "care_level",
-		"pet_safety": "pet_safety", "placement": "placement", "growth_habit": "growth_habit",
-	}
-	variantColumns := map[string]string{
-		"height_cm": "height_cm", "pot_diameter_cm": "pot_diameter_cm",
-		"package_length_cm": "package_length_cm", "package_width_cm": "package_width_cm",
-		"package_height_cm": "package_height_cm", "package_weight_grams": "package_weight_grams",
-	}
-	if column, ok := productColumns[code]; ok {
-		if _, err := tx.Exec(ctx, "UPDATE products SET "+column+"=NULL WHERE id=$1", productID); err != nil {
-			return fmt.Errorf("clear legacy product attribute %s: %w", code, err)
-		}
-	}
-	if column, ok := variantColumns[code]; ok {
-		if _, err := tx.Exec(ctx, "UPDATE product_variants SET "+column+"=NULL WHERE id=(SELECT id FROM product_variants WHERE product_id=$1 ORDER BY is_active DESC,id LIMIT 1)", productID); err != nil {
-			return fmt.Errorf("clear legacy variant attribute %s: %w", code, err)
-		}
-	}
-	return nil
-}
-
 // ImportProducts заводит карточки по кодам товаров из справочника СБИС.
 //
 // Ищем в справочнике, а не в самом СБИС: обмен уже принёс всю номенклатуру,

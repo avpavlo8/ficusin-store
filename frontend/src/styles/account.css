@@ -737,12 +737,6 @@
 .admin-form-grid input.numeric-input {
   appearance: textfield;
 }
-.external-mapping-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr 2fr auto;
-  gap: 8px;
-  align-items: end;
-}
 .storefront-attribute-filters {
   display: grid;
   gap: 10px;

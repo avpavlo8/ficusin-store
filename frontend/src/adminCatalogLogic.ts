@@ -20,20 +20,6 @@ export type ProductReadiness = {
   unknownEnums: string[];
 };
 
-export const readinessLabels: Record<ReadinessCode, string> = {
-  variants_missing: "Проверьте размеры и цены",
-  no_photo: "Нет основного фото",
-  no_description: "Нет описания",
-  invalid_category: "Некорректная категория",
-  stage1_missing: "Не заполнены характеристики",
-  latin_name_missing: "Нет латинского названия",
-  care_missing: "Не заполнен уход",
-  unknown_enum: "Есть неизвестные значения",
-  draft: "Черновик",
-  ready: "Черновики без замечаний",
-  published: "Опубликовано",
-};
-
 export function rootCategory(categories: Category[], categoryId?: number) {
   let category = categories.find((item) => item.id === categoryId);
   const visited = new Set<number>();

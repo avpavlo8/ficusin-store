@@ -849,15 +849,6 @@ export type ProcurementData = {
   integrationSync: IntegrationSyncStatus[];
 };
 
-export type AdminCollection = {
-  id: number;
-  slug: string;
-  title: string;
-  note: string;
-  active: boolean;
-  products: number[];
-};
-
 export type SettingDefinition = {
   key: string;
   title: string;

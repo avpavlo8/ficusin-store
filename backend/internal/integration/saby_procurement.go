@@ -1042,59 +1042,6 @@ func (client *SabyClient) rpc(ctx context.Context, method string, params any, ta
 	return nil
 }
 
-func (client *SabyClient) receiptContext(ctx context.Context) (map[string]any, map[string]any, error) {
-	var result any
-	if err := client.rpc(ctx, "sabyWarehouse.List", map[string]any{"filter": map[string]any{"limit": 100, "page": 0}}, &result); err != nil {
-		return nil, nil, fmt.Errorf("получить склады Saby: %w", err)
-	}
-	candidates := collectMaps(result)
-	var selected map[string]any
-	for _, candidate := range candidates {
-		name := strings.ToLower(nestedString(candidate, "name") + " " + nestedString(candidate, "address"))
-		if nestedString(candidate, "code") == "" || nestedString(candidate, "name") == "" {
-			continue
-		}
-		if selected == nil {
-			selected = candidate
-		}
-		if strings.Contains(name, "новосел") && strings.Contains(name, "40") {
-			selected = candidate
-			break
-		}
-	}
-	if selected == nil {
-		return nil, nil, errors.New("Saby не вернул склад для поступления")
-	}
-	inn := nestedString(selected, "inn")
-	kpp := nestedString(selected, "kpp")
-	orgName := nestedString(selected, "organisation", "name")
-	if orgName == "" {
-		orgName = nestedString(selected, "organization", "name")
-	}
-	if inn == "" {
-		return nil, nil, errors.New("в складе Saby не указана наша организация")
-	}
-	organization := make(map[string]any)
-	if len(inn) == 12 {
-		parts := strings.Fields(strings.TrimPrefix(strings.TrimSpace(orgName), "ИП "))
-		person := map[string]any{"ИНН": inn}
-		if len(parts) > 0 {
-			person["Фамилия"] = parts[0]
-		}
-		if len(parts) > 1 {
-			person["Имя"] = parts[1]
-		}
-		if len(parts) > 2 {
-			person["Отчество"] = parts[2]
-		}
-		organization["СвФЛ"] = person
-	} else {
-		organization["СвЮЛ"] = map[string]any{"ИНН": inn, "КПП": kpp, "Название": orgName}
-	}
-	warehouse := map[string]any{"Название": nestedString(selected, "name"), "Номер": nestedString(selected, "code")}
-	return organization, warehouse, nil
-}
-
 func collectMaps(value any) []map[string]any {
 	result := make([]map[string]any, 0)
 	var walk func(any)
