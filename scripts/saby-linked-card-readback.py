@@ -116,3 +116,13 @@ if 'flat_native' in globals() and str(flat_native.get('Id'))=='1101' and flat_na
     print('Native location identifiers:',json.dumps({key:flat_native.get(key) for key in ('Category','CategoryName','Folder')},ensure_ascii=False))
 if 'category_list' in globals() and not category_list.get('error'):
     print('Category list controlled row:',json.dumps([{key:row.get(key) for key in ('Id','Name','IsCategory','IsFolder','IsFolderUI','Deleted')} for row in recordset_rows(category_list.get('result',{}))],ensure_ascii=False))
+
+def markup_shape(value, depth=0):
+    if depth>6:return {'type':type(value).__name__}
+    if isinstance(value,list):return [markup_shape(v,depth+1) for v in value[:12]]
+    if isinstance(value,dict):return {key:markup_shape(val,depth+1) for key,val in list(value.items())[:15]}
+    if isinstance(value,str):return {'literal':value} if value in ('p','div','span','br','text','a','ul','li','b','i','strong','em','u','h1','h2','h3') else {'type':'text','length':len(value)}
+    return {'type':type(value).__name__}
+if 'flat_native' in globals() and str(flat_native.get('Id'))=='1101' and flat_native.get('Number')=='X269652448' and flat_native.get('Identifier')=='0f56c2bd-2669-473f-9b94-875d521998a7':
+    print('Native Description markup structure:',json.dumps(markup_shape(flat_native.get('Description')),ensure_ascii=False))
+    print('Native PriceData row identities:',json.dumps([{key:row.get(key) for key in ('Id','PriceList','MeasureUnit','CanEdit')} for row in recordset_rows(flat_native.get('PriceData'))],ensure_ascii=False))
