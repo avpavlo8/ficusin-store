@@ -31,7 +31,7 @@ jobs:
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_POINT_ID: ${{ vars.SABY_POINT_ID }}
           SABY_PROBE_SEARCH: ${{ inputs.search }}
-        run: python3 scripts/saby-probe.py
+        run: python3 scripts/saby-linked-card-readback.py
       - name: Probe existing receipt response schema without values
         if: inputs.receipt_id != ''
         env:
