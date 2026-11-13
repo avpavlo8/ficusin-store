@@ -247,7 +247,6 @@ export function ProductCreationPage({
                 ? { price: placeholder.price }
                 : {}),
               ...(placeholder.label !== "Основной вариант" ? { label: placeholder.label } : {}),
-              saby: placeholder.saby,
               sabyEditor: placeholder.sabyEditor,
               sabyEditorTouched: placeholder.sabyEditorTouched,
               ozon: placeholder.ozon,
@@ -362,6 +361,8 @@ export function ProductCreationPage({
           variants: Array<{
             variantId: number;
             priceMode?: "auto" | "manual";
+            ozonPrice: string;
+            wbPrice: string;
             saby: SabyEditorConfig;
             marketplace: MarketplaceCommon;
           }>;
@@ -409,9 +410,29 @@ export function ProductCreationPage({
                     defaults: { category: current.sabyCategory, folder: current.sabyFolder },
                   })
                 : undefined;
+            // Older plans stored amounts without their mode. Preserve that
+            // intent until the owner explicitly chooses Auto; do not infer that
+            // an old amount came from the current formula.
+            const savedPriceMode =
+              saved?.priceMode ||
+              ([saved?.ozonPrice, saved?.wbPrice].some(
+                (value) => typeof value === "string" && value.trim() !== "",
+              )
+                ? "manual"
+                : undefined);
+            // Formula previews may have filled a fresh draft before the plan
+            // arrives. Later polls must preserve local edits, including zero.
+            const restoreManualPrices =
+              row.marketplacePriceMode === undefined && savedPriceMode === "manual";
             const next = {
               ...row,
-              marketplacePriceMode: row.marketplacePriceMode ?? saved?.priceMode,
+              ...(restoreManualPrices && typeof saved?.ozonPrice === "string"
+                ? { ozon: { ...(row.ozon || current.ozon), price: saved.ozonPrice } }
+                : {}),
+              ...(restoreManualPrices && typeof saved?.wbPrice === "string"
+                ? { wb: { ...(row.wb || current.wb), price: saved.wbPrice } }
+                : {}),
+              marketplacePriceMode: row.marketplacePriceMode ?? savedPriceMode,
               marketplace: row.marketplace || saved?.marketplace,
               sabyEditor,
             };
@@ -678,7 +699,6 @@ export function ProductCreationPage({
       mediaCustomized: true,
       price: variant.price,
       active: false,
-      saby: emptyProductDraft().saby,
       ozon: emptyProductDraft().ozon,
       wb: emptyProductDraft().wb,
     };
@@ -833,7 +853,6 @@ export function ProductCreationPage({
           ...variantToDraft(row),
           ...(previous
             ? {
-                saby: previous.saby,
                 marketplacePriceMode: previous.marketplacePriceMode,
                 marketplace: previous.marketplace,
                 sabyEditor: previous.sabyEditor,

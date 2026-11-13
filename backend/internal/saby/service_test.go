@@ -1,6 +1,9 @@
 package saby
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // Код товара в выгрузке зовётся по-разному, а менеджер ищет позицию именно
 // по нему. Берём первое непустое и не придумываем ничего лишнего.
@@ -55,13 +58,13 @@ func TestNormalizeKeepsCodes(t *testing.T) {
 	if item.code != "X1150532" || item.article != "ART-1" || item.barcode != "4600000000001" {
 		t.Errorf("коды потерялись: %+v", item)
 	}
-	if !sameStrings(item.externalIDs, []string{"card-external", "17460b69-327e-4ec4-aabb-f064710a135a"}) {
+	if !slices.Equal(item.externalIDs, []string{"card-external", "17460b69-327e-4ec4-aabb-f064710a135a"}) {
 		t.Errorf("внешние идентификаторы потерялись: %+v", item.externalIDs)
 	}
 	if item.costMinor != 149000 || item.balance != 3 {
 		t.Errorf("цена или остаток посчитаны неверно: %+v", item)
 	}
-	if !sameStrings(item.sectionPath, []string{"Каталог", "Комнатные растения"}) {
+	if !slices.Equal(item.sectionPath, []string{"Каталог", "Комнатные растения"}) {
 		t.Errorf("ветка каталога потерялась: %+v", item.sectionPath)
 	}
 	if item.folderID != "folder-plants" {
@@ -104,18 +107,6 @@ func TestPlainDescriptionRemovesEditorMarkup(t *testing.T) {
 	want := "Первая строка описания\nВторая строка\nУход"
 	if got := plainDescription(input); got != want {
 		t.Fatalf("описание очищено неверно:\n%q\nожидали:\n%q", got, want)
-	}
-}
-
-func TestSameStrings(t *testing.T) {
-	if !sameStrings([]string{"a", "b"}, []string{"a", "b"}) {
-		t.Error("одинаковые наборы посчитались разными")
-	}
-	if sameStrings([]string{"a", "b"}, []string{"b", "a"}) {
-		t.Error("порядок фотографий не учтён, а он виден покупателю")
-	}
-	if sameStrings([]string{"a"}, []string{"a", "b"}) {
-		t.Error("разная длина посчиталась одинаковой")
 	}
 }
 

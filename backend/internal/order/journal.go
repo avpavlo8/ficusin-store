@@ -9,9 +9,8 @@ import (
 
 // Виды движений товара по настоящему складу.
 const (
-	MovementReserve  = "reserve"
-	MovementRelease  = "release"
-	MovementWriteoff = "writeoff"
+	MovementReserve = "reserve"
+	MovementRelease = "release"
 )
 
 const recordMovementSQL = `

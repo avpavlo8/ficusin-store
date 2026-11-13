@@ -7,9 +7,7 @@ const CookieName = "ficusin_session"
 var (
 	ErrAccountExists               = errors.New("account already exists")
 	ErrAccountNotFound             = errors.New("account not found")
-	ErrInvalidCredentials          = errors.New("invalid credentials")
 	ErrInvalidCode                 = errors.New("invalid or expired code")
-	ErrTooManyAttempts             = errors.New("too many attempts")
 	ErrRegistrationDetailsRequired = errors.New("registration details required")
 	ErrRequestTooSoon              = errors.New("code was requested too recently")
 	ErrEmailTaken                  = errors.New("email already belongs to another account")

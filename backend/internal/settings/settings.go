@@ -9,6 +9,7 @@ package settings
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrUnknownSetting = errors.New("unknown setting")
 
 // Keys. Adding one here and to defaults is all it takes for it to appear in
 // the panel.
@@ -27,7 +30,6 @@ const (
 	CDEKSenderPhone     = "cdek.sender_phone"
 	CDEKSenderAddress   = "cdek.sender_address"
 	PaymentsEnabled     = "payments.enabled"
-	TelegramEnabled     = "telegram.enabled"
 	AutoCancelHours     = "orders.auto_cancel_hours"
 	MetrikaID           = "analytics.metrika_id"
 	YandexVerification  = "seo.yandex_verification"
@@ -63,12 +65,6 @@ var Definitions = []Definition{
 		Key:   CDEKOrdersEnabled,
 		Title: "Создавать заказы в СДЭК",
 		Note:  "Включено — для новых заказов с рассчитанной доставкой и товаром в наличии заявка СДЭК создаётся сразу после оформления, до оплаты. При отмене заказа заявка отменяется. Старые неоплаченные заказы не передаются.",
-		Kind:  "switch",
-	},
-	{
-		Key:   TelegramEnabled,
-		Title: "Уведомления в Telegram",
-		Note:  "Выключите, чтобы тестовые заказы не сыпались менеджеру.",
 		Kind:  "switch",
 	},
 	{
@@ -115,14 +111,11 @@ var Definitions = []Definition{
 	},
 }
 
-// defaults are what a setting means before anyone has touched it. Both
-// integrations start switched on so that an existing shop does not quietly
-// lose them the moment this ships.
+// defaults are what a setting means before anyone has touched it.
 var defaults = map[string]string{
 	CDEKPackagingSeason: "summer",
 	PaymentsEnabled:     "1",
 	CDEKOrdersEnabled:   "0",
-	TelegramEnabled:     "1",
 	AutoCancelHours:     "24",
 	CDEKSenderName:      "",
 	CDEKSenderPhone:     "",
@@ -253,6 +246,13 @@ func (service *Service) All() map[string]string {
 // Save writes the changes and refreshes the cache at once, so the person who
 // flipped a switch sees it take effect immediately.
 func (service *Service) Save(ctx context.Context, changes map[string]string) error {
+	// Validate the whole request before writes: an old UI must not silently
+	// report success for a retired switch or partially update other preferences.
+	for key := range changes {
+		if _, known := defaults[key]; !known {
+			return ErrUnknownSetting
+		}
+	}
 	for _, definition := range Definitions {
 		value, changed := changes[definition.Key]
 		if !changed {

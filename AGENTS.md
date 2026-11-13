@@ -69,7 +69,7 @@ Timeweb Cloud App Platform, приложение `229223`. **Мерж в `main`
 | `METRIKA_MP_TOKEN` | серверные покупки в Метрику выключены; старые/неподключённые заказы используют браузерную цель |
 | `DATABASE_URL` | приложение не стартует |
 | `SMSRU_API_KEY` | включается dev-заглушка, подтверждающая звонок; в production ключ обязателен |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ORDER_CHAT_ID` | уведомления о заказах не уходят |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ORDER_CHAT_ID` | в production обязательны при старте; development/staging используют отключённый адаптер |
 | `YANDEX_SUGGEST_API_KEY` | поле адреса работает как обычный ввод |
 | `CDEK_CLIENT_ID`, `CDEK_CLIENT_SECRET` | доставка СДЭК скрыта из оформления |
 | `YOOKASSA_SHOP_ID`, `YOOKASSA_SECRET_KEY` | оплата картой скрыта из оформления |

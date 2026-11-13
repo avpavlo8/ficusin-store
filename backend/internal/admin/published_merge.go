@@ -268,7 +268,6 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 	}
 	canonicalName := stripVariantSize(target.Name)
 	if _, err = tx.Exec(ctx, `UPDATE products SET name=$2,
-		saby_fields=array_remove(array_remove(array_remove(saby_fields,'name'),'description'),'photo'),
 		updated_at=CURRENT_TIMESTAMP WHERE id=$1`, target.ID, canonicalName); err != nil {
 		return fmt.Errorf("normalize merged title: %w", err)
 	}

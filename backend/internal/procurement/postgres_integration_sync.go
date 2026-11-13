@@ -11,7 +11,6 @@ import (
 
 const (
 	integrationCurrentEvery = 5 * time.Minute
-	integrationDeepEvery    = 7 * 24 * time.Hour
 )
 
 type IntegrationSyncCoordinator interface {

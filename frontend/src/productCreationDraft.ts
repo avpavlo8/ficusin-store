@@ -5,36 +5,15 @@ import type {
   ChannelCategory,
 } from "./catalogEditorChannels";
 import type { PlantPassport } from "./adminTypes";
-// Retain the saved draft shape independently of the retired Saby step UI.
-export type SabyStepDraft = {
-  mode: "create" | "link";
-  folderId: string;
-  initialStock: string;
-  query: string;
-  selected: {
-    id: string;
-    code: string;
-    article: string;
-    name: string;
-    missing: boolean;
-    linkedVariantId?: number;
-    linkedProductId?: number;
-    mappedProductId?: number;
-  } | null;
-};
-
 type ChannelDraft = {
   enabled: boolean;
   name: string;
-  category: string;
   price: string;
   article: string;
   description: string;
   brand?: string;
   model?: string;
   tnved?: string;
-  country?: string;
-  composition?: string;
 };
 export type DraftMedia = {
   id: string;
@@ -57,7 +36,6 @@ export type DraftVariant = {
   label: string;
   sku: string;
   price: string;
-  stock: number;
   wholesaleMinQty: string;
   active: boolean;
   archived: boolean;
@@ -67,7 +45,6 @@ export type DraftVariant = {
   mediaInitialized?: boolean;
   mediaCustomized?: boolean;
   sabyId?: string;
-  saby?: SabyStepDraft;
   ozon?: ChannelDraft;
   wb?: ChannelDraft;
 };
@@ -85,7 +62,6 @@ export type ProductCreationDraft = {
   categoryId?: number;
   description: string;
   latinName: string;
-  saby: SabyStepDraft;
   ozon: ChannelDraft;
   wb: ChannelDraft;
   attributes: Record<string, string | number | boolean | string[] | null>;
@@ -97,7 +73,6 @@ export type ProductCreationDraft = {
   cover?: DraftMedia | null;
   remoteInitialized?: boolean;
   editorTab?: "product" | "channels" | "faq";
-  channelTab?: "saby" | "ozon" | "wb";
   variants?: DraftVariant[];
   selectedVariantId?: string;
   warnings?: string;
@@ -107,7 +82,6 @@ export const draftStorageKey = "ficusin:product-creation-draft:v1";
 const channel = (): ChannelDraft => ({
   enabled: false,
   name: "",
-  category: "",
   price: "",
   article: "",
   description: "",
@@ -121,7 +95,6 @@ export const emptyProductDraft = (): ProductCreationDraft => ({
   price: "",
   description: "",
   latinName: "",
-  saby: { mode: "create", folderId: "", initialStock: "", query: "", selected: null },
   ozon: channel(),
   wb: channel(),
   attributes: {},
@@ -142,7 +115,6 @@ export function loadProductDraft(
       typeof data.name !== "string" ||
       !Array.isArray(data.media) ||
       !Array.isArray(data.faq) ||
-      !data.saby ||
       !data.ozon ||
       !data.wb
     )

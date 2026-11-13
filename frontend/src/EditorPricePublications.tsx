@@ -13,7 +13,6 @@ type PricePublication = {
   status: string;
   message: string;
   fingerprint: string;
-  executionMode: string;
   canApprove: boolean;
   canRetry: boolean;
   blockReason: string;
@@ -31,9 +30,6 @@ const statusNames: Record<string, string> = {
   synced: "Цена подтверждена",
   failed: "Ошибка обмена",
   needs_attention: "Нужна проверка",
-  superseded: "Заменено новой ценой",
-  skipped: "Пропущено",
-  prepared: "Подготовлено",
 };
 
 export function EditorPricePublications({

@@ -440,8 +440,36 @@ test('@desktop editor price mode is explicit in saved plans and restored without
  await page.reload();await expect(page.locator('.editor-page').getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Авто',exact:true})).toHaveAttribute('aria-pressed','true');
 });
 
-test('@desktop late saved manual price mode cannot overwrite an explicit auto draft choice',async({page})=>{
+for(const savedMode of ['manual',undefined] as const)test(`@desktop late saved ${savedMode || 'legacy'} price mode cannot overwrite an explicit auto draft choice`,async({page})=>{
  const f=await fixture(page);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
- await page.route('**/api/v1/admin/products/1/editor-plan',async route=>{if(route.request().method()!=='GET')return route.fallback();await held;return route.fulfill({json:{config:{variants:[{variantId:10,priceMode:'manual'}]},publications:[],links:{},barcodes:{},publicationMode:'disabled'}})});
+ await page.route('**/api/v1/admin/products/1/editor-plan',async route=>{if(route.request().method()!=='GET')return route.fallback();await held;return route.fulfill({json:{config:{variants:[{variantId:10,priceMode:savedMode,ozonPrice:'4321.45',wbPrice:'3210.25'}]},publications:[],links:{},barcodes:{},publicationMode:'disabled'}})});
  await open(page);const e=await edit(page);const auto=e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Авто',exact:true});await auto.click();release();await expect(auto).toHaveAttribute('aria-pressed','true');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('auto');
+});
+
+
+test('@desktop saved manual marketplace amounts survive a fresh browser draft and Save unchanged',async({page})=>{
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'}]});
+ await open(page);let e=await edit(page);
+ for(const [label,value] of [['Цена Wildberries, ₽','3210.25'],['Цена Ozon, ₽','4321.45']])await expect(e.getByLabel(label,{exact:true})).toHaveValue(value);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+ await page.evaluate(()=>localStorage.removeItem('ficusin:product-edit-draft:v1:1'));await page.reload();e=page.locator('.editor-page');
+ await expect(e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');
+ for(const [label,value] of [['Цена Wildberries, ₽','3210.25'],['Цена Ozon, ₽','4321.45']])await expect(e.getByLabel(label,{exact:true})).toHaveValue(value);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+});
+
+test('@desktop a late saved plan preserves newer manual price edits including zero',async({page})=>{
+ await fixture(page);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/v1/admin/products/1/editor-plan',async route=>{if(route.request().method()!=='GET')return route.fallback();await held;return route.fulfill({json:{config:{variants:[{variantId:10,priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'}]},publications:[],links:{},barcodes:{},publicationMode:'disabled'}})});
+ await open(page);const e=await edit(page);const manual=e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Вручную',exact:true});await manual.click();await e.getByLabel('Цена Wildberries, ₽',{exact:true}).fill('0');await e.getByLabel('Цена Ozon, ₽',{exact:true}).fill('5220.21');
+ const response=page.waitForResponse(r=>r.url().endsWith('/editor-plan')&&r.request().method()==='GET');release();await response;
+ await expect(manual).toHaveAttribute('aria-pressed','true');await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('0');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('5220.21');
+});
+
+
+test('@desktop legacy saved amounts without a price mode require manual intent until explicit Auto',async({page})=>{
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,ozonPrice:'4321.45',wbPrice:'3210.25'}]});await open(page);const e=await edit(page);const modes=e.getByRole('group',{name:'Режим цен маркетплейсов'});
+ await expect(modes.getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('3210.25');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('4321.45');expect(f.mutations).toHaveLength(0);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+ await modes.getByRole('button',{name:'Авто',exact:true}).click();await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('2490');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('2990');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'auto',ozonPrice:'2990',wbPrice:'2490'});
 });
