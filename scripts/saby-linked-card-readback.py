@@ -65,7 +65,7 @@ if lookup.get("error"):
 else:
     entity=fields(lookup.get("result",{}))
     print("Folder response schema:",json.dumps(list(entity),ensure_ascii=False))
-    if str(entity.get("Id")) == "3333":
-        print("Verified folder metadata:",json.dumps({"id":entity.get("Id"),"name":entity.get("Name"),"isFolder":entity.get("IsFolder"),"isFolderUI":entity.get("IsFolderUI")},ensure_ascii=False))
+    if str(entity.get("@Номенклатура")) == "3333":
+        print("Verified folder metadata:",json.dumps({"id":entity.get("@Номенклатура"),"name":entity.get("Наименование"),"type":entity.get("ТипНоменклатуры")},ensure_ascii=False))
     else:
         print("Folder identity not confirmed; no values printed")
