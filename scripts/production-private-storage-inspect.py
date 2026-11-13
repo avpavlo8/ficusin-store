@@ -8,6 +8,7 @@ credentials and endpoint URLs are not logged. Unknown is never called private.
 
 import argparse
 import json
+import math
 import os
 import re
 import time
@@ -138,6 +139,10 @@ def safe_error(error, phase):
     kind = type(error).__name__
     kind = kind if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", kind) else "UnknownError"
     diagnostic = {"phase": phase, "errorClass": kind}
+    if isinstance(error, ModuleNotFoundError):
+        module = error.name
+        if isinstance(module, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,99}", module):
+            diagnostic["missingModule"] = module
     response = getattr(error, "response", None)
     if isinstance(response, dict):
         details = response.get("Error")
@@ -183,7 +188,46 @@ def provider_buckets(reply, public_bucket, limit):
     total = meta.get("total") if isinstance(meta, dict) else None
     incomplete = isinstance(total, int) and total > len(buckets)
     return {"state": "ok", "buckets": output[:limit], "ignoredForeignBucketCount": ignored,
-            "complete": len(output) <= limit and not incomplete}
+            "originalBucketCount": len(buckets), "complete": len(output) <= limit and not incomplete}
+
+
+def storage_plan(bucket_reply, presets_reply, public_bucket, original_count):
+    """Read-only price candidates, not approval to provision a paid resource."""
+    bucket = bucket_reply.get("bucket")
+    if (public_bucket != "ficusin-photos" or not isinstance(bucket, dict)
+            or bucket.get("id") != 541777 or bucket.get("name") != public_bucket
+            or bucket.get("type") != "public"):
+        raise InspectError("unexpected_public_bucket")
+    location = bucket.get("location")
+    if not isinstance(location, str) or not re.fullmatch(r"[a-z]{2,8}-[0-9]{1,3}", location):
+        raise InspectError("invalid_bucket_location")
+    presets = presets_reply.get("storages_presets")
+    if not isinstance(presets, list):
+        raise InspectError("invalid_storage_presets")
+    candidates = []
+    for preset in presets:
+        if not isinstance(preset, dict) or preset.get("location") != location or preset.get("storage_class") != "hot":
+            continue
+        identity, disk, price = preset.get("id"), preset.get("disk"), preset.get("price")
+        if not isinstance(identity, int) or isinstance(identity, bool) or identity <= 0:
+            continue
+        if any(not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) for value in (disk, price)):
+            continue
+        if disk <= 0 or price < 0:
+            continue
+        candidates.append({"id": identity, "disk": disk, "price": price, "location": location, "storage_class": "hot"})
+    candidates.sort(key=lambda preset: (preset["price"], preset["disk"], preset["id"]))
+    current = {"id": 541777, "name": public_bucket, "location": location}
+    if isinstance(bucket.get("preset_id"), int) and not isinstance(bucket["preset_id"], bool):
+        current["preset_id"] = bucket["preset_id"]
+    if bucket.get("storage_class") in ("hot", "cold"):
+        current["storage_class"] = bucket["storage_class"]
+    return {"mode": "read-only-plan", "originalBucketCount": original_count, "currentPublicBucket": current,
+            "minimumSameLocationHotPresets": candidates[:3],
+            "proposedName": "ficusin-private", "proposedType": "private",
+            "creationAuthorizedByThisScript": False,
+            "presetAvailabilityVerified": False,
+            "restriction": "account minimum-tier limits and price units require review; never auto-select a higher-priced tier"}
 
 
 class Inventory:
@@ -280,7 +324,7 @@ class Inventory:
 
 
 def fetch_provider(path, token, deadline):
-    if path not in (f"/api/v1/apps/{APP_ID}", "/api/v1/storages/buckets"):
+    if path not in (f"/api/v1/apps/{APP_ID}", "/api/v1/storages/buckets", "/api/v1/storages/buckets/541777", "/api/v1/presets/storages"):
         raise InspectError("provider_path_rejected")
     remaining = deadline - time.monotonic()
     if remaining <= 0:
@@ -349,6 +393,17 @@ def main():
     except Exception as error:
         result["providerInventory"] = {"state": "failed", "complete": False,
                                        "diagnostic": safe_error(error, CURRENT_PHASE)}
+    CURRENT_PHASE = "private_storage_plan"
+    try:
+        if env["S3_BUCKET"].strip() != "ficusin-photos":
+            raise InspectError("unexpected_public_bucket")
+        original_count = result.get("providerInventory", {}).get("originalBucketCount")
+        result["privateStoragePlan"] = storage_plan(
+            fetch_provider("/api/v1/storages/buckets/541777", token, deadline),
+            fetch_provider("/api/v1/presets/storages", token, deadline),
+            env["S3_BUCKET"].strip(), original_count)
+    except Exception as error:
+        result["privateStoragePlan"] = {"state": "failed", "diagnostic": safe_error(error, CURRENT_PHASE)}
     result.update({"appId": APP_ID, "appName": APP_NAME, "mode": "read-only",
                    "privateBucketConfigured": bool(str(env.get("PRIVATE_S3_BUCKET", "")).strip())})
     print(json.dumps(result, ensure_ascii=True), flush=True)

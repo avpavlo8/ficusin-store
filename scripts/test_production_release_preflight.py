@@ -238,6 +238,12 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(module.production_settings(app, module.EXPECTED_COMMIT), app["envs"])
         app["branch"] = {"name": "main"}
         self.assertEqual(module.production_settings(app, module.EXPECTED_COMMIT), app["envs"])
+        app["branch"] = "main"
+        self.assertEqual(module.production_settings(app, module.EXPECTED_COMMIT), app["envs"])
+        app["branch"] = "staging"
+        with self.assertRaises(module.PreflightError):
+            module.production_settings(app, module.EXPECTED_COMMIT)
+        app["branch"] = {"name": "main"}
         app["branch"]["name"] = "staging"
         with self.assertRaises(module.PreflightError):
             module.production_settings(app, module.EXPECTED_COMMIT)

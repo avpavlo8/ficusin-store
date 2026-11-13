@@ -86,7 +86,10 @@ def production_settings(app, expected_commit):
         raise PreflightError("invalid_expected_commit")
     if app.get("id") != APP_ID or app.get("name") != APP_NAME:
         raise PreflightError("wrong_application")
-    branch = app.get("branch_name") or (app.get("branch") or {}).get("name")
+    branch = app.get("branch_name")
+    if not branch:
+        alternate = app.get("branch")
+        branch = alternate.get("name") if isinstance(alternate, dict) else alternate
     if branch not in (None, "main") or app.get("commit_sha") != expected_commit:
         raise PreflightError("wrong_production_commit")
     settings = app.get("envs")
