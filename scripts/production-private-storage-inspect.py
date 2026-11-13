@@ -21,6 +21,7 @@ MAX_RESPONSE = 16 * 1024 * 1024
 READ_METHODS = frozenset(("list_buckets", "get_bucket_acl", "get_bucket_policy_status", "get_bucket_policy"))
 ALL_USERS = "http://acs.amazonaws.com/groups/global/AllUsers"
 AUTHENTICATED_USERS = "http://acs.amazonaws.com/groups/global/AuthenticatedUsers"
+CURRENT_PHASE = "startup"
 
 
 class InspectError(Exception):
@@ -132,6 +133,59 @@ def error_state(error):
     return "read_failed"
 
 
+def safe_error(error, phase):
+    """Log only validated diagnostic identifiers, never exception text/body."""
+    kind = type(error).__name__
+    kind = kind if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", kind) else "UnknownError"
+    diagnostic = {"phase": phase, "errorClass": kind}
+    response = getattr(error, "response", None)
+    if isinstance(response, dict):
+        details = response.get("Error")
+        code = details.get("Code") if isinstance(details, dict) else None
+        if isinstance(code, (str, int)) and not isinstance(code, bool):
+            code = str(code)
+            if re.fullmatch(r"(?:[A-Za-z][A-Za-z0-9_.-]{0,79}|[1-5][0-9]{2})", code):
+                diagnostic["awsErrorCode"] = code
+        metadata = response.get("ResponseMetadata")
+        status = metadata.get("HTTPStatusCode") if isinstance(metadata, dict) else None
+    else:
+        status = error.code if isinstance(error, urllib.error.HTTPError) else None
+    if isinstance(status, int) and not isinstance(status, bool) and 100 <= status <= 599:
+        diagnostic["httpStatus"] = status
+    return diagnostic
+
+
+def provider_buckets(reply, public_bucket, limit):
+    """Provider metadata only. Credentials and unrelated names are discarded."""
+    buckets = reply.get("buckets") if isinstance(reply, dict) else None
+    if not isinstance(buckets, list):
+        raise InspectError("invalid_provider_bucket_list")
+    output, ignored = [], 0
+    for item in buckets:
+        name = item.get("name") if isinstance(item, dict) else None
+        if not (ours(name) or isinstance(name, str) and name == public_bucket):
+            ignored += 1
+            continue
+        safe = {"name": name, "publicConfiguredMatch": name == public_bucket}
+        identity = item.get("id")
+        if isinstance(identity, int) and not isinstance(identity, bool) and identity > 0:
+            safe["id"] = identity
+        for key in ("type", "access_type"):
+            # Only documented access/storage classifications, never arbitrary
+            # scalar strings that could carry contacts or credentials.
+            if item.get(key) in ("public", "private", "standard", "premium", "cold", "hot"):
+                safe[key] = item[key]
+        if isinstance(item.get("is_public"), bool):
+            safe["is_public"] = item["is_public"]
+        output.append(safe)
+    output.sort(key=lambda item: item["name"])
+    meta = reply.get("meta", {})
+    total = meta.get("total") if isinstance(meta, dict) else None
+    incomplete = isinstance(total, int) and total > len(buckets)
+    return {"state": "ok", "buckets": output[:limit], "ignoredForeignBucketCount": ignored,
+            "complete": len(output) <= limit and not incomplete}
+
+
 class Inventory:
     def __init__(self, client, deadline):
         self.client, self.deadline = client, deadline
@@ -192,7 +246,11 @@ class Inventory:
                 "readStates": states, "privateCandidate": is_public is False and name != public_bucket}
 
     def inspect(self, public_bucket, max_buckets):
-        reply = self.read("list_buckets")
+        try:
+            reply = self.read("list_buckets")
+        except Exception as error:
+            return {"buckets": [], "complete": False, "listBucketsState": error_state(error),
+                    "listBucketsDiagnostic": safe_error(error, "s3_list_buckets")}
         buckets = reply.get("Buckets")
         if not isinstance(buckets, list):
             raise InspectError("invalid_bucket_list")
@@ -221,25 +279,30 @@ class Inventory:
         return result
 
 
-def fetch_app(token, deadline):
+def fetch_provider(path, token, deadline):
+    if path not in (f"/api/v1/apps/{APP_ID}", "/api/v1/storages/buckets"):
+        raise InspectError("provider_path_rejected")
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise InspectError("time_budget")
-    request = urllib.request.Request(f"https://api.timeweb.cloud/api/v1/apps/{APP_ID}",
+    request = urllib.request.Request("https://api.timeweb.cloud" + path,
                                     headers={"Authorization": "Bearer " + token, "Accept": "application/json"})
-    try:
-        with urllib.request.build_opener(NoRedirect()).open(request, timeout=min(20, remaining)) as response:
-            raw = response.read(MAX_RESPONSE + 1)
-        if len(raw) > MAX_RESPONSE:
-            raise InspectError("provider_response_too_large")
-        return json.loads(raw).get("app")
-    except InspectError:
-        raise
-    except Exception:
-        raise InspectError("provider_read_failed") from None
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=min(20, remaining)) as response:
+        raw = response.read(MAX_RESPONSE + 1)
+    if len(raw) > MAX_RESPONSE:
+        raise InspectError("provider_response_too_large")
+    result = json.loads(raw)
+    if not isinstance(result, dict):
+        raise InspectError("invalid_provider_response")
+    return result
+
+
+def fetch_app(token, deadline):
+    return fetch_provider(f"/api/v1/apps/{APP_ID}", token, deadline).get("app")
 
 
 def main():
+    global CURRENT_PHASE
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--max-buckets", type=int, default=50)
     parser.add_argument("--time-budget-seconds", type=int, default=300)
@@ -253,21 +316,39 @@ def main():
         raise InspectError("missing_provider_credentials")
     mask(token)
     deadline = time.monotonic() + args.time_budget_seconds
-    env, endpoint, region = production_settings(fetch_app(token, deadline))
+    CURRENT_PHASE = "production_app_read"
+    app = fetch_app(token, deadline)
+    CURRENT_PHASE = "production_configuration_validation"
+    env, endpoint, region = production_settings(app)
     mask(env["S3_ACCESS_KEY"])
     mask(env["S3_SECRET_KEY"])
-    import boto3
-    from botocore.config import Config
-    # Explicit credentials prevent accidental use of a runner role/default
-    # profile. No other account, database or application is ever contacted.
-    client = boto3.session.Session().client("s3", endpoint_url=endpoint, region_name=region,
-        aws_access_key_id=env["S3_ACCESS_KEY"].strip(), aws_secret_access_key=env["S3_SECRET_KEY"].strip(),
-        config=Config(signature_version="s3v4", connect_timeout=3, read_timeout=5,
-                      retries={"total_max_attempts": 1}, s3={"addressing_style": "path"}))
+    client = None
     try:
+        CURRENT_PHASE = "s3_sdk_import"
+        import boto3
+        from botocore.config import Config
+        CURRENT_PHASE = "s3_client_initialization"
+        # Explicit existing credentials; no runner/default-profile fallback.
+        client = boto3.session.Session().client("s3", endpoint_url=endpoint, region_name=region,
+            aws_access_key_id=env["S3_ACCESS_KEY"].strip(), aws_secret_access_key=env["S3_SECRET_KEY"].strip(),
+            config=Config(signature_version="s3v4", connect_timeout=3, read_timeout=5,
+                          retries={"total_max_attempts": 1}, s3={"addressing_style": "path"}))
+        CURRENT_PHASE = "s3_inventory"
         result = Inventory(client, deadline).inspect(env["S3_BUCKET"].strip(), args.max_buckets)
+    except Exception as error:
+        result = {"buckets": [], "complete": False, "s3State": "failed",
+                  "diagnostic": safe_error(error, CURRENT_PHASE)}
     finally:
-        client.close()
+        if client is not None:
+            client.close()
+    CURRENT_PHASE = "provider_bucket_inventory"
+    try:
+        result["providerInventory"] = provider_buckets(
+            fetch_provider("/api/v1/storages/buckets", token, deadline),
+            env["S3_BUCKET"].strip(), args.max_buckets)
+    except Exception as error:
+        result["providerInventory"] = {"state": "failed", "complete": False,
+                                       "diagnostic": safe_error(error, CURRENT_PHASE)}
     result.update({"appId": APP_ID, "appName": APP_NAME, "mode": "read-only",
                    "privateBucketConfigured": bool(str(env.get("PRIVATE_S3_BUCKET", "")).strip())})
     print(json.dumps(result, ensure_ascii=True), flush=True)
@@ -278,8 +359,8 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except InspectError as error:
-        print(json.dumps({"error": str(error)}), flush=True)
+        print(json.dumps({"error": error.args[0], "diagnostic": safe_error(error, CURRENT_PHASE)}), flush=True)
         raise SystemExit(2) from None
-    except Exception:
-        print('{"error":"read_only_inspection_failed_no_sensitive_details_logged"}', flush=True)
+    except Exception as error:
+        print(json.dumps({"error": "read_only_inspection_failed", "diagnostic": safe_error(error, CURRENT_PHASE)}), flush=True)
         raise SystemExit(2) from None
