@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/consent"
@@ -27,6 +28,7 @@ type CallChecker interface {
 }
 
 type Service struct {
+	fileStorage fileassets.Storage
 	pool        *pgxpool.Pool
 	sessionDays int
 	callChecker CallChecker
@@ -327,25 +329,41 @@ func (service *Service) UpdateProfile(
 
 // SaveAvatar stores a profile picture. The browser downscales and
 // re-encodes the file before sending it, so the bytes that arrive here are
-// already small enough to keep in PostgreSQL alongside the customer row.
+// kept in private object storage; PostgreSQL stores only its reference.
 func (service *Service) SaveAvatar(
 	ctx context.Context,
 	customerID int64,
 	image []byte,
 	mime string,
 ) error {
+	key, err := fileassets.Save(ctx, service.fileStorage, fmt.Sprintf("avatars/%d", customerID), mime, image)
+	if err != nil {
+		return err
+	}
+	keepFile := false
+	defer func() {
+		if !keepFile {
+			fileassets.Discard(service.fileStorage, key)
+		}
+	}()
+	// A lost autocommit UPDATE reply may still have keepFile its reference.
+	// Retain the object after attempting the mutation; a possible orphan is safer
+	// than deleting bytes referenced by a successful but unacknowledged write.
+	keepFile = true
 	tag, err := service.pool.Exec(ctx, `
 		UPDATE customers SET
-			avatar_image = $2,
+			avatar_image = NULL,
+   avatar_object_key=$2,
 			avatar_mime = $3,
 			avatar_updated_at = CURRENT_TIMESTAMP,
 			updated_at = CURRENT_TIMESTAMP
 				WHERE id = $1 AND is_active = TRUE
-	`, customerID, image, mime)
+	`, customerID, key, mime)
 	if err != nil {
 		return fmt.Errorf("save avatar: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		keepFile = false
 		return ErrAccountNotFound
 	}
 	return nil
@@ -355,6 +373,7 @@ func (service *Service) DeleteAvatar(ctx context.Context, customerID int64) erro
 	if _, err := service.pool.Exec(ctx, `
 		UPDATE customers SET
 			avatar_image = NULL,
+   avatar_object_key=NULL,
 			avatar_mime = NULL,
 			avatar_updated_at = NULL,
 			updated_at = CURRENT_TIMESTAMP
@@ -370,14 +389,19 @@ func (service *Service) DeleteAvatar(ctx context.Context, customerID int64) erro
 func (service *Service) Avatar(ctx context.Context, customerID int64) ([]byte, string, error) {
 	var image []byte
 	var mime *string
+	var key string
 	err := service.pool.QueryRow(ctx, `
-		SELECT avatar_image, avatar_mime FROM customers WHERE id = $1
-	`, customerID).Scan(&image, &mime)
+		SELECT avatar_image, avatar_mime,COALESCE(avatar_object_key,'') FROM customers WHERE id = $1
+	`, customerID).Scan(&image, &mime, &key)
 	if isNoRows(err) {
 		return nil, "", nil
 	}
 	if err != nil {
 		return nil, "", fmt.Errorf("load avatar: %w", err)
+	}
+	image, err = fileassets.Read(ctx, service.fileStorage, key, image)
+	if err != nil {
+		return nil, "", err
 	}
 	if mime == nil {
 		return image, "", nil
@@ -495,4 +519,9 @@ func truncate(value string, maximum int) string {
 		return value
 	}
 	return string(runes[:maximum])
+}
+
+func (service *Service) WithFileStorage(storage fileassets.Storage) *Service {
+	service.fileStorage = storage
+	return service
 }

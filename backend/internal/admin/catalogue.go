@@ -51,6 +51,10 @@ func (repository *PostgresRepository) CreateProduct(
 	if !Can(actor.Role, PermissionProductsManage) {
 		return Product{}, ErrForbidden
 	}
+	creationID := strings.TrimSpace(input.CreationID)
+	if creationID != "" && (!validProductCreationID(creationID) || actor.CustomerID <= 0) {
+		return Product{}, fmt.Errorf("%w: неверный ключ создания товара", ErrInvalidInput)
+	}
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return Product{}, fmt.Errorf("%w: название товара обязательно", ErrInvalidInput)
@@ -76,6 +80,28 @@ func (repository *PostgresRepository) CreateProduct(
 		return Product{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	if creationID != "" {
+		// Serialise this actor's retry before any product, SKU, price or photo
+		// is written. The receipt and product commit in the same transaction.
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, fmt.Sprintf("product-create:%d:%s", actor.CustomerID, creationID)); err != nil {
+			return Product{}, err
+		}
+		var existing *int64
+		err := tx.QueryRow(ctx, `SELECT product_id FROM catalog_product_creation_requests WHERE actor_customer_id=$1 AND creation_id=$2`, actor.CustomerID, creationID).Scan(&existing)
+		if err == nil {
+			if existing == nil {
+				return Product{}, fmt.Errorf("%w: ранее созданный товар удалён; начните новый черновик", ErrInvalidInput)
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return Product{}, err
+			}
+			return repository.productByID(ctx, *existing)
+		}
+		if err != pgx.ErrNoRows {
+			return Product{}, err
+		}
+	}
 
 	if input.CategoryID == nil && len(input.VariantAttributes) > 0 {
 		var categoryID int64
@@ -133,19 +159,25 @@ func (repository *PostgresRepository) CreateProduct(
 		variantAttributes["package_weight_grams"] = *input.PackageWeightGrams
 	}
 	for code, value := range input.VariantAttributes {
-		if code != "pot_diameter_cm" && code != "height_cm" {
-			return Product{}, fmt.Errorf("%w: при создании доступны только горшок и высота растения", ErrInvalidInput)
+		if (code == "pot_diameter_cm" || code == "height_cm") && value != nil && value != "" {
+			number, ok := value.(float64)
+			if integer, isInt := value.(int); isInt {
+				number = float64(integer)
+				ok = true
+			}
+			limit := 3000.0
+			if code == "pot_diameter_cm" {
+				limit = 500
+			}
+			if !ok || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0 || number > limit {
+				return Product{}, fmt.Errorf("%w: укажите положительный размер растения", ErrInvalidInput)
+			}
 		}
-		number, ok := value.(float64)
-		limit := 3000.0
-		if code == "pot_diameter_cm" {
-			limit = 500
-		}
-		if !ok || math.IsNaN(number) || math.IsInf(number, 0) || number <= 0 || number > limit {
-			return Product{}, fmt.Errorf("%w: укажите положительный размер растения", ErrInvalidInput)
-		}
-		variantAttributes[code] = number
+		// Creation and editing use the same category-scoped, typed validation,
+		// including summer/winter packaging. Unknown attributes are still rejected.
+		variantAttributes[code] = value
 	}
+
 	if err := saveVariantPIMValues(ctx, tx, id, variantID, variantAttributes); err != nil {
 		return Product{}, err
 	}
@@ -160,6 +192,11 @@ func (repository *PostgresRepository) CreateProduct(
 	}
 	if err := insertAudit(ctx, tx, actor, "product.create", "product", fmt.Sprint(id), nil, after); err != nil {
 		return Product{}, err
+	}
+	if creationID != "" {
+		if _, err := tx.Exec(ctx, `INSERT INTO catalog_product_creation_requests(actor_customer_id,creation_id,product_id) VALUES($1,$2,$3)`, actor.CustomerID, creationID, id); err != nil {
+			return Product{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Product{}, err
@@ -502,6 +539,15 @@ func (repository *PostgresRepository) MergeDraftProducts(ctx context.Context, ac
 		}
 		if _, err = tx.Exec(ctx, `UPDATE product_media SET product_id=$1 WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
 			return fmt.Errorf("move media: %w", err)
+		}
+		if err = moveMergedEditorPlan(ctx, tx, request.TargetProductID, sourceID); err != nil {
+			return fmt.Errorf("move catalog editor plan: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE catalog_product_creation_requests SET product_id=$1 WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
+			return fmt.Errorf("move creation receipts: %w", err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE product_creation_drafts SET product_id=$1 WHERE product_id=$2`, request.TargetProductID, sourceID); err != nil {
+			return fmt.Errorf("move creation history: %w", err)
 		}
 		if _, err = tx.Exec(ctx, `DELETE FROM products WHERE id=$1`, sourceID); err != nil {
 			return fmt.Errorf("delete merged draft: %w", err)

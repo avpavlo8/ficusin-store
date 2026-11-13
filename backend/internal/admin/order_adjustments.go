@@ -139,7 +139,7 @@ func currentAdminOrder(ctx context.Context, repository *PostgresRepository, id i
 		return Order{}, err
 	}
 	rows, err := repository.pool.Query(ctx, `
-		SELECT COALESCE(product_id,0),COALESCE(sku,''),COALESCE(variant_label,''),
+		SELECT id,COALESCE(product_id,0),COALESCE((SELECT product_code::TEXT FROM products WHERE id=order_items.product_id AND status='published'),''),COALESCE(sku,''),COALESCE(variant_label,''),
 			product_name,unit_price::DOUBLE PRECISION,quantity
 		FROM order_items WHERE order_id=$1 ORDER BY id
 	`, id)
@@ -150,12 +150,23 @@ func currentAdminOrder(ctx context.Context, repository *PostgresRepository, id i
 	item.Items = []OrderItem{}
 	for rows.Next() {
 		var line OrderItem
-		if err := rows.Scan(&line.ProductID, &line.SKU, &line.VariantLabel, &line.ProductName, &line.UnitPrice, &line.Quantity); err != nil {
+		if err := rows.Scan(&line.ID, &line.ProductID, &line.ProductCode, &line.SKU, &line.VariantLabel, &line.ProductName, &line.UnitPrice, &line.Quantity); err != nil {
 			return Order{}, err
 		}
 		item.Items = append(item.Items, line)
 	}
 	if err := rows.Err(); err != nil {
+		return Order{}, err
+	}
+	rows.Close()
+	pointers := make([]*OrderItem, len(item.Items))
+	for i := range item.Items {
+		pointers[i] = &item.Items[i]
+	}
+	if err := repository.hydrateOrderItemMedia(ctx, pointers); err != nil {
+		return Order{}, err
+	}
+	if err := repository.hydrateOrderWorkflows(ctx, []*Order{&item}); err != nil {
 		return Order{}, err
 	}
 	return item, nil

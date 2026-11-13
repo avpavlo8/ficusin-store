@@ -1,8 +1,10 @@
+import { OrderProductImage } from "./OrderProductImage";
 import { AdminOrderProductSearch } from "./AdminOrderProductSearch";
+import { OrderProductLink } from "./OrderProductLink";
 import { NumericInput } from "./NumericInput";
 import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, money } from "./adminShared";
-import type { Order, Product } from "./adminTypes";
+import type { Order, OrderWorkflow, Product } from "./adminTypes";
 import { AdminOrderPacking } from "./AdminOrderPacking";
 
 // Заказ показывается в одном из режимов. «summary» — только чтение, всё на
@@ -11,6 +13,7 @@ import { AdminOrderPacking } from "./AdminOrderPacking";
 export type OrderView = "summary" | "items" | "delivery" | "payment" | "shipments";
 
 export type OrderReviewState = {
+  workflow?: OrderWorkflow;
   hasPreorder: boolean;
   deliveryFeePending: boolean;
   packagingDimensionsMissing: boolean;
@@ -67,6 +70,7 @@ type PaymentBalance = {
 };
 
 type Adjustment = {
+  workflow?: OrderWorkflow;
   id: number;
   orderNumber: string;
   subtotal: number;
@@ -87,6 +91,9 @@ type Adjustment = {
   items: Array<{
     id: number;
     productId: number;
+    productCode?: string;
+    image?: string;
+    imageFallback?: string;
     sku: string;
     variantLabel: string;
     productName: string;
@@ -227,11 +234,16 @@ export function AdminOrderEditor({
   const [refundProviderIDs, setRefundProviderIDs] = useState<Record<number, string>>({});
   const [refundBusy, setRefundBusy] = useState(false);
   const refreshMoney = async () => {
-    const state = await api<{ payment: PaymentBalance }>(
+    const state = await api<{ order: Adjustment; payment: PaymentBalance }>(
       `/api/v1/admin/orders/${order.id}/adjustment`,
     );
     setPayment(state.payment);
-    onSaved({ ...order, paymentStatus: state.payment.paymentStatus });
+    onSaved({
+      ...order,
+      status: state.order.status,
+      workflow: state.order.workflow,
+      paymentStatus: state.payment.paymentStatus,
+    });
   };
   const sendRefund = async () => {
     const amount = requestedRefund;
@@ -433,6 +445,7 @@ export function AdminOrderEditor({
   useEffect(() => {
     if (!adjustment) return;
     onReviewState?.({
+      workflow: adjustment.workflow,
       hasPreorder: adjustment.hasPreorder,
       deliveryFeePending: adjustment.deliveryFeePending,
       packagingDimensionsMissing:
@@ -491,6 +504,7 @@ export function AdminOrderEditor({
       {
         id: 0,
         productId: product.id,
+        productCode: product.productCode,
         sku: product.sku,
         variantLabel: product.variantLabel,
         productName: product.name,
@@ -633,9 +647,9 @@ export function AdminOrderEditor({
             <ul className="order-pick-list">
               {adjustment.items.map((line, index) => (
                 <li key={`${line.sku}-${index}`}>
-                  <span className="order-item-photo" aria-hidden="true" />
+                  <OrderProductImage item={line} className="order-item-photo" />
                   <span className="order-item-name">
-                    <strong>{line.productName}</strong>
+                    <OrderProductLink item={line} />
                     <small>
                       {[line.variantLabel, `артикул ${line.sku}`].filter(Boolean).join(" · ")}
                     </small>
@@ -1092,7 +1106,7 @@ export function AdminOrderEditor({
           {lines.map((line, index) => (
             <div className="admin-order-edit-line" key={`${line.sku}-${index}`}>
               <span>
-                <strong>{line.productName}</strong>
+                <OrderProductLink item={line} />
                 {line.variantLabel && <small>{line.variantLabel}</small>}
                 <small>{money.format(line.unitPrice)} / шт.</small>
               </span>

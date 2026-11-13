@@ -51,8 +51,8 @@ type Option struct {
 
 // Definitions is the whole list, in the order the panel shows it.
 var Definitions = []Definition{
-	{Key: CDEKPackagingSeason, Title: "Упаковка для расчёта СДЭК", Kind: "select",
-		Note:    "Выберите летние или зимние габариты для новых расчётов. Если выбранная упаковка не заполнена, доставку рассчитает менеджер. Вес общий для обоих вариантов. Сохранённые коробки заказов не меняются.",
+	{Key: CDEKPackagingSeason, Title: "Сезон упаковки", Kind: "select",
+		Note:    "Общий сезон для доставки сайта и расчётов WB/Ozon. Выберите летние или зимние габариты для новых расчётов. Если выбранная упаковка не заполнена, доставку рассчитает менеджер. Вес общий для обоих вариантов. Сохранённые коробки заказов не меняются.",
 		Options: []Option{{Value: "summer", Title: "Летняя упаковка"}, {Value: "winter", Title: "Зимняя упаковка"}}},
 	{
 		Key:   PaymentsEnabled,

@@ -33,7 +33,7 @@ func invoiceFirstFixture(t *testing.T) (context.Context, *pgxpool.Pool, *Postgre
  VALUES($1,'domestic','RUB') RETURNING id`, key).Scan(&supplierID); err != nil {
 		t.Fatal(err)
 	}
-	return ctx, pool, NewPostgresStore(pool), Actor{CustomerID: actorID, Role: "owner"}, supplierID, key
+	return ctx, pool, NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage()), Actor{CustomerID: actorID, Role: "owner"}, supplierID, key
 }
 
 func TestInvoiceFirstCompositionOnLiveDatabase(t *testing.T) {

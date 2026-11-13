@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './live-fixtures';
 test('production support actions open the quick chat without leaving the page', async ({ page }) => {
   await page.goto('/contacts'); await expect(page.locator('.store-footer-chat')).toHaveAttribute('href', '/chat');
   await page.locator('.chat-launcher').click();await expect(page).toHaveURL(/\/contacts$/);

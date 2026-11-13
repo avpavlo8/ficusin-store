@@ -1,10 +1,8 @@
 import { orderCategoryTree } from "./CategoryPicker";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ImportDialog,
   MergeProductsDialog,
-  NewProductDialog,
-  ProductDialog,
   PublishedMergePreviewDialog,
 } from "./AdminCatalogDialogs";
 import type { ProductEditorSection } from "./AdminCatalogDialogs";
@@ -25,6 +23,10 @@ import {
   type RegisterCatalogLeave,
 } from "./adminCatalogLogic";
 import type { Category, CategoryAttribute, Product, ReviewModerationItem } from "./adminTypes";
+
+const ProductCreationPage = lazy(() =>
+  import("./ProductCreationPage").then((module) => ({ default: module.ProductCreationPage })),
+);
 
 export function Categories({
   canEdit,
@@ -392,24 +394,15 @@ export function Products({
   const [editingId, setEditingId] = useState(
     () => Number(new URLSearchParams(location.search).get("product")) || null,
   );
-  const [editorSection, setEditorSection] = useState<ProductEditorSection>(
-    () =>
-      (["main", "attributes", "care", "variants", "relationships", "photos"].includes(
-        new URLSearchParams(location.search).get("tab") || "",
-      )
-        ? new URLSearchParams(location.search).get("tab")
-        : "main") as ProductEditorSection,
+  const [creating, setCreating] = useState(
+    () => new URLSearchParams(location.search).get("create") === "1",
   );
-  const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [merging, setMerging] = useState<Product[] | null>(null);
   const [publishedMerge, setPublishedMerge] = useState<Product[] | null>(null);
   const [reviews, setReviews] = useState<ReviewModerationItem[]>([]);
   const editorDirty = useRef(false);
   const editorURL = useRef(location.href);
-  const setEditorDirty = useCallback((value: boolean) => {
-    editorDirty.current = value;
-  }, []);
   const loadSequence = useRef(0);
   const mutationRevision = useRef(0);
   const locallyUpdated = useRef(new Map<number, number>());
@@ -441,35 +434,54 @@ export function Products({
     void reload();
     api<{ categories: Category[] }>("/api/v1/admin/categories")
       .then((data) => setCategories(data.categories || []))
-      .catch((error) => onError(error.message));
+      .catch((error) => onError(`Не удалось загрузить категории каталога. ${error.message}`));
   }, [reload, onError]);
   useEffect(() => {
+    if (creating || editingId) return;
     const ids = [...new Set(items.map((x) => x.categoryId).filter((x): x is number => !!x))].filter(
       (id) => schemas[id] === undefined,
     );
     if (!ids.length) return;
     let active = true;
-    Promise.all(
-      ids.map(
-        async (id) =>
-          [
-            id,
-            (
-              await api<{ attributes: CategoryAttribute[] }>(
-                `/api/v1/admin/categories/${id}/attributes`,
-              )
-            ).attributes || [],
-          ] as const,
-      ),
-    )
+    const controller = new AbortController();
+    const fetchSchemas = async () => {
+      const entries: Array<readonly [number, CategoryAttribute[]]> = [];
+      // The staging database has a small connection pool; do not issue every
+      // category request simultaneously when opening the catalogue.
+      for (let offset = 0; offset < ids.length; offset += 4) {
+        if (!active) return entries;
+        entries.push(
+          ...(await Promise.all(
+            ids.slice(offset, offset + 4).map(async (id) => {
+              try {
+                const data = await api<{ attributes: CategoryAttribute[] }>(
+                  `/api/v1/admin/categories/${id}/attributes`,
+                  { signal: controller.signal },
+                );
+                return [id, data.attributes || []] as const;
+              } catch (cause) {
+                throw new Error(
+                  `Не удалось загрузить характеристики категории №${id}. ${(cause as Error).message}`,
+                );
+              }
+            }),
+          )),
+        );
+      }
+      return entries;
+    };
+    fetchSchemas()
       .then((entries) => {
         if (active) setSchemas((current) => ({ ...current, ...Object.fromEntries(entries) }));
       })
-      .catch((error) => onError(error.message));
+      .catch((error) => {
+        if (active) onError(error.message);
+      });
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [items, schemas, onError]);
+  }, [items, schemas, onError, creating, editingId]);
   useEffect(() => {
     if (view === "reviews")
       api<{ reviews: ReviewModerationItem[] }>("/api/v1/admin/reviews")
@@ -497,12 +509,10 @@ export function Products({
         history.pushState(null, "", editorURL.current);
         return;
       }
+      setCreating(new URLSearchParams(location.search).get("create") === "1");
       setFilters(readCatalogFilters());
       setSelected([]);
       setEditingId(Number(new URLSearchParams(location.search).get("product")) || null);
-      setEditorSection(
-        (new URLSearchParams(location.search).get("tab") || "main") as ProductEditorSection,
-      );
       editorDirty.current = false;
       editorURL.current = location.href;
     };
@@ -598,7 +608,6 @@ export function Products({
   const editing = items.find((x) => x.id === editingId);
   const open = (productId: number, section: ProductEditorSection = "main") => {
     setEditingId(productId);
-    setEditorSection(section);
     history.pushState(null, "", catalogURL({ product: String(productId), tab: section }));
     editorURL.current = location.href;
   };
@@ -606,11 +615,6 @@ export function Products({
     setEditingId(null);
     editorDirty.current = false;
     history.replaceState(null, "", catalogURL({ product: null, tab: null }));
-    editorURL.current = location.href;
-  };
-  const changeSection = (section: ProductEditorSection) => {
-    setEditorSection(section);
-    history.replaceState(null, "", catalogURL({ tab: section }));
     editorURL.current = location.href;
   };
   const publish = async () => {
@@ -722,6 +726,45 @@ export function Products({
   const appliedFilters =
     (["root", "category", "sort"] as const).filter((k) => filters[k] !== defaultFilters[k]).length +
     (filters.quality !== "all" && filters.quality !== "attention" ? 1 : 0);
+  if (editing)
+    return (
+      <Suspense fallback={<p role="status">Загружаем редактор товара…</p>}>
+        <ProductCreationPage
+          key={editing.id}
+          product={editing}
+          canManage={can("products.manage")}
+          onClose={close}
+          onSaved={(product) => {
+            locallyUpdated.current.set(product.id, ++mutationRevision.current);
+            setItems((current) => current.map((item) => (item.id === product.id ? product : item)));
+          }}
+        />
+      </Suspense>
+    );
+  if (creating)
+    return (
+      <Suspense fallback={<p role="status">Загружаем редактор товара…</p>}>
+        <ProductCreationPage
+          onSaved={(product) => {
+            setItems((current) =>
+              current.some((item) => item.id === product.id)
+                ? current.map((item) => (item.id === product.id ? product : item))
+                : [product, ...current],
+            );
+            setCreating(false);
+            setEditingId(product.id);
+            const url = new URL(location.href);
+            url.searchParams.delete("create");
+            url.searchParams.set("product", String(product.id));
+            history.replaceState(null, "", url);
+          }}
+          onClose={() => {
+            history.pushState(null, "", "/admin?section=products");
+            setCreating(false);
+          }}
+        />
+      </Suspense>
+    );
   return (
     <div className="catalog-workspace">
       <div className="catalog-page-heading">
@@ -751,7 +794,14 @@ export function Products({
               <button type="button" className="admin-action" onClick={() => setImporting(true)}>
                 Импорт из СБИС
               </button>
-              <button type="button" className="admin-primary" onClick={() => setCreating(true)}>
+              <button
+                type="button"
+                className="admin-primary"
+                onClick={() => {
+                  history.pushState(null, "", "/admin?section=products&create=1");
+                  setCreating(true);
+                }}
+              >
                 Добавить товар
               </button>
             </>
@@ -1365,48 +1415,10 @@ export function Products({
           onError={onError}
         />
       )}
-      {editing && (
-        <ProductDialog
-          key={editing.id}
-          owner={can("products.manage")}
-          product={editing}
-          initialSection={editorSection}
-          onSectionChange={changeSection}
-          onDirtyChange={setEditorDirty}
-          hasNext={filtered.some((x) => x.id !== editing.id && readiness.get(x.id)?.tasks.length)}
-          onClose={close}
-          onSaved={(product, next) => {
-            locallyUpdated.current.set(product.id, ++mutationRevision.current);
-            setItems((current) => current.map((x) => (x.id === product.id ? product : x)));
-            if (next) {
-              const index = filtered.findIndex((x) => x.id === product.id);
-              const ordered = [...filtered.slice(index + 1), ...filtered.slice(0, index)];
-              const target = ordered.find((x) => readiness.get(x.id)?.tasks.length);
-              if (target) {
-                editorDirty.current = false;
-                open(target.id);
-              }
-            }
-          }}
-          onError={onError}
-        />
-      )}
       {!loading && editingId && !editing && (
         <div className="catalog-empty" role="alert">
           Товар не найден или недоступен. <button onClick={close}>Вернуться к списку</button>
         </div>
-      )}
-      {creating && (
-        <NewProductDialog
-          onClose={() => setCreating(false)}
-          onCreated={(product) => {
-            locallyUpdated.current.set(product.id, ++mutationRevision.current);
-            setCreating(false);
-            setItems((current) => [product, ...current]);
-            open(product.id, "variants");
-          }}
-          onError={onError}
-        />
       )}
       {importing && (
         <ImportDialog

@@ -15,6 +15,18 @@ type Summary struct {
 	ItemsCount     int       `json:"itemsCount"`
 }
 
+type CustomerOrderCounts struct {
+	Work      int `json:"work"`
+	Completed int `json:"completed"`
+	Cancelled int `json:"cancelled"`
+}
+
+type CustomerOrderPage struct {
+	Orders  []Summary           `json:"orders"`
+	Counts  CustomerOrderCounts `json:"counts"`
+	HasMore bool                `json:"hasMore"`
+}
+
 // Detail is a single order opened from the account page: the summary plus
 // everything the customer needs to check what they ordered and where it is
 // going.

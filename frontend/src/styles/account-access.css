@@ -1,0 +1,66 @@
+.account-access {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.management-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--green);
+  background: transparent;
+  text-decoration: none;
+}
+.management-button svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+.management-button:hover {
+  background: rgba(41, 29, 19, 0.055);
+}
+.management-button:focus-visible,
+.account-access .account-button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.account-access .account-button-photo {
+  width: 30px;
+  height: 30px;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.admin-page .ws-topbar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 850px) {
+  header.header.store-header .header-actions {
+    gap: 2px;
+  }
+  .header.store-header .account-access {
+    gap: 0;
+  }
+  .header.store-header .account-access .account-button.icon-only {
+    display: grid;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+  .header.store-header .brand .ficusin-logo {
+    width: min(160px, calc(100vw - 220px));
+  }
+  .header.store-header .brand {
+    min-width: 0;
+  }
+  .admin-page header.ws-topbar {
+    gap: 10px;
+  }
+}

@@ -3,14 +3,21 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { StoreHeader, type HeaderMenuItem, useStoreUser } from "./StoreHeader";
 import { ProductGallery } from "./product/ProductGallery";
 import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
+import { PurchaseReviewSummary } from "./product/PurchaseReviewSummary";
 import { PlantAbout, PlantCareGuide, PlantQuestions } from "./product/PlantCareGuide";
-import { ProductReviews, ReviewComposer } from "./product/ProductReviews";
 import type { ProductDetail } from "./product/types";
 import { attributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
 import { orderStorefrontCategories } from "./lib/category-order";
 import { track } from "./lib/analytics";
 import { useFavorites } from "./lib/favorites";
+
+const ProductReviews = lazy(() =>
+  import("./product/ProductReviews").then((module) => ({ default: module.ProductReviews })),
+);
+const ReviewComposer = lazy(() =>
+  import("./product/ProductReviews").then((module) => ({ default: module.ReviewComposer })),
+);
 
 const plantOnlyAttributeCodes = new Set([
   "plant_type",
@@ -213,7 +220,9 @@ export default function ProductPage({ slug }: { slug: string }) {
       const target = document.getElementById(linkedCareTarget.current);
       if (target && !target.closest("[hidden]")) {
         if (target instanceof HTMLDetailsElement) target.open = true;
-        target.scrollIntoView({ block: "start" });
+        // Deep links restore a position, rather than animate a gesture. WebKit
+        // can interrupt a smooth scroll while the product finishes mounting.
+        target.scrollIntoView({ block: "start", behavior: "instant" });
         linkedCareTarget.current = null;
       }
     };
@@ -234,7 +243,9 @@ export default function ProductPage({ slug }: { slug: string }) {
         document.getElementById(`pdp-panel-${activeTab}`);
       if (target && !target.closest("[hidden]")) {
         if (target instanceof HTMLDetailsElement) target.open = true;
-        target.scrollIntoView({ block: "start" });
+        // Deep links restore a position, rather than animate a gesture. WebKit
+        // can interrupt a smooth scroll while the product finishes mounting.
+        target.scrollIntoView({ block: "start", behavior: "instant" });
         linkedCareTarget.current = null;
       }
     });
@@ -355,7 +366,9 @@ export default function ProductPage({ slug }: { slug: string }) {
   const openReviews = () => {
     changeTab("reviews");
     requestAnimationFrame(() =>
-      document.getElementById("reviews")?.scrollIntoView({
+      (
+        document.getElementById("reviews") || document.getElementById("pdp-panel-reviews")
+      )?.scrollIntoView({
         behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
           ? "instant"
           : "smooth",
@@ -407,7 +420,14 @@ export default function ProductPage({ slug }: { slug: string }) {
               <div className="product-info">
                 <p className="latin">{item.latin}</p>
                 <h3>{item.name}</h3>
-                <strong>{money(item.price)}</strong>
+                <strong
+                  aria-label={
+                    item.stock <= 0 ? `Ориентировочная цена: ${money(item.price)}` : undefined
+                  }
+                >
+                  {item.stock <= 0 && "≈ "}
+                  {money(item.price)}
+                </strong>
               </div>
             </a>
           ))}
@@ -488,14 +508,26 @@ export default function ProductPage({ slug }: { slug: string }) {
           inCart={Boolean(variant && cart[variant.sku])}
           relatedPlants={relatedPlants}
           reviewComposer={
-            <ReviewComposer
-              slug={slug}
-              rating={product.rating}
-              count={product.reviewsCount}
-              onOpenReviews={openReviews}
-              open={reviewOpen}
-              onOpenChange={setReviewOpen}
-            />
+            <Suspense
+              fallback={
+                <div className="purchase-review">
+                  <PurchaseReviewSummary
+                    rating={product.rating}
+                    count={product.reviewsCount}
+                    onOpenReviews={openReviews}
+                  />
+                </div>
+              }
+            >
+              <ReviewComposer
+                slug={slug}
+                rating={product.rating}
+                count={product.reviewsCount}
+                onOpenReviews={openReviews}
+                open={reviewOpen}
+                onOpenChange={setReviewOpen}
+              />
+            </Suspense>
           }
           onVariant={(id) => {
             const selected = product.variants.find((item) => item.id === id);
@@ -637,7 +669,9 @@ export default function ProductPage({ slug }: { slug: string }) {
             id="pdp-panel-reviews"
             aria-labelledby="pdp-tab-reviews"
           >
-            <ProductReviews reviews={product.reviews} onWriteReview={() => setReviewOpen(true)} />
+            <Suspense fallback={<p role="status">Загружаем отзывы…</p>}>
+              <ProductReviews reviews={product.reviews} onWriteReview={() => setReviewOpen(true)} />
+            </Suspense>
           </div>
           {isPlant && hasPlantFAQ && (
             <div
@@ -658,8 +692,17 @@ export default function ProductPage({ slug }: { slug: string }) {
             <span className="pdp-mobile-name" title={product.name}>
               {product.name}
             </span>
-            <strong>{money(variant.price)}</strong>
-            <small>{variant.stock > 0 ? "В наличии" : "Под заказ · цена ориентировочная"}</small>
+            <strong
+              aria-label={
+                variant.stock <= 0 ? `Ориентировочная цена: ${money(variant.price)}` : undefined
+              }
+            >
+              {variant.stock <= 0 && "≈ "}
+              {money(variant.price)}
+            </strong>
+            <small className={variant.stock <= 0 ? "stock-out" : undefined}>
+              {variant.stock > 0 ? "В наличии" : "Под заказ"}
+            </small>
           </div>
           {cart[variant.sku] ? (
             <a href="/cart">В корзину →</a>

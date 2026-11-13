@@ -11,7 +11,7 @@ for (const route of routes) {
     await mockApi(page, owner);
     await page.context().route("**/api/v1/account/reviews", route => route.fulfill({ json: { reviews: [review, { ...review, id: 8, status: "pending" }] } }));
     await page.context().route("**/api/v1/discount-plants", route => route.fulfill({ json: { items: [] } }));
-    await page.context().route("**/api/v1/account/orders", route => route.fulfill({ json: { orders: [{ orderNumber: "DEMO-1024", total: 3980, status: "ready", createdAt: "2026-10-20T09:00:00Z", itemsCount: 2 }] } }));
+    await page.context().route("**/api/v1/account/orders?*", route => route.fulfill({ json: { orders: [{ orderNumber: "DEMO-1024", total: 3980, status: "ready", createdAt: "2026-10-20T09:00:00Z", itemsCount: 2 }], counts: {work:1,completed:0,cancelled:0}, hasMore:false, offset:0, limit:50 } }));
     await page.goto(route);
     await expect(page.locator("h1")).toHaveCount(1);
     await expect(page.locator("h1")).toBeVisible();

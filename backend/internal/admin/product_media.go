@@ -3,6 +3,8 @@ package admin
 import (
 	"context"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // ProductMedia is the manager-facing view of one PDP image. URL is already
@@ -187,4 +189,48 @@ func (repository *PostgresRepository) SetPrimaryProductMedia(ctx context.Context
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// CopyProductMedia promotes an existing image of this product to shared media
+// without moving the source row out of its variant.
+func (repository *PostgresRepository) CopyProductMedia(ctx context.Context, actor Actor, productID, mediaID int64) (ProductMedia, error) {
+	if !Can(actor.Role, PermissionProductsEdit) {
+		return ProductMedia{}, ErrForbidden
+	}
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return ProductMedia{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var lockedID int64
+	if err := tx.QueryRow(ctx, "SELECT id FROM products WHERE id=$1 FOR UPDATE", productID).Scan(&lockedID); err != nil {
+		return ProductMedia{}, err
+	}
+	var source, alt string
+	if err := tx.QueryRow(ctx, "SELECT object_key,COALESCE(alt_text,'') FROM product_media WHERE id=$1 AND product_id=$2 FOR SHARE", mediaID, productID).Scan(&source, &alt); err != nil {
+		return ProductMedia{}, err
+	}
+	var id int64
+	if err := tx.QueryRow(ctx, `
+ INSERT INTO product_media(product_id,object_key,alt_text,sort_order,is_primary)
+ SELECT $1,$2,$3,COALESCE(MAX(sort_order),-1)+1,CASE WHEN COUNT(*)=0 THEN 1 ELSE 0 END
+ FROM product_media WHERE product_id=$1 AND variant_id IS NULL RETURNING id`, productID, source, alt).Scan(&id); err != nil {
+		return ProductMedia{}, err
+	}
+	if err := insertAudit(ctx, tx, actor, "product.media.copy", "product", fmt.Sprint(productID), nil, map[string]any{"mediaId": id, "sourceMediaId": mediaID}); err != nil {
+		return ProductMedia{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return ProductMedia{}, err
+	}
+	items, err := repository.ListProductMedia(ctx, productID)
+	if err != nil {
+		return ProductMedia{}, err
+	}
+	for _, item := range items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return ProductMedia{}, pgx.ErrNoRows
 }

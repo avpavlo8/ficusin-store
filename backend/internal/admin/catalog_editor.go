@@ -11,6 +11,7 @@ import (
 // VariantEdit is a patch, including for managers: omitted commercial fields
 // stay unchanged. Non-positive IDs identify new local drafts.
 type VariantEdit struct {
+	Remove          bool           `json:"remove,omitempty"`
 	ID              int64          `json:"id"`
 	Label           *string        `json:"label"`
 	PriceMinor      *int64         `json:"priceMinor"`
@@ -34,6 +35,14 @@ func validateVariantEdits(actor Actor, edits []VariantEdit) error {
 		if actor.Role != RoleOwner && (edit.ID <= 0 || edit.PriceMinor != nil || edit.WholesaleMinQty != nil || edit.Active != nil || edit.Archived != nil || edit.ExternalIDs != nil) {
 			return ErrForbidden
 		}
+		if edit.Remove {
+			if !Can(actor.Role, PermissionDelete) {
+				return ErrForbidden
+			}
+			if edit.ID <= 0 || edit.Label != nil || edit.PriceMinor != nil || edit.WholesaleMinQty != nil || edit.Active != nil || edit.Archived != nil || edit.Attributes != nil || edit.ExternalIDs != nil {
+				return fmt.Errorf("%w: удаление размера передаётся отдельно от его редактирования", ErrInvalidInput)
+			}
+		}
 		if edit.Archived != nil && *edit.Archived && (edit.Active != nil && *edit.Active || edit.ID <= 0) {
 			return fmt.Errorf("%w: архивный размер не может быть новым или активным", ErrInvalidInput)
 		}
@@ -51,6 +60,12 @@ func validateVariantEdits(actor Actor, edits []VariantEdit) error {
 // size rolls back the content, other sizes and outgoing price proposals too.
 func saveVariantEdits(ctx context.Context, tx pgx.Tx, actor Actor, productID int64, edits []VariantEdit) error {
 	for _, edit := range edits {
+		if edit.Remove {
+			if err := removeProductVariant(ctx, tx, actor, productID, edit.ID); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := validateManagerAttributes(ctx, tx, actor, edit.Attributes); err != nil {
 			return err
 		}

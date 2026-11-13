@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -392,14 +393,19 @@ func (service *Service) Sync(ctx context.Context, providerPaymentID string) erro
 	if paid {
 		if _, err := transaction.Exec(ctx, `
 			UPDATE orders
-			SET payment_status = $2, paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP),
-                status = CASE WHEN status IN ('new','confirmed') AND delivery_fee_pending=0 AND has_preorder=0 THEN 'assembling' ELSE status END
+			SET payment_status = $2, paid_at = COALESCE(paid_at, CURRENT_TIMESTAMP)
 			WHERE id = $1
 		`, orderID, StatusPaid); err != nil {
 			return fmt.Errorf("mark order paid: %w", err)
 		}
 	}
-	return transaction.Commit(ctx)
+	if err := transaction.Commit(ctx); err != nil {
+		return err
+	}
+	if paid {
+		return orderworkflow.Refresh(ctx, service.pool, []int64{orderID})
+	}
+	return nil
 }
 
 func (service *Service) orderItems(ctx context.Context, orderID int64) ([]integration.PaymentItem, error) {

@@ -14,10 +14,11 @@ import {
 } from "react";
 import { StoreHeader } from "./StoreHeader";
 import { StoreNavIllustration } from "./StoreNavIllustration";
-import { PushToggle } from "./PushToggle";
+import { AccountAppSettings } from "./AccountAppSettings";
 import { useSharedCart } from "./lib/cart";
 import { sharedAPIJSON } from "./lib/api";
 import { money } from "./lib/money";
+import { mergeCustomerOrderPage, type CustomerOrderView } from "./lib/customer-order-list";
 import { useChatUnread } from "./lib/chat";
 const AccountChat = lazy(() => import("./AccountChat"));
 import AccountReviews from "./AccountReviews";
@@ -295,67 +296,202 @@ function SectionHeading({
 
 // --------------------------------------------------------------- orders
 
-function OrdersSection({
-  orders,
-  error,
-  onRetry,
-}: {
-  orders: AccountOrder[];
-  error: string;
-  onRetry: () => void;
-}) {
+function OrdersSection({ error: profileError, onRetry }: { error: string; onRetry: () => void }) {
+  const [page, setPage] = useState<{ view: CustomerOrderView; offset: number }>({
+    view: "work",
+    offset: 0,
+  });
+  const [orders, setOrders] = useState<AccountOrder[]>([]);
+  const [counts, setCounts] = useState<Record<CustomerOrderView, number> | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const tabs = useRef<Array<HTMLButtonElement | null>>([]);
+  const views: Array<{ view: CustomerOrderView; label: string }> = [
+    { view: "work", label: "В работе" },
+    { view: "completed", label: "Выполнены" },
+    { view: "cancelled", label: "Отменены" },
+  ];
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch(`/api/v1/account/orders?view=${page.view}&limit=50&offset=${page.offset}`, {
+      credentials: "same-origin",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Не удалось загрузить заказы");
+        const result = (await response.json()) as {
+          orders: AccountOrder[];
+          counts: Record<CustomerOrderView, number>;
+          hasMore: boolean;
+        };
+        if (controller.signal.aborted) return;
+        setOrders((previous) => mergeCustomerOrderPage(page.offset ? previous : [], result.orders));
+        setCounts(result.counts);
+        setHasMore(result.hasMore);
+      })
+      .catch((caught) => {
+        if (!controller.signal.aborted)
+          setError(caught instanceof Error ? caught.message : "Не удалось загрузить заказы");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [page, revision]);
+
+  function selectView(view: CustomerOrderView) {
+    if (view === page.view) return;
+    setOrders([]);
+    setError("");
+    setLoading(true);
+    setPage({ view, offset: 0 });
+  }
+
   return (
     <>
-      <SectionHeading eyebrow="История покупок" title="Мои заказы" />
-      {error && (
-        <div className="auth-error" role="alert">
-          <p>{error}</p>
-          <button type="button" className="secondary-button" onClick={onRetry}>
-            Повторить загрузку
+      <SectionHeading eyebrow="" title="Мои заказы" />
+      <div className="customer-order-tabs" role="tablist" aria-label="Статус заказов">
+        {views.map(({ view, label }, index) => (
+          <button
+            type="button"
+            key={view}
+            id={`customer-orders-tab-${view}`}
+            ref={(element) => {
+              tabs.current[index] = element;
+            }}
+            role="tab"
+            aria-selected={page.view === view}
+            aria-controls="customer-orders-panel"
+            tabIndex={page.view === view ? 0 : -1}
+            onClick={() => selectView(view)}
+            onKeyDown={(event) => {
+              let next = index;
+              if (event.key === "ArrowRight") next = (index + 1) % views.length;
+              else if (event.key === "ArrowLeft") next = (index + views.length - 1) % views.length;
+              else if (event.key === "Home") next = 0;
+              else if (event.key === "End") next = views.length - 1;
+              else return;
+              event.preventDefault();
+              selectView(views[next].view);
+              tabs.current[next]?.focus();
+            }}
+          >
+            {label}
+            <span className="customer-order-tab-count">{counts ? counts[view] : "…"}</span>
           </button>
-        </div>
-      )}
-      {!error && (
-        <section className="orders-list">
-          {orders.length ? (
-            orders.map((order) => (
-              <a
-                className="order-row"
-                key={order.orderNumber}
-                href={`/account/orders/${encodeURIComponent(order.orderNumber)}`}
-              >
-                <div>
-                  <small>Заказ</small>
-                  <strong>{order.orderNumber}</strong>
-                </div>
-                <div>
-                  <small>Оформлен</small>
-                  <span>{formatDate(order.createdAt)}</span>
-                </div>
-                <div>
-                  <small>Состав</small>
-                  <span>{order.itemsCount} шт.</span>
-                </div>
-                <div>
-                  <small>{orderStatusLabels[order.status] ?? order.status}</small>
-                  <strong>{money.format(order.total)}</strong>
-                </div>
-                <span className="order-row-arrow" aria-hidden="true">
-                  →
+        ))}
+      </div>
+      <section
+        id="customer-orders-panel"
+        className="customer-order-history"
+        role="tabpanel"
+        aria-labelledby={`customer-orders-tab-${page.view}`}
+        aria-busy={loading}
+        tabIndex={0}
+      >
+        {(profileError || error) && (
+          <div className="auth-error" role="alert">
+            <p>{profileError || error}</p>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                if (profileError) onRetry();
+                else {
+                  setLoading(true);
+                  setError("");
+                  setRevision((value) => value + 1);
+                }
+              }}
+            >
+              Повторить загрузку
+            </button>
+          </div>
+        )}
+        <div className="orders-list">
+          {orders.map((order) => (
+            <a
+              className="order-row"
+              key={order.orderNumber}
+              href={`/account/orders/${encodeURIComponent(order.orderNumber)}`}
+            >
+              <span className="customer-order-heading">
+                <strong className="customer-order-number">№ {order.orderNumber}</strong>
+                <span
+                  className="customer-order-status"
+                  data-tone={
+                    order.status === "cancelled"
+                      ? "neutral"
+                      : order.status === "new" || order.status === "confirmed"
+                        ? "waiting"
+                        : "active"
+                  }
+                >
+                  {orderStatusLabels[order.status] ?? order.status}
                 </span>
-              </a>
-            ))
-          ) : (
-            <div className="orders-empty">
-              <h3>Заказов пока нет</h3>
-              <p>Новые заказы, оформленные в этом аккаунте, появятся здесь.</p>
-              <a className="primary-button" href="/#catalog">
+              </span>
+              <span className="customer-order-meta">
+                <time dateTime={order.createdAt}>
+                  {new Date(order.createdAt).toLocaleDateString("ru-RU")}
+                </time>
+                <span className="customer-order-quantity">{order.itemsCount} шт.</span>
+              </span>
+              <strong className="customer-order-total">{money.format(order.total)}</strong>
+              <svg
+                className="order-row-arrow"
+                aria-hidden="true"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m9 5 7 7-7 7" />
+              </svg>
+            </a>
+          ))}
+        </div>
+        {loading && (
+          <p className="customer-order-loading" role="status">
+            Загружаем заказы…
+          </p>
+        )}
+        {!loading && !error && !profileError && !orders.length && (
+          <div className="orders-empty">
+            <h3>
+              {page.view === "work"
+                ? "Заказов в работе пока нет"
+                : page.view === "completed"
+                  ? "Выполненных заказов пока нет"
+                  : "Отменённых заказов нет"}
+            </h3>
+            {page.view === "work" && (
+              <a className="secondary-button" href="/#catalog">
                 Перейти в каталог
               </a>
-            </div>
-          )}
-        </section>
-      )}
+            )}
+          </div>
+        )}
+        {!loading && !error && hasMore && (
+          <button
+            type="button"
+            className="secondary-button customer-order-more"
+            onClick={() => {
+              setLoading(true);
+              setError("");
+              setPage((previous) => ({ ...previous, offset: previous.offset + 50 }));
+            }}
+          >
+            Показать ещё
+          </button>
+        )}
+      </section>
     </>
   );
 }
@@ -969,7 +1105,6 @@ function ProfileSection({
           >
             Изменить
           </button>
-          <PushToggle />
         </>
       ) : (
         <form className="auth-form profile-form" onSubmit={save}>
@@ -1045,6 +1180,7 @@ function ProfileSection({
           </div>
         </form>
       )}
+      <AccountAppSettings />
     </>
   );
 }
@@ -1170,7 +1306,6 @@ export default function AccountPage({
   orderNumber?: string;
 }) {
   const [user, setUser] = useState<StoreUser | null>(null);
-  const [orders, setOrders] = useState<AccountOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
@@ -1195,21 +1330,12 @@ export default function AccountPage({
       if (!response.ok) throw new Error("Не удалось загрузить профиль");
       const result = (await response.json()) as { user: StoreUser };
       setUser(result.user);
-
-      if (section === "orders" && !orderNumber) {
-        const ordersResponse = await fetch("/api/v1/account/orders", {
-          credentials: "same-origin",
-        });
-        if (!ordersResponse.ok) throw new Error("Не удалось загрузить заказы");
-        const ordersResult = (await ordersResponse.json()) as { orders: AccountOrder[] };
-        setOrders(ordersResult.orders || []);
-      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить профиль");
     } finally {
       setLoading(false);
     }
-  }, [section, orderNumber]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -1273,7 +1399,7 @@ export default function AccountPage({
       {orderNumber ? (
         <OrderDetailSection orderNumber={orderNumber} />
       ) : section === "orders" ? (
-        <OrdersSection orders={orders} error={error} onRetry={() => void load()} />
+        <OrdersSection error={error} onRetry={() => void load()} />
       ) : section === "profile" ? (
         <ProfileSection user={user} onUpdated={setUser} />
       ) : section === "chat" ? (

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
@@ -12,6 +13,10 @@ import (
 type orderRepository interface {
 	ListForCustomer(context.Context, int64, int) ([]order.Summary, error)
 	DetailForCustomer(ctx context.Context, customerID int64, orderNumber string) (*order.Detail, error)
+}
+
+type customerOrderPager interface {
+	ListPageForCustomer(context.Context, int64, string, int, int) (order.CustomerOrderPage, error)
 }
 
 // accountOrderHandler serves one order for the account page. The lookup is
@@ -86,6 +91,36 @@ func accountOrdersHandler(
 			return
 		}
 
+		if view := request.URL.Query().Get("view"); view != "" {
+			if view != "work" && view != "completed" && view != "cancelled" {
+				writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Неизвестная вкладка заказов"})
+				return
+			}
+			limit, offset := 50, 0
+			for name, target := range map[string]*int{"limit": &limit, "offset": &offset} {
+				if value := request.URL.Query().Get(name); value != "" {
+					parsed, parseErr := strconv.Atoi(value)
+					if parseErr != nil || parsed < 0 || (name == "limit" && (parsed < 1 || parsed > 50)) {
+						writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректная страница заказов"})
+						return
+					}
+					*target = parsed
+				}
+			}
+			pager, ok := orders.(customerOrderPager)
+			if !ok {
+				writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Не удалось загрузить заказы"})
+				return
+			}
+			page, err := pager.ListPageForCustomer(request.Context(), user.ID, view, limit, offset)
+			if err != nil {
+				logger.Error("account order page failed", "error", err, "customer_id", user.ID)
+				writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Не удалось загрузить заказы"})
+				return
+			}
+			writeJSON(response, http.StatusOK, page)
+			return
+		}
 		items, err := orders.ListForCustomer(request.Context(), user.ID, 50)
 		if err != nil {
 			logger.Error("account orders failed", "error", err, "customer_id", user.ID)

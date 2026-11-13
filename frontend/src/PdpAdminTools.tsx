@@ -1,33 +1,8 @@
-import { useState } from "react";
-import { ProductDialog } from "./AdminCatalogDialogs";
+import { lazy, Suspense, useState } from "react";
 import { Dialog, api } from "./adminShared";
-import { ProductMediaManager } from "./ProductMediaManager";
 import type { Product } from "./adminTypes";
 
-function ProductMediaDialog({
-  owner,
-  product,
-  onClose,
-  onChanged,
-}: {
-  owner: boolean;
-  product: Product;
-  onClose: () => void;
-  onChanged: () => void;
-}) {
-  const [error, setError] = useState("");
-  return (
-    <Dialog title={`Фотографии · ${product.name}`} onClose={onClose}>
-      {error && <p className="admin-error">{error}</p>}
-      <ProductMediaManager
-        canDelete={owner}
-        productId={product.id}
-        onError={setError}
-        onChanged={onChanged}
-      />
-    </Dialog>
-  );
-}
+const ProductMediaDialog = lazy(() => import("./PdpProductMediaDialog"));
 
 export function PdpAdminTools({
   slug,
@@ -40,7 +15,7 @@ export function PdpAdminTools({
 }) {
   const allowed = adminRole === "owner" || adminRole === "administrator" || adminRole === "manager";
   const [product, setProduct] = useState<Product | null>(null);
-  const [mode, setMode] = useState<"edit" | "media" | "">("");
+  const [mode, setMode] = useState<"media" | "">("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -52,8 +27,12 @@ export function PdpAdminTools({
       const data = await api<{ products: Product[] }>("/api/v1/admin/products");
       const found = data.products.find((item) => (item.productCode || item.slug) === slug);
       if (!found) throw new Error("Карточка не найдена в редакторе");
+      if (next === "edit") {
+        window.location.assign(`/admin?section=products&product=${found.id}`);
+        return;
+      }
       setProduct(found);
-      setMode(next);
+      setMode("media");
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -74,26 +53,21 @@ export function PdpAdminTools({
         </button>
         {error && <small>{error}</small>}
       </div>
-      {product && mode === "edit" && (
-        <ProductDialog
-          owner={adminRole === "owner"}
-          product={product}
-          onClose={() => setMode("")}
-          onError={setError}
-          onSaved={(saved) => {
-            setProduct(saved);
-            setMode("");
-            onChanged();
-          }}
-        />
-      )}
       {product && mode === "media" && (
-        <ProductMediaDialog
-          owner={adminRole === "owner"}
-          product={product}
-          onClose={() => setMode("")}
-          onChanged={onChanged}
-        />
+        <Suspense
+          fallback={
+            <Dialog title="Фотографии" onClose={() => setMode("")}>
+              <p role="status">Загружаем фотографии…</p>
+            </Dialog>
+          }
+        >
+          <ProductMediaDialog
+            owner={adminRole === "owner"}
+            product={product}
+            onClose={() => setMode("")}
+            onChanged={onChanged}
+          />
+        </Suspense>
       )}
     </>
   );

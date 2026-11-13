@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 	"net/http"
 	"strings"
 	"time"
@@ -57,14 +58,16 @@ type mediaStorage interface {
 	Delete(context.Context, string) error
 }
 type Store struct {
-	pool  *pgxpool.Pool
-	media mediaStorage
+	pool        *pgxpool.Pool
+	media       mediaStorage
+	legacyMedia mediaStorage
 }
 
 func NewStore(pool *pgxpool.Pool, media ...mediaStorage) *Store {
 	store := &Store{pool: pool}
 	if len(media) > 0 && media[0] != nil && media[0].Configured() {
 		store.media = media[0]
+		store.legacyMedia = media[0]
 	}
 	return store
 }
@@ -106,15 +109,18 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 		}
 		prepared = append(prepared, preparedMedia{media.ContentType, data})
 	}
+	if len(prepared) > 0 && (s.media == nil || !s.media.Configured()) {
+		return 0, fileassets.ErrUnavailable
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	uploaded := []string{}
-	committed := false
+	keepFiles := false
 	defer func() {
-		if committed || s.media == nil {
+		if keepFiles || s.media == nil {
 			return
 		}
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -153,28 +159,21 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 		return 0, err
 	}
 	for index, media := range prepared {
-		var objectKey *string
-		var databaseData []byte = media.data
-		if s.media != nil {
-			key, keyErr := reviewMediaKey(id, media.contentType)
-			if keyErr != nil {
-				return 0, keyErr
-			}
-			if keyErr = s.media.Put(ctx, key, media.data, media.contentType); keyErr != nil {
-				return 0, keyErr
-			}
-			uploaded = append(uploaded, key)
-			objectKey = &key
-			databaseData = nil
+		key, saveErr := fileassets.Save(ctx, s.media, fmt.Sprintf("reviews/%d", id), media.contentType, media.data)
+		if saveErr != nil {
+			return 0, saveErr
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO product_review_photos(review_id,content_type,image,object_key,sort_order) VALUES($1,$2,$3,$4,$5)`, id, media.contentType, databaseData, objectKey, index); err != nil {
+		uploaded = append(uploaded, key)
+		if _, err = tx.Exec(ctx, `INSERT INTO product_review_photos(review_id,content_type,image,object_key,sort_order,storage_scope) VALUES($1,$2,NULL,$3,$4,'private')`, id, media.contentType, key, index); err != nil {
 			return 0, err
 		}
 	}
+
+	// An unknown COMMIT result must not delete possibly referenced objects.
+	keepFiles = true
 	if err = tx.Commit(ctx); err != nil {
 		return 0, err
 	}
-	committed = true
 	return id, nil
 }
 
@@ -204,15 +203,17 @@ func (s *Store) mediaData(ctx context.Context, id int64, status string) (string,
 	var kind string
 	var data []byte
 	var key *string
-	err := s.pool.QueryRow(ctx, `SELECT p.content_type,p.image,p.object_key FROM product_review_photos p JOIN product_reviews r ON r.id=p.review_id WHERE p.id=$1 AND r.status=$2`, id, status).Scan(&kind, &data, &key)
+	var scope string
+	err := s.pool.QueryRow(ctx, `SELECT p.content_type,p.image,p.object_key,p.storage_scope FROM product_review_photos p JOIN product_reviews r ON r.id=p.review_id WHERE p.id=$1 AND r.status=$2`, id, status).Scan(&kind, &data, &key, &scope)
 	if err != nil {
 		return "", nil, err
 	}
 	if key != nil && *key != "" {
-		if s.media == nil {
-			return "", nil, errors.New("media storage unavailable")
+		storage := s.media
+		if scope == "legacy-public" {
+			storage = s.legacyMedia
 		}
-		data, err = s.media.Get(ctx, *key)
+		data, err = fileassets.Read(ctx, storage, *key, nil)
 	}
 	return kind, data, err
 }
@@ -315,4 +316,11 @@ func (s *Store) UpdateMine(ctx context.Context, customerID, id int64, rating int
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// WithLegacyMediaStorage keeps existing review object keys readable from their
+// original public-photo bucket until an explicit copy-and-verify migration.
+func (s *Store) WithLegacyMediaStorage(storage mediaStorage) *Store {
+	s.legacyMedia = storage
+	return s
 }

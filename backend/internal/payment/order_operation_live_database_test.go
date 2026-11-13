@@ -145,8 +145,10 @@ func TestOrderStatusFollowsFullPaymentOnLiveDatabase(t *testing.T) {
 	}{
 		{"unpaid", "confirmed", "confirmed", 0, 0, 0},
 		{"partial", "confirmed", "confirmed", 690, 0, 0},
-		{"paid", "confirmed", "assembling", 1530, 0, 0},
-		{"paid-new", "new", "assembling", 1530, 0, 0},
+		// A paid balance alone is not a fulfilment proof. These fixtures have
+		// no order lines, current Saby stock, or confirmed CDEK packaging.
+		{"paid-without-composition", "confirmed", "confirmed", 1530, 0, 0},
+		{"paid-new-without-composition", "new", "new", 1530, 0, 0},
 		{"ready", "ready", "ready", 1530, 0, 0},
 		{"in-transit", "shipped", "shipped", 1530, 0, 0},
 		{"completed", "completed", "completed", 1530, 0, 0},

@@ -28,7 +28,7 @@ func TestUnifiedReceivedPublicationPreservesReceiptAndGuardsQueuedPrices(t *test
 			t.Fatal(err)
 		}
 	}
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	settings, err := store.loadSettings(ctx)
 	must(err)
 	tag := fmt.Sprint(time.Now().UnixNano())

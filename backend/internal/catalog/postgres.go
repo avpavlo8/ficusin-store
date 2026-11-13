@@ -623,13 +623,13 @@ const catalogListQuery = `
 	LEFT JOIN popularity ON popularity.product_id=product.id
 	LEFT JOIN LATERAL (
 		SELECT
-			MAX(value.value #>> '{}') FILTER (WHERE definition.code='light_level') AS light_level,
+			MAX(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value->>0 ELSE value.value#>>'{}' END) FILTER (WHERE definition.code='light_level') AS light_level,
 			MAX(value.value #>> '{}') FILTER (WHERE definition.code='watering') AS watering,
 			MAX(value.value #>> '{}') FILTER (WHERE definition.code='height_class') AS height_class,
 			MAX(value.value #>> '{}') FILTER (WHERE definition.code='care_level') AS care_level,
 			MAX(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value->>0 ELSE value.value #>> '{}' END) FILTER (WHERE definition.code='placement') AS placement,
 			MAX(value.value #>> '{}') FILTER (WHERE definition.code='pet_safety') AS pet_safety,
-			MAX(value.value #>> '{}') FILTER (WHERE definition.code='growth_habit') AS growth_habit
+			MAX(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value->>0 ELSE value.value#>>'{}' END) FILTER (WHERE definition.code='growth_habit') AS growth_habit
 		FROM product_attribute_values value
 		JOIN attribute_definitions definition ON definition.id=value.attribute_id
 		WHERE value.product_id=product.id AND definition.code IN ('light_level','watering','height_class','care_level','placement','pet_safety','growth_habit')

@@ -28,7 +28,7 @@ func TestReturnIntakeRecoveryDocumentsOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	repo := NewPostgresRepository(pool)
+	repo := NewPostgresRepository(pool).WithFileStorage(newPrivateReturnFileStorage())
 	var managerID, ownerID, productID, variantID int64
 	var id string
 	for _, entry := range []struct {

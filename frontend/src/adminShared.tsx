@@ -1,3 +1,5 @@
+import { adminFetch } from "./lib/admin-fetch";
+import { adminApiError } from "./lib/admin-api-error";
 import { useProcurementDialog } from "./procurementUX";
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { Role } from "./adminTypes";
@@ -64,7 +66,7 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers);
   if (!(options?.body instanceof FormData) && !headers.has("Content-Type"))
     headers.set("Content-Type", "application/json");
-  const response = await fetch(path, {
+  const response = await adminFetch(path, {
     credentials: "same-origin",
     cache: "no-store",
     ...options,
@@ -82,12 +84,23 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
     try {
       result = JSON.parse(text) as T & { error?: string };
     } catch {
-      throw new Error(
-        response.ok ? "Сервер вернул некорректный ответ" : "Не удалось выполнить операцию",
+      throw adminApiError(
+        response.status,
+        path,
+        options?.method,
+        undefined,
+        response.headers.get("x-request-id"),
       );
     }
   }
-  if (!response.ok) throw new Error(result.error || "Не удалось выполнить операцию");
+  if (!response.ok)
+    throw adminApiError(
+      response.status,
+      path,
+      options?.method,
+      result.error,
+      response.headers.get("x-request-id"),
+    );
   return result;
 }
 

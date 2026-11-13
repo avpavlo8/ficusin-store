@@ -708,6 +708,9 @@ func (handlers adminHandlers) authorize(
 }
 
 func (handlers adminHandlers) failed(response http.ResponseWriter, operation string, err error) {
+	if privateFileUnavailable(response, err) {
+		return
+	}
 	status := http.StatusServiceUnavailable
 	if errors.Is(err, pgx.ErrNoRows) {
 		status = http.StatusNotFound
@@ -718,7 +721,7 @@ func (handlers adminHandlers) failed(response http.ResponseWriter, operation str
 	if errors.Is(err, admin.ErrForbidden) {
 		status = http.StatusForbidden
 	}
-	handlers.logger.Error(operation+" failed", "error", err)
+	handlers.logger.Error(operation+" failed", "error", err, "request_id", response.Header().Get("X-Request-ID"), "status", status)
 	writeJSON(response, status, errorResponse{Error: "Не удалось выполнить операцию"})
 }
 

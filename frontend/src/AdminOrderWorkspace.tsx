@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AdminOrderEditor, type OrderReviewState, type OrderView } from "./AdminOrderEditor";
 import { orderStatuses, statusLabels } from "./adminShared";
-import type { Order } from "./adminTypes";
+import type { Order, OrderWorkflow } from "./adminTypes";
 import "./styles/admin-order-workspace.css";
 
 type Props = {
@@ -53,10 +53,18 @@ export function AdminOrderWorkspace({
     window.addEventListener("popstate", sync);
     return () => window.removeEventListener("popstate", sync);
   }, []);
-  const closed = ["cancelled", "completed"].includes(order.status);
+  // The adjustment loaded before a status mutation still describes the old
+  // stage. Keep the PATCH response visible while the editor refreshes it.
+  const workflow = review?.workflow?.status === order.status ? review.workflow : order.workflow;
+  const currentStatus = workflow?.status || order.status;
+  const closed = ["cancelled", "completed"].includes(currentStatus);
   const reasons = useMemo(() => {
     const result: Array<{ title: string; text: string; view?: OrderView }> = [];
-    if (!closed) {
+    if (workflow) {
+      for (const blocker of workflow.blockers)
+        result.push({ title: blocker.message, text: blocker.message, view: blocker.view });
+    }
+    if (!closed && !workflow) {
       if (review?.hasPreorder ?? order.hasPreorder)
         result.push({
           title: "Подтвердить наличие растений",
@@ -117,6 +125,25 @@ export function AdminOrderWorkspace({
             "Предыдущая попытка создания отправления не завершилась успешно.",
         });
     }
+    if (
+      workflow &&
+      !closed &&
+      review &&
+      ["unknown", "retry", "manual_review"].includes(review.cdekCreateState)
+    ) {
+      const title =
+        review.cdekCreateState === "unknown"
+          ? "Уточняется создание отправления"
+          : review.cdekCreateState === "retry"
+            ? "СДЭК ожидает повторной попытки"
+            : "Проверить отправление СДЭК";
+      if (!result.some((reason) => reason.title === title))
+        result.push({
+          title,
+          text: review.cdekLastError || "Проверяется результат регистрации отправления СДЭК.",
+          view: "delivery",
+        });
+    }
     if (review?.paymentIssues.length)
       result.push({
         title: "Уточнить результат оплаты",
@@ -130,7 +157,7 @@ export function AdminOrderWorkspace({
     return result.sort(
       (a, b) => Number(urgentReasons.includes(b.title)) - Number(urgentReasons.includes(a.title)),
     );
-  }, [order, review, closed]);
+  }, [order, review, closed, workflow]);
 
   const changeStatus = async (status: string) => {
     setChangingStatus(true);
@@ -142,12 +169,12 @@ export function AdminOrderWorkspace({
   };
 
   // Следующий шаг заказа — главная зелёная кнопка под составом.
-  const next = nextStep(order);
+  const next = nextStep(order, workflow);
 
   // Что требует внимания (СДЭК, оплата, коробки) — короткими строками над
   // составом. Без длинных подсказок: заголовок и кнопка «Сделать».
   const nowBlock =
-    order.status === "cancelled" ? (
+    currentStatus === "cancelled" ? (
       <section className="order-now is-muted" aria-label="Что нужно сделать">
         <h2>Заказ отменён</h2>
       </section>
@@ -176,7 +203,7 @@ export function AdminOrderWorkspace({
       </section>
     ) : null;
 
-  const canCancel = !["cancelled", "completed", "shipped"].includes(order.status);
+  const canCancel = !["cancelled", "completed", "shipped", "shipping"].includes(currentStatus);
   const cancelOrder = () => {
     if (!window.confirm(`Отменить заказ ${order.orderNumber}? Покупатель получит уведомление.`))
       return;
@@ -220,16 +247,22 @@ export function AdminOrderWorkspace({
       <select
         id={`order-status-${order.id}`}
         aria-label={`Статус заказа ${order.orderNumber}`}
-        value={order.status}
-        disabled={closed || changingStatus || dirty}
+        value={currentStatus}
+        disabled={order.deliveryMethod !== "pickup" || closed || changingStatus || dirty}
         onChange={(event) => void changeStatus(event.target.value)}
       >
-        {orderStatuses.map((status) => (
+        {(workflow
+          ? [currentStatus, ...workflow.manualStatuses.filter((status) => status !== currentStatus)]
+          : orderStatuses
+        ).map((status) => (
           <option key={status} value={status}>
             {statusLabels[status]}
           </option>
         ))}
       </select>
+      {order.deliveryMethod === "cdek" && !closed && (
+        <small>Переход на сборку и этапы СДЭК обновляются автоматически.</small>
+      )}
       {changingStatus && <small role="status">Обновляем статус…</small>}
     </section>
   );
@@ -241,8 +274,8 @@ export function AdminOrderWorkspace({
           <h2 tabIndex={-1} className="order-drawer-title">
             Заказ {order.orderNumber}
           </h2>
-          <span className="ws-pill" data-tone={statusTone(order.status)}>
-            {statusLabels[order.status] || order.status}
+          <span className="ws-pill" data-tone={statusTone(currentStatus)}>
+            {statusLabels[currentStatus] || currentStatus}
           </span>
         </div>
         <p>
@@ -251,7 +284,7 @@ export function AdminOrderWorkspace({
       </header>
       <AdminOrderEditor
         canRefund={canRefund}
-        order={order}
+        order={{ ...order, status: currentStatus, workflow }}
         onSaved={onSaved}
         onError={onError}
         registerBeforeLeave={registerBeforeLeave}
@@ -270,54 +303,22 @@ export function AdminOrderWorkspace({
 
 // Следующий обычный шаг по статусу — одна кнопка вместо поиска нужного
 // пункта в списке статусов.
-function nextStep(order: Order) {
-  const pickup = order.deliveryMethod === "pickup";
-  switch (order.status) {
-    case "new":
-      return {
-        status: "confirmed",
-        title: "Подтвердите заказ",
-        text: "Проверьте наличие растений и подтвердите заказ — покупатель получит уведомление.",
-        action: "Подтвердить заказ",
-      };
-    case "confirmed":
-      return {
-        status: "assembling",
-        title: "Соберите растения",
-        text: "Возьмите растения по списку «Что собрать» и отметьте, что начали сборку.",
-        action: "Начать сборку",
-      };
-    case "assembling":
-      return {
-        status: "ready",
-        title: "Закончите сборку",
-        text: "Когда всё упаковано, отметьте заказ готовым.",
-        action: "Заказ собран",
-      };
-    case "ready":
-      return pickup
-        ? {
-            status: "completed",
-            title: "Выдайте заказ покупателю",
-            text: "Покупатель заберёт заказ сам. После выдачи отметьте заказ завершённым.",
-            action: "Заказ выдан",
-          }
-        : {
-            status: "shipped",
-            title: "Передайте заказ в доставку",
-            text: "Отдайте коробки курьеру или в пункт приёма и отметьте это здесь.",
-            action: "Передан в доставку",
-          };
-    case "shipped":
-      return {
-        status: "completed",
-        title: "Ждём, когда покупатель получит",
-        text: "Когда заказ получен, отметьте его завершённым.",
-        action: "Заказ получен",
-      };
-    default:
-      return null;
-  }
+function nextStep(order: Order, workflow?: OrderWorkflow) {
+  if (order.deliveryMethod !== "pickup") return null;
+  const status = workflow?.status || order.status;
+  const allowed =
+    workflow?.manualStatuses ||
+    (["new", "confirmed"].includes(status)
+      ? ["assembling"]
+      : status === "assembling"
+        ? ["ready"]
+        : status === "ready"
+          ? ["completed"]
+          : []);
+  if (allowed.includes("assembling")) return { status: "assembling", action: "Начать сборку" };
+  if (allowed.includes("ready")) return { status: "ready", action: "Заказ собран" };
+  if (allowed.includes("completed")) return { status: "completed", action: "Заказ выдан" };
+  return null;
 }
 
 function statusTone(status: string) {

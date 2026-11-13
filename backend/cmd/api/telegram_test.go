@@ -9,6 +9,13 @@ import (
 )
 
 func TestStagingStartsWithoutLiveTelegram(t *testing.T) {
+	development, err := newTelegramNotifications(config.Config{Environment: "development"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := development.(disabledTelegramNotifications); !ok {
+		t.Fatal("development selected a network client")
+	}
 	client, err := newTelegramNotifications(config.Config{Environment: "staging", TelegramChatID: "real-chat", TelegramBotToken: "copied-secret"})
 	if err != nil {
 		t.Fatal(err)

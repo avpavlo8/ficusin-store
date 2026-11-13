@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./live-fixtures";
 
 test("care instructions have live content and canonical URLs", async ({ page }) => {
   for (const [slug, title] of [

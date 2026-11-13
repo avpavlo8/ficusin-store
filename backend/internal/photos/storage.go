@@ -27,6 +27,7 @@ import (
 // собирается без сети до реестра модулей, и добавить зависимость нельзя. Сам
 // алгоритм AWS SigV4 — это четыре HMAC подряд, и он умещается в сотню строк.
 type Storage struct {
+	private   bool
 	endpoint  string
 	region    string
 	bucket    string
@@ -48,6 +49,14 @@ func NewStorage(endpoint, region, bucket, accessKey, secretKey string) *Storage 
 
 // Configured отвечает на вопрос «настроено ли хранилище». Пустой ключ — это
 // не ошибка, а выключенная возможность: магазин работает и на чужих ссылках.
+// NewPrivateStorage requires a dedicated private bucket. Bucket policy must not
+// grant anonymous reads; per-object ACL is private as well.
+func NewPrivateStorage(endpoint, region, bucket, accessKey, secretKey string) *Storage {
+	s := NewStorage(endpoint, region, bucket, accessKey, secretKey)
+	s.private = true
+	return s
+}
+
 func (storage *Storage) Configured() bool {
 	return storage != nil && storage.endpoint != "" && storage.bucket != "" &&
 		storage.accessKey != "" && storage.secretKey != ""
@@ -86,7 +95,12 @@ func (storage *Storage) Put(ctx context.Context, key string, body []byte, conten
 	// Product image keys are content-addressed or contain a random upload
 	// token, so a URL is immutable. Without this metadata Timeweb S3 forces a
 	// network revalidation for every visit even though the bytes never change.
-	request.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
+	if storage.private {
+		request.Header.Set("Cache-Control", "private, no-store")
+		request.Header.Set("X-Amz-Acl", "private")
+	} else {
+		request.Header.Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
 	request.Header.Set("X-Amz-Content-Sha256", payloadHash)
 	request.Header.Set("X-Amz-Date", amzDate)
 
@@ -97,6 +111,10 @@ func (storage *Storage) Put(ctx context.Context, key string, body []byte, conten
 		"host":                 parsed.Host,
 		"x-amz-content-sha256": payloadHash,
 		"x-amz-date":           amzDate,
+	}
+	if storage.private {
+		signed = append(signed, "x-amz-acl")
+		values["x-amz-acl"] = "private"
 	}
 	sort.Strings(signed)
 	canonicalHeaders := strings.Builder{}
@@ -184,9 +202,16 @@ func (storage *Storage) Get(ctx context.Context, key string) ([]byte, error) {
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("хранилище отказало (%d)", response.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, 21*1024*1024))
+	limit := 21 * 1024 * 1024
+	if storage.private {
+		limit = 64 * 1024 * 1024
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, int64(limit)+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(data) > limit {
+		return nil, fmt.Errorf("файл превышает допустимый размер")
 	}
 	return data, nil
 }

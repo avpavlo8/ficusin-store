@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./live-fixtures";
 
 // Production smoke follows the public catalog's canonical display vocabulary.
 

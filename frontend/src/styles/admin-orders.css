@@ -283,3 +283,22 @@
     width: 100%;
   }
 }
+
+.admin-page .order-product-link {
+  color: #285b3e;
+  text-decoration: underline;
+  text-decoration-color: #a0b5a7;
+  text-underline-offset: 3px;
+}
+.admin-page .order-product-link strong {
+  color: inherit;
+}
+.admin-page .order-product-link:hover {
+  color: #173c27;
+  text-decoration-color: currentColor;
+}
+.admin-page .order-product-link:focus-visible {
+  outline: 2px solid #285b3e;
+  outline-offset: 3px;
+  border-radius: 2px;
+}

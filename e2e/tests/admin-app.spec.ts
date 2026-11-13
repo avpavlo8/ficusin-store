@@ -10,7 +10,7 @@ async function setup(page: import('@playwright/test').Page) {
   } }));
 }
 
-test('@desktop @phone admin has independent app identity, install help and store link', async ({ page, request }) => {
+test('@desktop @phone admin keeps app identity and links its logo to the store', async ({ page, request }) => {
   await setup(page);
   await page.goto('/admin');
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/admin.webmanifest?v=admin-v1');
@@ -24,32 +24,26 @@ test('@desktop @phone admin has independent app identity, install help and store
   expect(admin.icons[0].src).not.toBe(store.icons[0].src);
   expect(admin.shortcuts.map((item: {url: string}) => item.url)).toEqual(['/admin?section=orders', '/admin?section=procurement', '/admin?section=products']);
   for (const icon of admin.icons) expect((await request.get(icon.src)).ok()).toBeTruthy();
-  // Установка — внизу меню: на телефоне в листе «Ещё», на компьютере в боковой панели.
   const phone = (page.viewportSize()?.width ?? 1280) <= 760;
-  if (phone) await page.getByRole('button', { name: 'Ещё', exact: true }).click();
-  const menu = page.locator(phone ? '.ws-more' : '.ws-sidebar');
-  await menu.locator('.admin-app-install summary').click();
-  await expect(menu.locator('.admin-app-install-panel')).toBeVisible();
-  await expect(menu.locator('.admin-app-install-panel')).toContainText('Фикусин — управление');
+  await expect(page.locator('.ws-account-access')).toHaveCount(0);
+  await expect(page.locator('.ws-topbar').getByRole('link',{name:'Личный кабинет',exact:true})).toHaveCount(0);
+  await expect(page.locator('.ws-topbar').getByRole('link',{name:'Панель управления',exact:true})).toHaveCount(0);
+  await expect(page.locator('.admin-app-install')).toHaveCount(0);
+  await expect(page.getByRole('link',{name:'Открыть магазин'})).toHaveCount(0);
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
-  await menu.locator('.admin-app-install summary').click();
-  await menu.getByRole('link', { name: 'Открыть магазин' }).click();
+  const brand=page.locator(phone ? '.ws-topbar-brand' : '.ws-brand');
+  await expect(brand.getByRole('link',{name:'Фикусин — магазин',exact:true})).toHaveAttribute('href','/');
+  await expect(brand.getByRole('link',{name:'Управление',exact:true})).toHaveAttribute('href','/admin');
+  await brand.getByRole('link',{name:'Фикусин — магазин',exact:true}).click();
   await expect(page).toHaveURL('/');
   await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', '/manifest.webmanifest?v=app-logo-v2');
 });
 
-test('@desktop install prompt is captured before the lazy admin workspace opens', async ({ page }) => {
-  await setup(page);
-  await page.goto('/admin');
-  await page.evaluate(() => {
-    const event = new Event('beforeinstallprompt', { cancelable: true });
-    Object.assign(event, { prompt: async () => { (window as unknown as { prompted: boolean }).prompted = true; }, userChoice: Promise.resolve({outcome: 'accepted'}) });
-    window.dispatchEvent(event);
-  });
-  await page.locator('.ws-sidebar .admin-app-install summary').click();
-  await page.locator('.ws-sidebar').getByRole('button', {name: 'Установить', exact: true}).click();
-  await expect(page.locator('.admin-app-install')).toHaveCount(0);
-  expect(await page.evaluate(() => (window as unknown as {prompted: boolean}).prompted)).toBe(true);
+test('@desktop admin retains install manifest without displaying an install promotion', async ({ page }) => {
+ await setup(page);await page.goto('/admin');
+ const prevented=await page.evaluate(()=>{const event=new Event('beforeinstallprompt',{cancelable:true});Object.assign(event,{prompt:async()=>{},userChoice:Promise.resolve({outcome:'dismissed'})});window.dispatchEvent(event);return event.defaultPrevented;});
+ expect(prevented).toBe(true);await expect(page.locator('.admin-app-install')).toHaveCount(0);
+ await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href','/admin.webmanifest?v=admin-v1');
 });
 
 test('@desktop admin session expiry preserves the selected section after login', async ({ page }) => {

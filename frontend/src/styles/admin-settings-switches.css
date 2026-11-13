@@ -1,0 +1,75 @@
+/* The 44px input is the touch target; its 26px track and thumb share a
+   fixed centre. Reset generic form padding/borders before drawing the switch. */
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: 0 0 44px;
+  order: 2;
+  display: block;
+  box-sizing: border-box;
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  cursor: pointer;
+}
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 0;
+  width: 44px;
+  height: 26px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 999px;
+  background: #cbd3c9;
+  transition: background 0.15s ease;
+  pointer-events: none;
+}
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
+  transform: translateX(0);
+  transition: transform 0.15s ease;
+  pointer-events: none;
+}
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"]:checked,
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"]:focus {
+  background: transparent;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+}
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"]:checked::before {
+  background: #2c6644;
+}
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"]:focus-visible::before {
+  outline: 2px solid #2c6644;
+  outline-offset: 3px;
+}
+.admin-page .ws-main .admin-settings .admin-setting input[type="checkbox"]:disabled {
+  cursor: default;
+  opacity: 0.5;
+}

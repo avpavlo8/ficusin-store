@@ -1133,3 +1133,184 @@ body.account-chat-mobile .chat-composer-bar textarea {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* Product/order references share the existing composer on customer and staff chat. */
+.chat-reference-card {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #c9d9e4;
+  border-radius: 10px;
+  color: var(--chat-text);
+  background: #f3f8fc;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+a.chat-reference-card:hover {
+  border-color: var(--chat-blue);
+  background: #eaf4fc;
+}
+.chat-reference-card > img {
+  width: 52px;
+  height: 62px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.chat-reference-card > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  align-content: center;
+}
+.chat-reference-card small {
+  color: #456579;
+  font-size: 11px;
+}
+.chat-reference-card strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+.chat-reference-card span span {
+  font-size: 12px;
+  color: #456579;
+}
+.chat-message > .chat-reference-card {
+  margin-bottom: 5px;
+}
+.chat-reference-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.chat-reference-preview > .chat-reference-card {
+  flex: 1;
+  min-width: 0;
+}
+.chat-reference-preview > button {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: #667b8d;
+  cursor: pointer;
+  padding: 6px;
+}
+.chat-attach-menu,
+.chat-reference-picker {
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + 8px);
+  left: 8px;
+  right: 8px;
+  padding: 12px;
+  border: 1px solid #d3e0e9;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 24px #12304a22;
+  color: var(--chat-text);
+}
+.chat-attach-menu {
+  right: auto;
+  display: grid;
+  gap: 4px;
+  min-width: 210px;
+}
+.chat-attach-menu button {
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--chat-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.chat-attach-menu button:hover {
+  background: #edf5fb;
+}
+.chat-reference-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.chat-reference-heading strong {
+  font-size: 14px;
+}
+.chat-reference-heading button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #536777;
+  font-size: 24px;
+  cursor: pointer;
+}
+.chat-reference-picker input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #c6d4df;
+  border-radius: 8px;
+  color: var(--chat-text);
+  background: #fff;
+  font: inherit;
+}
+.chat-reference-options {
+  max-height: min(280px, 35dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-top: 8px;
+}
+.chat-reference-options > button {
+  display: flex;
+  width: 100%;
+  gap: 10px;
+  padding: 10px 6px;
+  border: 0;
+  border-bottom: 1px solid #e7edf2;
+  background: #fff;
+  text-align: left;
+  color: var(--chat-text);
+  cursor: pointer;
+}
+.chat-reference-options > button:hover {
+  background: #edf5fb;
+}
+.chat-reference-options > button img {
+  width: 38px;
+  height: 46px;
+  object-fit: cover;
+  flex: none;
+  border-radius: 5px;
+}
+.chat-reference-options > button span {
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  min-width: 0;
+}
+.chat-reference-options strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+.chat-reference-options small,
+.chat-reference-options p {
+  color: #536777;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-reference-picker {
+  max-height: var(--chat-emoji-max-height, 360px);
+  box-sizing: border-box;
+  overflow: auto;
+}

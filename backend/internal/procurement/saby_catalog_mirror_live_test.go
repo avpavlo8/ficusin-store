@@ -52,7 +52,7 @@ func TestStage13SabyCatalogueMirrorIncludesUnimportedProductsOnLiveDatabase(t *t
 		t.Fatal(err)
 	}
 
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	items, err := store.ListProducts(ctx, supplierID, code)
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +139,7 @@ func TestInitialMarketplacePriceWorksBeforeSiteImportOnLiveDatabase(t *testing.T
 	defer func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM procurement_channel_products WHERE channel='wb' AND external_id=$1`, fmt.Sprint(wbNmID))
 	}()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	if _, err = store.UpdateProduct(ctx, Actor{CustomerID: actorID}, ProductDirectoryUpdate{
 		SabyID: sabyID, SupplierID: supplierID, WBVendorCode: wbVendor, OzonOfferID: ozonOffer,
 		AvailabilityStatus: "available", MinimumOrderQty: 1, OrderMultiple: 1,

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"math"
 	"math/big"
@@ -16,7 +17,8 @@ import (
 )
 
 type PostgresStore struct {
-	pool *pgxpool.Pool
+	fileStorage fileassets.Storage
+	pool        *pgxpool.Pool
 }
 
 func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
@@ -1101,6 +1103,9 @@ func (store *PostgresStore) ImportDocument(
 	input DocumentUpload,
 	parsed ParsedDocument,
 ) (ImportResult, error) {
+	if store.fileStorage == nil || !store.fileStorage.Configured() {
+		return ImportResult{}, fileassets.ErrUnavailable
+	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return ImportResult{}, fmt.Errorf("begin import procurement document: %w", err)
@@ -1198,11 +1203,21 @@ func (store *PostgresStore) ImportDocument(
 	if parsed.ArithmeticOK {
 		arithmeticStatus = "ok"
 	}
+	key, err := fileassets.Save(ctx, store.fileStorage, fmt.Sprintf("procurement/%d", orderID), input.ContentType, input.Content)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	keepFile := false
+	defer func() {
+		if !keepFile {
+			fileassets.Discard(store.fileStorage, key)
+		}
+	}()
 	var document DocumentSummary
 	err = tx.QueryRow(ctx, `
 		INSERT INTO procurement_documents (
 			supplier_id, procurement_order_id, file_name, content_type, size_bytes,
-			sha256, content, parser_kind, parser_version, parse_status,
+			sha256, object_key, parser_kind, parser_version, parse_status,
 			arithmetic_status, document_number, document_date, currency,
 			line_count, unit_count, product_subtotal, package_total,
 			document_total, calculated_total, extracted_text, created_by,
@@ -1217,7 +1232,7 @@ func (store *PostgresStore) ImportDocument(
 			package_total::DOUBLE PRECISION, document_total::DOUBLE PRECISION,
 			calculated_total::DOUBLE PRECISION, parse_error, created_at,revision_no,FALSE
 	`, input.SupplierID, orderID, input.FileName, input.ContentType, len(input.Content),
-		hash, input.Content, parsed.ParserKind, parserVersion, arithmeticStatus,
+		hash, key, parsed.ParserKind, parserVersion, arithmeticStatus,
 		parsed.DocumentNumber, parsed.DocumentDate, parsed.Currency, len(parsed.Lines),
 		countUnits(parsed.Lines), parsed.ProductSubtotal, parsed.PackageTotal,
 		parsed.DocumentTotal, parsed.CalculatedTotal, parsed.ExtractedText, actor.CustomerID,
@@ -1384,8 +1399,15 @@ func (store *PostgresStore) ImportDocument(
 	if err := audit(ctx, tx, actor, "procurement.document.import", "procurement_document", document.ID, document); err != nil {
 		return ImportResult{}, err
 	}
+	// Preserve the object after a COMMIT attempt with an uncertain outcome.
+	keepFile = true
 	if err := tx.Commit(ctx); err != nil {
 		return ImportResult{}, fmt.Errorf("commit procurement document import: %w", err)
 	}
 	return ImportResult{Document: document, Order: order}, nil
+}
+
+func (store *PostgresStore) WithFileStorage(storage fileassets.Storage) *PostgresStore {
+	store.fileStorage = storage
+	return store
 }

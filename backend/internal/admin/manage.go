@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
+	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -299,19 +301,8 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 		-- Историческая строка заказа, чей товар удалили из каталога годы назад,
 		-- живёт через legacy_product_ref и не имеет ни product_id, ни sku.
 		-- Без COALESCE такой заказ ронял весь список заказов в админке.
-		SELECT item.order_id, COALESCE(item.product_id, 0), COALESCE(item.sku, ''), COALESCE(item.variant_label, ''),
-			item.product_name, item.unit_price::DOUBLE PRECISION, item.quantity,
-			COALESCE((
-				SELECT COALESCE(mirror.card_url, mirror.large_url, media.object_key)
-				FROM product_media media
-				LEFT JOIN media_mirror mirror ON mirror.source_url = media.object_key
-				WHERE media.product_id = item.product_id
-					AND (media.variant_id = item.variant_id OR media.variant_id IS NULL)
-					AND NOT EXISTS (SELECT 1 FROM catalog_supplementary_media supplementary
-						WHERE supplementary.product_id = media.product_id AND supplementary.object_key = media.object_key)
-				ORDER BY (media.variant_id = item.variant_id) DESC NULLS LAST, media.is_primary DESC, media.sort_order, media.id
-				LIMIT 1
-			), '/assets/product-photo-pending-graphite-v1.svg')
+		SELECT item.order_id, item.id, COALESCE(item.product_id, 0), COALESCE((SELECT product_code::TEXT FROM products WHERE id=item.product_id AND status='published'),''), COALESCE(item.sku, ''), COALESCE(item.variant_label, ''),
+			item.product_name, item.unit_price::DOUBLE PRECISION, item.quantity
 		FROM order_items item WHERE item.order_id = ANY($1::bigint[]) ORDER BY item.id
 	`, ids)
 	if err != nil {
@@ -325,13 +316,33 @@ func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, 
 	for itemRows.Next() {
 		var orderID int64
 		var item OrderItem
-		if err := itemRows.Scan(&orderID, &item.ProductID, &item.SKU, &item.VariantLabel, &item.ProductName,
-			&item.UnitPrice, &item.Quantity, &item.Image); err != nil {
+		if err := itemRows.Scan(&orderID, &item.ID, &item.ProductID, &item.ProductCode, &item.SKU, &item.VariantLabel, &item.ProductName,
+			&item.UnitPrice, &item.Quantity); err != nil {
 			return nil, fmt.Errorf("scan admin order item: %w", err)
 		}
 		byID[orderID].Items = append(byID[orderID].Items, item)
 	}
-	return orders, itemRows.Err()
+	if err := itemRows.Err(); err != nil {
+		return nil, err
+	}
+	itemRows.Close()
+	pointers := []*OrderItem{}
+	for i := range orders {
+		for j := range orders[i].Items {
+			pointers = append(pointers, &orders[i].Items[j])
+		}
+	}
+	if err := repository.hydrateOrderItemMedia(ctx, pointers); err != nil {
+		return nil, err
+	}
+	orderPointers := make([]*Order, len(orders))
+	for i := range orders {
+		orderPointers[i] = &orders[i]
+	}
+	if err := repository.hydrateOrderWorkflows(ctx, orderPointers); err != nil {
+		return nil, err
+	}
+	return orders, nil
 }
 
 func (repository *PostgresRepository) UpdateOrderStatus(
@@ -359,6 +370,16 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	}
 	if currentStatus == "cancelled" || currentStatus == "completed" {
 		return Order{}, fmt.Errorf("%w: закрытый заказ доступен только для просмотра", ErrInvalidInput)
+	}
+	if status != "" && status != "cancelled" && status != currentStatus {
+		states, err := orderworkflow.Read(ctx, tx, []int64{id})
+		if err != nil {
+			return Order{}, err
+		}
+		state := states[id]
+		if !slices.Contains(state.ManualStatuses, status) {
+			return Order{}, fmt.Errorf("%w: этапы доставки СДЭК обновляются автоматически; вручную доступны только разрешённые этапы самовывоза", ErrInvalidInput)
+		}
 	}
 	// The admin endpoint must not be a second way to claim that YooKassa has
 	// captured money. Only the pickup handover can be confirmed by a manager;
@@ -413,7 +434,8 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE orders SET status = COALESCE(NULLIF($2, ''), status),
-			payment_status = COALESCE(NULLIF($3, ''), payment_status)
+			payment_status = COALESCE(NULLIF($3, ''), payment_status),
+            has_preorder = CASE WHEN $2 IN ('assembling','ready') THEN 0 ELSE has_preorder END
 		WHERE id = $1
 	`, id, status, paymentStatus); err != nil {
 		return Order{}, fmt.Errorf("update order status: %w", err)
@@ -613,6 +635,7 @@ func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, a
 	if err = tx.QueryRow(ctx, `
 		SELECT COUNT(*) FROM products p
 		WHERE p.id = ANY($1::bigint[]) AND p.status = 'draft'
+		AND NOT EXISTS(SELECT 1 FROM product_creation_drafts creation WHERE creation.product_id=p.id)
 		AND NOT EXISTS(SELECT 1 FROM product_variants v JOIN catalog_saby_exports e ON e.variant_id=v.id WHERE v.product_id=p.id AND (e.state IN ('queued','checking','verifying','unknown') OR e.attempted_at IS NOT NULL OR e.remote_id<>''))
 		AND NOT EXISTS (
 			SELECT 1 FROM product_variants pv
@@ -795,6 +818,14 @@ func (repository *PostgresRepository) UpdateProduct(
 	}
 	if err := saveVariantEdits(ctx, tx, actor, id, update.Variants); err != nil {
 		return Product{}, err
+	}
+	for _, edit := range update.Variants {
+		if edit.Remove {
+			if _, err := tx.Exec(ctx, `UPDATE products SET status='draft',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status='published' AND NOT EXISTS(SELECT 1 FROM product_variants WHERE product_id=$1 AND is_active<>0 AND archived_at IS NULL)`, id); err != nil {
+				return Product{}, err
+			}
+			break
+		}
 	}
 	if update.Status != nil && *update.Status == "published" || update.CategoryID != nil || update.ClearCategory || update.Attributes != nil {
 		var status string

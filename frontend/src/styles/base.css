@@ -497,6 +497,8 @@ footer small {
   line-height: 1.5;
 }
 .empty-cart button {
+  min-height: 44px;
+  padding: 8px 12px;
   border: 0;
   border-bottom: 1px solid var(--green);
   background: transparent;

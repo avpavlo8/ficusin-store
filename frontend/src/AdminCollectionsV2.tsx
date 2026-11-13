@@ -2,7 +2,7 @@ import { NumericInput } from "./NumericInput";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeading, api } from "./adminShared";
 import { catalogSlug, normalizeCatalogQuery, type RegisterCatalogLeave } from "./adminCatalogLogic";
-import type { Product } from "./adminTypes";
+import type { Product, Category } from "./adminTypes";
 
 type Rule = {
   attribute: string;
@@ -991,8 +991,26 @@ export function CollectionsV2({
       api<{ products?: Product[] }>("/api/v1/admin/products").then((data) =>
         setProducts(data.products || []),
       ),
-      api<{ attributes?: Attribute[] }>("/api/v1/admin/attributes").then((data) =>
-        setAttributes(data.attributes || []),
+      Promise.all([
+        api<{ attributes?: Attribute[] }>("/api/v1/admin/attributes"),
+        api<{ categories?: Category[] }>("/api/v1/admin/categories"),
+      ]).then(([data, tree]) =>
+        setAttributes([
+          ...(data.attributes || []),
+          {
+            id: -1,
+            code: "category",
+            name: "Категория и подкатегории",
+            dataType: "multi_enum",
+            unit: "",
+            active: true,
+            options: (tree.categories || []).map((category) => ({
+              code: category.slug,
+              label: category.name,
+              active: true,
+            })),
+          },
+        ]),
       ),
     ])
       .catch((error) => {

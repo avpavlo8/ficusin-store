@@ -22,7 +22,7 @@ func (disabledTelegramNotifications) SendOrder(context.Context, integration.Tele
 func (disabledTelegramNotifications) SendOperations(context.Context, string) error { return nil }
 
 func newTelegramNotifications(cfg config.Config) (telegramNotifications, error) {
-	if cfg.Environment == "staging" {
+	if cfg.Environment == "staging" || cfg.Environment == "development" {
 		return disabledTelegramNotifications{}, nil
 	}
 	return integration.NewTelegramClient(cfg.TelegramChatID, cfg.TelegramBotToken)

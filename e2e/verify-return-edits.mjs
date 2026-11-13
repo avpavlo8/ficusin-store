@@ -6,6 +6,12 @@ import {mkdir,writeFile} from 'node:fs/promises';
 const base=process.env.CRM_BASE_URL||'http://127.0.0.1:8080';
 const out=process.env.CRM_ARTIFACT_DIR||'crm-artifacts';await mkdir(out,{recursive:true});
 const results=[];
+async function assertDocumentsDefault(page) {
+ const journals=page.getByRole('navigation',{name:'Журналы возвратов'});
+ await expect(journals.getByRole('button',{name:/^Документы/})).toHaveAttribute('aria-current','page');
+ await expect(page.getByRole('region',{name:'Документы приёмки',exact:true})).toBeVisible();
+ await expect(page.getByRole('navigation',{name:'Состояния возвратов'})).toHaveCount(0);
+}
 for(const [name,engine,options] of [['desktop',chromium,{viewport:{width:1440,height:1000}}],['iphone',webkit,{...devices['iPhone 13']}],['android',chromium,{...devices['Pixel 5']}]]){
  const browser=await engine.launch({headless:true});const context=await browser.newContext({baseURL:base,serviceWorkers:'block',...options});await context.addCookies([{name:'ficusin_session',value:'crm-acceptance-owner',url:base}]);const api=context.request;const page=await context.newPage();const id=randomUUID();
  try{
@@ -13,7 +19,7 @@ for(const [name,engine,options] of [['desktop',chromium,{viewport:{width:1440,he
   const data={channel:'wb',channelComment:'',rows:[{key:'ready',variantId:product.variantId,name:product.name,sku:product.sku,search:product.name,quantity:2,condition:'ready',comment:'Без скидки',discountPercent:0},{key:'recover',variantId:product.variantId,name:product.name,sku:product.sku,search:product.name,quantity:1,condition:'restoring',comment:'После возврата',discountPercent:0},{key:'zero',variantId:product.variantId,name:product.name,sku:product.sku,search:product.name,quantity:1,condition:'restoring',comment:'Восстановление без скидки',discountPercent:0},{key:'dead',variantId:product.variantId,name:product.name,sku:product.sku,search:product.name,quantity:1,condition:'dead',comment:'Списание',discountPercent:0}]};
   expect((await api.put(`/api/v1/admin/returns/intakes/${id}`,{data:{revision:0,data}})).status()).toBe(200);const response=await api.post(`/api/v1/admin/returns/intakes/${id}/save`,{data:{revision:1}});expect(response.status()).toBe(200);const saved=(await response.json()).intake;
   const read=async()=> (await(await api.get(`/api/v1/admin/returns/intakes/${id}`)).json()).intake;
-  const open=async()=>{await page.goto('/admin?section=products');await expect(page.getByRole('textbox',{name:'Поиск товаров',exact:true})).toBeVisible();await page.getByRole('navigation',{name:name==='desktop'?'Разделы управления':'Главные разделы'}).getByRole('link',{name:'Возвраты',exact:true}).click();await page.getByRole('navigation',{name:'Журналы возвратов'}).getByRole('button',{name:/^Документы/}).click();await page.getByRole('button',{name:new RegExp(`Документ приёмки №${saved.documentNumber} `)}).click();return page.getByRole('dialog',{name:`Документ приёмки №${saved.documentNumber}`});};
+  const open=async()=>{await page.goto('/admin?section=products');await expect(page.getByRole('textbox',{name:'Поиск товаров',exact:true})).toBeVisible();await page.getByRole('navigation',{name:name==='desktop'?'Разделы управления':'Главные разделы'}).getByRole('link',{name:'Возвраты',exact:true}).click();await assertDocumentsDefault(page);await page.getByRole('button',{name:new RegExp(`Документ приёмки №${saved.documentNumber} `)}).click();return page.getByRole('dialog',{name:`Документ приёмки №${saved.documentNumber}`});};
   let dialog=await open();await dialog.getByRole('button',{name:'Редактировать документ',exact:true}).click();await expect(dialog.getByRole('textbox',{name:'Количество 1',exact:true})).toHaveValue('2');
   await dialog.getByRole('combobox',{name:'Канал',exact:true}).selectOption('other');await dialog.getByRole('textbox',{name:'Комментарий к каналу',exact:true}).fill('Проверка редактирования');
   await dialog.getByRole('textbox',{name:'Количество 1',exact:true}).fill('3');await dialog.getByRole('textbox',{name:'Комментарий 1',exact:true}).fill('Исправленный комментарий');await dialog.getByRole('textbox',{name:'Скидка 2',exact:true}).fill('30');

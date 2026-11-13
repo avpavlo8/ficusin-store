@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 	_ "golang.org/x/image/webp"
 	"image"
 	_ "image/jpeg"
@@ -251,6 +252,10 @@ func (repository *PostgresRepository) writeReturnPhoto(ctx context.Context, acto
 	if err != nil || config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > 80000000 {
 		return MarketplaceReturn{}, errors.New("не удалось прочитать изображение")
 	}
+	if repository.fileStorage == nil || !repository.fileStorage.Configured() {
+		return MarketplaceReturn{}, fileassets.ErrUnavailable
+	}
+
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
 		return MarketplaceReturn{}, err
@@ -269,13 +274,25 @@ func (repository *PostgresRepository) writeReturnPhoto(ctx context.Context, acto
 			return MarketplaceReturn{}, errors.New("фото не найдено в этом возврате")
 		}
 	}
-	command, err := tx.Exec(ctx, `INSERT INTO marketplace_return_photos(marketplace_return_id,content_type,image,created_by) SELECT $1,$2,$3,$4 WHERE (SELECT COUNT(*) FROM marketplace_return_photos WHERE marketplace_return_id=$1 AND deleted_at IS NULL)<6`, id, contentType, raw, actor.CustomerID)
+	key, err := fileassets.Save(ctx, repository.fileStorage, fmt.Sprintf("returns/%d", id), contentType, raw)
+	if err != nil {
+		return MarketplaceReturn{}, err
+	}
+	keepFile := false
+	defer func() {
+		if !keepFile {
+			fileassets.Discard(repository.fileStorage, key)
+		}
+	}()
+	command, err := tx.Exec(ctx, `INSERT INTO marketplace_return_photos(marketplace_return_id,content_type,image,created_by,object_key) SELECT $1,$2,NULL,$3,$4 WHERE (SELECT COUNT(*) FROM marketplace_return_photos WHERE marketplace_return_id=$1 AND deleted_at IS NULL)<6`, id, contentType, actor.CustomerID, key)
 	if err != nil {
 		return MarketplaceReturn{}, err
 	}
 	if command.RowsAffected() == 0 {
 		return MarketplaceReturn{}, errors.New("к одному возврату можно приложить не более 6 фото")
 	}
+	// COMMIT can succeed even when its acknowledgement is lost.
+	keepFile = true
 	if err = tx.Commit(ctx); err != nil {
 		return MarketplaceReturn{}, err
 	}
@@ -373,9 +390,14 @@ func (repository *PostgresRepository) marketplaceReturn(ctx context.Context, id 
 func (repository *PostgresRepository) ReturnPhoto(ctx context.Context, id int64) (string, []byte, error) {
 	var contentType string
 	var data []byte
-	err := repository.pool.QueryRow(ctx, `SELECT f.content_type,f.image FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE f.id=$1 AND f.deleted_at IS NULL AND r.deleted_at IS NULL`, id).Scan(&contentType, &data)
+	var key string
+	err := repository.pool.QueryRow(ctx, `SELECT f.content_type,f.image,COALESCE(f.object_key,'') FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE f.id=$1 AND f.deleted_at IS NULL AND r.deleted_at IS NULL`, id).Scan(&contentType, &data, &key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil, err
 	}
+	if err != nil {
+		return "", nil, err
+	}
+	data, err = fileassets.Read(ctx, repository.fileStorage, key, data)
 	return contentType, data, err
 }

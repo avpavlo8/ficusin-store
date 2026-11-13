@@ -780,6 +780,9 @@ func (handlers procurementHandlers) retryBatch(response http.ResponseWriter, req
 }
 
 func (handlers procurementHandlers) failed(response http.ResponseWriter, operation string, err error) {
+	if privateFileUnavailable(response, err) {
+		return
+	}
 	status := http.StatusServiceUnavailable
 	message := "Не удалось выполнить операцию"
 	var userFacing *procurement.UserFacingError

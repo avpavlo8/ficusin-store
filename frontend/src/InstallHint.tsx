@@ -1,157 +1,102 @@
 import { useEffect, useState } from "react";
 import {
-  enablePush,
   clearStoreInstallPrompt,
   getStoreInstallPrompt,
   type InstallPromptEvent,
   isIOS,
   isStandalone,
-  pushPaused,
-  pushSupported,
-  restoreDefaultPush,
 } from "./lib/pwa";
 
-const SNOOZE = "ficusin_install_snooze";
-function snoozed() {
-  return document.cookie.split("; ").includes(`${SNOOZE}=1`);
-}
-
-export function InstallHint({ inline = false }: { inline?: boolean }) {
+// Installation is offered by the first-visit dialog or explicitly in Account.
+// Neither this component nor a page load requests notification permission.
+export function InstallHint({
+  inline = false,
+  onInstalled,
+}: {
+  inline?: boolean;
+  onInstalled?: () => void;
+}) {
   const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(getStoreInstallPrompt);
-  const [mode, setMode] = useState<"install" | "notifications" | null>(() =>
-    inline && !isStandalone() ? "install" : null,
-  );
+  const [installed, setInstalled] = useState(isStandalone);
   const [steps, setSteps] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
   useEffect(() => {
-    // Permission already granted: reconnect the device automatically. The
-    // system permission itself is requested only by an explicit button tap.
-    void restoreDefaultPush().catch(() => undefined);
-    if (!inline && snoozed()) return;
-    let timer = 0;
-    let active = true;
-    const offerNotifications = () => {
-      if (!pushSupported() || Notification.permission !== "default" || pushPaused("orders")) return;
-      void fetch("/api/v1/push/key", { cache: "no-store" })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((config: { enabled?: boolean; publicKey?: string } | null) => {
-          if (active && config?.enabled && config.publicKey)
-            timer = window.setTimeout(() => setMode("notifications"), 6_000);
-        })
-        .catch(() => undefined);
-    };
-    if (isStandalone()) {
-      offerNotifications();
-    } else if (isIOS()) {
-      timer = window.setTimeout(() => setMode("install"), 8_000);
-    }
-    const onPrompt = () => {
-      setPromptEvent(getStoreInstallPrompt());
-      setMode("install");
-    };
-    const onInstalled = () => {
-      window.clearTimeout(timer);
-      setMode(null);
+    const ready = () => setPromptEvent(getStoreInstallPrompt());
+    const complete = () => {
+      setInstalled(true);
       setPromptEvent(null);
-      offerNotifications();
-      document.cookie = `${SNOOZE}=; Path=/; Max-Age=0; SameSite=Lax`;
+      onInstalled?.();
     };
-    const onPush = () => {
-      if (pushSupported() && Notification.permission === "granted") setMode(null);
-    };
-    if (getStoreInstallPrompt() && !isStandalone()) timer = window.setTimeout(onPrompt, 0);
-    window.addEventListener("ficusin-install-ready", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    window.addEventListener("ficusin-chat-push-changed", onPush);
+    window.addEventListener("ficusin-install-ready", ready);
+    window.addEventListener("appinstalled", complete);
     return () => {
-      active = false;
-      window.clearTimeout(timer);
-      window.removeEventListener("ficusin-install-ready", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-      window.removeEventListener("ficusin-chat-push-changed", onPush);
+      window.removeEventListener("ficusin-install-ready", ready);
+      window.removeEventListener("appinstalled", complete);
     };
-  }, [inline]);
-
-  const dismiss = () => {
-    document.cookie = `${SNOOZE}=1; Path=/; Max-Age=604800; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
-    setMode(null);
-  };
-  const act = async () => {
+  }, [onInstalled]);
+  const install = async () => {
     setError("");
-    if (mode === "install" && !promptEvent) {
+    if (!promptEvent) {
       setSteps((value) => !value);
       return;
     }
     setBusy(true);
     try {
-      if (mode === "notifications") {
-        await enablePush();
-        setMode(null);
-      } else if (promptEvent) {
-        await promptEvent.prompt();
-        const choice = await promptEvent.userChoice;
-        clearStoreInstallPrompt();
-        setPromptEvent(null);
-        if (choice.outcome === "accepted") setMode(null);
-        else if (!inline) dismiss();
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice;
+      clearStoreInstallPrompt();
+      setPromptEvent(null);
+      if (choice.outcome === "accepted") {
+        setInstalled(true);
+        onInstalled?.();
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Попробуйте ещё раз");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Не удалось открыть установку. Попробуйте ещё раз.",
+      );
     } finally {
       setBusy(false);
     }
   };
-  if (!mode) return null;
   return (
     <aside
       className={inline ? "home-install" : "install-hint"}
-      aria-label={mode === "install" ? "Установить приложение Фикусин" : "Уведомления Фикусина"}
+      aria-label="Установить приложение Фикусин"
     >
       <img src="/assets/brand/graphite-v1/app-192-v2.png" alt="" />
       <div>
-        <strong>{mode === "install" ? "Фикусин на экране «Домой»" : "Оставайтесь на связи"}</strong>
+        <strong>{installed ? "Фикусин уже установлен" : "Фикусин на экране «Домой»"}</strong>
         <span>
-          {mode === "install"
-            ? "Добавьте иконку, откройте Фикусин с неё и включите уведомления о заказах и сообщениях."
-            : "Разрешите уведомления о новых сообщениях и вашем заказе."}
+          {installed
+            ? "Открывайте приложение с иконки. Уведомления о заказах и сообщениях настраиваются ниже."
+            : "Добавьте Фикусин на главный экран, чтобы открывать магазин одним нажатием и получать уведомления."}
         </span>
-        {steps && (
+        {steps && !installed && (
           <ol>
-            <li>
-              {isIOS() ? "Откройте меню «Поделиться» в браузере." : "Откройте меню браузера."}
-            </li>
+            <li>{isIOS() ? "Откройте меню «Поделиться» в Safari." : "Откройте меню браузера."}</li>
             <li>
               {isIOS()
                 ? "Выберите «На экран Домой» и нажмите «Добавить»."
                 : "Выберите «Установить приложение» или «Добавить на главный экран», если этот пункт доступен."}
             </li>
             <li>
-              Откройте Фикусин с нового значка и нажмите «Включить» в предложении об уведомлениях.
+              Откройте Фикусин с нового значка. В личном кабинете включите нужные уведомления.
             </li>
           </ol>
         )}
         {error && <span role="alert">{error}</span>}
       </div>
-      <button className="install-hint-action" disabled={busy} onClick={() => void act()}>
-        {busy
-          ? "…"
-          : mode === "notifications"
-            ? "Включить"
-            : promptEvent
-              ? "Установить"
-              : steps
-                ? "Свернуть"
-                : "Как установить"}
-      </button>
-      {!inline && (
+      {!installed && (
         <button
-          className="install-hint-close"
-          onClick={dismiss}
-          aria-label="Напомнить об установке позже"
+          type="button"
+          className="install-hint-action"
+          disabled={busy}
+          onClick={() => void install()}
         >
-          ×
+          {busy ? "…" : promptEvent ? "Установить" : steps ? "Свернуть" : "Как установить"}
         </button>
       )}
     </aside>

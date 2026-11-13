@@ -1,3 +1,5 @@
+import "./styles/admin-orders.css";
+import "./styles/admin-orders-fixes.css";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { currentAdminSection, canOpenSection } from "./adminNavigation";
 import { WorkspaceState } from "./WorkspaceUI";

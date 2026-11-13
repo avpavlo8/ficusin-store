@@ -11,7 +11,6 @@ import {
   SupplierDialog,
 } from "./AdminProcurementDialogs";
 import {
-  ProcurementSettingsPanel,
   availabilityLabel,
   integrationChannelLabel,
   recommendationEmptyText,
@@ -604,7 +603,9 @@ export function Procurement({
             {renderTab("products", "Товары поставщиков")}
             {renderTab("unlinkedSales", "Продажи без товара")}
             {canIntegrations && renderTab("integrations", "Интеграции")}
-            {canIntegrations && renderTab("settings", "Формула цены")}
+            {canIntegrations && (
+              <a href="/admin?section=settings&settingsTab=marketplaces">Настройки калькулятора</a>
+            )}
           </WorkspaceMore>
         </nav>
         <div className="procurement-content">
@@ -1680,12 +1681,9 @@ export function Procurement({
           )}
 
           {view === "settings" && canIntegrations && (
-            <ProcurementSettingsPanel
-              key={data.settings.version}
-              settings={data.settings}
-              onSaved={() => void load()}
-              onError={onError}
-            />
+            <a href="/admin?section=settings&settingsTab=marketplaces">
+              Открыть настройки калькулятора в разделе «Настройки → Маркетплейсы»
+            </a>
           )}
         </div>
       </div>

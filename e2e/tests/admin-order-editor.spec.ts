@@ -689,10 +689,13 @@ test("@desktop страница заказа: состав, кнопки под 
   await expect(items).toContainText("Азалия D9");
   await expect(items.getByRole("button", { name: "Отменить заказ", exact: true })).toBeVisible();
   await expect(items.getByRole("button", { name: "Изменить заказ", exact: true })).toBeVisible();
-  await expect(items.getByRole("button", { name: "Подтвердить заказ", exact: true })).toBeVisible();
+  await expect(items.getByRole("button", { name: "Подтвердить заказ", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Что нужно сделать" })).toContainText("Заполните размеры коробки");
 
   const aside = page.getByRole("complementary", { name: "Итог заказа" });
   await expect(aside.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toHaveValue("new");
+  await expect(aside.getByRole("combobox", { name: "Статус заказа 0001-30", exact: true })).toBeDisabled();
+  await expect(aside).toContainText("Переход на сборку и этапы СДЭК обновляются автоматически");
   await expect(aside).toContainText("Не оплачен");
 
   page.once("dialog", (dialog) => dialog.accept());

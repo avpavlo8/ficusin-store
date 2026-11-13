@@ -501,10 +501,16 @@
   max-width: 920px;
 }
 .plant-questions details {
-  padding: 18px 0;
+  padding: 8px 0;
   border-bottom: 1px solid var(--plant-rule);
 }
 .plant-questions summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  gap: 20px;
+  list-style: none;
   cursor: pointer;
   font-size: 15px;
   line-height: 1.6;
@@ -740,5 +746,25 @@
   .plant-care-panel:not(:has(.plant-care-art)) .plant-care-heading {
     min-height: 0;
     padding-right: 0;
+  }
+}
+
+.plant-questions summary::-webkit-details-marker {
+  display: none;
+}
+.plant-questions summary::marker {
+  content: "";
+}
+.plant-question-chevron {
+  flex: 0 0 20px;
+  color: #566953;
+  transition: transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.plant-questions details[open] .plant-question-chevron {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .plant-question-chevron {
+    transition: none;
   }
 }

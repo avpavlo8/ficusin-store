@@ -22,7 +22,7 @@ func TestStage06SharedPlanPriceAndInvoicePriceOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	sabyID := fmt.Sprintf("shared-hibiscus-%d", unique)
 	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,balance) VALUES($1,$1,'Hibiscus D19',0)`, sabyID); err != nil {

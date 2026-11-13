@@ -21,7 +21,7 @@ func TestStage06PlanAndInvoiceRevisionsOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	unique := time.Now().UnixNano()
 	ficusID := fmt.Sprintf("stage06-ficus-%d", unique)
 	flyID := fmt.Sprintf("stage06-fly-%d", unique)

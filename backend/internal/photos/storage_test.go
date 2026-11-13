@@ -107,3 +107,19 @@ func TestPublicURL(t *testing.T) {
 		t.Fatalf("ожидали %s, получили %s", want, got)
 	}
 }
+
+func TestPrivatePutSignsACLAndDoesNotPublicCache(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Amz-Acl") != "private" || r.Header.Get("Cache-Control") != "private, no-store" {
+			t.Error("private object was published or cached publicly")
+		}
+		if !strings.Contains(r.Header.Get("Authorization"), "SignedHeaders=host;x-amz-acl;x-amz-content-sha256;x-amz-date") {
+			t.Error("private ACL omitted from SigV4 signature")
+		}
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+	if err := NewPrivateStorage(server.URL, "ru-1", "private-bucket", "test", "test").Put(context.Background(), "avatars/1/random", []byte("photo"), "image/jpeg"); err != nil {
+		t.Fatal(err)
+	}
+}

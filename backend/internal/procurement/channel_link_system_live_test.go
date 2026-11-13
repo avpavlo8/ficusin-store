@@ -30,7 +30,7 @@ func TestSystemChannelLinkLeavesUpdatedByNullOnLiveDatabase(t *testing.T) {
 	}
 	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID) }()
 
-	store := NewPostgresStore(pool)
+	store := NewPostgresStore(pool).WithFileStorage(newPrivateTestFileStorage())
 	for _, channel := range []string{"wb", "ozon"} {
 		externalID := fmt.Sprint(unique)
 		result, err := store.LinkChannelProducts(ctx, Actor{Role: "system"}, channel, []ChannelProduct{{ExternalID: externalID, Article: article}})

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import Root from "./Root";
+import { PullToRefresh } from "./PullToRefresh";
 import { initializeStoreInstall, registerServiceWorker } from "./lib/pwa";
 import { initAnalytics } from "./lib/analytics";
 import { initializeAdminApp } from "./lib/adminApp";
@@ -17,6 +18,7 @@ if (!root) {
 createRoot(root).render(
   <StrictMode>
     <Root />
+    <PullToRefresh />
   </StrictMode>,
 );
 

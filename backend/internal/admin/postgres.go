@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/jackc/pgx/v5"
@@ -22,6 +24,10 @@ type ShipmentQuoteService interface {
 }
 
 type PostgresRepository struct {
+	editorSabyMetadata       catalogeditor.SabyMetadataReader
+	editorEnvironment        string
+	fileStorage              fileassets.Storage
+	editorPublicationMode    string
 	pool                     *pgxpool.Pool
 	notifier                 OrderNotifier
 	shipmentQuotes           ShipmentQuoteService
@@ -109,4 +115,20 @@ func (repository *PostgresRepository) Dashboard(ctx context.Context) (Dashboard,
 		return Dashboard{}, fmt.Errorf("read recent orders: %w", err)
 	}
 	return dashboard, nil
+}
+
+func (r *PostgresRepository) WithEditorPublicationMode(mode string) *PostgresRepository {
+	r.editorPublicationMode = mode
+	return r
+}
+func editorReferenceKind(mode, kind string) string {
+	if mode == "mock" {
+		return "mock/" + kind
+	}
+	return kind
+}
+
+func (repository *PostgresRepository) WithFileStorage(storage fileassets.Storage) *PostgresRepository {
+	repository.fileStorage = storage
+	return repository
 }

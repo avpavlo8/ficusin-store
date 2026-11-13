@@ -103,15 +103,34 @@ test("@desktop @phone Avito separates prices and preserves an explicit pause", a
 test("@desktop @phone analytics failure does not trap the dashboard and can be retried", async ({ page }) => {
   await setup(page);
   let calls = 0;
+  let unavailable = true;
+  await page.route("**/api/v1/admin/analytics?days=*", route => {
+    calls++;
+    return unavailable
+      ? route.fulfill({ status: 503, json: { error: "Unavailable" } })
+      : route.fulfill({ json: analytics });
+  });
+  await page.goto("/admin");
+  await expect(page.getByText("Аналитика временно недоступна")).toBeVisible();
+  expect(calls).toBeGreaterThanOrEqual(3);
+  await expect(page.getByText("TEST-NEW", { exact: true })).toBeVisible();
+  unavailable = false;
+  await page.getByRole("button", { name: "Попробовать снова" }).click();
+  await expect(page.getByRole("img", { name: /Выручка всех каналов за 7 дней/ })).toBeVisible();
+  await expect(page.getByText("Аналитика временно недоступна")).toHaveCount(0);
+});
+
+test("@desktop @phone a temporary analytics failure recovers automatically", async ({ page }) => {
+  await setup(page);
+  let calls = 0;
   await page.route("**/api/v1/admin/analytics?days=*", route => ++calls === 1
     ? route.fulfill({ status: 503, json: { error: "Unavailable" } })
     : route.fulfill({ json: analytics }));
   await page.goto("/admin");
-  await expect(page.getByText("Аналитика временно недоступна")).toBeVisible();
-  await expect(page.getByText("TEST-NEW", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Попробовать снова" }).click();
   await expect(page.getByRole("img", { name: /Выручка всех каналов за 7 дней/ })).toBeVisible();
+  expect(calls).toBeGreaterThanOrEqual(2);
   await expect(page.getByText("Аналитика временно недоступна")).toHaveCount(0);
+  await expect(page.getByText("TEST-NEW", { exact: true })).toBeVisible();
 });
 
 test("@desktop search opens permitted sections by keyboard", async ({ page }) => {

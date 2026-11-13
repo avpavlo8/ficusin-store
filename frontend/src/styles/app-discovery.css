@@ -1,0 +1,106 @@
+.account-app-settings {
+  margin: 32px 0 0;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.account-app-settings h2 {
+  margin: 0 0 18px;
+  font-size: 25px;
+  color: var(--green);
+}
+.account-app-settings h3 {
+  margin: 24px 0 8px;
+  font-size: 17px;
+}
+.account-app-settings .home-install {
+  margin: 0;
+}
+.install-first-visit {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  box-sizing: border-box;
+  padding: 38px 24px 24px;
+  border: 1px solid #d8dfd4;
+  border-radius: 16px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.install-first-visit::backdrop {
+  background: rgb(22 37 27 / 40%);
+}
+.install-first-visit .home-install {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.install-offer-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #4c6051;
+  cursor: pointer;
+}
+.install-offer-close:hover {
+  background: #e8eee4;
+}
+.install-offer-close:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.guest-loyalty-notice {
+  margin: 0 0 22px;
+  padding: 18px 20px;
+  border: 1px solid #d4dfcd;
+  border-radius: 12px;
+  background: #f1f6eb;
+  color: #2c4636;
+}
+.guest-loyalty-notice strong {
+  display: block;
+  font-size: 18px;
+  line-height: 1.35;
+}
+.guest-loyalty-notice p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #4e6050;
+}
+.guest-loyalty-notice > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-top: 12px;
+}
+.guest-loyalty-notice a {
+  color: #234d32;
+  font-size: 14px;
+  font-weight: 600;
+  text-underline-offset: 3px;
+}
+@media (max-width: 560px) {
+  .install-first-visit {
+    padding: 42px 18px 22px;
+  }
+  .guest-loyalty-notice {
+    padding: 16px;
+  }
+}
+.customer-push-note {
+  margin: 8px 0 0;
+  color: #596b5d;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.customer-push-settings .push-toggle {
+  margin: 0;
+}

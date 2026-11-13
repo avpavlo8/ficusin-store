@@ -1,6 +1,7 @@
+import { restoreDefaultPush } from "./lib/pwa";
+import "./styles/account-access.css";
 import { storeSession } from "./lib/store-session";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { InstallHint } from "./InstallHint";
 import { BrandLogo } from "./BrandLogo";
 import { CatalogSearch } from "./CatalogSearch";
 import { useSharedCart } from "./lib/cart";
@@ -113,7 +114,12 @@ export function useStoreUser() {
       .then(async (response) =>
         response.ok ? ((await response.json()) as { user: StoreUser }).user : null,
       )
-      .then(setUser)
+      .then((current) => {
+        setUser(current);
+        // Reconnect previously granted subscriptions after login/session changes.
+        // The helper respects per-channel opt-outs and never prompts permission.
+        void restoreDefaultPush().catch(() => undefined);
+      })
       .catch(() => setUser(null));
   }, []);
   return user;
@@ -136,62 +142,33 @@ export function AccountMenu({
   user: StoreUser | null;
   iconOnly?: boolean;
 }) {
-  if (!user)
-    return (
-      <a
-        className={iconOnly ? "account-button icon-only" : "account-button"}
-        href="/login"
-        aria-label="Войти"
-      >
-        <span>{iconOnly ? <Icon path={icons.person} /> : "◯"}</span>
-        {!iconOnly && <span>Войти</span>}
-      </a>
-    );
   const staff =
-    user.adminRole === "manager" ||
-    user.adminRole === "administrator" ||
-    user.adminRole === "owner";
-  const name = user.fullName.trim().split(/\s+/)[0] || "Профиль";
-  if (!staff)
-    return (
+    user?.adminRole === "manager" ||
+    user?.adminRole === "administrator" ||
+    user?.adminRole === "owner";
+  const name = user?.fullName.trim().split(/\s+/)[0] || "Личный кабинет";
+  return (
+    <div className="account-access account-menu">
       <a
         className={iconOnly ? "account-button icon-only" : "account-button"}
-        href="/account"
-        aria-label="Профиль"
+        href={user ? "/account" : "/login?returnTo=%2Faccount"}
+        aria-label="Личный кабинет"
+        title={user ? "Личный кабинет" : "Войти в личный кабинет"}
       >
-        {iconOnly ? (
-          <Icon path={icons.person} />
-        ) : (
-          <>
-            <AccountBadge user={user} />
-            <span>{name}</span>
-          </>
-        )}
+        {user?.avatarUpdatedAt ? <AccountBadge user={user} /> : <Icon path={icons.person} />}{" "}
+        {!iconOnly && <span>{name}</span>}
       </a>
-    );
-  return (
-    <details
-      className="account-menu"
-      onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}
-    >
-      <summary
-        aria-label="Меню профиля"
-        className={iconOnly ? "account-button icon-only" : "account-button"}
-      >
-        {iconOnly ? (
-          <Icon path={icons.person} />
-        ) : (
-          <>
-            <AccountBadge user={user} />
-            <span>{name}</span>
-          </>
-        )}
-      </summary>
-      <div>
-        <a href="/account">Личный профиль</a>
-        <a href="/admin">Панель управления</a>
-      </div>
-    </details>
+      {staff && (
+        <a
+          className="management-button"
+          href="/admin"
+          aria-label="Панель управления"
+          title="Панель управления"
+        >
+          <Icon path={icons.catalog} />
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -852,7 +829,6 @@ export function StoreHeader({
       )}
       {showTabBar && (
         <>
-          {location.pathname !== "/" && <InstallHint />}
           <MobileTabBar
             user={user}
             favorites={favorites}
