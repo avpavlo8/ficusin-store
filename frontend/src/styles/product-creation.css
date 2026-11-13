@@ -852,12 +852,12 @@
   display: grid;
   gap: 16px;
 }
-@media (max-width: 760px) {
+@container (max-width: 480px) {
   .editor-plant-characteristic {
     grid-template-columns: 24px minmax(0, 1fr);
     gap: 10px 12px;
   }
-  .editor-plant-characteristic > :is(input, select, textarea) {
+  .editor-plant-characteristic > :is(input, select, textarea, .editor-multi-select) {
     grid-column: 2;
   }
 }
@@ -990,6 +990,8 @@
 }
 .editor-packaging label {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
@@ -1021,12 +1023,6 @@
   min-width: 0;
   max-width: 100%;
 }
-@media (max-width: 760px) {
-  .editor-plant-characteristic > .editor-multi-select {
-    grid-column: 2;
-  }
-}
-
 .editor-multi-options > button {
   display: flex;
   align-items: center;

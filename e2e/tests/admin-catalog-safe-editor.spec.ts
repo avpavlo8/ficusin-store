@@ -347,6 +347,20 @@ test('@desktop @phone late catalog snapshot cannot discard a route editor draft'
  await page.goto('/admin?section=products');await page.getByRole('button',{name:'Добавить товар',exact:true}).click();const e=page.locator('.editor-page');await e.getByLabel('Название товара *',{exact:true}).fill('Новый фикус после задержки');release();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Новый фикус после задержки');await expect(page).toHaveURL(/create=1/);expect(f.mutations.filter(r=>r.path==='/api/v1/admin/products')).toHaveLength(0);
 });
 
+test('@desktop tablet editor fields fit inside the information pane instead of being clipped',async({page})=>{
+ await page.setViewportSize({width:768,height:1000});await fixture(page);
+ await page.route('**/api/v1/admin/categories/2/attributes',route=>route.fulfill({json:{attributes:[...schema,...effective,
+  {...schema[0],id:40,code:'watering',name:'Полив',options:['moderate'],optionLabels:{moderate:'Умеренный'}},
+  ...[{code:'height_cm',name:'Высота'},{code:'pot_diameter_cm',name:'Диаметр горшка'}].map((f,i)=>({...schema[0],...f,id:41+i,dataType:'number',unit:'см',scope:'variant',options:[]})),
+ ]}}));
+ await open(page);const editor=await edit(page);await editor.getByRole('heading',{name:'Характеристики растения',exact:true}).click();
+ const pane=editor.locator('.editor-information');expect(await pane.evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
+ const bounds=await pane.boundingBox();
+ for(const label of ['Полив','Высота','Диаметр горшка']){
+  const field=editor.getByLabel(label,{exact:true});const box=await field.boundingBox();expect(box!.x,label).toBeGreaterThanOrEqual(bounds!.x);expect(box!.x+box!.width,label).toBeLessThanOrEqual(bounds!.x+bounds!.width);
+ }
+});
+
 for (const width of [768, 1024, 1280]) {
   test(`@desktop колонка товара читаема на ${width} px`, async ({page}) => {
     await page.setViewportSize({width,height:1024});
