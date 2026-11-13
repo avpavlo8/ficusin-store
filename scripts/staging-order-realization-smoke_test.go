@@ -122,7 +122,7 @@ type cleanupDB struct{ tx *cleanupTx }
 
 func (d cleanupDB) Begin(context.Context) (pgx.Tx, error) { return d.tx, nil }
 func TestCleanupOwnershipAndFailureBoundaries(t *testing.T) {
-	f := fixture{OrderID: 10, ItemID: 11, VariantID: 12, ProductID: 13, IntentID: 14, PublicationID: 15, Marker: "STG-SALE-SMOKE-unique", SabyID: "9000000000000001"}
+	f := fixture{OrderID: 10, ItemID: 11, VariantID: 12, ProductID: 13, IntentID: 14, PublicationID: 15, InventoryID: 16, Marker: "STG-SALE-SMOKE-unique", SabyID: "9000000000000001"}
 	tests := []struct {
 		name               string
 		rows               []cleanupRow
@@ -135,7 +135,7 @@ func TestCleanupOwnershipAndFailureBoundaries(t *testing.T) {
 		{name: "order without owned publication retained", rows: []cleanupRow{{err: pgx.ErrNoRows}, {value: true}}, wantError: "cleanup_ownership_failed"},
 		{name: "changed fixture retained", rows: []cleanupRow{{value: "posted"}, {err: pgx.ErrNoRows}}, wantError: "cleanup_ownership_failed"},
 		{name: "delete failure rolls back all deletes", rows: []cleanupRow{{value: "posted"}, {value: int64(10)}}, failDelete: 3, wantExecs: 3, wantError: "cleanup_delete_failed"},
-		{name: "exact fixture removed", rows: []cleanupRow{{value: "posted"}, {value: int64(10)}}, wantExecs: 7, commits: 1},
+		{name: "exact fixture removed", rows: []cleanupRow{{value: "posted"}, {value: int64(10)}}, wantExecs: 8, commits: 1},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

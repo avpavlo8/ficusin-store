@@ -64,11 +64,11 @@ def launch(candidate, env, source_sha, run=subprocess.run):
     with tempfile.TemporaryDirectory(prefix='stage_sale_smoke_', dir=backend) as package:
         shutil.copyfile(Path(__file__).with_name('staging-order-realization-smoke.go'), Path(package) / 'main.go')
         result = run(['go', 'run', './' + Path(package).name], cwd=backend, env=child,
-                     capture_output=True, text=True, timeout=360, check=False)
+                     capture_output=True, text=True, timeout=420, check=False)
     # Never echo stdout/stderr from a compiler, driver or SQL exception.
     if len(result.stdout) > 16384:
         raise audit.SafetyError('smoke_report_too_large')
-    allowed_results = {'passed', 'runner_failed', 'runner_guard_failed', 'database_target_failed', 'database_config_failed', 'database_ca_failed', 'actual_database_guard_failed', 'worker_mock_guard_failed', 'database_connection_failed', 'random_failed', 'fixture_begin_failed', 'fixture_product_failed', 'fixture_variant_failed', 'fixture_order_failed', 'fixture_item_failed', 'core_enqueue_failed', 'publication_not_enqueued', 'fixture_commit_uncertain', 'invalid_receipt_json', 'mock_receipt_mismatch', 'request_line_mismatch', 'proof_mismatch', 'proof_line_mismatch', 'publication_observation_failed', 'publication_mode_changed', 'mock_worker_rejected_fixture', 'smoke_cancelled', 'mock_worker_timeout', 'cleanup_begin_failed', 'cleanup_ownership_query_failed', 'cleanup_ownership_failed', 'cleanup_lock_failed', 'cleanup_delete_failed', 'cleanup_commit_uncertain', 'cleanup_processing_retained'}
+    allowed_results = {'fixture_inventory_failed', 'mock_stock_hold_mismatch', 'mock_stock_return_mismatch', 'cancel_begin_failed', 'cancel_ownership_failed', 'core_cancellation_failed', 'cancel_transition_failed', 'cancel_commit_uncertain', 'cancellation_observation_failed', 'cancellation_lost_original_proof', 'cancellation_proof_mismatch', 'cancellation_line_mismatch', 'mock_cancellation_rejected', 'mock_cancellation_timeout', 'passed', 'runner_failed', 'runner_guard_failed', 'database_target_failed', 'database_config_failed', 'database_ca_failed', 'actual_database_guard_failed', 'worker_mock_guard_failed', 'database_connection_failed', 'random_failed', 'fixture_begin_failed', 'fixture_product_failed', 'fixture_variant_failed', 'fixture_order_failed', 'fixture_item_failed', 'core_enqueue_failed', 'publication_not_enqueued', 'fixture_commit_uncertain', 'invalid_receipt_json', 'mock_receipt_mismatch', 'request_line_mismatch', 'proof_mismatch', 'proof_line_mismatch', 'publication_observation_failed', 'publication_mode_changed', 'mock_worker_rejected_fixture', 'smoke_cancelled', 'mock_worker_timeout', 'cleanup_begin_failed', 'cleanup_ownership_query_failed', 'cleanup_ownership_failed', 'cleanup_lock_failed', 'cleanup_delete_failed', 'cleanup_commit_uncertain', 'cleanup_processing_retained'}
     reports = []
     for line in result.stdout.splitlines():
         try:
@@ -77,7 +77,7 @@ def launch(candidate, env, source_sha, run=subprocess.run):
             continue
         if not isinstance(value, dict) or value.get('probe') != 'staging_sale_smoke':
             continue
-        safe = {key: value[key] for key in ('probe', 'result', 'cleanup', 'productId', 'variantId', 'orderId', 'intentId', 'publicationId') if key in value}
+        safe = {key: value[key] for key in ('probe', 'result', 'cleanup', 'productId', 'variantId', 'orderId', 'intentId', 'publicationId', 'inventoryId') if key in value}
         if any(type(value) is not int or value <= 0 for key, value in safe.items() if key.endswith('Id')):
             raise audit.SafetyError('invalid_smoke_report')
         if safe.get('result') not in allowed_results or safe.get('cleanup') not in ('not_needed', 'removed', 'retained'):

@@ -10,7 +10,7 @@ app **280757**, branch **staging**; APP_ENV=staging; isolated database
 publication modes mock; ORDER_REALIZATION_MODE=mock,
 ORDER_REALIZATION_LIVE_ENABLED=false, ORDER_REALIZATION_SITE_WAREHOUSE_ID=1;
 actual database control enabled/mock/warehouse1. The exact SHA must also be
-the checked-out source so the runner imports deployed `ordersale.Enqueue`.
+the checked-out source so the runner imports deployed `ordersale.EnqueueCreated`.
 
 Only after parent review, push THIS feature branch (never main/staging), then:
 
@@ -24,17 +24,24 @@ passes, explicitly run the same command with `-f run_smoke=true`. Do not run
 until the final deployment is active; no deployment or env change is included.
 
 The opted-in phase inserts one random-marker hidden product, inactive variant,
-and synthetic paid/completed pickup order with no customer, contact, stock,
-media, payment event or notification recipient. It calls core Go Enqueue in
+and synthetic unpaid/new pickup order with no customer or contact,
+media, payment event or notification recipient. Its own single-unit inventory row is
+attached only to the synthetic variant at verified warehouse1. It calls core Go EnqueueCreated in
 that same transaction. It does not call the provider directly and does not
 insert a fabricated success receipt. The actual running STG worker must reach
 posted/mock, stock_verified=true, a Test=true proof, STG-SALE-{intentID}, and
-matching own order/item/variant, quantity1 and exact 1234.56 price/sum.
+matching own order/item/variant, quantity1 and exact 1234.56 price/sum. The effective
+public stock must be held at zero while raw synthetic stock stays1. It then calls
+core RequestCancellation BEFORE marking that order cancelled in the same transaction.
+The real worker must confirm cancelled/cancellation_verified with Test=true full
+unpost proof; the original positive receipt must remain intact, effective stock
+must return1, and raw stock must remain1. No live stock movement is claimed.
 
 Cleanup locks only its captured publication, waits for processing to end,
 locks the exact random marker/ownership chain, rejects changed child rows, and deletes only its captured
 IDs in FK-safe order. It never resets sequences. Existing customers, orders,
-products, warehouses and balances are not modified. A stuck processing lease
+products, warehouses and balances are not modified. The fixture inventory row is
+removed only by its captured ID, exact variant and warehouse. A stuck processing lease
 is retained rather than bypassed; the masked report gives only this run's
 technical IDs for bounded manual cleanup. Never delete by a broad marker
 prefix or ID range. A process kill/host failure can likewise require cleanup

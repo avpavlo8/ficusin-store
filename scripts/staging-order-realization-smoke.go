@@ -1,5 +1,5 @@
 // This opt-in ops runner is copied into the EXACT deployed candidate's backend
-// module. It invokes core Enqueue once and observes the real STG worker. It has
+// module. It invokes core EnqueueCreated and cancellation hooks and observes the real STG worker. It has
 // no external API client, migrations, settings updates or sequence resets.
 package main
 
@@ -26,8 +26,8 @@ import (
 )
 
 type fixture struct {
-	ProductID, VariantID, OrderID, ItemID, IntentID, PublicationID int64
-	Marker, SKU, SabyID                                            string
+	ProductID, VariantID, OrderID, ItemID, IntentID, PublicationID, InventoryID int64
+	Marker, SKU, SabyID                                                         string
 }
 type report struct {
 	Probe         string `json:"probe"`
@@ -38,6 +38,7 @@ type report struct {
 	OrderID       int64  `json:"orderId,omitempty"`
 	IntentID      int64  `json:"intentId,omitempty"`
 	PublicationID int64  `json:"publicationId,omitempty"`
+	InventoryID   int64  `json:"inventoryId,omitempty"`
 }
 
 func coded(value string) error { return errors.New(value) }
@@ -116,10 +117,14 @@ func create(ctx context.Context, pool *pgxpool.Pool, f *fixture) error {
 	if err != nil {
 		return coded("fixture_variant_failed")
 	}
-	// INSERT already completed avoids unrelated status-transition notifications,
-	// settlement/finance hooks. The realization milestone uses the real Go helper
-	// in this same transaction, rather than a fake direct publication INSERT.
-	err = tx.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,payment_method,payment_status,status,telegram_notified_at) VALUES($1,$1,'','','pickup',0,1234.56,1234.56,'on_delivery','paid','completed',NOW()) RETURNING id`, f.Marker).Scan(&f.OrderID)
+	err = tx.QueryRow(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at,stock_observed_at) VALUES(1,$1,1,0,NOW(),NOW()) RETURNING id`, f.VariantID).Scan(&f.InventoryID)
+	if err != nil {
+		return coded("fixture_inventory_failed")
+	}
+	// A synthetic new/unpaid order has no customer or notification recipient.
+	// It is linked to core creation intent in the same transaction; no payment,
+	// shipping or native stock API is called by this runner.
+	err = tx.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,payment_method,payment_status,status,telegram_notified_at) VALUES($1,$1,'','','pickup',0,1234.56,1234.56,'online','pending','new',NOW()) RETURNING id`, f.Marker).Scan(&f.OrderID)
 	if err != nil {
 		return coded("fixture_order_failed")
 	}
@@ -127,7 +132,7 @@ func create(ctx context.Context, pool *pgxpool.Pool, f *fixture) error {
 	if err != nil {
 		return coded("fixture_item_failed")
 	}
-	event, err := ordersale.Enqueue(ctx, tx, f.OrderID, 0, "automatic")
+	event, err := ordersale.EnqueueCreated(ctx, tx, f.OrderID)
 	if err != nil || event.IntentID <= 0 || !event.CanPrepare {
 		return coded("core_enqueue_failed")
 	}
@@ -240,6 +245,83 @@ func observe(ctx context.Context, pool *pgxpool.Pool, f fixture) error {
 	return coded("mock_worker_timeout")
 }
 
+// Confirm public effective stock is held while posted in mock mode, then
+// request undo through the same transactional hook used by real cancellation.
+func cancelAndObserve(ctx context.Context, pool *pgxpool.Pool, f fixture) error {
+	var effective, physical, reserved int
+	if err := pool.QueryRow(ctx, `SELECT effective.available_qty,raw.available_qty,raw.reserved_qty FROM inventory raw JOIN order_sale_inventory effective ON effective.id=raw.id WHERE raw.id=$1 AND raw.variant_id=$2 AND raw.warehouse_id=1`, f.InventoryID, f.VariantID).Scan(&effective, &physical, &reserved); err != nil || effective != 0 || physical != 1 || reserved != 0 {
+		return coded("mock_stock_hold_mismatch")
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return coded("cancel_begin_failed")
+	}
+	defer tx.Rollback(ctx)
+	if err = guard(ctx, tx); err != nil {
+		return err
+	}
+	var id int64
+	if err = tx.QueryRow(ctx, `SELECT id FROM orders WHERE id=$1 AND order_number=$2 AND customer_name=$2 AND customer_id IS NULL AND status='new' FOR UPDATE`, f.OrderID, f.Marker).Scan(&id); err != nil || id != f.OrderID {
+		return coded("cancel_ownership_failed")
+	}
+	if err = ordersale.RequestCancellation(ctx, tx, f.OrderID); err != nil {
+		return coded("core_cancellation_failed")
+	}
+	tag, err := tx.Exec(ctx, `UPDATE orders SET status='cancelled',payment_status='cancelled',cancellation_reason='Synthetic STG worker smoke' WHERE id=$1 AND order_number=$2 AND status='new'`, f.OrderID, f.Marker)
+	if err != nil || tag.RowsAffected() != 1 {
+		return coded("cancel_transition_failed")
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return coded("cancel_commit_uncertain")
+	}
+	deadline := time.Now().Add(110 * time.Second)
+	for time.Now().Before(deadline) {
+		if err = guard(ctx, pool); err != nil {
+			return err
+		}
+		var state, mode, docID, docUUID string
+		var verified, intentVerified, originalVerified bool
+		var rawProof, originalProof, rawRequest []byte
+		err = pool.QueryRow(ctx, `SELECT p.status,p.execution_mode,p.document_id,p.document_uuid,p.cancellation_verified,i.cancellation_verified,p.stock_verified,p.cancellation_proof,p.stock_proof,p.request FROM order_sale_publications p JOIN order_sale_intents i ON i.id=p.intent_id WHERE p.id=$1 AND i.id=$2 AND i.order_id=$3 AND p.desired_state='cancelled'`, f.PublicationID, f.IntentID, f.OrderID).Scan(&state, &mode, &docID, &docUUID, &verified, &intentVerified, &originalVerified, &rawProof, &originalProof, &rawRequest)
+		if err != nil || mode != "mock" {
+			return coded("cancellation_observation_failed")
+		}
+		if state == "cancelled" {
+			if !verified || !intentVerified || validate(f, mode, "posted", docID, docUUID, originalVerified, rawRequest, originalProof) != nil {
+				return coded("cancellation_lost_original_proof")
+			}
+			var proof struct {
+				Kind     string   `json:"kind"`
+				Document *receipt `json:"document"`
+			}
+			if json.Unmarshal(rawProof, &proof) != nil || proof.Kind != "unposted_full" || proof.Document == nil {
+				return coded("cancellation_proof_mismatch")
+			}
+			p := proof.Document
+			if !p.Test || p.ExecutionMode != "mock" || p.IntentID != f.IntentID || p.EventKey != fmt.Sprintf("order:%d", f.OrderID) || p.DocumentID != docID || p.DocumentUUID != docUUID || p.OperationKey != docUUID || p.SiteWarehouseID != 1 || len(p.Lines) != 1 {
+				return coded("cancellation_proof_mismatch")
+			}
+			line := p.Lines[0]
+			if line.Closed || line.DocumentID != docID || line.NomenclatureID != f.SabyID || line.Direction != 1 || !sameNumber(line.Quantity, "1") || !sameNumber(line.UnitPrice, "1234.56") || !sameNumber(line.LineSum, "1234.56") {
+				return coded("cancellation_line_mismatch")
+			}
+			if err = pool.QueryRow(ctx, `SELECT effective.available_qty,raw.available_qty,raw.reserved_qty FROM inventory raw JOIN order_sale_inventory effective ON effective.id=raw.id WHERE raw.id=$1 AND raw.variant_id=$2 AND raw.warehouse_id=1`, f.InventoryID, f.VariantID).Scan(&effective, &physical, &reserved); err != nil || effective != 1 || physical != 1 || reserved != 0 {
+				return coded("mock_stock_return_mismatch")
+			}
+			return nil
+		}
+		if state == "needs_attention" || state == "failed" {
+			return coded("mock_cancellation_rejected")
+		}
+		select {
+		case <-ctx.Done():
+			return coded("smoke_cancelled")
+		case <-time.After(time.Second):
+		}
+	}
+	return coded("mock_cancellation_timeout")
+}
+
 type transactionBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
@@ -285,7 +367,7 @@ func cleanup(ctx context.Context, pool transactionBeginner, f fixture) error {
 		// This excludes concurrent edits/child inserts while checking the exact
 		// one-item fixture, so an order CASCADE cannot consume another line.
 		var ownOrder int64
-		err = tx.QueryRow(ctx, `SELECT o.id FROM orders o JOIN order_items oi ON oi.order_id=o.id JOIN product_variants v ON v.id=oi.variant_id JOIN products p ON p.id=v.product_id JOIN order_sale_intents i ON i.order_id=o.id JOIN order_sale_publications pub ON pub.intent_id=i.id WHERE o.id=$1 AND oi.id=$2 AND v.id=$3 AND p.id=$4 AND i.id=$5 AND pub.id=$6 AND o.order_number=$7 AND o.customer_name=$7 AND o.customer_id IS NULL AND o.delivery_method='pickup' AND o.status='completed' AND p.name=$7 AND p.status='draft' AND v.label=$7 AND v.is_active=0 AND v.saby_id=$8 AND oi.product_id=p.id AND oi.sku=v.sku AND oi.quantity=1 AND oi.unit_price=1234.56 AND pub.execution_mode='mock' AND i.event_key='order:'||o.id::TEXT AND NOT EXISTS(SELECT 1 FROM order_items other WHERE other.order_id=o.id AND other.id<>oi.id) AND NOT EXISTS(SELECT 1 FROM product_variants other WHERE other.product_id=p.id AND other.id<>v.id) AND NOT EXISTS(SELECT 1 FROM order_sale_intents other WHERE other.order_id=o.id AND other.id<>i.id) FOR UPDATE OF o,oi,v,p,i`, f.OrderID, f.ItemID, f.VariantID, f.ProductID, f.IntentID, f.PublicationID, f.Marker, f.SabyID).Scan(&ownOrder)
+		err = tx.QueryRow(ctx, `SELECT o.id FROM orders o JOIN order_items oi ON oi.order_id=o.id JOIN product_variants v ON v.id=oi.variant_id JOIN products p ON p.id=v.product_id JOIN inventory stock ON stock.variant_id=v.id AND stock.id=$9 AND stock.warehouse_id=1 AND stock.available_qty=1 AND stock.reserved_qty=0 JOIN order_sale_intents i ON i.order_id=o.id JOIN order_sale_publications pub ON pub.intent_id=i.id WHERE o.id=$1 AND oi.id=$2 AND v.id=$3 AND p.id=$4 AND i.id=$5 AND pub.id=$6 AND o.order_number=$7 AND o.customer_name=$7 AND o.customer_id IS NULL AND o.delivery_method='pickup' AND o.status IN ('new','cancelled') AND p.name=$7 AND p.status='draft' AND v.label=$7 AND v.is_active=0 AND v.saby_id=$8 AND oi.product_id=p.id AND oi.sku=v.sku AND oi.quantity=1 AND oi.unit_price=1234.56 AND pub.execution_mode='mock' AND i.event_key='order:'||o.id::TEXT AND NOT EXISTS(SELECT 1 FROM order_items other WHERE other.order_id=o.id AND other.id<>oi.id) AND NOT EXISTS(SELECT 1 FROM product_variants other WHERE other.product_id=p.id AND other.id<>v.id) AND NOT EXISTS(SELECT 1 FROM order_sale_intents other WHERE other.order_id=o.id AND other.id<>i.id) AND NOT EXISTS(SELECT 1 FROM inventory other WHERE other.variant_id=v.id AND other.id<>stock.id) FOR UPDATE OF o,oi,v,p,i,stock`, f.OrderID, f.ItemID, f.VariantID, f.ProductID, f.IntentID, f.PublicationID, f.Marker, f.SabyID, f.InventoryID).Scan(&ownOrder)
 		if err != nil || ownOrder != f.OrderID {
 			tx.Rollback(ctx)
 			return coded("cleanup_ownership_failed")
@@ -301,6 +383,7 @@ func cleanup(ctx context.Context, pool transactionBeginner, f fixture) error {
 			{`DELETE FROM order_sale_intents WHERE id=$1 AND order_id=$2`, []any{f.IntentID, f.OrderID}},
 			{`DELETE FROM order_items WHERE id=$1 AND order_id=$2 AND variant_id=$3`, []any{f.ItemID, f.OrderID, f.VariantID}},
 			{`DELETE FROM orders WHERE id=$1 AND order_number=$2 AND customer_id IS NULL`, []any{f.OrderID, f.Marker}},
+			{`DELETE FROM inventory WHERE id=$1 AND variant_id=$2 AND warehouse_id=1`, []any{f.InventoryID, f.VariantID}},
 			{`DELETE FROM product_variants WHERE id=$1 AND product_id=$2 AND saby_id=$3`, []any{f.VariantID, f.ProductID, f.SabyID}},
 			{`DELETE FROM products WHERE id=$1 AND name=$2 AND status='draft'`, []any{f.ProductID, f.Marker}},
 		}
@@ -328,7 +411,7 @@ func main() {
 	}
 	signalCtx, stopSignal := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignal()
-	ctx, cancel := context.WithTimeout(signalCtx, 210*time.Second)
+	ctx, cancel := context.WithTimeout(signalCtx, 300*time.Second)
 	defer cancel()
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -342,11 +425,15 @@ func main() {
 	if err == nil {
 		err = observe(ctx, pool, f)
 	}
+	if err == nil {
+		err = cancelAndObserve(ctx, pool, f)
+	}
 	result.ProductID = f.ProductID
 	result.VariantID = f.VariantID
 	result.OrderID = f.OrderID
 	result.IntentID = f.IntentID
 	result.PublicationID = f.PublicationID
+	result.InventoryID = f.InventoryID
 	cleanupCtx, stop := context.WithTimeout(context.Background(), 55*time.Second)
 	defer stop()
 	cleanupErr := cleanup(cleanupCtx, pool, f)
