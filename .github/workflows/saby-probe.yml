@@ -4,6 +4,11 @@ name: Saby probe
 on:
   workflow_dispatch:
     inputs:
+      marketplace_readiness:
+        description: Verify marketplace category reads using existing production credentials
+        type: boolean
+        required: false
+        default: false
       provision_private_storage:
         description: Provision the capped private bucket and verify access before release
         type: boolean
@@ -57,7 +62,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Probe Saby nomenclature
-        if: inputs.receipt_id == '' && !inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage
+        if: inputs.receipt_id == '' && !inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage && !inputs.marketplace_readiness
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -66,7 +71,7 @@ jobs:
           SABY_PROBE_SEARCH: ${{ inputs.search }}
         run: python3 scripts/saby-linked-card-readback.py
       - name: Probe existing receipt response schema without values
-        if: inputs.receipt_id != '' && !inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage
+        if: inputs.receipt_id != '' && !inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage && !inputs.marketplace_readiness
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -75,10 +80,10 @@ jobs:
           SABY_RECEIPT_GUID: ${{ inputs.receipt_guid }}
         run: python3 scripts/saby-receipt-probe.py
       - name: Install staging cache client
-        if: inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage
+        if: inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage && !inputs.marketplace_readiness
         run: python3 -m pip install 'psycopg[binary]==3.2.13'
       - name: Cache verified Saby editor metadata in isolated staging
-        if: inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage
+        if: inputs.snapshot_staging && !inputs.production_readiness && !inputs.production_storage_readiness && !inputs.production_preflight && !inputs.production_backup && !inputs.provision_private_storage && !inputs.marketplace_readiness
         env:
           SABY_APP_CLIENT_ID: ${{ secrets.SABY_APP_CLIENT_ID }}
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
@@ -125,3 +130,8 @@ jobs:
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
         run: python3 scripts/provision-production-private-storage.py --apply
+      - name: Verify marketplace category reads without creating cards
+        if: inputs.marketplace_readiness
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 scripts/production-marketplace-readiness.py
