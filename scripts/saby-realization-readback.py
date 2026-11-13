@@ -70,8 +70,8 @@ def summary(entity):
     # counterparties, contacts, notes, attachments or arbitrary scalar values.
     names = {'@Документ','ИдентификаторДокумента','ДокументРасширение.ИдентификаторВИ',
              'ТипДокумента','НазваниеТипаДокумента','Тип','Проведен','Проведён','Проведение',
-             'Состояние','Статус','Склад','СкладОтправитель','СкладПолучатель','Регламент'}
-    return {k:v for k,v in entity.items() if k in names and isinstance(v,(str,int,float,bool,type(None)))}
+             'Состояние','Статус','Склад','СкладОтправитель','СкладПолучатель','Регламент','ИдРегламента','ТипДокумента.ПодТипДокумента','ТипДокумента.ТипДокумента','СкладскойДокумент.Склад','СкладскойДокумент.Флаги','ДокументРасширение.Состояние'}
+    return {k:v for k,v in entity.items() if k in names and (isinstance(v,(str,int,float,bool,type(None))) or k=='@Документ' and isinstance(v,list) and len(v)==2 and isinstance(v[0],int) and isinstance(v[1],str))}
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -91,11 +91,12 @@ def main():
         print(json.dumps({'readOnly':True,'providerWrites':False,'listShape':shape(listing),'documentTypes':[summary(row) for row in rows(listing)]},ensure_ascii=False))
         for row in rows(listing)[:3]:
             identity=row.get('@Документ')
+            if isinstance(identity,list) and len(identity)==2 and isinstance(identity[0],int) and identity[0]>0: identity=identity[0]
             if isinstance(identity,bool) or not isinstance(identity,int) or identity<=0: continue
             doc=rpc('ДокОтгрИсх.Прочитать',{'ИдО':identity,'ИмяМетода':'ДокОтгрИсх.Список'},token)
             print(json.dumps({'documentShape':shape(doc),'identifiers':summary(fields(doc))},ensure_ascii=False))
         warehouses=rpc('sabyWarehouse.List',{'filter':{'limit':100,'page':0}},token,6)
-        print(json.dumps({'warehouseShape':shape(warehouses)},ensure_ascii=False))
+        print(json.dumps({'warehouseShape':shape(warehouses),'warehouseIDs':[{k:w.get(k) for k in ('id','warehouseId')} for w in (warehouses or {}).get('warehouses',[])]},ensure_ascii=False))
         return 0
     except Exception as error:
         print(json.dumps(guards.safe_failure(error,{'phase':'saby_realization_readback'})))
