@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
 	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
@@ -23,6 +24,8 @@ type ShipmentQuoteService interface {
 }
 
 type PostgresRepository struct {
+	editorSabyMetadata       catalogeditor.SabyMetadataReader
+	editorEnvironment        string
 	fileStorage              fileassets.Storage
 	editorPublicationMode    string
 	pool                     *pgxpool.Pool

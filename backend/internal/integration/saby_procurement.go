@@ -1187,7 +1187,9 @@ func (client *SabyClient) authorizedJSON(ctx context.Context, method, endpoint s
 }
 
 func (client *SabyClient) accessToken(ctx context.Context, force bool) (string, error) {
-	client.mu.Lock()
+	if err := client.lockSession(ctx); err != nil {
+		return "", err
+	}
 	defer client.mu.Unlock()
 	if !force && client.token != "" && time.Now().Before(client.tokenUntil) {
 		return client.token, nil
@@ -1209,6 +1211,27 @@ func (client *SabyClient) accessToken(ctx context.Context, force bool) (string, 
 	// bounded period and refresh immediately on 401/403.
 	client.tokenUntil = time.Now().Add(50 * time.Minute)
 	return client.token, nil
+}
+
+func (client *SabyClient) lockSession(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if client.mu.TryLock() {
+		return nil
+	}
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if client.mu.TryLock() {
+				return nil
+			}
+		}
+	}
 }
 
 func (client *SabyClient) requestJSON(ctx context.Context, method, endpoint string, payload any, token string, target any) (int, error) {

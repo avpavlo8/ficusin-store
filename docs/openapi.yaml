@@ -3841,6 +3841,16 @@ paths:
       responses:
         2XX:
           description: Editor settings or references returned successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sabyLinks:
+                    type: object
+                    description: Read-only Saby metadata keyed by variant ID, separate from editable config. Existing integration IDs stay unchanged; business codes are display values. Missing or ambiguous data stays unknown. Identity-verified nomenclature readback and mode-isolated linked-card cache provide category and folder metadata. Production cache freshness is 24 hours; verified offline snapshots remain usable in mock staging/development without altering their real fetched_at. External reads share a four-second deadline for the entire editor plan.
+                    additionalProperties:
+                      $ref: "#/components/schemas/EditorSabyLink"
         default:
           $ref: "#/components/responses/ValidationError"
       parameters:
@@ -7606,6 +7616,27 @@ components:
         targetProductId:
           type: integer
       type: object
+    EditorSabyLink:
+      type: object
+      required: [id, code, category, folder, mirrorFound]
+      properties:
+        id:
+          type: string
+          description: Existing integration ID; never replace it with the display code.
+        code: { type: string }
+        mirrorFound: { type: boolean }
+        category:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: string }
+            name: { type: string }
+        folder:
+          type: object
+          required: [id, name]
+          properties:
+            id: { type: string }
+            name: { type: string }
     OrderWorkflow:
       type: object
       required: [status, queue, readyForAssembly, stockConfirmed, packagingConfirmed, blockers, manualStatuses]

@@ -29,12 +29,16 @@ import {
 } from "./galleryOrder";
 import { MarketplaceEditor } from "./MarketplaceEditor";
 import { SabyEditorFields } from "./SabyEditorFields";
+import { mergeSabyEditor } from "./sabyEditorHydration";
 import {
   marketplaceOf,
   sabyOf,
   marketplaceMissing,
+  blankCategory,
   type MarketplaceCommon,
   type SabyEditorConfig,
+  type SabyEditorField,
+  type SabyReadLink,
 } from "./catalogEditorChannels";
 import type { Category, CategoryAttribute, Product } from "./adminTypes";
 import type { AdminVariant } from "./AdminPim";
@@ -121,6 +125,7 @@ export function ProductCreationPage({
   const [channelLinks, setChannelLinks] = useState<
     Record<string, Partial<Record<"wb" | "ozon", string>>>
   >({});
+  const [sabyLinks, setSabyLinks] = useState<Record<string, SabyReadLink>>({});
   const [marketplaceCardError, setMarketplaceCardError] = useState("");
   const [marketplaceCardBusy, setMarketplaceCardBusy] = useState(false);
   const [marketplaceCardRevision, setMarketplaceCardRevision] = useState(0);
@@ -242,6 +247,8 @@ export function ProductCreationPage({
                 : {}),
               ...(placeholder.label !== "Основной вариант" ? { label: placeholder.label } : {}),
               saby: placeholder.saby,
+              sabyEditor: placeholder.sabyEditor,
+              sabyEditorTouched: placeholder.sabyEditorTouched,
               ozon: placeholder.ozon,
               wb: placeholder.wb,
             };
@@ -364,35 +371,46 @@ export function ProductCreationPage({
           message: string;
         }>;
         links: Record<string, Partial<Record<"wb" | "ozon", string>>>;
+        sabyLinks?: Record<string, SabyReadLink>;
         publicationMode: string;
         barcodes: Record<string, string>;
       }>(`/api/v1/admin/products/${productId}/editor-plan`)
         .then((data) => {
           if (!active) return;
           setChannelLinks(data.links || {});
+          setSabyLinks(data.sabyLinks || {});
           setPublicationMode(data.publicationMode || "disabled");
           setChannelStatuses(data.publications || []);
           setChannelBarcodes(data.barcodes || {});
           const current = latest.current;
-          if (
-            data.config.variants?.some((saved) =>
-              current.variants?.some(
-                (row) => row.serverId === saved.variantId && (!row.marketplace || !row.sabyEditor),
-              ),
-            )
-          )
-            update({
-              variants: current.variants?.map((row) => {
-                const saved = data.config.variants.find((v) => v.variantId === row.serverId);
-                return saved
-                  ? {
-                      ...row,
-                      marketplace: row.marketplace || saved.marketplace,
-                      sabyEditor: row.sabyEditor || saved.saby,
-                    }
-                  : row;
-              }),
-            });
+          const hydrated = current.variants?.map((row) => {
+            const saved = data.config?.variants?.find((v) => v.variantId === row.serverId);
+            const linked =
+              data.sabyLinks?.[String(row.serverId)] ||
+              (row.sabyId
+                ? {
+                    id: row.sabyId,
+                    code: "",
+                    category: blankCategory(),
+                    folder: blankCategory(),
+                    mirrorFound: false,
+                  }
+                : undefined);
+            const sabyEditor =
+              row.sabyEditor || saved?.saby || linked
+                ? mergeSabyEditor({
+                    local: row.sabyEditor,
+                    saved: saved?.saby,
+                    linked,
+                    touched: row.sabyEditorTouched,
+                    defaults: { category: current.sabyCategory, folder: current.sabyFolder },
+                  })
+                : undefined;
+            const next = { ...row, marketplace: row.marketplace || saved?.marketplace, sabyEditor };
+            return JSON.stringify(next) === JSON.stringify(row) ? row : next;
+          });
+          if (hydrated?.some((row, index) => row !== current.variants?.[index]))
+            update({ variants: hydrated });
           if (
             data.publications?.some(
               (p) => p.status === "prepared" || p.status === "queued" || p.status === "processing",
@@ -811,6 +829,7 @@ export function ProductCreationPage({
                 marketplacePriceMode: previous.marketplacePriceMode,
                 marketplace: previous.marketplace,
                 sabyEditor: previous.sabyEditor,
+                sabyEditorTouched: previous.sabyEditorTouched,
                 ozon: previous.ozon,
                 wb: previous.wb,
                 media: previous.media,
@@ -1107,12 +1126,19 @@ export function ProductCreationPage({
     changeVariant({ marketplace: value });
     setRemoteError((message) => (message.startsWith("Заполните:") ? "" : message));
   };
-  const changeSaby = (value: SabyEditorConfig) => {
+  const changeSaby = (value: SabyEditorConfig, field: SabyEditorField) => {
+    const current = latest.current;
     update({
-      sabyCategory: value.category,
-      sabyFolder: value.folder,
-      variants: (latest.current.variants || variants).map((row) =>
-        row.id === variant.id ? { ...row, sabyEditor: value } : row,
+      ...(field === "category" ? { sabyCategory: value.category } : {}),
+      ...(field === "folder" ? { sabyFolder: value.folder } : {}),
+      variants: (current.variants || variants).map((row) =>
+        row.id === variant.id
+          ? {
+              ...row,
+              sabyEditor: { ...sabyOf(row, current), [field]: value[field] },
+              sabyEditorTouched: { ...row.sabyEditorTouched, [field]: true },
+            }
+          : row,
       ),
     });
   };
@@ -1437,12 +1463,25 @@ export function ProductCreationPage({
                       }}
                     />
                   </div>
-                  <SabyEditorFields
-                    value={sabyEditor}
-                    onChange={changeSaby}
-                    linked={variant.sabyId}
-                    barcode={channelBarcodes[String(variant.serverId)]}
-                  />
+                  {product && !remoteLoaded ? (
+                    <div className="editor-saby-fields wide" role="status" aria-busy={loading}>
+                      <p className="editor-secondary">
+                        {loading
+                          ? "Загружаем данные связи СБИС…"
+                          : "Данные связи СБИС пока не загружены."}
+                      </p>
+                    </div>
+                  ) : (
+                    <SabyEditorFields
+                      value={sabyEditor}
+                      onChange={changeSaby}
+                      linked={
+                        sabyLinks[String(variant.serverId)] ||
+                        (variant.sabyId ? { id: variant.sabyId, code: "" } : undefined)
+                      }
+                      barcode={channelBarcodes[String(variant.serverId)]}
+                    />
+                  )}
                   <label className="wide">
                     {plant ? "О растении" : "Описание"}
                     <AutoTextarea

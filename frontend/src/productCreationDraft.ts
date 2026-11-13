@@ -1,4 +1,9 @@
-import type { MarketplaceCommon, SabyEditorConfig, ChannelCategory } from "./catalogEditorChannels";
+import type {
+  MarketplaceCommon,
+  SabyEditorConfig,
+  SabyEditorTouched,
+  ChannelCategory,
+} from "./catalogEditorChannels";
 import type { PlantPassport } from "./adminTypes";
 import type { SabyStepDraft } from "./ProductCreationSabyStep";
 
@@ -36,6 +41,9 @@ export type DraftMedia = {
 export type DraftVariant = {
   marketplace?: MarketplaceCommon;
   sabyEditor?: SabyEditorConfig;
+  // Local journal only: even clearing a field or clicking the default mode is
+  // an explicit choice that a late editor-plan response must not replace.
+  sabyEditorTouched?: SabyEditorTouched;
   removePending?: boolean;
   marketplacePriceMode?: "auto" | "manual";
   id: string;

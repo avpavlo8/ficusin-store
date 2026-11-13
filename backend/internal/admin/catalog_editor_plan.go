@@ -51,6 +51,7 @@ type EditorPublication struct {
 	Message       string                  `json:"message"`
 }
 type EditorPlanView struct {
+	SabyLinks       map[int64]EditorSabyLink    `json:"sabyLinks"`
 	Links           map[int64]map[string]string `json:"links"`
 	Config          EditorPlan                  `json:"config"`
 	Publications    []EditorPublication         `json:"publications"`
@@ -60,7 +61,12 @@ type EditorPlanView struct {
 
 func (r *PostgresRepository) ReadEditorPlan(ctx context.Context, productID int64) (EditorPlanView, error) {
 	view := EditorPlanView{Config: EditorPlan{Variants: []EditorVariantPlan{}}, Publications: []EditorPublication{}, Barcodes: map[int64]string{}, PublicationMode: r.editorPublicationMode, Links: map[int64]map[string]string{}}
-	err := r.pool.QueryRow(ctx, `SELECT config FROM catalog_editor_plans WHERE product_id=$1`, productID).Scan(&view.Config)
+	var err error
+	view.SabyLinks, err = r.readEditorSabyLinks(ctx, productID)
+	if err != nil {
+		return view, err
+	}
+	err = r.pool.QueryRow(ctx, `SELECT config FROM catalog_editor_plans WHERE product_id=$1`, productID).Scan(&view.Config)
 	if err != nil && err != pgx.ErrNoRows {
 		return view, err
 	}

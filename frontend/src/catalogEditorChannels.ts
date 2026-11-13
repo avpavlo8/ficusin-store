@@ -33,6 +33,15 @@ export type SabyEditorConfig = {
   mode: "create" | "link";
   existingCode: string;
 };
+export type SabyEditorField = keyof SabyEditorConfig;
+export type SabyEditorTouched = Partial<Record<SabyEditorField, true>>;
+export type SabyReadLink = {
+  id: string;
+  code: string;
+  category: ChannelCategory;
+  folder: ChannelCategory;
+  mirrorFound: boolean;
+};
 export const blankCategory = (): ChannelCategory => ({ id: "", name: "" });
 export const blankMarketplaceChannel = (): MarketplaceChannel => ({
   enabled: false,
@@ -58,11 +67,17 @@ export function marketplaceOf(v: DraftVariant, d: ProductCreationDraft): Marketp
   );
 }
 export function sabyOf(v: DraftVariant, d: ProductCreationDraft): SabyEditorConfig {
+  const linked = Boolean(
+    v.sabyId ||
+      v.externalIds?.some(
+        (item) => item.provider === "saby" && item.type === "id" && item.externalId,
+      ),
+  );
   return (
     v.sabyEditor || {
-      category: d.sabyCategory || blankCategory(),
-      folder: d.sabyFolder || blankCategory(),
-      mode: "create",
+      category: (!linked && d.sabyCategory) || blankCategory(),
+      folder: (!linked && d.sabyFolder) || blankCategory(),
+      mode: linked ? "link" : "create",
       existingCode: "",
     }
   );

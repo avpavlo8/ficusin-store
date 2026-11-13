@@ -231,6 +231,7 @@ func main() {
 	sabyProcurementClient := integration.NewSabyClient(
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	).WithIntegrationRequestLimiter(procurementStore)
+	adminRepository.WithEditorSabyMetadata(&integration.SabyEditorMetadataSource{Client: sabyProcurementClient, Hierarchy: &integration.SabyEditorHierarchySource{Client: sabyProcurementClient}}, cfg.Environment)
 	var catalogProvider catalogsync.Provider = sabyProcurementClient
 	if cfg.Environment == "staging" {
 		stagingProvider, err := catalogsync.NewStagingProvider(ctx, pool)
