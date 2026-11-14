@@ -95,14 +95,32 @@ def inspect(cursor):
           FROM variants""")[0]
     return report
 
+def cutover_proof(cursor):
+    if not select(cursor,"SELECT to_regclass('legacy_archive.file_binary_payloads') IS NOT NULL ready")[0]['ready']:
+        return {'applied':False}
+    report={'applied':True}
+    report['migrations']=select(cursor,'SELECT COUNT(*)::BIGINT total,MAX(name) latest FROM schema_migrations')[0]
+    report['fileArchive']=select(cursor,"SELECT kind,COUNT(*)::BIGINT total,COUNT(*) FILTER(WHERE sha256<>encode(sha256(payload),'hex'))::BIGINT bad_hash FROM legacy_archive.file_binary_payloads GROUP BY kind ORDER BY kind")
+    report['planBackups']=select(cursor,"SELECT COUNT(*)::BIGINT total,COUNT(*) FILTER(WHERE source_hash<>encode(sha256(convert_to(before_config::TEXT,'UTF8')),'hex'))::BIGINT bad_hash FROM catalog_plan_format_history")[0]
+    report['historyProof']=select(cursor,"""SELECT COUNT(*)::BIGINT total,
+      COUNT(*) FILTER(WHERE h.evidence IS DISTINCT FROM to_jsonb(e) OR h.evidence_hash IS DISTINCT FROM encode(sha256(convert_to(to_jsonb(e)::TEXT,'UTF8')),'hex'))::BIGINT mismatched
+      FROM legacy_archive.catalog_saby_exports e LEFT JOIN catalog_external_operation_history h ON h.provider='saby' AND h.source_kind='commerce-export' AND h.source_key=e.import_code""")[0]
+    report['zeroBarriers']=select(cursor,"SELECT COUNT(*)::BIGINT total,COUNT(*) FILTER(WHERE NOT convalidated)::BIGINT not_validated FROM pg_constraint WHERE connamespace='public'::regnamespace AND conname IN('inventory_legacy_reservation_zero','order_items_legacy_reservation_zero','shipment_offer_items_legacy_reservation_zero','shipment_offer_inventory_reservations_retired','customer_avatar_s3_only','return_photo_s3_only','procurement_document_s3_only','support_attachment_s3_only','review_media_s3_only','review_private_only')")[0]
+    report['reservedArchive']=select(cursor,"SELECT (SELECT COUNT(*) FROM legacy_archive.reservation_cutover_orders)::BIGINT orders,(SELECT COUNT(*) FROM legacy_archive.reservation_cutover_inventory)::BIGINT inventory_rows,(SELECT COUNT(*) FROM legacy_archive.reservation_cutover_order_items)::BIGINT order_items")[0]
+    report['compatibility']=select(cursor,'SELECT kind,count FROM catalog_compatibility_inventory ORDER BY kind')
+    return report
+
 def verify_private_objects(cursor, env):
     spec=importlib.util.spec_from_file_location('object_reader',Path(__file__).with_name('readonly-private-object-verification.py'))
     reader=importlib.util.module_from_spec(spec);spec.loader.exec_module(reader)
     import hashlib
     result={}
+    archived=select(cursor,"SELECT to_regclass('legacy_archive.file_binary_payloads') IS NOT NULL ready")[0]['ready']
     for kind,(table,key,data) in FILES.items():
-        scope=" AND storage_scope='private'" if kind=='reviews' else ''
-        rows=select(cursor,f"SELECT {key} object_key,{data} legacy_data FROM public.{table} WHERE NULLIF({key},'') IS NOT NULL{scope} LIMIT 101")
+        scope=" AND f.storage_scope='private'" if kind=='reviews' else ''
+        join=f" LEFT JOIN legacy_archive.file_binary_payloads a ON a.kind='{kind}' AND a.source_id=f.id AND a.destination_key=f.{key}" if archived else ''
+        payload=f'COALESCE(f.{data},a.payload)' if archived else f'f.{data}'
+        rows=select(cursor,f"SELECT f.{key} object_key,{payload} legacy_data FROM public.{table} f{join} WHERE NULLIF(f.{key},'') IS NOT NULL{scope} LIMIT 101")
         if len(rows)>100:raise guards.PreflightError('object_inventory_limit_exceeded')
         summary={'readable':0,'checksumMatched':0,'noRetainedSource':0,'mismatch':0,'unavailable':0}
         for row in rows:
@@ -161,12 +179,19 @@ def main():
                     raise guards.PreflightError('wrong_database_identity_or_readonly')
                 with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
                     report=inspect(cursor)
+                    report['cutover']=cutover_proof(cursor)
+                    report['frozenPublicationProof']=select(cursor,"SELECT COUNT(*)::BIGINT total,encode(sha256(convert_to(COALESCE(jsonb_agg(jsonb_build_object('variant',variant_id,'channel',channel,'payload',payload,'fingerprint',fingerprint,'pending',pending_payload,'pending_fingerprint',pending_fingerprint) ORDER BY variant_id,channel)::TEXT,'[]'),'UTF8')),'hex') sha256 FROM catalog_editor_publications")[0]
                     cursor.execute("SELECT has_database_privilege(current_user,current_database(),'CREATE') database_create,has_schema_privilege(current_user,'public','CREATE') schema_create,(SELECT COUNT(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN('r','p','v','m') AND NOT pg_has_role(current_user,c.relowner,'USAGE'))::BIGINT unowned_public_relations")
                     report['migrationPrivileges']=cursor.fetchone()
                     report['staticAssetsConfigured']=bool(env.get('STATIC_ASSETS_BASE_URL','').strip())
                     report['objectVerification']=verify_private_objects(cursor,env)
                     report['objectReadAttempts']=sum(item['readable']+item['unavailable'] for item in report['objectVerification'].values())
                     report['publicationDiagnostics']=publication_diagnostics(cursor)
+                    if any(item['mismatch'] or item['unavailable'] for item in report['objectVerification'].values()):
+                        raise guards.PreflightError('private_object_verification_failed')
+                    proof=report['cutover']
+                    if proof['applied'] and (proof['migrations']['total']!=235 or proof['zeroBarriers']!={'total':10,'not_validated':0} or proof['planBackups']['bad_hash'] or proof['historyProof']['mismatched'] or any(row['bad_hash'] for row in proof['fileArchive'])):
+                        raise guards.PreflightError('cutover_proof_failed')
         report.update(expectedProductionCommit=args.expected_commit,storage=storage_flags(env),readOnly=True,
                       databaseWrites=0,providerCalls=0,objectsWritten=0,checkedAt=datetime.datetime.now(datetime.timezone.utc).isoformat())
         print(json.dumps(report,sort_keys=True));return 0
