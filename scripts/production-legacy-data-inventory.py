@@ -53,6 +53,12 @@ def inspect(cursor):
           COUNT(*)::bigint total,COUNT(*) FILTER(WHERE NULLIF(object_key,'') IS NOT NULL)::bigint referenced
           FROM public.product_review_photos GROUP BY 1 ORDER BY 1""")
     report = {'files': files}
+    if 'source' in known.get('procurement_action_batches', set()):
+        report['manualPriceGate'] = select(cursor,"""SELECT
+          COUNT(*) FILTER(WHERE i.status NOT IN('draft','completed','skipped') OR i.attempts<>0 OR i.last_attempt_at IS NOT NULL OR NULLIF(i.external_operation_id,'') IS NOT NULL OR i.locked_until IS NOT NULL OR NULLIF(i.lock_owner,'') IS NOT NULL)::BIGINT attempted,
+          COUNT(*) FILTER(WHERE i.status='draft' AND (i.channel NOT IN('wb','ozon','saby_price','avito') OR i.new_value<=0 OR i.approved_by IS NOT NULL OR b.approved_by IS NOT NULL OR b.approved_at IS NOT NULL))::BIGINT invalid_drafts,
+          (SELECT COUNT(*) FROM procurement_action_batches WHERE source='manual' AND status NOT IN('draft','completed','cancelled'))::BIGINT active_batches
+          FROM procurement_action_items i JOIN procurement_action_batches b ON b.id=i.batch_id WHERE b.source='manual'""")[0]
     if {'reserved_qty','available_qty'}.issubset(known.get('inventory', set())):
         report['inventory'] = select(cursor, """SELECT COUNT(*) FILTER(WHERE reserved_qty<>0)::bigint reserved_rows,
           COALESCE(SUM(reserved_qty),0)::bigint reserved_units,
@@ -155,6 +161,9 @@ def main():
                     raise guards.PreflightError('wrong_database_identity_or_readonly')
                 with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
                     report=inspect(cursor)
+                    cursor.execute("SELECT has_database_privilege(current_user,current_database(),'CREATE') database_create,has_schema_privilege(current_user,'public','CREATE') schema_create,(SELECT COUNT(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN('r','p','v','m') AND NOT pg_has_role(current_user,c.relowner,'USAGE'))::BIGINT unowned_public_relations")
+                    report['migrationPrivileges']=cursor.fetchone()
+                    report['staticAssetsConfigured']=bool(env.get('STATIC_ASSETS_BASE_URL','').strip())
                     report['objectVerification']=verify_private_objects(cursor,env)
                     report['objectReadAttempts']=sum(item['readable']+item['unavailable'] for item in report['objectVerification'].values())
                     report['publicationDiagnostics']=publication_diagnostics(cursor)
