@@ -65,6 +65,18 @@ jobs:
             sleep 2
           done
           curl -fsS http://127.0.0.1:8080/api/v1/ready
+          # Seed synthetic source documents into the explicit private object
+          # emulator; current schema must not regain retired binary columns.
+          python3 - <<'PYFILES'
+          import os
+          from pathlib import Path
+          root = Path(os.environ['LOCAL_PRIVATE_FILES_DIR']) / 'crm-fixtures'
+          root.mkdir(mode=0o700, parents=True, exist_ok=True)
+          for stage in ('06', '07'):
+              path = root / f'stage{stage}.pdf'
+              path.write_bytes(f'%PDF-S{stage}\n'.encode())
+              path.chmod(0o600)
+          PYFILES
           psql -h 127.0.0.1 -U postgres -d ficusin_crm_test -v ON_ERROR_STOP=1 -f scripts/seed-crm-acceptance.sql
       - name: Verify private chat persistence and isolation on PostgreSQL
         env:

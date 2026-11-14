@@ -456,7 +456,20 @@ func TestEditorPricesLocalDatabase(t *testing.T) {
 		check(false)
 		request.Price.PriceMinor = 8000
 		check(true)
-		txexec(`UPDATE inventory SET reserved_qty=available_qty WHERE variant_id=$1`, sibling)
+		// Current reservations belong to the realization ledger. Exhaust the
+		// sibling's available stock without reviving the retired local counter.
+		txexec(`WITH sale AS (
+ INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,status)
+ VALUES('AVITO-HOLD-'||$2::TEXT,'Fixture','+70000000000','','pickup',0,400,400,'new') RETURNING id
+), line AS (
+ INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,unit_price,quantity)
+ SELECT sale.id,v.product_id,v.id,v.sku,'FIFO price fixture',80,5 FROM sale CROSS JOIN product_variants v WHERE v.id=$1 RETURNING id
+), intent AS (
+ INSERT INTO order_sale_intents(event_key,order_id,source,snapshot,warehouse_id,event_trigger)
+ SELECT 'avito-price-fixture:'||$2::TEXT,sale.id,'automatic','{}',w.id,'created' FROM sale CROSS JOIN warehouses w WHERE w.saby_id='saby-ryazan-main' RETURNING id
+)
+INSERT INTO order_sale_intent_lines(intent_id,order_item_id,variant_id,quantity)
+ SELECT intent.id,line.id,$1,5 FROM intent CROSS JOIN line`, sibling, item)
 		check(false)
 		request.Price.PriceMinor = 10000
 		check(true)
