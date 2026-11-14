@@ -395,7 +395,6 @@ export function ProductCreationPage({
                     code: "",
                     category: blankCategory(),
                     folder: blankCategory(),
-                    mirrorFound: false,
                   }
                 : undefined);
             const sabyEditor =

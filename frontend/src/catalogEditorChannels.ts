@@ -40,7 +40,6 @@ export type SabyReadLink = {
   code: string;
   category: ChannelCategory;
   folder: ChannelCategory;
-  mirrorFound: boolean;
 };
 export const blankCategory = (): ChannelCategory => ({ id: "", name: "" });
 export const blankMarketplaceChannel = (): MarketplaceChannel => ({

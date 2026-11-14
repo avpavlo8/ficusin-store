@@ -7308,13 +7308,12 @@ components:
       type: object
     EditorSabyLink:
       type: object
-      required: [id, code, category, folder, mirrorFound]
+      required: [id, code, category, folder]
       properties:
         id:
           type: string
           description: Existing integration ID; never replace it with the display code.
         code: { type: string }
-        mirrorFound: { type: boolean }
         category:
           type: object
           required: [id, name]

@@ -146,14 +146,12 @@ async function setup(
             code: "X-FIRST",
             category,
             folder,
-            mirrorFound: true,
           },
           "11": {
             id: "1102",
             code: "X-SECOND",
             category: { id: "", name: "" },
             folder: { id: "", name: "" },
-            mirrorFound: false,
           },
         },
       });
