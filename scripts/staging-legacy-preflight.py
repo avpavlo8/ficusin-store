@@ -51,6 +51,16 @@ def inspect(cursor):
     if 'source' in columns:
         report['manualPriceGate']=read("""SELECT COUNT(*) FILTER(WHERE i.status NOT IN('draft','completed','skipped') OR i.attempts<>0 OR i.last_attempt_at IS NOT NULL OR NULLIF(i.external_operation_id,'') IS NOT NULL OR i.locked_until IS NOT NULL OR NULLIF(i.lock_owner,'') IS NOT NULL)::BIGINT attempted,
         COUNT(*) FILTER(WHERE i.status='draft' AND (i.channel NOT IN('wb','ozon','saby_price','avito') OR i.new_value<=0 OR i.approved_by IS NOT NULL OR b.approved_by IS NOT NULL OR b.approved_at IS NOT NULL))::BIGINT invalid_drafts FROM procurement_action_items i JOIN procurement_action_batches b ON b.id=i.batch_id WHERE b.source='manual'""")[0]
+    if 'catalog_external_operation_history' in known:
+        report['historyProof']=read("""SELECT COUNT(*)::BIGINT total,
+        COUNT(*) FILTER(WHERE h.evidence IS DISTINCT FROM to_jsonb(e) OR h.evidence_hash IS DISTINCT FROM encode(sha256(convert_to(to_jsonb(e)::TEXT,'UTF8')),'hex'))::BIGINT mismatched
+        FROM legacy_archive.catalog_saby_exports e LEFT JOIN catalog_external_operation_history h ON h.provider='saby' AND h.source_kind='commerce-export' AND h.source_key=e.import_code""")[0]
+        report['catalogCompatibility']=read('SELECT kind,count FROM catalog_compatibility_inventory ORDER BY kind')
+        report['planBackups']=read("SELECT COUNT(*)::BIGINT total,COUNT(*) FILTER(WHERE source_hash<>encode(sha256(convert_to(before_config::TEXT,'UTF8')),'hex'))::BIGINT bad_hash FROM catalog_plan_format_history")[0]
+        report['fileArchive']=read('SELECT kind,COUNT(*)::BIGINT total FROM legacy_archive.file_binary_payloads GROUP BY kind ORDER BY kind')
+        report['zeroBarriers']=read("SELECT COUNT(*)::BIGINT total,COUNT(*) FILTER(WHERE NOT convalidated)::BIGINT not_validated FROM pg_constraint WHERE connamespace='public'::regnamespace AND conname IN('inventory_legacy_reservation_zero','order_items_legacy_reservation_zero','shipment_offer_items_legacy_reservation_zero','shipment_offer_inventory_reservations_retired','customer_avatar_s3_only','return_photo_s3_only','procurement_document_s3_only','support_attachment_s3_only','review_media_s3_only','review_private_only')")[0]
+        report['priceQueueModes']=read("SELECT CASE WHEN execution_mode IN('mock','disabled','live') THEN execution_mode ELSE 'other' END mode,COUNT(*)::BIGINT total FROM catalog_editor_price_publications GROUP BY 1 ORDER BY 1")
+        report['reservedArchive']=read("SELECT (SELECT COUNT(*) FROM legacy_archive.reservation_cutover_orders)::BIGINT orders,(SELECT COUNT(*) FROM legacy_archive.reservation_cutover_inventory)::BIGINT inventory_rows,(SELECT COUNT(*) FROM legacy_archive.reservation_cutover_order_items)::BIGINT order_items")[0]
     report['mockObjects']={}
     for kind,(table,key,data) in inventory.FILES.items():
         scope=" AND f.storage_scope='private'" if kind=='reviews' else ''
