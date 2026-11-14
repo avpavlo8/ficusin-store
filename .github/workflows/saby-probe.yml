@@ -47,7 +47,7 @@ on:
       realization_test_action:
         description: Run a fixed owned realization test action (never a customer order)
         type: choice
-        options: [none, bind-header, post-once, prepare-price-only]
+        options: [none, bind-header, post-once, prepare-price-only, owned-row-cycle]
         required: false
         default: none
       production_readiness:
@@ -67,6 +67,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/checkout@v4
+        if: inputs.realization_test_action == 'owned-row-cycle'
+        with:
+          ref: 8e43968d1746150146412c2d9e10f36593223619
+          path: revision-source
+      - uses: actions/setup-go@v5
+        if: inputs.realization_test_action == 'owned-row-cycle'
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: revision-source/backend/go.sum
       - name: Require one explicit operation
         env:
           INPUTS_JSON: ${{ toJson(inputs) }}
@@ -187,7 +197,9 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           REALIZATION_ACTION: ${{ inputs.realization_test_action }}
         run: |
-          if [ "$REALIZATION_ACTION" = "prepare-price-only" ]; then
+          if [ "$REALIZATION_ACTION" = "owned-row-cycle" ]; then
+            python3 scripts/saby-owned-row-cycle.py --apply --source-root "$GITHUB_WORKSPACE/revision-source" --source-sha 8e43968d1746150146412c2d9e10f36593223619 --journal "$GITHUB_WORKSPACE/saby-owned-row-cycle-journal.jsonl"
+          elif [ "$REALIZATION_ACTION" = "prepare-price-only" ]; then
             python3 scripts/saby-realization-prepare-price-only.py --expected-commit "$EXPECTED_COMMIT"
           else
             python3 scripts/saby-realization-action-probe.py --expected-commit "$EXPECTED_COMMIT" --action "$REALIZATION_ACTION"
@@ -196,6 +208,8 @@ jobs:
         if: always() && inputs.realization_test_action != 'none' && inputs.realization_test_action != ''
         with:
           name: saby-realization-test-receipt
-          path: saby-realization-test-receipt.json
+          path: |
+            saby-realization-test-receipt.json
+            saby-owned-row-cycle-journal.jsonl
           if-no-files-found: ignore
           retention-days: 7
