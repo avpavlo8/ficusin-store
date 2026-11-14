@@ -62,32 +62,6 @@ func normalizeOrderEditLines(lines []OrderEditLine) ([]OrderEditLine, error) {
 	return result, nil
 }
 
-func releaseOrderReservationsForEdit(ctx context.Context, tx pgx.Tx, orderID int64) error {
-	if _, err := tx.Exec(ctx, `
-		SELECT i.id FROM inventory i
-		WHERE i.variant_id IN (SELECT variant_id FROM order_items WHERE order_id=$1 AND variant_id IS NOT NULL)
-		ORDER BY i.id FOR UPDATE
-	`, orderID); err != nil {
-		return fmt.Errorf("lock inventory for order edit: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		WITH wanted AS (
-			SELECT variant_id,SUM(reserved_qty)::INTEGER AS quantity
-			FROM order_items WHERE order_id=$1 AND variant_id IS NOT NULL GROUP BY variant_id
-		), allocation AS (
-			SELECT i.id,LEAST(i.reserved_qty,GREATEST(w.quantity-COALESCE(SUM(i.reserved_qty) OVER(
-				PARTITION BY i.variant_id ORDER BY i.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-			),0),0)) AS give_back
-			FROM inventory i JOIN wanted w ON w.variant_id=i.variant_id
-		)
-		UPDATE inventory i SET reserved_qty=i.reserved_qty-a.give_back
-		FROM allocation a WHERE a.id=i.id AND a.give_back>0
-	`, orderID); err != nil {
-		return fmt.Errorf("release inventory for order edit: %w", err)
-	}
-	return nil
-}
-
 func needsPreorderForEdit(ctx context.Context, tx pgx.Tx, orderID, variantID int64, quantity int) (bool, error) {
 	// The availability snapshot decides whether manager review is needed.
 	// Use confirmed Saby stock: other warehouses and stale local values cannot
@@ -209,19 +183,19 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 		return Order{}, err
 	}
 	if edit.RecheckAvailability {
-		rows, err := tx.Query(ctx, `SELECT id,variant_id,quantity,reserved_qty FROM order_items WHERE order_id=$1 ORDER BY id FOR UPDATE`, id)
+		rows, err := tx.Query(ctx, `SELECT id,variant_id,quantity FROM order_items WHERE order_id=$1 ORDER BY id FOR UPDATE`, id)
 		if err != nil {
 			return Order{}, err
 		}
 		type stockLine struct {
-			id                 int64
-			variant            *int64
-			quantity, reserved int
+			id       int64
+			variant  *int64
+			quantity int
 		}
 		var lines []stockLine
 		for rows.Next() {
 			var line stockLine
-			if err := rows.Scan(&line.id, &line.variant, &line.quantity, &line.reserved); err != nil {
+			if err := rows.Scan(&line.id, &line.variant, &line.quantity); err != nil {
 				rows.Close()
 				return Order{}, err
 			}
@@ -238,11 +212,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 		for _, line := range lines {
 			preorder := true
 			if line.variant != nil {
-				needed := line.quantity - line.reserved
-				if needed < 0 {
-					needed = 0
-				}
-				preorder, err = needsPreorderForEdit(ctx, tx, id, *line.variant, needed)
+				preorder, err = needsPreorderForEdit(ctx, tx, id, *line.variant, line.quantity)
 				if err != nil {
 					return Order{}, err
 				}

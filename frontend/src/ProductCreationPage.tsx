@@ -12,7 +12,7 @@ import { AutoTextarea } from "./AutoTextarea";
 import { categoryVariantName } from "./variantNaming";
 import { CategoryPicker } from "./CategoryPicker";
 import { rootCategory } from "./adminCatalogLogic";
-import { normalizePlantAttributes, plantEditorSchema } from "./plantCharacteristicSchema";
+import { plantEditorSchema } from "./plantCharacteristicSchema";
 import { PlantCharacteristicsEditor } from "./PlantCharacteristicsEditor";
 import { ProductPackagingEditor } from "./ProductPackagingEditor";
 import { PlantWarningsEditor } from "./PlantWarningsEditor";
@@ -79,8 +79,6 @@ export function ProductCreationPage({
     const recovered = initial.draft;
     return {
       ...recovered,
-      attributes: normalizePlantAttributes(recovered.attributes, !recovered.plantAttributesVersion),
-      plantAttributesVersion: 1,
       passport: { ...product?.passport, ...recovered.passport },
       variants: recovered.variants?.length ? recovered.variants : [seedVariant(recovered)],
     };
@@ -102,6 +100,8 @@ export function ProductCreationPage({
           : "product",
   );
   const [saveError, setSaveError] = useState(initial.error);
+  const [migrationBlocked, setMigrationBlocked] = useState(Boolean(initial.blocked));
+  const writeBlocked = useRef(Boolean(initial.blocked));
   const [categories, setCategories] = useState<Category[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogRevision, setCatalogRevision] = useState(0);
@@ -151,6 +151,7 @@ export function ProductCreationPage({
   const serverVariantMedia = useRef(new Map<number, ProductMedia[]>());
   const update = useCallback(
     (patch: Partial<ProductCreationDraft>) => {
+      if (writeBlocked.current) return false;
       const next = { ...latest.current, ...patch, updatedAt: new Date().toISOString() };
       latest.current = next;
       setDraft(next);
@@ -170,6 +171,8 @@ export function ProductCreationPage({
       if (event.key !== storageKey || !event.newValue) return;
       const data = loadProductDraft(storageKey);
       if (data.error) {
+        writeBlocked.current = true;
+        setMigrationBlocked(true);
         setSaveError(data.error);
         return;
       }
@@ -254,7 +257,17 @@ export function ProductCreationPage({
                 ? { price: placeholder.price }
                 : {}),
               ...(placeholder.label !== "Основной вариант" ? { label: placeholder.label } : {}),
-              sabyEditor: placeholder.sabyEditor,
+              sabyEditor:
+                placeholder.sabyEditorTouched ||
+                placeholder.sabyEditor.category.id ||
+                placeholder.sabyEditor.folder.id ||
+                placeholder.sabyEditor.existingCode
+                  ? placeholder.sabyEditor
+                  : next.sabyEditor,
+              marketplace: placeholder.marketplaceInitialized
+                ? placeholder.marketplace
+                : next.marketplace,
+              marketplaceInitialized: placeholder.marketplaceInitialized,
               sabyEditorTouched: placeholder.sabyEditorTouched,
               ozon: placeholder.ozon,
               wb: placeholder.wb,
@@ -405,26 +418,13 @@ export function ProductCreationPage({
                     folder: blankCategory(),
                   }
                 : undefined);
-            const sabyEditor =
-              row.sabyEditor || saved?.saby || linked
-                ? mergeSabyEditor({
-                    local: row.sabyEditor,
-                    saved: saved?.saby,
-                    linked,
-                    touched: row.sabyEditorTouched,
-                    defaults: { category: current.sabyCategory, folder: current.sabyFolder },
-                  })
-                : undefined;
-            // Older plans stored amounts without their mode. Preserve that
-            // intent until the owner explicitly chooses Auto; do not infer that
-            // an old amount came from the current formula.
-            const savedPriceMode =
-              saved?.priceMode ||
-              ([saved?.ozonPrice, saved?.wbPrice].some(
-                (value) => typeof value === "string" && value.trim() !== "",
-              )
-                ? "manual"
-                : undefined);
+            const sabyEditor = mergeSabyEditor({
+              local: row.sabyEditor,
+              saved: saved?.saby,
+              linked,
+              touched: row.sabyEditorTouched,
+            });
+            const savedPriceMode = saved?.priceMode;
             // Formula previews may have filled a fresh draft before the plan
             // arrives. Later polls must preserve local edits, including zero.
             const restoreManualPrices =
@@ -432,13 +432,16 @@ export function ProductCreationPage({
             const next = {
               ...row,
               ...(restoreManualPrices && typeof saved?.ozonPrice === "string"
-                ? { ozon: { ...(row.ozon || current.ozon), price: saved.ozonPrice } }
+                ? { ozon: { ...row.ozon, price: saved.ozonPrice } }
                 : {}),
               ...(restoreManualPrices && typeof saved?.wbPrice === "string"
-                ? { wb: { ...(row.wb || current.wb), price: saved.wbPrice } }
+                ? { wb: { ...row.wb, price: saved.wbPrice } }
                 : {}),
               marketplacePriceMode: row.marketplacePriceMode ?? savedPriceMode,
-              marketplace: row.marketplace || saved?.marketplace,
+              marketplace: row.marketplaceInitialized
+                ? row.marketplace
+                : saved?.marketplace || row.marketplace,
+              marketplaceInitialized: row.marketplaceInitialized || Boolean(saved?.marketplace),
               sabyEditor,
             };
             return JSON.stringify(next) === JSON.stringify(row) ? row : next;
@@ -531,7 +534,7 @@ export function ProductCreationPage({
           const rows = current.variants || [];
           const row = rows.find((item) => item.serverId === variantId);
           if (!row) return;
-          const value = marketplaceOf(row, current);
+          const value = marketplaceOf(row);
           const merged = mergeMarketplaceCards(value, data.cards, {
             name: current.name,
             description: current.description,
@@ -542,7 +545,9 @@ export function ProductCreationPage({
           if (JSON.stringify(merged) !== JSON.stringify(value))
             update({
               variants: rows.map((item) =>
-                item.serverId === variantId ? { ...item, marketplace: merged } : item,
+                item.serverId === variantId
+                  ? { ...item, marketplace: merged, marketplaceInitialized: true }
+                  : item,
               ),
             });
           if (Object.keys(data.errors).length === 0) loadedMarketplaceCards.current.add(key);
@@ -601,18 +606,14 @@ export function ProductCreationPage({
         )
       )
         return;
-      if (
-        (row.wb || current.wb).price === prices.wb &&
-        (row.ozon || current.ozon).price === prices.ozon
-      )
-        return;
+      if (row.wb.price === prices.wb && row.ozon.price === prices.ozon) return;
       update({
         variants: current.variants?.map((item) =>
           item.id === row.id
             ? {
                 ...item,
-                wb: { ...(item.wb || current.wb), price: prices.wb },
-                ozon: { ...(item.ozon || current.ozon), price: prices.ozon },
+                wb: { ...item.wb, price: prices.wb },
+                ozon: { ...item.ozon, price: prices.ozon },
               }
             : item,
         ),
@@ -883,6 +884,7 @@ export function ProductCreationPage({
             ? {
                 marketplacePriceMode: previous.marketplacePriceMode,
                 marketplace: previous.marketplace,
+                marketplaceInitialized: previous.marketplaceInitialized,
                 sabyEditor: previous.sabyEditor,
                 sabyEditorTouched: previous.sabyEditorTouched,
                 ozon: previous.ozon,
@@ -1036,10 +1038,10 @@ export function ProductCreationPage({
         .map((row) => ({
           variantId: row.serverId,
           priceMode: row.marketplacePriceMode || "auto",
-          saby: sabyOf(row, latest.current),
-          marketplace: marketplaceOf(row, latest.current),
-          ozonPrice: (row.ozon || latest.current.ozon).price,
-          wbPrice: (row.wb || latest.current.wb).price,
+          saby: sabyOf(row),
+          marketplace: marketplaceOf(row),
+          ozonPrice: row.ozon.price,
+          wbPrice: row.wb.price,
         }));
       if (canManage) {
         await api(`/api/v1/admin/products/${targetProduct.id}/editor-plan`, {
@@ -1103,7 +1105,7 @@ export function ProductCreationPage({
       (row) => !row.removePending && !row.archived,
     );
     for (const row of currentVariants) {
-      const saby = sabyOf(row, current);
+      const saby = sabyOf(row);
       if (saby.mode === "link" ? !saby.existingCode.trim() : !saby.category.id || !saby.folder.id) {
         setRemoteError("Выберите категорию и раздел СБИС или укажите код уже созданного товара.");
         return;
@@ -1186,7 +1188,7 @@ export function ProductCreationPage({
       setSaving(false);
     }
   };
-  const marketplace = marketplaceOf(variant, draft);
+  const marketplace = marketplaceOf(variant);
   const linkedMarketplaces = channelLinks[String(variant.serverId)] || {};
   const creationChannels = (
     [
@@ -1194,21 +1196,24 @@ export function ProductCreationPage({
       ["wb", "Wildberries"],
     ] as const
   ).filter(([channel]) => !linkedMarketplaces[channel] && marketplace[channel].mode === "create");
-  const sabyEditor = sabyOf(variant, draft);
+  const sabyEditor = sabyOf(variant);
   const changeMarketplace = (value: MarketplaceCommon) => {
-    changeVariant({ marketplace: value });
+    changeVariant({ marketplace: value, marketplaceInitialized: true });
     setRemoteError((message) => (message.startsWith("Заполните:") ? "" : message));
   };
   const changeSaby = (value: SabyEditorConfig, field: SabyEditorField) => {
     const current = latest.current;
     update({
-      ...(field === "category" ? { sabyCategory: value.category } : {}),
-      ...(field === "folder" ? { sabyFolder: value.folder } : {}),
+      sabyDefaults: {
+        ...current.sabyDefaults,
+        ...(field === "category" ? { category: value.category } : {}),
+        ...(field === "folder" ? { folder: value.folder } : {}),
+      },
       variants: (current.variants || variants).map((row) =>
         row.id === variant.id
           ? {
               ...row,
-              sabyEditor: { ...sabyOf(row, current), [field]: value[field] },
+              sabyEditor: { ...sabyOf(row), [field]: value[field] },
               sabyEditorTouched: { ...row.sabyEditorTouched, [field]: true },
             }
           : row,
@@ -1269,6 +1274,15 @@ export function ProductCreationPage({
       />
     </label>
   );
+  if (migrationBlocked)
+    return (
+      <div className="product-creation-page editor-page">
+        <p role="alert">{saveError || initial.error}</p>
+        <button type="button" className="admin-action" onClick={onClose}>
+          Закрыть редактор
+        </button>
+      </div>
+    );
   return (
     <div
       className="product-creation-page editor-page"
@@ -1879,20 +1893,22 @@ export function ProductCreationPage({
                     const rows = current.variants || [];
                     const row = rows.find((item) => item.id === variant.id);
                     if (!row) return;
-                    const value = marketplaceOf(row, current);
+                    const value = marketplaceOf(row);
                     const replacement = replaceMarketplaceCard(value, channel, remote);
                     if (replacement === value) return;
                     update({
                       variants: rows.map((item) =>
-                        item.id === row.id ? { ...item, marketplace: replacement } : item,
+                        item.id === row.id
+                          ? { ...item, marketplace: replacement, marketplaceInitialized: true }
+                          : item,
                       ),
                     });
                   }}
                   name={draft.name}
                   description={draft.description}
                   prices={{
-                    ozon: variant.ozon?.price || draft.ozon.price,
-                    wb: variant.wb?.price || draft.wb.price,
+                    ozon: variant.ozon.price,
+                    wb: variant.wb.price,
                   }}
                 />
               </fieldset>
@@ -2006,7 +2022,7 @@ export function ProductCreationPage({
               ? variants
                   .filter((row) => !row.removePending && !row.archived)
                   .flatMap((row) => {
-                    const m = marketplaceOf(row, draft),
+                    const m = marketplaceOf(row),
                       links = channelLinks[String(row.serverId)] || {};
                     return marketplaceMissing(m, links);
                   })

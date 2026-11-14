@@ -72,7 +72,7 @@ func TestManagerFullProductEditorOnLiveDatabase(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT id FROM warehouses LIMIT 1`).Scan(&warehouse); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty) VALUES($1,$2,7,2) ON CONFLICT(warehouse_id,variant_id) DO UPDATE SET available_qty=7,reserved_qty=2`, warehouse, id); err != nil {
+	if _, err = pool.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty) VALUES($1,$2,7,0) ON CONFLICT(warehouse_id,variant_id) DO UPDATE SET available_qty=7`, warehouse, id); err != nil {
 		t.Fatal(err)
 	}
 	_, err = repo.UpdateProduct(ctx, actor, product.ID, ProductUpdate{Variants: []VariantEdit{{ID: id, Label: &label, PriceMinor: &price, WholesaleMinQty: &wholesale, Active: &inactive}}})
@@ -80,7 +80,7 @@ func TestManagerFullProductEditorOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	var available, reserved int
-	if err = pool.QueryRow(ctx, `SELECT available_qty,reserved_qty FROM inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouse, id).Scan(&available, &reserved); err != nil || available != 7 || reserved != 2 {
+	if err = pool.QueryRow(ctx, `SELECT available_qty,reserved_qty FROM inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouse, id).Scan(&available, &reserved); err != nil || available != 7 || reserved != 0 {
 		t.Fatalf("manager modified stock %d/%d %v", available, reserved, err)
 	}
 	if _, err = repo.ImportProducts(ctx, actor, ImportRequest{Codes: []string{"not-a-real-code"}}); !errors.Is(err, ErrForbidden) {

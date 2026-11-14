@@ -514,27 +514,6 @@ func (service *Service) reserveOfferAndCreatePayment(ctx context.Context, offerI
 	return paymentID, nil
 }
 
-func (service *Service) releaseOfferCheckoutReservation(ctx context.Context, offerID int64) error {
-	tx, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `UPDATE inventory i SET reserved_qty=GREATEST(0,i.reserved_qty-r.quantity) FROM shipment_offer_inventory_reservations r JOIN shipment_offer_items soi ON soi.id=r.shipment_offer_item_id WHERE i.id=r.inventory_id AND soi.shipment_offer_id=$1`, offerID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE order_items oi SET reserved_qty=GREATEST(0,oi.reserved_qty-soi.checkout_reserved_qty) FROM shipment_offer_items soi WHERE oi.id=soi.order_item_id AND soi.shipment_offer_id=$1`, offerID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM shipment_offer_inventory_reservations r USING shipment_offer_items soi WHERE r.shipment_offer_item_id=soi.id AND soi.shipment_offer_id=$1`, offerID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE shipment_offer_items SET checkout_reserved_qty=0 WHERE shipment_offer_id=$1`, offerID); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
 // SyncOutstanding is the webhook path for mutable orders. One successful
 // top-up no longer means the entire order is paid: after recording the charge
 // we recompute the balance from all payments and refunds.
@@ -635,9 +614,6 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		if paid {
 			_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status='paid',checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status IN ('offered','payment_pending')`, *shipmentOfferID)
 		} else if status == "canceled" || status == "cancelled" {
-			if err = service.releaseOfferCheckoutReservation(ctx, *shipmentOfferID); err != nil {
-				return err
-			}
 			_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN status='stale' THEN 'stale' WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *shipmentOfferID)
 		}
 		if err != nil {

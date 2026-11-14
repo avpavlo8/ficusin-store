@@ -42,7 +42,7 @@ func TestLocalPrivateFilesPersistWithoutPublicURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer second.Close()
-	got, err := Read(ctx, second, key, nil)
+	got, err := Read(ctx, second, key)
 	if err != nil || string(got) != "private-file" {
 		t.Fatal("restart lost private bytes", string(got), err)
 	}

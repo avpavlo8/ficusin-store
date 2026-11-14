@@ -212,14 +212,7 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	})
 
 	t.Run("редактирование заказа пишет полный кортеж", func(t *testing.T) {
-		// An order made before the no-reservation policy still owns this one
-		// unit. The edit must release and journal it, then create no new reserve.
-		if _, err := pool.Exec(ctx, `UPDATE order_items SET reserved_qty=1 WHERE order_id=$1`, orderID); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := pool.Exec(ctx, `UPDATE inventory SET reserved_qty=1 WHERE variant_id=$1`, smallVariant); err != nil {
-			t.Fatal(err)
-		}
+		// Historical journal rows remain audit; edits create no legacy release.
 		if _, err := pool.Exec(ctx, `INSERT INTO stock_movements(order_id,variant_id,kind,quantity) VALUES($1,$2,'reserve',1)`, orderID, smallVariant); err != nil {
 			t.Fatal(err)
 		}
@@ -239,7 +232,7 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 			orderID, smallVariant).Scan(&oldReservation, &newReservation, &reserveMovements, &releasedQuantity); err != nil {
 			t.Fatal(err)
 		}
-		if oldReservation != 0 || newReservation != 0 || reserveMovements != 1 || releasedQuantity != 1 {
+		if oldReservation != 0 || newReservation != 0 || reserveMovements != 1 || releasedQuantity != 0 {
 			t.Fatalf("edit changed reservation policy/history: old=%d new=%d reserve_entries=%d released=%d", oldReservation, newReservation, reserveMovements, releasedQuantity)
 		}
 
@@ -438,7 +431,7 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		`, orderID, warehouseID, largeVariant).Scan(&available, &reserved, &released, &releases); err != nil {
 			t.Fatal(err)
 		}
-		if available != 10 || reserved != 0 || !released || releases != 0 {
+		if available != 10 || reserved != 0 || released || releases != 0 {
 			t.Fatalf("после завершения: СБИС=%d резерв=%d закрыт=%v записей=%d", available, reserved, released, releases)
 		}
 	})
@@ -480,6 +473,27 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer tx.Rollback(ctx) //nolint:errcheck
+		// Reconstruct the historical pre-cutover schema privately. Current
+		// production constraints intentionally reject every positive reservation.
+		schema := fmt.Sprintf("historical_reservation_%d", time.Now().UnixNano())
+		if _, err = tx.Exec(ctx, "CREATE SCHEMA "+schema+";SET LOCAL search_path="+schema); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range []string{"orders", "order_items", "inventory", "product_variants", "stock_movements"} {
+			if _, err = tx.Exec(ctx, "CREATE TABLE "+table+" (LIKE public."+table+" INCLUDING DEFAULTS INCLUDING CONSTRAINTS)"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err = tx.Exec(ctx, `ALTER TABLE inventory DROP CONSTRAINT IF EXISTS inventory_legacy_reservation_zero;ALTER TABLE order_items DROP CONSTRAINT IF EXISTS order_items_legacy_reservation_zero;`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO product_variants SELECT * FROM public.product_variants WHERE id=$1`, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO inventory SELECT * FROM public.inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+
 		var oldOrderID int64
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,status)

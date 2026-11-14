@@ -1,4 +1,4 @@
-import type { DraftVariant, ProductCreationDraft } from "./productCreationDraft";
+import type { DraftVariant } from "./productCreationDraft";
 export type ChannelCategory = { id: string; name: string; typeId?: number };
 export type MarketplaceAttributeValue =
   | string
@@ -48,38 +48,11 @@ export const blankMarketplaceChannel = (): MarketplaceChannel => ({
   existingId: "",
   category: blankCategory(),
 });
-export function marketplaceOf(v: DraftVariant, d: ProductCreationDraft): MarketplaceCommon {
-  const o = v.ozon || d.ozon,
-    w = v.wb || d.wb;
-  return (
-    v.marketplace || {
-      name: o.name || w.name,
-      article: o.article || w.article || v.sku,
-      description: o.description || w.description,
-      brand: o.brand || w.brand || "",
-      model: o.model || w.model || "",
-      tnved: o.tnved || w.tnved || "",
-      units: 1,
-      ozon: { ...blankMarketplaceChannel(), enabled: o.enabled },
-      wb: { ...blankMarketplaceChannel(), enabled: w.enabled },
-    }
-  );
+export function marketplaceOf(v: DraftVariant): MarketplaceCommon {
+  return v.marketplace;
 }
-export function sabyOf(v: DraftVariant, d: ProductCreationDraft): SabyEditorConfig {
-  const linked = Boolean(
-    v.sabyId ||
-      v.externalIds?.some(
-        (item) => item.provider === "saby" && item.type === "id" && item.externalId,
-      ),
-  );
-  return (
-    v.sabyEditor || {
-      category: (!linked && d.sabyCategory) || blankCategory(),
-      folder: (!linked && d.sabyFolder) || blankCategory(),
-      mode: linked ? "link" : "create",
-      existingCode: "",
-    }
-  );
+export function sabyOf(v: DraftVariant): SabyEditorConfig {
+  return v.sabyEditor;
 }
 export function marketplaceMissing(
   m: MarketplaceCommon,

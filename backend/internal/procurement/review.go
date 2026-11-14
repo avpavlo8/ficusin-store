@@ -65,16 +65,15 @@ func (service *Service) DocumentPDF(ctx context.Context, id int64) ([]byte, erro
 }
 
 func (store *PostgresStore) DocumentPDF(ctx context.Context, id int64) ([]byte, error) {
-	var content []byte
 	var key string
-	err := store.pool.QueryRow(ctx, "SELECT content,COALESCE(object_key,'') FROM procurement_documents WHERE id=$1", id).Scan(&content, &key)
+	err := store.pool.QueryRow(ctx, "SELECT COALESCE(object_key,'') FROM procurement_documents WHERE id=$1", id).Scan(&key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	return fileassets.Read(ctx, store.fileStorage, key, content)
+	return fileassets.Read(ctx, store.fileStorage, key)
 }
 
 type ProductPage struct {

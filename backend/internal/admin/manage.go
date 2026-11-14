@@ -466,13 +466,6 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 			return Order{}, fmt.Errorf("queue order realization: %w", err)
 		}
 	}
-	// A completed sale no longer owns a storefront reservation: the physical
-	// balance is supplied by Saby and this only removes our local hold.
-	if status == "cancelled" || status == "completed" {
-		if err := order.ReleaseStock(ctx, tx, id); err != nil {
-			return Order{}, err
-		}
-	}
 	if status == "cancelled" {
 		if err := order.CancelOpenShipmentOffers(ctx, tx, id); err != nil {
 			return Order{}, err
@@ -660,7 +653,7 @@ func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, a
 		SELECT COUNT(*) FROM products p
 		WHERE p.id = ANY($1::bigint[]) AND p.status = 'draft'
 		AND NOT EXISTS(SELECT 1 FROM catalog_editor_price_publications price JOIN product_variants v ON v.id=price.variant_id WHERE v.product_id=p.id)
-		AND NOT EXISTS(SELECT 1 FROM product_variants v JOIN legacy_archive.catalog_saby_exports e ON e.variant_id=v.id WHERE v.product_id=p.id AND (e.attempted_at IS NOT NULL OR e.remote_id<>''))
+		AND NOT EXISTS(SELECT 1 FROM product_variants v JOIN catalog_external_operation_history e ON e.variant_id=v.id WHERE v.product_id=p.id AND e.protects_identity)
 		AND NOT EXISTS (
 			SELECT 1 FROM product_variants pv
 			JOIN order_items oi ON oi.variant_id = pv.id

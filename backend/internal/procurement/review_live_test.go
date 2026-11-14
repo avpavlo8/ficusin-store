@@ -58,7 +58,7 @@ func TestReviewLegacyPriceRepairRequiresExactAuditAndIsIdempotent(t *testing.T) 
 		case "closed":
 			_, err = pool.Exec(ctx, `UPDATE procurement_orders SET status='received' WHERE id=$1`, order.ID)
 		case "invoice":
-			_, err = pool.Exec(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'legacy.pdf','application/pdf',8,$3,'12345678','holland_packing_list',1,'review','ok','LEGACY-TEST','EUR',1,1,$4)`, supplier, order.ID, fmt.Sprintf("%064x", unique), customer)
+			_, err = pool.Exec(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'legacy.pdf','application/pdf',8,$3,'fixtures/synthetic-invoice.pdf','holland_packing_list',1,'review','ok','LEGACY-TEST','EUR',1,1,$4)`, supplier, order.ID, fmt.Sprintf("%064x", unique), customer)
 		case "identity-changed":
 			_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET raw_name='Edited after creation' WHERE id=$1`, v.line)
 		case "cost-changed":

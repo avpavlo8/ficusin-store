@@ -37,8 +37,8 @@ func TestOrderDetailRepairsInvoiceLoadUnitsOnDatabase(t *testing.T) {
 		INSERT INTO procurement_orders(supplier_id,order_number,source_kind,currency,status)
 		SELECT id,$1,'invoice','EUR','review' FROM supplier RETURNING id,supplier_id
 	), document AS (
-		INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parse_status,arithmetic_status,extracted_text)
-		SELECT supplier_id,id,'repair.pdf','application/pdf',1,$2,'x','holland_packing_list','parsed','ok',$3 FROM purchase RETURNING id
+		INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,parser_kind,parse_status,arithmetic_status,extracted_text)
+		SELECT supplier_id,id,'repair.pdf','application/pdf',1,$2,'fixtures/synthetic-invoice.pdf','holland_packing_list','parsed','ok',$3 FROM purchase RETURNING id
 	) SELECT purchase.id,document.id FROM purchase,document`, fmt.Sprintf("load-unit-%d", unique), fmt.Sprintf("%064x", unique), text).Scan(&orderID, &documentID)
 	if err != nil {
 		t.Fatal(err)

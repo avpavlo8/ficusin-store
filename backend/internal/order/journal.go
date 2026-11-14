@@ -7,27 +7,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const recordStockReleaseSQL = `
-	INSERT INTO stock_movements(order_id, variant_id, saby_id, kind, quantity, status)
-	SELECT oi.order_id, oi.variant_id, COALESCE(pv.saby_id, ''), 'release',
-		SUM(oi.reserved_qty)::INTEGER, 'pending'
-	FROM order_items oi
-	LEFT JOIN product_variants pv ON pv.id = oi.variant_id
-	WHERE oi.order_id = $1 AND oi.variant_id IS NOT NULL AND oi.reserved_qty > 0
-	GROUP BY oi.order_id, oi.variant_id, pv.saby_id
-`
-
-// RecordStockRelease preserves the journal of reservations created before
-// checkout stopped reserving stock. New orders have no reservation to release.
-// Callers release the inventory in the same transaction; this audit entry never
-// writes off physical Saby stock or schedules a provider request.
-func RecordStockRelease(ctx context.Context, tx pgx.Tx, orderID int64) error {
-	if _, err := tx.Exec(ctx, recordStockReleaseSQL, orderID); err != nil {
-		return fmt.Errorf("record stock release: %w", err)
-	}
-	return nil
-}
-
 // recordPreorderRequests переносит предзаказные строки заказа в очередь
 // закупки.
 //

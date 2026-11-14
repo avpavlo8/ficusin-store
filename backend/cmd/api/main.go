@@ -333,7 +333,7 @@ func main() {
 		Payments:            paymentService,
 		Settings:            shopSettings,
 		Procurement:         procurementService,
-		Reviews:             reviews.NewStore(pool, privateStorage).WithLegacyMediaStorage(photoStorage),
+		Reviews:             reviews.NewStore(pool, privateStorage),
 		Refunds:             paymentService,
 		ProductPhotos:       productPhotoStorage,
 		CookieSecure:        cfg.Auth.CookieSecure,

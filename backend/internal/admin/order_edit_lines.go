@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -72,12 +71,6 @@ func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, custom
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	if err = order.RecordStockRelease(ctx, tx, orderID); err != nil {
-		return err
-	}
-	if err = releaseOrderReservationsForEdit(ctx, tx, orderID); err != nil {
-		return err
-	}
 	if _, err = tx.Exec(ctx, `UPDATE procurement_requests SET status='cancelled',updated_at=CURRENT_TIMESTAMP WHERE customer_order_id=$1 AND kind='customer_order' AND status='open'`, orderID); err != nil {
 		return err
 	}
@@ -123,7 +116,7 @@ func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, custom
 				if quantity <= 0 {
 					continue
 				}
-				tag, err := tx.Exec(ctx, `UPDATE order_items SET quantity=$3,is_preorder=$4,reserved_qty=0 WHERE id=$1 AND order_id=$2`, old.id, orderID, quantity, boolToSmallInt(preorder))
+				tag, err := tx.Exec(ctx, `UPDATE order_items SET quantity=$3,is_preorder=$4 WHERE id=$1 AND order_id=$2`, old.id, orderID, quantity, boolToSmallInt(preorder))
 				if err != nil {
 					return err
 				}
@@ -160,6 +153,6 @@ func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, custom
 			return ErrInvalidInput
 		}
 	}
-	_, err = tx.Exec(ctx, `UPDATE orders SET has_preorder=$2,delivery_fee_pending=$3,stock_released_at=NULL WHERE id=$1`, orderID, boolToSmallInt(hasPreorder), boolToSmallInt(feePending))
+	_, err = tx.Exec(ctx, `UPDATE orders SET has_preorder=$2,delivery_fee_pending=$3 WHERE id=$1`, orderID, boolToSmallInt(hasPreorder), boolToSmallInt(feePending))
 	return err
 }

@@ -126,9 +126,6 @@ func (service *Service) attemptPaymentCreation(ctx context.Context, paymentID in
 			_ = service.pool.QueryRow(ctx, `SELECT shipment_offer_id FROM payments WHERE id=$1`, paymentID).Scan(&offerID)
 			_, _ = service.pool.Exec(ctx, `UPDATE payments SET status='cancelled',last_error=$2,next_recovery_at=NULL,recovery_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, paymentID, err.Error())
 			if offerID != nil {
-				if releaseErr := service.releaseOfferCheckoutReservation(ctx, *offerID); releaseErr != nil {
-					return integration.Payment{}, releaseErr
-				}
 				_, _ = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *offerID)
 			}
 			return integration.Payment{}, err
@@ -353,9 +350,6 @@ func (service *Service) DismissUnknown(ctx context.Context, orderID, paymentID i
 		return Balance{}, err
 	}
 	if offerID != nil {
-		if err := service.releaseOfferCheckoutReservation(ctx, *offerID); err != nil {
-			return Balance{}, err
-		}
 		_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *offerID)
 		if err != nil {
 			return Balance{}, err

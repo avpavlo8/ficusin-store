@@ -111,8 +111,8 @@ func TestExpiryCancelsOnlyEligibleOrdersOnLiveDatabase(t *testing.T) {
 		}
 		must(pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor) VALUES(1,$1,10000) RETURNING id`, item.name).Scan(&item.variant))
 		must(pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,payment_method,payment_status,status,has_preorder,delivery_fee_pending,created_at) VALUES($1,'Expiry fixture','+70000000000','','pickup',0,100,100,$2,$3,$4,$5,$6,NOW()-make_interval(hours=>$7)) RETURNING id`, item.name, item.method, item.payment, item.status, item.preorder, item.feePending, item.ageHours).Scan(&item.id))
-		exec(`INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,unit_price,quantity,reserved_qty) SELECT $1,1,id,sku,'Expiry fixture',100,2,2 FROM product_variants WHERE id=$2`, item.id, item.variant)
-		exec(`INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty) VALUES(1,$1,10,2)`, item.variant)
+		exec(`INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,unit_price,quantity,reserved_qty) SELECT $1,1,id,sku,'Expiry fixture',100,2,0 FROM product_variants WHERE id=$2`, item.id, item.variant)
+		exec(`INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty) VALUES(1,$1,10,0)`, item.variant)
 		exec(`INSERT INTO payments(order_id,idempotence_key,amount,status) VALUES($1,$2,100,'pending')`, item.id, item.name)
 		var offer int64
 		must(pool.QueryRow(ctx, `INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method) VALUES($1,$2,1,'offered','pickup') RETURNING id`, item.id, item.name).Scan(&offer))
@@ -158,7 +158,7 @@ func TestExpiryCancelsOnlyEligibleOrdersOnLiveDatabase(t *testing.T) {
 				t.Fatalf("expiry rewrote money or physical stock: %d/%d", amount, available)
 			}
 			if item.cancel {
-				if status != "cancelled" || payment != "cancelled" || attempt != "cancelled" || !released || reserved != 0 || offer != "cancelled" || !letterCancelled || releases != 1 || provider.calls[item.id] != 1 {
+				if status != "cancelled" || payment != "cancelled" || attempt != "cancelled" || released || reserved != 0 || offer != "cancelled" || !letterCancelled || releases != 0 || provider.calls[item.id] != 1 {
 					t.Fatalf("eligible expiry was incomplete or repeated: %s/%s/%s release=%v reserved=%d offer=%s letter=%v journal=%d provider=%d", status, payment, attempt, released, reserved, offer, letterCancelled, releases, provider.calls[item.id])
 				}
 			} else {
@@ -166,7 +166,7 @@ func TestExpiryCancelsOnlyEligibleOrdersOnLiveDatabase(t *testing.T) {
 				if item.refuse {
 					calls = 2
 				}
-				if status != item.status || payment != item.payment || attempt != "pending" || released || reserved != 2 || offer != "offered" || letterCancelled || releases != 0 || provider.calls[item.id] != calls {
+				if status != item.status || payment != item.payment || attempt != "pending" || released || reserved != 0 || offer != "offered" || letterCancelled || releases != 0 || provider.calls[item.id] != calls {
 					t.Fatalf("protected order was changed: %s/%s/%s release=%v reserved=%d offer=%s letter=%v journal=%d provider=%d", status, payment, attempt, released, reserved, offer, letterCancelled, releases, provider.calls[item.id])
 				}
 			}

@@ -198,41 +198,9 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	`, orderID).Scan(&cancelled); err != nil {
 		t.Fatalf("read cancellation facts: %v", err)
 	}
-	if cancelled != "cancelled:cancelled:true:0:0" {
+	if cancelled != "cancelled:cancelled:false:0:0" {
 		t.Fatalf("cancellation is not atomic/idempotent: %s", cancelled)
 	}
-	t.Run("historical reservation releases only its own units once", func(t *testing.T) {
-		tx, err := pool.Begin(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer tx.Rollback(ctx)
-		if _, err := tx.Exec(ctx, `UPDATE orders SET stock_released_at=NULL WHERE id=$1`, orderID); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tx.Exec(ctx, `UPDATE order_items SET reserved_qty=1 WHERE order_id=$1`, orderID); err != nil {
-			t.Fatal(err)
-		}
-		// Two other historical units belong to other orders and must survive.
-		if _, err := tx.Exec(ctx, `UPDATE inventory SET reserved_qty=3 WHERE variant_id=$1`, variantID); err != nil {
-			t.Fatal(err)
-		}
-		for attempt := 0; attempt < 2; attempt++ {
-			if err := ReleaseStock(ctx, tx, orderID); err != nil {
-				t.Fatal(err)
-			}
-		}
-		var available, reserved, releases, releasedQuantity int
-		if err := tx.QueryRow(ctx, `SELECT available_qty,reserved_qty,
-			(SELECT COUNT(*) FROM stock_movements WHERE order_id=$1 AND kind='release'),
-			(SELECT SUM(quantity)::INTEGER FROM stock_movements WHERE order_id=$1 AND kind='release')
-			FROM inventory WHERE variant_id=$2`, orderID, variantID).Scan(&available, &reserved, &releases, &releasedQuantity); err != nil {
-			t.Fatal(err)
-		}
-		if available != 5 || reserved != 2 || releases != 1 || releasedQuantity != 1 {
-			t.Fatalf("historical release affected physical/other stock or repeated: available=%d reserved=%d entries=%d released=%d", available, reserved, releases, releasedQuantity)
-		}
-	})
 
 	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
 		t.Fatal(err)

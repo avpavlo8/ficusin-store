@@ -3,7 +3,6 @@
 package fileassets
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -51,11 +50,11 @@ func Save(ctx context.Context, storage Storage, prefix, contentType string, data
 	return key, nil
 }
 
-// Read uses an object reference whenever present. A storage outage must not
-// silently revive stale legacy bytes belonging to an earlier file revision.
-func Read(ctx context.Context, storage Storage, key string, legacy []byte) ([]byte, error) {
+// Read uses only the verified private object reference. Retired database bytes
+// are archived outside the runtime path. Empty keys represent no attachment.
+func Read(ctx context.Context, storage Storage, key string) ([]byte, error) {
 	if key == "" {
-		return bytes.Clone(legacy), nil
+		return nil, nil
 	}
 	if storage == nil || !storage.Configured() {
 		return nil, ErrUnavailable

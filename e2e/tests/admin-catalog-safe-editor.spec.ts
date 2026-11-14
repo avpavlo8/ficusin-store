@@ -619,3 +619,38 @@ test('@desktop owner integration permission keeps catalogue import available',as
  await expect(page.getByRole('button',{name:'Импорт из СБИС',exact:true})).toBeEnabled();
  await expect(page.getByRole('button',{name:'Добавить товар',exact:true})).toBeEnabled();
 });
+
+function oldBrowserDraft() {
+ return {version:1,name:'Сохранённая работа V1',categoryId:2,latinName:'Aglaonema',description:'Локальное описание',shortDescription:'',care:'',warnings:'',price:'1490',wholesaleMinQty:'1',active:true,attributes:{light:'diffused'},faq:[{id:'old-question',question:'Старый вопрос',answer:'Сохранённый ответ'}],media:[],remoteInitialized:true,creationId:'unchanged-creation-id',remoteCreatedProductId:1,selectedVariantId:'legacy-10',editorTab:'product',variants:[{id:'legacy-10',serverId:10,sku:'10',label:'D11',price:'1490',wholesaleMinQty:'1',active:false,archived:false,attributes:{pot_diameter_cm:11,height_cm:40},externalIds:[],media:[{id:'legacy-file',name:'Сохранённое фото.png',type:'image/png'}],mediaInitialized:true,mediaCustomized:true,ozon:{article:'',price:'0'},wb:{article:'WB-OLD',price:'3456.70'},sabyEditor:{mode:'create',existingCode:'',category:{id:'',name:''},folder:{id:'',name:''}},sabyEditorTouched:{mode:true,existingCode:true,category:true,folder:true}}]};
+}
+
+test('@desktop @phone V1 browser work and binary photographs migrate once and survive reload',async({page})=>{
+ const f=await fixture(page);const raw=JSON.stringify(oldBrowserDraft());
+ await page.addInitScript(({raw})=>{
+  const key='ficusin:product-edit-draft:v1:1';if(localStorage.getItem(key)!==null)return;localStorage.setItem(key,raw);
+  const req=indexedDB.open('ficusin-product-drafts',1);req.onupgradeneeded=()=>req.result.createObjectStore('media');req.onsuccess=()=>{const db=req.result,tx=db.transaction('media','readwrite');const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='),c=>c.charCodeAt(0));tx.objectStore('media').put({version:1,type:'image/png',bytes:bytes.buffer},'legacy-file');tx.oncomplete=()=>db.close();};
+ },{raw});
+ await page.goto('/admin?section=products&product=1');const e=page.locator('.editor-page');
+ await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Сохранённая работа V1');
+ await expect(e.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();
+ const check=()=>page.evaluate(()=>({backup:localStorage.getItem('ficusin:product-edit-draft:v1:1:migration-backup:v1'),draft:JSON.parse(localStorage.getItem('ficusin:product-edit-draft:v1:1')!)}));
+ let value=await check();expect(value.backup).toBe(raw);expect(value.draft.version).toBe(2);expect(value.draft.creationId).toBe('unchanged-creation-id');expect(value.draft.remoteCreatedProductId).toBe(1);expect(value.draft.selectedVariantId).toBe('legacy-10');
+ expect(value.draft.variants[0]).toMatchObject({marketplacePriceMode:'manual',marketplace:{ozon:{article:''},wb:{article:'WB-OLD'}},ozon:{price:'0'},sabyEditor:{mode:'create',existingCode:''},sabyEditorTouched:{mode:true,existingCode:true}});
+ await page.reload();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Сохранённая работа V1');await expect(e.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();value=await check();expect(value.backup).toBe(raw);expect(value.draft.variants[0].media[0].id).toBe('legacy-file');expect(f.mutations).toHaveLength(0);
+});
+
+for(const failure of ['malformed','quota'] as const)test(`@desktop @phone unsafe ${failure} V1 migration preserves its source and blocks editor writes`,async({page})=>{
+ const f=await fixture(page),raw=failure==='malformed'?'{broken':JSON.stringify(oldBrowserDraft());
+ await page.addInitScript(({raw,failure})=>{const key='ficusin:product-edit-draft:v1:1',set=Storage.prototype.setItem;if(localStorage.getItem(key)===null)set.call(localStorage,key,raw);if(failure==='quota')Storage.prototype.setItem=function(k,v){if(k.startsWith(key))throw new DOMException('Full','QuotaExceededError');return set.call(this,k,v);};},{raw,failure});
+ await page.goto('/admin?section=products&product=1');const e=page.locator('.editor-page');await expect(e.getByRole('alert')).toContainText('Исходные данные не удалены');await expect(e.getByRole('button',{name:'Сохранить',exact:true})).toHaveCount(0);await expect(e.getByLabel('Название товара *',{exact:true})).toHaveCount(0);
+ await page.reload();await expect(e.getByRole('alert')).toContainText('Исходные данные не удалены');expect(await page.evaluate(()=>localStorage.getItem('ficusin:product-edit-draft:v1:1'))).toBe(raw);expect(f.mutations).toHaveLength(0);
+});
+
+
+test('@desktop legacy IndexedDB Blob is atomically backed up as exact binary bytes before replacement',async({page})=>{
+ await fixture(page);await open(page);const raw=JSON.stringify(oldBrowserDraft());
+ await page.evaluate(async raw=>{localStorage.setItem('ficusin:product-edit-draft:v1:1',raw);await new Promise<void>((resolve,reject)=>{const request=indexedDB.open('ficusin-product-drafts',1);request.onupgradeneeded=()=>request.result.createObjectStore('media');request.onsuccess=()=>{const db=request.result,tx=db.transaction('media','readwrite');const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='),c=>c.charCodeAt(0));tx.objectStore('media').put(new Blob([bytes],{type:'image/png'}),'legacy-file');tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};});},raw);
+ await page.goto('/admin?section=products&product=1&editor=media');await expect(page.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();
+ const read=()=>page.evaluate(async()=>{const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open('ficusin-product-drafts',1);r.onsuccess=()=>resolve(r.result);});try{return await Promise.all(['legacy-file','migration-backup:v1:legacy-file'].map(id=>new Promise<any>(resolve=>{const r=db.transaction('media').objectStore('media').get(id);r.onsuccess=()=>resolve({version:r.result.version,type:r.result.type,bytes:Array.from(new Uint8Array(r.result.bytes))});})));}finally{db.close();}});
+ await expect.poll(async()=>(await read())[0].version).toBe(1);const [current,backup]=await read();expect(current).toEqual(backup);expect(current.type).toBe('image/png');expect(current.bytes.slice(0,8)).toEqual([137,80,78,71,13,10,26,10]);await page.reload();await expect(page.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();expect(await read()).toEqual([current,backup]);
+});

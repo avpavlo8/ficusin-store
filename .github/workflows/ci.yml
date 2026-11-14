@@ -336,7 +336,7 @@ jobs:
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test -p 1 ./internal/admin/ ./internal/auth/ ./internal/avito/ ./internal/catalog/ ./internal/operations/ ./internal/order/ ./internal/payment/ ./internal/analytics/ ./internal/saby/ -run 'LiveDatabase|^TestStorefrontHiddenVariantKeepsIncludedSibling$|^TestCatalogHeightAndFilterUseTheDisplayedVariant$|^TestCancelledOutboxIsNotReportedAsStale$|^TestSupersededProcurementFailureIsNotReportedAsCurrent$|^TestDisabledMailClosesPendingOutboxWithoutPretendingItWasSent$|^TestCharacteristicsMappingMatchesMigratedSchema$' -v
+        run: go test -p 1 ./internal/admin/ ./internal/auth/ ./internal/avito/ ./internal/catalog/ ./internal/operations/ ./internal/order/ ./internal/payment/ ./internal/analytics/ ./internal/saby/ ./internal/migrate/ -run 'LiveDatabase|^TestStorefrontHiddenVariantKeepsIncludedSibling$|^TestCatalogHeightAndFilterUseTheDisplayedVariant$|^TestCancelledOutboxIsNotReportedAsStale$|^TestSupersededProcurementFailureIsNotReportedAsCurrent$|^TestDisabledMailClosesPendingOutboxWithoutPretendingItWasSent$|^TestCharacteristicsMappingMatchesMigratedSchema$' -v
       - name: Verify isolated editor publication, chat references and file storage
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_local_publisher_test?sslmode=disable
@@ -353,6 +353,21 @@ jobs:
           go -C backend test ./internal/admin -run '^TestEditorPricesLocalDatabase$|^TestEditorPriceQueueLocalDatabase$' -count=1
           go -C backend test -p 1 ./internal/catalogeditor ./internal/orderworkflow -run 'LiveDatabase|LocalDatabase' -count=1
           go -C backend test -p 1 ./internal/fileassets ./internal/chat -count=1
+
+      - name: Verify editable catalogue format and immutable publication history
+        env:
+          CI: "true"
+          CATALOG_COMPATIBILITY_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_catalog_compatibility_test?sslmode=disable
+        run: |
+          createdb -h 127.0.0.1 -U postgres ficusin_catalog_compatibility_test
+          go -C backend test ./internal/admin -run '^TestCatalogCompatibilityMigrationPostgres$' -count=1 -v
+
+      - name: Verify isolated pre-cutover reservation reconciliation
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_legacy_reconcile_test?sslmode=disable
+        run: |
+          createdb -h 127.0.0.1 -U postgres -T ficusin_ci ficusin_legacy_reconcile_test
+          go -C backend test -race ./internal/reservationtransition -run Postgres -count=1
 
       - name: Verify order realization intents without external writes
         env:

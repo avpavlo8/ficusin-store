@@ -109,7 +109,7 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 }
 
 // cancel closes the unfinished payment, then atomically cancels the order,
-// releases historical local reservations and queues any required Saby undo.
+// queues any required Saby undo.
 // The worker confirms physical stock return separately; this transaction never
 // fabricates a returned balance while an external operation is unresolved.
 func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
@@ -185,9 +185,6 @@ func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 			cancellation_reason = 'Срок оплаты заказа истёк'
 		WHERE id = $1 AND status <> 'cancelled'
 	`, orderID); err != nil {
-		return err
-	}
-	if err := ReleaseStock(ctx, transaction, orderID); err != nil {
 		return err
 	}
 	if err := CancelOpenShipmentOffers(ctx, transaction, orderID); err != nil {

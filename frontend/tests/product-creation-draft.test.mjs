@@ -42,6 +42,7 @@ test("current drafts and old Saby journals retain useful content and canonical I
   };
   stored = JSON.stringify({
     ...emptyProductDraft(),
+    version: 1,
     name: "Сохранённое растение",
     media,
     variants: [variant],

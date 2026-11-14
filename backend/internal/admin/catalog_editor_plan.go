@@ -194,6 +194,7 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 	if !Can(actor.Role, PermissionProductsManage) {
 		return EditorPlanView{}, ErrForbidden
 	}
+	plan = canonicalEditableEditorPlan(plan)
 	if err := ValidateEditorPlan(plan, false); err != nil {
 		return EditorPlanView{}, err
 	}
@@ -412,8 +413,6 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 						return EditorPlanView{}, fmt.Errorf("%w: формула цены изменилась; пересчитайте цену %s перед сохранением", ErrInvalidInput, channel)
 					}
 					origin, compare = "formula", formulaCompare
-				} else if v.PriceMode == "" && available && wanted == minor {
-					origin, compare = "formula", formulaCompare
 				}
 				if e = stageEditorPrice(ctx, tx, actor, productID, v.VariantID, channel, existing, price, minor, &compare, origin); e != nil {
 					return EditorPlanView{}, e
@@ -499,7 +498,7 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 		}
 	}
 	raw, _ := json.Marshal(plan)
-	if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_plans(product_id,config) VALUES($1,$2) ON CONFLICT(product_id) DO UPDATE SET config=EXCLUDED.config,updated_at=NOW()`, productID, raw); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_plans(product_id,config) VALUES($1,catalog_editor_canonical_plan($2)) ON CONFLICT(product_id) DO UPDATE SET config=EXCLUDED.config,updated_at=NOW()`, productID, raw); err != nil {
 		return EditorPlanView{}, err
 	}
 	if err = insertAudit(ctx, tx, actor, "catalog.editor.plan.save", "product", fmt.Sprint(productID), nil, plan); err != nil {

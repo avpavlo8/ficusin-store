@@ -141,9 +141,9 @@ func TestManualInvoicePairOverridesWrongAliasAndPreservesPlanPrice(t *testing.T)
 	}
 	var documentID int64
 	hash := fmt.Sprintf("%064x", unique)
-	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,
 		parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by)
-		VALUES($1,$2,'manual-pair.pdf','application/pdf',8,$3,'12345678','holland_packing_list',1,'review','ok',$4,'EUR',1,12,$5) RETURNING id`,
+		VALUES($1,$2,'manual-pair.pdf','application/pdf',8,$3,'fixtures/synthetic-invoice.pdf','holland_packing_list',1,'review','ok',$4,'EUR',1,12,$5) RETURNING id`,
 		supplierID, orderID, hash, fmt.Sprintf("INV-PAIR-%d", unique), actorID).Scan(&documentID); err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestManualInvoicePairSwapsAlreadyMatchedCarmonaRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash := fmt.Sprintf("%064x", unique+7)
-	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'swap.pdf','application/pdf',8,$3,'12345678','holland_packing_list',1,'parsed','ok',$4,'EUR',2,40,$5) RETURNING id`, supplierID, orderID, hash, fmt.Sprintf("INV-SWAP-%d", unique), actorID).Scan(&documentID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'swap.pdf','application/pdf',8,$3,'fixtures/synthetic-invoice.pdf','holland_packing_list',1,'parsed','ok',$4,'EUR',2,40,$5) RETURNING id`, supplierID, orderID, hash, fmt.Sprintf("INV-SWAP-%d", unique), actorID).Scan(&documentID); err != nil {
 		t.Fatal(err)
 	}
 	var alias25, alias30 int64
