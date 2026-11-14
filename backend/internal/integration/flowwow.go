@@ -80,7 +80,28 @@ func (c *FlowwowClient) call(ctx context.Context, method, path string, body any,
 		c.mu.Unlock()
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &FlowwowError{Status: resp.StatusCode}
+		failure := &FlowwowError{Status: resp.StatusCode}
+		if resp.StatusCode == 400 || resp.StatusCode == 422 {
+			var diagnostic struct {
+				Message string `json:"message"`
+				Fields  []struct {
+					Path     string   `json:"path"`
+					Messages []string `json:"messages"`
+				} `json:"fields"`
+			}
+			if json.Unmarshal(data, &diagnostic) == nil {
+				parts := []string{diagnostic.Message}
+				for _, field := range diagnostic.Fields {
+					parts = append(parts, field.Path+": "+strings.Join(field.Messages, ", "))
+				}
+				detail := []rune(strings.ReplaceAll(strings.Join(parts, "; "), c.token, "[скрыто]"))
+				if len(detail) > 700 {
+					detail = detail[:700]
+				}
+				failure.Message = strings.TrimSpace(string(detail))
+			}
+		}
+		return failure
 	}
 	if json.Unmarshal(data, out) != nil {
 		return errors.New("Flowwow: некорректный ответ API")
@@ -88,10 +109,17 @@ func (c *FlowwowClient) call(ctx context.Context, method, path string, body any,
 	return nil
 }
 
-type FlowwowError struct{ Status int }
+type FlowwowError struct {
+	Status  int
+	Message string
+}
 
 func (e *FlowwowError) Error() string {
-	return fmt.Sprintf("Flowwow: API вернул HTTP %d", e.Status)
+	message := fmt.Sprintf("Flowwow: API вернул HTTP %d", e.Status)
+	if e.Message != "" {
+		message += " — " + e.Message
+	}
+	return message
 }
 func (e *FlowwowError) HTTPStatus() int { return e.Status }
 
@@ -387,6 +415,7 @@ func (c *FlowwowClient) productPayload(ctx context.Context, r ce.Request, offer 
 }
 
 type FlowwowField struct {
+	MaxItems  int      `json:"maxItems,omitempty"`
 	Name      string   `json:"name"`
 	Field     string   `json:"field"`
 	Type      string   `json:"type"`

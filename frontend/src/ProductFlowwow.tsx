@@ -114,6 +114,10 @@ export function ProductFlowwow({
   };
   const control = (f: FlowwowField) => {
     const v = value.attributes?.[f.field];
+    if (f.type === "compliance_documents")
+      return (
+        <p>Документы сохраняются из карточки Flowwow. Изменить их можно в кабинете Flowwow.</p>
+      );
     if (f.type === "bool")
       return (
         <select

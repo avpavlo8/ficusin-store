@@ -38,6 +38,7 @@ func (m *flowwowMockTransport) RoundTrip(r *http.Request) (*http.Response, error
 		response = map[string]any{"shopId": 1, "data": []any{map[string]any{"categoryId": 1, "name": "Тест Flowwow: Растения", "subCategories": []any{map[string]any{"subCategoryId": 101, "name": "Горшечные"}}}}}
 	case "/apiseller/categories/subCategoryProperties":
 		response = map[string]any{"shopId": 1, "data": []any{map[string]any{"name": "Высота", "field": "height", "type": "measure", "required": true, "measure": []any{map[string]any{"id": 3}}}, map[string]any{"name": "Остаток", "field": "stock", "type": "decimal", "required": true, "minValue": 1}}}
+		response.(map[string]any)["data"] = append(response.(map[string]any)["data"].([]any), map[string]any{"name": "Документ соответствия", "field": "complianceDocuments", "type": "compliance_documents", "maxItems": 50, "values": []any{map[string]any{"id": 4, "name": "Товар не подлежит подтверждению соответствия"}}})
 	case "/apiseller/products":
 		var offers []string
 		var ids []int64

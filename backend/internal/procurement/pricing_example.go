@@ -44,6 +44,31 @@ func (store *PostgresStore) PreviewUnitPrice(ctx context.Context, input UnitPric
 	return previewUnitPrice(settings, input)
 }
 
+// EditorRetailMarketplacePrice uses the same retail preview as the product form.
+// Purchase-cost quotes belong to procurement and cannot validate a retail edit.
+func EditorRetailMarketplacePrice(ctx context.Context, db pricingReader, variantID int64, channel string, retailMinor int64) (int64, int64, bool, error) {
+	settings, err := loadPricingSettings(ctx, db)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	var box PricingPackage
+	if err = db.QueryRow(ctx, `SELECT COALESCE(shipping_package_dimension($1,'package_length_cm'),0)::float8,COALESCE(shipping_package_dimension($1,'package_width_cm'),0)::float8,COALESCE(shipping_package_dimension($1,'package_height_cm'),0)::float8`, variantID).Scan(&box.LengthCM, &box.WidthCM, &box.HeightCM); err != nil {
+		return 0, 0, false, err
+	}
+	if !box.valid() || retailMinor <= 0 {
+		return 0, 0, false, nil
+	}
+	preview, err := previewUnitPrice(settings, UnitPriceInput{Mode: "retail", RetailRUB: float64(retailMinor) / 100, Package: &box})
+	if err != nil {
+		return 0, 0, false, err
+	}
+	quote := preview.Quotes[channel]
+	if quote.PriceRUB == nil || len(quote.Missing) != 0 {
+		return 0, 0, false, nil
+	}
+	return *quote.PriceRUB * 100, CompareAtPrice(*quote.PriceRUB, settings.MarketplaceStrikeMarkup) * 100, true, nil
+}
+
 func validateUnitPriceInput(input UnitPriceInput) error {
 	if input.Mode != "cost" && input.Mode != "retail" {
 		return ErrInvalidInput
