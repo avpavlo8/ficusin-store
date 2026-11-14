@@ -104,6 +104,23 @@ func TestProviderComparisonChecksVATQuantityAndMode(t *testing.T) {
 		t.Fatal("quantity changed")
 	}
 }
+
+func TestKnownReceiptMustMatchIDAndApprovedFiscalBody(t *testing.T) {
+	a, req := fixture(t)
+	items, _ := checkBody(req, a)
+	raw, _ := json.Marshal(map[string]any{"id": "known-final", "payment_id": a.Provider, "type": "payment", "status": "succeeded", "items": items, "settlements": req.Body["settlements"]})
+	var r receipt
+	if json.Unmarshal(raw, &r) != nil || !confirmKnownReceipt(r, "known-final", req, a) {
+		t.Fatal("valid known receipt rejected")
+	}
+	if confirmKnownReceipt(r, "another-id", req, a) {
+		t.Fatal("wrong receipt identity accepted")
+	}
+	r.Items[0].VAT = 2
+	if confirmKnownReceipt(r, "known-final", req, a) {
+		t.Fatal("changed fiscal contents accepted")
+	}
+}
 func TestExistingClosingReceiptIsAdoptedWithoutAnotherPost(t *testing.T) {
 	for _, existing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "first-send", true: "existing-receipt"}[existing], func(t *testing.T) {

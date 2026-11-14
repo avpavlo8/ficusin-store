@@ -281,6 +281,18 @@ func (p *guardedProvider) CreateSettlementReceipt(ctx context.Context, req integ
 	return p.YooKassaClient.CreateSettlementReceipt(ctx, req)
 }
 
+func confirmKnownReceipt(r receipt, id string, req integration.SettlementReceiptRequest, a approved) bool {
+	want, err := checkBody(req, a)
+	if err != nil {
+		return false
+	}
+	if r.ID != id || r.PaymentID != a.Provider || r.Type != "payment" || r.Status != "succeeded" || !matchingItems(r.Items, want, "full_payment") || len(r.Settlements) != 1 || r.Settlements[0].Type != "prepayment" || r.Settlements[0].Amount.Currency != "RUB" {
+		return false
+	}
+	n, err := money.Parse(r.Settlements[0].Amount.Value)
+	return err == nil && n == a.Minor
+}
+
 type settings struct {
 	DatabaseURL, CA, Shop, Secret string
 	Tax, VAT                      int
@@ -386,8 +398,11 @@ func run() error {
 		if status != "succeeded" {
 			return errors.New("receipt_registration_pending")
 		}
-		final, err := p.verify(ctx, prepared[a.Payment])
-		if err != nil || final == nil || final.ID != id || final.Status != "succeeded" {
+		// The known-ID endpoint is authoritative; the list may lag immediately
+		// after registration. This is GET only and never retries a fiscal POST.
+		var final receipt
+		err := p.get(ctx, "/receipts/"+url.PathEscape(id), &final)
+		if err != nil || !confirmKnownReceipt(final, id, prepared[a.Payment], a) {
 			return errors.New("registered_receipt_not_confirmed_by_get")
 		}
 		var body []byte
