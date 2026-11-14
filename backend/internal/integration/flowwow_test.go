@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	ce "github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
 	"io"
 	"net/http"
@@ -44,6 +45,7 @@ func TestFlowwowCreateUpdateAndInventory(t *testing.T) {
 	mock := c.client.Transport.(*flowwowMockTransport)
 	card := mock.cards["SITE-1"]
 	card.Properties["complianceDocuments"] = []any{map[string]any{"type": 4, "link": nil}}
+	card.Properties["isFlowering"] = 0
 	mock.cards["SITE-1"] = card
 	r.Name = "Новое название"
 	r.Description = "Новое описание"
@@ -64,6 +66,9 @@ func TestFlowwowCreateUpdateAndInventory(t *testing.T) {
 	documents, _ := json.Marshal(remote.Properties["complianceDocuments"])
 	if string(documents) != `[{"link":null,"type":4}]` {
 		t.Fatalf("lost compliance documents: %s", documents)
+	}
+	if flowering, ok := remote.Properties["isFlowering"].(bool); !ok || flowering {
+		t.Fatalf("numeric false was not normalized: %#v", remote.Properties["isFlowering"])
 	}
 	if e = c.SyncInventory(ctx, "SITE-1", 340099, 0); e != nil {
 		t.Fatal(e)
@@ -168,6 +173,84 @@ func TestFlowwowValidationDiagnosticsRedactCredentials(t *testing.T) {
 	})
 	_, _, err := c.Products(context.Background(), map[string]any{})
 	if err == nil || !strings.Contains(err.Error(), "products.0.width: required") || strings.Contains(err.Error(), "secret-value") || strings.Contains(err.Error(), "hidden") {
+		t.Fatal(err)
+	}
+}
+
+func TestFlowwowSixPhotosAndAllowedUpdateFields(t *testing.T) {
+	c := NewMockFlowwowClient()
+	r := flowwowFixtureRequest()
+	r.Images = nil
+	for i := 0; i < 8; i++ {
+		r.Images = append(r.Images, fmt.Sprintf("https://images.example.test/photo-%d.jpg", i))
+	}
+	advance := func() {
+		t.Helper()
+		p := ce.Progress{}
+		for i := 0; i < 3; i++ {
+			out, err := c.Advance(context.Background(), "flowwow", r, p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p = out.Progress
+			if i == 2 && out.Status != "synced" {
+				t.Fatal(out)
+			}
+		}
+	}
+	advance()
+	m := c.client.Transport.(*flowwowMockTransport)
+	card := m.cards[r.SKU]
+	card.VAT = "0"
+	m.cards[r.SKU] = card
+	base := c.client.Transport
+	c.client.Transport = flowwowRoundTrip(func(req *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(req.URL.Path, "/update") {
+			raw, _ := io.ReadAll(req.Body)
+			req.Body = io.NopCloser(strings.NewReader(string(raw)))
+			var b struct {
+				Products []map[string]any `json:"products"`
+			}
+			if err := json.Unmarshal(raw, &b); err != nil {
+				t.Fatal(err)
+			}
+			item := b.Products[0]
+			if _, ok := item["vat"]; ok {
+				t.Fatal("undeclared VAT sent")
+			}
+			if _, ok := item["isPostDelivery"]; ok {
+				t.Fatal("undeclared delivery flag sent")
+			}
+			if len(item["images"].([]any)) != 6 {
+				t.Fatal("vendor photo limit ignored")
+			}
+		}
+		return base.RoundTrip(req)
+	})
+	r.Action = "update"
+	advance()
+	remote, err := c.find(context.Background(), r.SKU, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remote.Images) != 6 {
+		t.Fatal(remote.Images)
+	}
+	for i, url := range remote.Images {
+		if url != r.Images[i] {
+			t.Fatal("photo order changed")
+		}
+	}
+}
+
+func TestFlowwowStructuredBatchError(t *testing.T) {
+	c := NewFlowwowClient("secret-value", "1")
+	c.client.Transport = flowwowRoundTrip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"errors":[{"message":{"images":"too many secret-value"}}]}`))}, nil
+	})
+	_, err := c.batch(context.Background(), "POST", "products/update", "products", map[string]any{"offerId": "210"})
+	var invalid *FlowwowValidationError
+	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), "images") || strings.Contains(err.Error(), "secret-value") {
 		t.Fatal(err)
 	}
 }

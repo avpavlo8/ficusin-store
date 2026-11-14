@@ -103,8 +103,8 @@ func (c *FlowwowClient) call(ctx context.Context, method, path string, body any,
 		}
 		return failure
 	}
-	if json.Unmarshal(data, out) != nil {
-		return errors.New("Flowwow: некорректный ответ API")
+	if err := json.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("Flowwow: некорректный ответ API (%s): %s", path, strings.ReplaceAll(err.Error(), c.token, "[скрыто]"))
 	}
 	return nil
 }
@@ -198,7 +198,7 @@ type flowwowBatch struct {
 		OfferID   string `json:"offerId"`
 	} `json:"data"`
 	Errors []struct {
-		Message string `json:"message"`
+		Message json.RawMessage `json:"message"`
 	} `json:"errors"`
 }
 
@@ -209,7 +209,16 @@ func (c *FlowwowClient) batch(ctx context.Context, method, path, key string, ite
 		return b, e
 	}
 	if len(b.Errors) > 0 {
-		return b, &FlowwowValidationError{Message: "Flowwow: товар не принят — " + strings.ReplaceAll(b.Errors[0].Message, c.token, "[скрыто]")}
+		message := string(b.Errors[0].Message)
+		var plain string
+		if json.Unmarshal(b.Errors[0].Message, &plain) == nil {
+			message = plain
+		}
+		detail := []rune(strings.ReplaceAll(message, c.token, "[скрыто]"))
+		if len(detail) > 700 {
+			detail = detail[:700]
+		}
+		return b, &FlowwowValidationError{Message: "Flowwow: товар не принят — " + string(detail)}
 	}
 	if len(b.Data) != 1 || b.Data[0].OfferID != item["offerId"] || b.Data[0].ProductID <= 0 {
 		return b, errors.New("Flowwow: API не подтвердил обработку товара")
@@ -220,6 +229,7 @@ func (c *FlowwowClient) batch(ctx context.Context, method, path, key string, ite
 // Advance uses the existing durable publication lease. The create boundary is
 // persisted by the worker BEFORE POST; an unknown response is only reconciled.
 func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Request, p ce.Progress) (ce.Result, error) {
+	r.Images = flowwowImages(r.Images)
 	result := func(stage, status, message string) ce.Result {
 		p.Stage = stage
 		return ce.Result{Progress: p, Status: status, Message: message}
@@ -356,6 +366,7 @@ func flowwowPriceEqual(s string, minor int64) bool {
 	return e == nil && v == float64(minor)/100
 }
 func (c *FlowwowClient) productPayload(ctx context.Context, r ce.Request, offer string, remote *FlowwowProduct) (map[string]any, error) {
+	r.Images = flowwowImages(r.Images)
 	category := r.Channel.Category.ID
 	if remote != nil {
 		if remote.Type != 1 {
@@ -377,10 +388,18 @@ func (c *FlowwowClient) productPayload(ctx context.Context, r ce.Request, offer 
 		return nil, errors.New("Flowwow: не получены правила подкатегории")
 	}
 	item := map[string]any{}
+	allowed := map[string]bool{}
 	// Only fields allowed by the current category are retained from the remote card.
 	for _, f := range schema.Data {
+		allowed[f.Field] = true
 		if remote != nil && remote.Properties[f.Field] != nil {
-			item[f.Field] = remote.Properties[f.Field]
+			value := remote.Properties[f.Field]
+			// Seller API reads may encode a declared bool as JSON 0/1.
+			// Normalize only that exact wire form; other invalid values still fail.
+			if n, ok := value.(float64); f.Type == "bool" && ok && (n == 0 || n == 1) {
+				value = n == 1
+			}
+			item[f.Field] = value
 		}
 		if v, ok := r.Channel.Attributes[f.Field]; ok {
 			item[f.Field] = v
@@ -393,10 +412,14 @@ func (c *FlowwowClient) productPayload(ctx context.Context, r ce.Request, offer 
 		if remote.MinOrder > 0 {
 			item["minOrderCount"] = remote.MinOrder
 		}
-		if remote.VAT != "" {
+		if remote.VAT != "" && allowed["vat"] {
 			item["vat"] = remote.VAT
 		}
-		item["isPostDelivery"] = remote.IsPostDelivery
+		if allowed["isPostDelivery"] {
+			item["isPostDelivery"] = remote.IsPostDelivery
+		} else if remote.IsPostDelivery {
+			return nil, errors.New("Flowwow: API категории не позволяет сохранить почтовую доставку; проверьте карточку")
+		}
 	}
 	item["offerId"], item["productType"], item["subCategoryId"] = offer, 1, mustFlowwowID(category)
 	item["name"], item["description"], item["price"], item["discount"], item["images"] = r.Name, r.Description, fmt.Sprintf("%d.%02d", r.PriceMinor/100, r.PriceMinor%100), "0", r.Images
@@ -412,6 +435,14 @@ func (c *FlowwowClient) productPayload(ctx context.Context, r ce.Request, offer 
 		return nil, e
 	}
 	return item, nil
+}
+
+// Flowwow accepts at most six photos, ordered with the cover first.
+func flowwowImages(images []string) []string {
+	if len(images) > 6 {
+		return images[:6]
+	}
+	return images
 }
 
 type FlowwowField struct {
