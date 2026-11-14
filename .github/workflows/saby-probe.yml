@@ -1,9 +1,9 @@
-name: Read-only blocked publication reconciliation
+name: Read-only staging cutover preflight
 on:
   workflow_dispatch:
     inputs:
       expected_commit:
-        description: Exact current production main commit
+        description: Exact deployed staging SHA
         type: string
         required: true
 permissions:
@@ -17,12 +17,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install read-only database client
-        run: python3 -m pip install 'psycopg[binary]==3.2.13'
-      - name: Test bounded read-only inventory guards
-        run: python3 -m unittest discover -s scripts -p 'test_production*reconciliation.py'
-      - name: Read exact blocked marketplace publications without writes
+      - run: python3 -m pip install 'psycopg[binary]==3.2.13'
+      - run: python3 -m unittest discover -s scripts -p 'test_staging_legacy_preflight.py'
+      - name: Inspect isolated staging without writes
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/production-catalog-readonly-reconciliation.py --expected-commit "$EXPECTED_COMMIT"
+        run: python3 scripts/staging-legacy-preflight.py --expected-commit "$EXPECTED_COMMIT"
