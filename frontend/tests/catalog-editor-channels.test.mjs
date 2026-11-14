@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   marketplaceMissing,
+  marketplaceOf,
   blankMarketplaceChannel,
   flattenCategories,
 } from "../src/catalogEditorChannels.ts";
@@ -15,6 +16,24 @@ const common = () => ({
   units: 1,
   ozon: blankMarketplaceChannel(),
   wb: blankMarketplaceChannel(),
+});
+test("editor plan excludes picker baselines while preserving explicit relinks", () => {
+  const marketplace = common();
+  marketplace.wb = {
+    ...marketplace.wb,
+    linkedArticle: "old-wb",
+    article: "new-wb",
+    replaceLink: true,
+  };
+  marketplace.ozon = { ...marketplace.ozon, linkedArticle: "ozon", article: "ozon" };
+  const payload = JSON.parse(JSON.stringify(marketplaceOf({ marketplace })));
+  assert.equal(Object.hasOwn(payload.wb, "linkedArticle"), false);
+  assert.equal(Object.hasOwn(payload.ozon, "linkedArticle"), false);
+  assert.equal(payload.wb.article, "new-wb");
+  assert.equal(payload.wb.replaceLink, true);
+  assert.equal(payload.ozon.article, "ozon");
+  assert.equal(marketplace.wb.linkedArticle, "old-wb");
+  assert.equal(marketplace.ozon.linkedArticle, "ozon");
 });
 test("unselected marketplaces never block incomplete drafts", () =>
   assert.deepEqual(marketplaceMissing(common()), []));
