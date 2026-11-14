@@ -290,17 +290,25 @@ func TestEditorPricesLocalDatabase(t *testing.T) {
 		for _, code := range []string{"package_length_cm", "package_width_cm", "package_height_cm", "package_winter_length_cm", "package_winter_width_cm", "package_winter_height_cm"} {
 			exec(`INSERT INTO variant_attribute_values(variant_id,attribute_id,value) SELECT $1,id,'20'::jsonb FROM attribute_definitions WHERE code=$2 ON CONFLICT(variant_id,attribute_id) DO UPDATE SET value=EXCLUDED.value`, v, code)
 		}
-		var height, pack, logistics, returns, market, tax, reserve, strike float64
-		must(pool.QueryRow(ctx, `SELECT COALESCE(variant_numeric_attribute(v.id,'height_cm'),0)::float8,s.package_rub::float8,s.marketplace_logistics_per_cm::float8,s.return_loss_rate::float8,s.marketplace_cost_rate::float8,s.tax_rate::float8,s.reserve_rate::float8,s.marketplace_strike_markup::float8 FROM product_variants v CROSS JOIN procurement_pricing_settings s WHERE v.id=$1 AND s.id=1`, v).Scan(&height, &pack, &logistics, &returns, &market, &tax, &reserve, &strike))
-		price, compare := procurement.LegacyMarketplacePrices(10000, pack, height, logistics, returns, market, tax, reserve, strike)
-		quotes, enabled, e := procurement.UnifiedVariantPriceQuotes(ctx, pool, v)
+		var strike float64
+		must(pool.QueryRow(ctx, `SELECT marketplace_strike_markup::float8 FROM procurement_pricing_settings WHERE id=1`).Scan(&strike))
+		preview, e := procurement.NewPostgresStore(pool).PreviewUnitPrice(ctx, procurement.UnitPriceInput{Mode: "retail", RetailRUB: 100, Package: &procurement.PricingPackage{LengthCM: 20, WidthCM: 20, HeightCM: 20}})
 		must(e)
-		if enabled {
-			if quotes["wb"].PriceRUB == nil {
-				t.Fatal("fixture requires a valid WB formula")
+		if preview.Quotes["wb"].PriceRUB == nil {
+			t.Fatal("fixture requires a valid retail preview")
+		}
+		price := *preview.Quotes["wb"].PriceRUB
+		compare := procurement.CompareAtPrice(price, strike)
+		for _, ch := range []string{"wb", "ozon"} {
+			if preview.Quotes[ch].PriceRUB == nil {
+				t.Fatal("missing retail quote", ch)
 			}
-			price = *quotes["wb"].PriceRUB
-			compare = procurement.CompareAtPrice(price, strike)
+			exec(`UPDATE product_variants SET current_unit_cost_rub=99999 WHERE id=$1`, v)
+			actual, _, available, e := ce.PriceFormula(ctx, pool, v, ch, 10000)
+			must(e)
+			if !available || actual != *preview.Quotes[ch].PriceRUB*100 {
+				t.Fatalf("%s editor save disagrees with retail preview: %d", ch, actual)
+			}
 		}
 		compareMinor := compare * 100
 		draft = stage(p, v, target, price*100, &compareMinor, "formula")

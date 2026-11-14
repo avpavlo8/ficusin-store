@@ -85,6 +85,24 @@ func ValidateFlowwowFields(fields []FlowwowField, item map[string]any) error {
 			return false
 		}
 		switch f.Type {
+		case "compliance_documents":
+			docs, ok := value.([]any)
+			if !ok || len(docs) == 0 || f.MaxItems > 0 && len(docs) > f.MaxItems {
+				return invalid()
+			}
+			for _, raw := range docs {
+				doc, ok := raw.(map[string]any)
+				if !ok || !selected(doc["type"]) {
+					return invalid()
+				}
+				link, hasLink := doc["link"]
+				if hasLink && link != nil {
+					text, ok := link.(string)
+					if !ok || len([]rune(text)) > 255 {
+						return invalid()
+					}
+				}
+			}
 		case "text":
 			if _, ok := value.(string); !ok {
 				return invalid()

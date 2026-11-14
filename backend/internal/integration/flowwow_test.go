@@ -40,6 +40,11 @@ func TestFlowwowCreateUpdateAndInventory(t *testing.T) {
 		t.Fatalf("remote %+v %v", remote, e)
 	}
 	id := remote.ProductID
+	// Shape observed in the real Seller API: retain the existing exemption.
+	mock := c.client.Transport.(*flowwowMockTransport)
+	card := mock.cards["SITE-1"]
+	card.Properties["complianceDocuments"] = []any{map[string]any{"type": 4, "link": nil}}
+	mock.cards["SITE-1"] = card
 	r.Name = "Новое название"
 	r.Description = "Новое описание"
 	r.PriceMinor = 223344
@@ -55,6 +60,10 @@ func TestFlowwowCreateUpdateAndInventory(t *testing.T) {
 	remote, _ = c.find(ctx, "SITE-1", "")
 	if remote.ProductID != id || remote.Name != r.Name || remote.Price != "2233.44" {
 		t.Fatalf("update %+v", remote)
+	}
+	documents, _ := json.Marshal(remote.Properties["complianceDocuments"])
+	if string(documents) != `[{"link":null,"type":4}]` {
+		t.Fatalf("lost compliance documents: %s", documents)
 	}
 	if e = c.SyncInventory(ctx, "SITE-1", 340099, 0); e != nil {
 		t.Fatal(e)
@@ -134,6 +143,32 @@ func TestFlowwowSchemaAndImageValidation(t *testing.T) {
 		if publicFlowwowImage(s) {
 			t.Fatal("accepted private image", s)
 		}
+	}
+}
+
+func TestFlowwowComplianceDocumentsValidation(t *testing.T) {
+	var fields []FlowwowField
+	if err := json.Unmarshal([]byte(`[{"field":"complianceDocuments","name":"Документ соответствия","type":"compliance_documents","maxItems":1,"values":[{"id":4}]}]`), &fields); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateFlowwowFields(fields, map[string]any{"complianceDocuments": []any{map[string]any{"type": 4, "link": nil}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, docs := range []any{"invalid", []any{map[string]any{"type": 999}}, []any{map[string]any{"type": 4, "link": 23}}, []any{map[string]any{"type": 4}, map[string]any{"type": 4}}} {
+		if err := ValidateFlowwowFields(fields, map[string]any{"complianceDocuments": docs}); err == nil {
+			t.Fatalf("accepted invalid documents: %#v", docs)
+		}
+	}
+}
+
+func TestFlowwowValidationDiagnosticsRedactCredentials(t *testing.T) {
+	c := NewFlowwowClient("secret-value", "1")
+	c.client.Transport = flowwowRoundTrip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader(`{"message":"Invalid product secret-value","fields":[{"path":"products.0.width","messages":["required"]}],"trace":{"private":"hidden"}}`))}, nil
+	})
+	_, _, err := c.Products(context.Background(), map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "products.0.width: required") || strings.Contains(err.Error(), "secret-value") || strings.Contains(err.Error(), "hidden") {
+		t.Fatal(err)
 	}
 }
 func TestFlowwowUpdateCannotMoveCategoryOrCreateMissingLinkedCard(t *testing.T) {
