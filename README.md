@@ -15,6 +15,7 @@ timeweb/   SQL-миграции PostgreSQL
 ## Локальный запуск
 
 Требуются Node.js 24, Go 1.26 и PostgreSQL.
+Frontend и backend запускаются в двух терминалах из корня репозитория.
 
 ```bash
 # frontend, http://localhost:5173
@@ -25,19 +26,24 @@ npm run dev
 # backend, http://localhost:8080
 cd backend
 DATABASE_URL='postgresql://...' \
+APP_ENV=development \
 MIGRATIONS_DIR='../timeweb/migrations' \
 AUTH_COOKIE_SECURE=false \
+PROCUREMENT_PDF_FONT='/System/Library/Fonts/Supplemental/Arial.ttf' \
 go run ./cmd/api
 ```
 
 Vite проксирует запросы `/api` на Go по адресу `http://localhost:8080`.
+Путь шрифта выше — пример для macOS. Для локальных PDF и Go-проверок укажите
+существующий TTF через `PROCUREMENT_PDF_FONT`; на Linux выберите установленный
+шрифт. Docker уже включает DejaVu и использует `/app/fonts/DejaVuSans.ttf`.
 
 ## Проверка
 
 ```bash
-cd frontend && npm run lint && npm run build
-cd backend && go test ./... && go vet ./...
-cd e2e && npm ci && npx playwright install && npm test
+(cd frontend && npm test && npm run lint && npm run build)
+(cd backend && PROCUREMENT_PDF_FONT='/System/Library/Fonts/Supplemental/Arial.ttf' go test ./... && go vet ./...)
+(cd e2e && npm ci && npx playwright install && npm test)
 docker build -t ficusin-store .
 ```
 
@@ -60,6 +66,8 @@ docker build -t ficusin-store .
 затем прочитайте [правила работы с репозиторием](AGENTS.md).
 Карта отделяет рабочие функции, переходную совместимость и исторические документы.
 HTTP-контракт находится в [OpenAPI](docs/openapi.yaml).
+Полное покрытие последней проверки и сохранённые границы — в
+[аудите всей кодовой базы](docs/whole-codebase-audit.md).
 
 При окончательном отключении функции удаляются её код, настройки, фоновые
 задания, устаревшие тесты и проверки, скрипты и ассеты; документация обновляется

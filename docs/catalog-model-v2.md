@@ -17,7 +17,15 @@ Categories assign definitions and may mark them required, filterable, visible on
 
 Technical attributes are available to operations and logistics but cannot be exposed through storefront flags or filters. An excluded assignment cannot simultaneously be required or visible.
 
-Physical dimensions of a SKU — height, pot diameter, parcel length/width/height and weight — live in `variant_attribute_values` and nowhere else. The `product_variants` columns of the same name are deprecated since migration 061 and are read by nothing; they exist only so a rollback of that release still works. Both editing screens write the attribute store, and delivery, the product page and marketplace logistics read it through `variant_numeric_attribute`. These six definitions are global: a parcel size is a property of a physical object, not of a catalogue section, and delivery has to price accessories and soil too.
+Physical dimensions of a SKU — height, pot diameter, parcel length/width/height
+and weight — live in `variant_attribute_values`. Migration 218 archived and
+removed the six former typed columns from `product_variants`; absent PIM rows
+were backfilled without overwriting existing attributes. Both editing screens
+write the attribute store, and delivery, the product page and marketplace
+logistics read it through `variant_numeric_attribute`. Height and pot diameter
+belong to plant categories; the four parcel dimensions/weight definitions are
+global because delivery also has to price accessories and soil. Archive details
+and input contracts are in [catalog-identity.md](catalog-identity.md).
 
 PRODUCT values are saved on the product. SKU values are saved per variant. The API validates type, active enum options and effective category scope. An active SKU cannot be saved while a required SKU attribute is absent; an inactive draft may remain incomplete.
 
@@ -59,6 +67,16 @@ These are one-time consequences of moving to catalogue v2. They are not reversib
 
 Be honest about this when planning work.
 
-- The Python contract tests and the SQL-string assertions in Go check that certain text appears in certain files. They guard intent, not behaviour: they stay green on invalid SQL. That is how a broken catalogue query reached production.
-- Playwright runs against `vite preview` with every `/api/v1/*` answered by a fixture. It proves the React app renders the agreed shape; it proves nothing about the backend.
-- `backend/internal/admin/live_database_test.go` is the only place where application queries run against a fully migrated PostgreSQL. It runs in the `migrations` job. Anything new in the catalogue or order path should get an assertion there, because everywhere else a mistake is invisible until a customer finds it.
+- Source-content assertions and SQL reproduction tests verify provenance or
+  an expected generated artifact. They cannot prove that PostgreSQL accepts a
+  query; executing the query is a separate requirement.
+- The mocked Playwright suite runs against `vite preview` with API fixtures.
+  It checks browser behaviour and contract shapes. Real-API CRM, payment recovery,
+  chat and image-runtime checks exercise a separate Go/PostgreSQL boundary.
+- Application SQL is exercised by PostgreSQL tests across admin, auth, catalogue,
+  operations, orders, payments, analytics and Avito, with separate isolated
+  publication, chat, file-storage, staging-stock and migration suites. The
+  `migrations` job applies the full history before running them; the CRM workflow
+  also exercises a real Go API and database. Add a regression in the owning
+  package when a query or invariant changes. A string assertion or mocked browser
+  response does not replace execution against the migrated schema.

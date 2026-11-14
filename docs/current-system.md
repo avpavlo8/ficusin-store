@@ -10,7 +10,11 @@
 ## Как читать документацию
 
 - Этот файл — карта текущего функционала, процессов и сохранённых зависимостей.
-- Последний повторный аудит после переноса цен — [post-price-cleanup-audit.md](post-price-cleanup-audit.md).
+- Полное актуальное покрытие и решения — [whole-codebase-audit.md](whole-codebase-audit.md):
+  31 backend-пакет, 177 frontend-файлов, 29 scripts, 9 workflows / 17 jobs,
+  220 миграций и 119 public-файлов. Локальная схема `public` содержит 111 relations.
+- Предыдущие этапы очистки — [post-price-cleanup-audit.md](post-price-cleanup-audit.md);
+  их результаты относятся к указанным там версиям.
 - Тематические документы ниже объясняют действующие инварианты.
 - Файлы с датой в названии, `docs/crm/stage-*` и `business-rules-v2-draft.md` —
   исторические решения/приёмка. Их баннер предупреждает, что описанный код мог
@@ -327,12 +331,17 @@ worker/cron, конфигурации, источников данных, тес
 
 ## Проверка рабочей ветки
 
-На схеме 220 прошли каталог/категории, права, жизненный цикл заказа, точная
-связь предзаказа с купленным SKU, история резервов, продажи и lease/cooldown.
-Полные Go test/vet/build и анализ достижимости приложения/тестовых пакетов
-прошли; дополнительных кандидатов анализатор не выдал. CRM через настоящий
-локальный API прошёл для owner/manager в 1440/390 px с сохранением галереи.
-Isolated WB/Ozon/СБИС publication, frontend build/lint/format/budget,
-75 frontend unit, 43 Python и 22 выбранных browser-сценария прошли.
-OpenAPI — 236 операций / 91 схема. Полный e2e набор этой итерацией не
-перезапускался. Проверки локальные; production и внешние операции не менялись.
+Финальные локальные Go test/vet/build, race для `httpapi/payment/procurement`,
+пять publisher suites, PostgreSQL file/chat и 12 history-guard сценариев прошли.
+Проверены CRM owner/manager, восстановление и редактирование возвратов, реальный
+чат на desktop/mobile. Frontend build/lint/format/budget, 79 frontend unit и
+43 Python прошли; полный browser run — 888/888, без skip/retry.
+OpenAPI — 236 операций / 91 схема. Изолированные БД и provider mocks не
+подтверждают реальные списания/публикации или состояние production.
+
+После исправления устаревшего inline SQL успешно завершён
+[run 43574411017](https://github.com/avpavlo8/ficusin-store/actions/runs/43574411017)
+для `50e1afa`: обе browser-части и общий gate, frontend/backend/OpenAPI/Python,
+миграции и реальный Docker build/boot/commerce/load/backup-restore прошли.
+Последующий коммит меняет только документацию. Полное покрытие, сохранённые
+границы и условия удаления — в [whole-codebase-audit.md](whole-codebase-audit.md).

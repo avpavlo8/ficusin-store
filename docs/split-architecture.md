@@ -22,6 +22,18 @@ and preview scripts select it explicitly. TypeScript checks the Node config
 project with `noEmit`; it does not generate sibling `.js`/`.d.ts` copies that
 could shadow newer TypeScript settings during local development.
 
+Run `npm test` in `frontend` to execute every `tests/*.test.mjs` file, including
+the CSS/module guard regression fixtures. CI uses the same discovery command;
+new test files do not require a separate workflow list. `npm run lint` enforces
+the actual runtime module graph and CSS usage once, without rerunning those
+fixtures. Browser tests remain the separate `e2e` package.
+
+The Docker context excludes root `docs/`, `scripts/`, `e2e/` and
+`frontend/tests/`: CI runs those tools from its checkout, and the image build
+does not import them. This also excludes local browser reports and staging
+session files from the context. Keep `frontend/scripts/` and backend Go test
+files: the latter participate in the documented backend build-version hash.
+
 ## Boundary rules
 
 - Go reads `DATABASE_URL` and application integration secrets. Operational
