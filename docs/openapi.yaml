@@ -37,6 +37,108 @@ paths:
                         type: string
                         enum: [summer, winter]
         default: { $ref: "#/components/responses/ValidationError" }
+  /admin/products/{productId}/editor-prices:
+    get:
+      operationId: get_admin_editor_prices
+      x-source: backend/internal/httpapi/admin_editor_prices.go#editorPricesHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.read]
+      parameters:
+        - in: path
+          name: productId
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Persisted price publications and publication mode; no writes or approvals. Readiness is checked against current site prices, channel identity and formula.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [prices, publicationMode]
+                properties:
+                  prices:
+                    type: array
+                    items: { $ref: "#/components/schemas/EditorPricePublication" }
+                  publicationMode: { type: string, enum: [disabled, mock, live] }
+        "409":
+          description: Proposal is stale or publication is unavailable.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/products/{productId}/editor-prices/{priceId}/approve:
+    post:
+      operationId: post_admin_editor_prices_approve
+      x-source: backend/internal/httpapi/admin_editor_prices.go#editorPriceMutationHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.manage]
+      parameters:
+        - in: path
+          name: productId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: priceId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fingerprint]
+              properties:
+                fingerprint: { type: string }
+      responses:
+        "200":
+          description: An authorized product editor queued this exact frozen price. Approval never changes the payload or approves other channels.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditorPricePublication" }
+        "409":
+          description: Proposal is stale or publication is unavailable.
+        default:
+          $ref: "#/components/responses/ValidationError"
+  /admin/products/{productId}/editor-prices/{priceId}/retry:
+    post:
+      operationId: post_admin_editor_prices_retry
+      x-source: backend/internal/httpapi/admin_editor_prices.go#editorPriceMutationHandler
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [products.manage]
+      parameters:
+        - in: path
+          name: productId
+          required: true
+          schema: { type: integer }
+        - in: path
+          name: priceId
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fingerprint]
+              properties:
+                fingerprint: { type: string }
+      responses:
+        "200":
+          description: An authorized product editor queued a safe retry. A needs_attention receipt resumes read-only price verification in its original mode, preserving payload, fingerprint and approval even when site prices have changed. Known rejected writes require current snapshot validation before a new attempt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EditorPricePublication" }
+        "409":
+          description: Proposal is stale or publication is unavailable.
+        default:
+          $ref: "#/components/responses/ValidationError"
   /staging/media/{key}:
     get:
       operationId: get_staging_media_key
@@ -2006,7 +2108,21 @@ paths:
       operationId: get_admin_orders
       responses:
         2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
+          description: Current orders with their shared fulfilment workflow. Other order fields are projected by the source handler.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders]
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      type: object
+                      required: [workflow]
+                      properties:
+                        workflow:
+                          $ref: "#/components/schemas/OrderWorkflow"
         default:
           $ref: "#/components/responses/ValidationError"
       x-source: backend/internal/httpapi/admin.go#orders
@@ -2602,78 +2718,6 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.ShipmentOfferInput"
-  /admin/price-proposals/{proposalId}/approve:
-    post:
-      operationId: post_admin_price_proposals_proposalId_approve
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_price_proposals.go#approveManualPriceProposalHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.manage
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage."
-      parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema:
-            type: string
-  /admin/price-proposals/{proposalId}/retry:
-    post:
-      operationId: post_admin_price_proposals_proposalId_retry
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_price_proposals.go#retryManualPriceProposalHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.manage
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage."
-      parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema:
-            type: string
-  /admin/price-proposals/{proposalId}/saby-xlsx:
-    get:
-      operationId: get_admin_price_proposals_proposalId_saby_xlsx
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_price_proposals.go#manualSabyPriceXLSXHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.read
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.read."
-      parameters:
-        - in: path
-          name: proposalId
-          required: true
-          schema:
-            type: string
   /admin/procurement:
     get:
       operationId: get_admin_procurement
@@ -4026,6 +4070,10 @@ paths:
                             { type: object, additionalProperties: true }
                           ozonPrice: { type: string }
                           wbPrice: { type: string }
+                          priceMode:
+                            type: string
+                            enum: [auto, manual]
+                            description: Auto prices must match the current formula and retain formula freshness guards. Manual prices freeze an explicit target. Omitted legacy values infer the origin without promoting stale calculations.
   /admin/products/{id}/editor-plan/sync-existing:
     post:
       operationId: post_admin_products_id_editor_plan_sync_existing
@@ -4158,7 +4206,7 @@ paths:
           description: Successful response. Payload and business rules are implemented by the source handler.
         default:
           $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_product_update_safe.go#safeAdminProductUpdateHandler
+      x-source: backend/internal/httpapi/admin.go#updateProduct
       tags:
         - Administration
       security:
@@ -4166,7 +4214,9 @@ paths:
       x-permissions:
         - products.edit
       description: >-
-        Requires products.edit. Owners and managers with products.manage can submit commercial fields, new variants and variants with {id, remove: true}
+        Requires products.edit. SKU fields are updated only through variants; media use the
+        dedicated media API. Unknown fields are rejected. Owners and managers with products.manage
+        can submit commercial fields, new variants and variants with {id, remove: true}
         without other variant fields. Within the same transaction, unlinked variants are
         deleted; variants with stock, reservations, orders, Saby links or historical
         references are archived. Removing the last active variant makes a published
@@ -4176,20 +4226,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
-              properties:
-                variants:
-                  type: array
-                  items:
-                    type: object
-                    additionalProperties: true
-                    properties:
-                      id:
-                        type: integer
-                      remove:
-                        type: boolean
-                        description: Requires products.manage; deletion or archival after checking current links.
+              $ref: "#/components/schemas/admin.ProductUpdate"
       parameters:
         - in: path
           name: id
@@ -4298,30 +4335,6 @@ paths:
             type: string
         - in: path
           name: mediaId
-          required: true
-          schema:
-            type: string
-  /admin/products/{id}/relationships:
-    get:
-      operationId: get_admin_products_id_relationships
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_product_relationships.go#productRelationshipsHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.read
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.read."
-      parameters:
-        - in: path
-          name: id
           required: true
           schema:
             type: string
@@ -4518,24 +4531,6 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.BulkPublishProductsRequest"
-  /admin/products/sync:
-    post:
-      operationId: post_admin_products_sync
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin.go#syncProducts
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.sync
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.sync."
   /admin/return-photos/{id}:
     get:
       operationId: get_admin_return_photos_id
@@ -5403,115 +5398,6 @@ paths:
           required: true
           schema:
             type: string
-  /admin/variants/{variantId}:
-    delete:
-      operationId: delete_admin_variants_variantId
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_pim.go#productVariantHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.manage
-        - products.edit
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage, products.edit."
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.VariantInput"
-    patch:
-      operationId: patch_admin_variants_variantId
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_pim.go#productVariantHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.manage
-        - products.edit
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage, products.edit."
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/admin.VariantInput"
-  /admin/variants/{variantId}/archive:
-    post:
-      operationId: post_admin_variants_variantId_archive
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_pim.go#archiveProductVariantHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.manage
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage."
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema:
-            type: string
-  /admin/variants/{variantId}/copy:
-    post:
-      operationId: post_admin_variants_variantId_copy
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_pim.go#copyProductVariantHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.manage
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage."
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema:
-            type: string
   /admin/variants/{variantId}/marketplace-scope:
     patch:
       operationId: patch_admin_variants_variantId_marketplace_scope
@@ -5545,83 +5431,6 @@ paths:
                 marketplaceScope:
                   type: string
               type: object
-  /admin/variants/{variantId}/price-proposals:
-    get:
-      operationId: get_admin_variants_variantId_price_proposals
-      responses:
-        2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
-        default:
-          $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_price_proposals.go#manualPriceProposalsHandler
-      tags:
-        - Administration
-      security:
-        - Session: []
-      x-permissions:
-        - products.read
-      description:
-        "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.read."
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema:
-            type: string
-  /admin/variants/{variantId}/saby-export:
-    get:
-      operationId: get_admin_variant_saby_export
-      summary: Preview saved site data and Saby export state (owner only)
-      tags: [Administration]
-      security:
-        - Session: []
-      x-permissions: [products.read]
-      x-source: backend/internal/httpapi/admin_catalog_export.go#catalogExportHandler
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema: { type: integer }
-      responses:
-        "200":
-          description: Saved site values and durable export state; no external requests or writes.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/catalogsync.View" }
-        default:
-          $ref: "#/components/responses/ValidationError"
-    post:
-      operationId: post_admin_variant_saby_export
-      summary: Queue an explicit Saby catalogue write or request read-only reconciliation (owner only)
-      description: Requires the current preview fingerprint. Unchanged confirmed payloads are not sent again. Unknown remote results permit only read-only reconciliation. Does not publish the site card or create inventory.
-      tags: [Administration]
-      security:
-        - Session: []
-      x-permissions: [products.manage]
-      x-source: backend/internal/httpapi/admin_catalog_export.go#catalogExportHandler
-      parameters:
-        - in: path
-          name: variantId
-          required: true
-          schema: { type: integer }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                fingerprint: { type: string }
-                checkOnly: { type: boolean, default: false }
-      responses:
-        2XX:
-          description: Queued or already confirmed; check the returned state. A queued request is not a confirmed Saby write.
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/catalogsync.View" }
-        default:
-          $ref: "#/components/responses/ValidationError"
   /admin/variants/{variantId}/saby-link:
     post:
       operationId: post_admin_variants_variantId_saby_link
@@ -6801,6 +6610,7 @@ paths:
   /payments/yookassa/webhook:
     post:
       operationId: post_payments_yookassa_webhook
+      description: Acknowledges provider notifications. Payment notifications trigger an authenticated provider recheck by object ID; status, amount and metadata from the notification are never payment evidence. Unrelated events are acknowledged without payment lookup; recheck failures return 500 for retry.
       responses:
         2XX:
           description: Successful response. Payload and business rules are implemented by the source handler.
@@ -6815,13 +6625,21 @@ paths:
         content:
           application/json:
             schema:
+              required: [type, event, object]
+              additionalProperties: false
               properties:
+                type:
+                  type: string
+                  enum: [notification]
                 event:
                   type: string
                 object:
+                  required: [id]
+                  additionalProperties: true
                   properties:
                     id:
                       type: string
+                      minLength: 1
                   type: object
               type: object
   /products/{slug}:
@@ -7107,6 +6925,25 @@ components:
               sabyId: { type: string }
               quantity: { type: integer, minimum: 1 }
               unitPrice: { type: string, description: Exact original RUB decimal, not binary floating point. }
+    EditorPricePublication:
+      type: object
+      required: [id, variantId, channel, targetId, priceMinor, compareAtMinor, expectedSitePriceMinor, status, message, fingerprint, executionMode, canApprove, canRetry, blockReason, createdAt]
+      properties:
+        id: { type: integer }
+        variantId: { type: integer }
+        channel: { type: string, enum: [wb, ozon, saby, avito] }
+        targetId: { type: string, description: "Exact WB nmID, Ozon offer ID, Saby business code or Avito listing ID." }
+        priceMinor: { type: integer, minimum: 1, description: "Frozen calculated target in kopecks. WB receives whole-ruble base and integer discount; the UI shows the effective rounded price before approval." }
+        compareAtMinor: { type: [integer, "null"], description: "Frozen compare-at amount in kopecks; WB base/discount or Ozon old_price." }
+        expectedSitePriceMinor: { type: integer }
+        status: { type: string, enum: [draft, queued, processing, synced, superseded, failed, needs_attention] }
+        message: { type: string }
+        fingerprint: { type: string, description: "SHA-256 of the immutable PostgreSQL jsonb payload." }
+        executionMode: { type: string, enum: [disabled, mock, live] }
+        canApprove: { type: boolean }
+        canRetry: { type: boolean, description: "For needs_attention this permits only read-only reconciliation, never another price POST." }
+        blockReason: { type: string }
+        createdAt: { type: string, format: date-time }
     ChatReferenceInput:
       type: object
       required: [kind, id]
@@ -7371,42 +7208,6 @@ components:
           type: integer
         showInCharacteristics:
           type: boolean
-    CallVerification:
-      type: object
-      required:
-        - phone
-        - flow
-        - checkId
-      properties:
-        checkId:
-          type: string
-        flow:
-          type: string
-          enum:
-            - login
-            - register
-        fullName:
-          type: string
-        phone:
-          type: string
-        email:
-          type: string
-          format: email
-        accountType:
-          type: string
-          enum:
-            - retail
-            - wholesale
-        companyName:
-          type: string
-        inn:
-          type: string
-        kpp:
-          type: string
-        legalAddress:
-          type: string
-        consent:
-          type: boolean
     OrderItemInput:
       type: object
       required:
@@ -7467,65 +7268,6 @@ components:
           type: array
           items:
             type: string
-    User:
-      type: object
-      required:
-        - id
-        - email
-        - phone
-        - fullName
-        - accountType
-        - wholesaleStatus
-        - retailDiscountBps
-        - lifetimeSpendMinor
-      properties:
-        id:
-          type: integer
-          format: int64
-        email:
-          type: string
-        phone:
-          type: string
-        fullName:
-          type: string
-        accountType:
-          type: string
-          enum:
-            - retail
-            - wholesale
-        wholesaleStatus:
-          type: string
-        retailDiscountBps:
-          type: integer
-        lifetimeSpendMinor:
-          type: integer
-          format: int64
-          description:
-            Сумма выполненных заказов в копейках. Кабинет считает по ней, сколько осталось до
-            следующей ступени скидки.
-    OrderSummary:
-      type: object
-      required:
-        - orderNumber
-        - deliveryMethod
-        - total
-        - status
-        - createdAt
-        - itemsCount
-      properties:
-        orderNumber:
-          type: string
-        deliveryMethod:
-          type: string
-        total:
-          type: number
-        status:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        itemsCount:
-          type: integer
     SabyCatalogItem:
       type: object
       required:
@@ -7779,25 +7521,6 @@ components:
         type:
           type: string
       type: object
-    admin.FinanceCashInput:
-      properties:
-        linkedTransactionId:
-          anyOf:
-            - type: integer
-            - type: "null"
-      type: object
-    admin.FinanceClassification:
-      properties: {}
-      type: object
-    admin.FinanceReconciliation:
-      properties:
-        actual:
-          type: number
-        comment:
-          type: string
-        date:
-          type: string
-      type: object
     admin.ImportRequest:
       properties:
         categoryId:
@@ -7811,39 +7534,6 @@ components:
         dryRun:
           type: boolean
       type: object
-    admin.MarketplaceAdjustmentInput:
-      properties:
-        amount:
-          type: number
-        channel:
-          type: string
-        effect:
-          type: integer
-        kind:
-          type: string
-        linkedTransactionId:
-          anyOf:
-            - type: integer
-            - type: "null"
-        operationDate:
-          type: string
-        periodEnd:
-          type: string
-        periodStart:
-          type: string
-        periodStatus:
-          type: string
-        sourceDocumentId:
-          type: string
-        sourceHash:
-          type: string
-        sourceLineId:
-          type: string
-        status:
-          type: string
-        unmatchedRows:
-          type: integer
-      type: object
     admin.MergeProductsRequest:
       properties:
         sourceProductIds:
@@ -7855,13 +7545,12 @@ components:
       type: object
     EditorSabyLink:
       type: object
-      required: [id, code, category, folder, mirrorFound]
+      required: [id, code, category, folder]
       properties:
         id:
           type: string
           description: Existing integration ID; never replace it with the display code.
         code: { type: string }
-        mirrorFound: { type: boolean }
         category:
           type: object
           required: [id, name]
@@ -7925,13 +7614,17 @@ components:
             - type: "null"
       type: object
     admin.OrderEditLine:
+      required: [sku, quantity]
+      additionalProperties: false
       properties:
-        productId:
-          type: string
         quantity:
           type: integer
+          minimum: 1
+          maximum: 100
         sku:
           type: string
+          minLength: 1
+          description: Exact Ficusin SKU, including the selected size. Product-card identifiers are not accepted.
       type: object
     admin.OrderPackingInput:
       properties:
@@ -7954,62 +7647,29 @@ components:
         tariffCode:
           type: integer
       type: object
-    catalogsync.View:
-      type: object
-      required:
-        [configured, state, message, snapshot, fingerprint, dirty, validation]
-      properties:
-        configured: { type: boolean }
-        state:
-          type: string
-          enum: [idle, queued, checking, verifying, unknown, synced, error]
-        message: { type: string }
-        fingerprint: { type: string }
-        dirty: { type: boolean }
-        validation: { type: string }
-        verifiedAt: { type: string, format: date-time }
-        snapshot:
-          type: object
-          required:
-            [
-              variantId,
-              productId,
-              sku,
-              name,
-              potCm,
-              heightCm,
-              priceMinor,
-              sabyId,
-              code,
-              article,
-              lookupName,
-            ]
-          properties:
-            variantId: { type: integer }
-            productId: { type: integer }
-            sku: { type: string }
-            name: { type: string }
-            potCm: { type: number }
-            heightCm: { type: number }
-            priceMinor:
-              { type: integer, description: Price in integer kopecks. }
-            sabyId: { type: string }
-            code: { type: string }
-            article: { type: string }
-            lookupName: { type: string }
     admin.ProductCreate:
       properties:
         creationId:
           type: string
-          pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          description: Optional persisted draft UUID, scoped to the authenticated administrator. Replays return the same product without creating another product, SKU, price or photo. The receipt commits atomically with creation; deleting the product leaves a tombstone. Omit for legacy non-idempotent clients.
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Optional persisted draft UUID, scoped to the authenticated administrator. Replays return the same
+            product without creating another product, SKU, price or photo. The receipt commits atomically with
+            creation; deleting the product leaves a tombstone. Omit for legacy non-idempotent clients.
         variantAttributes:
           type: object
           additionalProperties: true
-          description: Initial category-scoped attributes for the first SKU, validated with the same schema as editing. Includes summer/winter packaging and weight; unknown attributes and invalid types are rejected. Decimal values are preserved.
+          description: Initial category-scoped attributes for the first SKU, validated with the same schema as editing.
+            Includes summer/winter packaging and weight; unknown attributes and invalid types are rejected.
+            Decimal values are preserved.
           properties:
-            pot_diameter_cm: { type: number, exclusiveMinimum: 0, maximum: 500 }
-            height_cm: { type: number, exclusiveMinimum: 0, maximum: 3000 }
+            pot_diameter_cm:
+              type: number
+              exclusiveMinimum: 0
+              maximum: 500
+            height_cm:
+              type: number
+              exclusiveMinimum: 0
+              maximum: 3000
         attributes:
           additionalProperties: {}
           type: object
@@ -8021,43 +7681,186 @@ components:
             - type: "null"
         description:
           type: string
-        heightCm:
-          anyOf:
-            - type: integer
-            - type: "null"
-        image:
-          type: string
         latinName:
           type: string
         name:
           type: string
-        packageHeightCm:
-          anyOf:
-            - type: integer
-            - type: "null"
-        packageLengthCm:
-          anyOf:
-            - type: integer
-            - type: "null"
-        packageWeightGrams:
-          anyOf:
-            - type: integer
-            - type: "null"
-        packageWidthCm:
-          anyOf:
-            - type: integer
-            - type: "null"
-        potDiameterCm:
-          anyOf:
-            - type: integer
-            - type: "null"
         priceMinor:
           type: integer
-        shortDescription:
-          type: string
-        stock:
-          type: integer
       type: object
+      additionalProperties: false
+    admin.ProductUpdate:
+      properties:
+        attributes:
+          additionalProperties: {}
+          type: object
+        careInstructions:
+          anyOf:
+            - type: string
+            - type: "null"
+        careLevel:
+          anyOf:
+            - type: string
+            - type: "null"
+        catalogSection:
+          anyOf:
+            - type: string
+            - type: "null"
+        categoryId:
+          anyOf:
+            - type: integer
+            - type: "null"
+        clearCategory:
+          type: boolean
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+        featured:
+          anyOf:
+            - type: boolean
+            - type: "null"
+        growthHabit:
+          anyOf:
+            - type: string
+            - type: "null"
+        heightClass:
+          anyOf:
+            - type: string
+            - type: "null"
+        importantWarnings:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: "null"
+        latinName:
+          anyOf:
+            - type: string
+            - type: "null"
+        lightLevel:
+          anyOf:
+            - type: string
+            - type: "null"
+        name:
+          anyOf:
+            - type: string
+            - type: "null"
+        passport:
+          anyOf:
+            - $ref: "#/components/schemas/catalog.PlantPassport"
+            - type: "null"
+        petSafety:
+          anyOf:
+            - type: string
+            - type: "null"
+        placement:
+          anyOf:
+            - type: string
+            - type: "null"
+        plantKind:
+          anyOf:
+            - type: string
+            - type: "null"
+        shortDescription:
+          anyOf:
+            - type: string
+            - type: "null"
+        status:
+          anyOf:
+            - type: string
+            - type: "null"
+        variants:
+          items:
+            $ref: "#/components/schemas/admin.VariantEdit"
+          type: array
+        watering:
+          anyOf:
+            - type: string
+            - type: "null"
+      type: object
+      additionalProperties: false
+    catalog.PlantPassport:
+      properties:
+        careDifficulty:
+          type: string
+        faq:
+          items:
+            $ref: "#/components/schemas/catalog.FAQItem"
+          type: array
+        fertilizer:
+          type: string
+        growthRate:
+          type: string
+        humidity:
+          type: string
+        lighting:
+          type: string
+        matureSize:
+          type: string
+        origin:
+          type: string
+        pests:
+          type: string
+        problems:
+          type: string
+        repotting:
+          type: string
+        soil:
+          type: string
+        temperature:
+          type: string
+        toxicity:
+          type: string
+        watering:
+          type: string
+      type: object
+    catalog.FAQItem:
+      properties:
+        answer:
+          type: string
+        question:
+          type: string
+      type: object
+    admin.VariantEdit:
+      properties:
+        active:
+          anyOf:
+            - type: boolean
+            - type: "null"
+        archived:
+          anyOf:
+            - type: boolean
+            - type: "null"
+        attributes:
+          additionalProperties: {}
+          type: object
+        externalIds:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/admin.ExternalID"
+              type: array
+            - type: "null"
+        id:
+          type: integer
+        label:
+          anyOf:
+            - type: string
+            - type: "null"
+        priceMinor:
+          anyOf:
+            - type: integer
+            - type: "null"
+        remove:
+          type: boolean
+          description: Owner-only deletion or archival after checking current links. Managers can edit only id, label
+            and attributes.
+        wholesaleMinQty:
+          anyOf:
+            - type: integer
+            - type: "null"
+      type: object
+      additionalProperties: false
     admin.PublishedMergeRequest:
       properties:
         expectedSkus:
@@ -8219,53 +8022,6 @@ components:
         quantity:
           type: integer
       type: object
-    admin.SupplierAccountInput:
-      properties:
-        comment:
-          type: string
-        kind:
-          type: string
-        linkedTopupId:
-          anyOf:
-            - type: integer
-            - type: "null"
-        operationDate:
-          type: string
-        originalAmountEur:
-          type: number
-        procurementOrderId:
-          anyOf:
-            - type: integer
-            - type: "null"
-        sourceReference:
-          type: string
-      type: object
-    admin.SupplierReconciliationInput:
-      properties:
-        comment:
-          type: string
-        date:
-          type: string
-        originalBalanceEur:
-          type: number
-        reservedEur:
-          anyOf:
-            - type: number
-            - type: "null"
-        sourceReference:
-          type: string
-      type: object
-    admin.TaxPeriodInput:
-      properties:
-        actualTax:
-          type: number
-        from:
-          type: string
-        source:
-          type: string
-        to:
-          type: string
-      type: object
     admin.VariantInput:
       properties:
         active:
@@ -8286,37 +8042,12 @@ components:
         wholesaleMinQty:
           type: integer
       type: object
-    analytics.Attribution:
-      properties:
-        analyticsAllowed:
-          type: boolean
-        campaign:
-          type: string
-        content:
-          type: string
-        medium:
-          type: string
-        metrikaClientId:
-          type: string
-        metrikaCounterId:
-          type: string
-        metrikaServer:
-          type: boolean
-        referrer:
-          type: string
-        sessionId:
-          type: string
-        source:
-          type: string
-        term:
-          type: string
-        visitorId:
-          type: string
-      type: object
     auth.User:
+      required: [id, email, phone, fullName, accountType, wholesaleStatus, retailDiscountBps, lifetimeSpendMinor]
       properties:
         accountType:
           type: string
+          enum: [retail, wholesale]
         adminRole:
           type: string
         avatarUpdatedAt:
@@ -8329,10 +8060,13 @@ components:
           type: string
         id:
           type: integer
+          format: int64
         lastName:
           type: string
         lifetimeSpendMinor:
           type: integer
+          format: int64
+          description: Сумма выполненных заказов в копейках; кабинет использует её для расчёта следующей ступени скидки.
         patronymic:
           type: string
         phone:
@@ -8349,54 +8083,6 @@ components:
             type: integer
           type: array
       type: object
-    httpapi.createOrderBody:
-      properties:
-        attribution:
-          $ref: "#/components/schemas/analytics.Attribution"
-        cdek:
-          properties:
-            cityCode:
-              type: integer
-            cityName:
-              type: string
-            officeCode:
-              type: string
-            repack:
-              type: boolean
-            tariffCode:
-              type: integer
-          type: object
-        consent:
-          type: boolean
-        customer:
-          properties:
-            address:
-              type: string
-            comment:
-              type: string
-            email:
-              type: string
-            name:
-              type: string
-            phone:
-              type: string
-          type: object
-        delivery:
-          type: string
-        items:
-          items:
-            properties:
-              id:
-                type: string
-              quantity:
-                type: integer
-            type: object
-          type: array
-        offerAccepted:
-          type: boolean
-        paymentMethod:
-          type: string
-      type: object
     httpapi.profileBody:
       properties:
         deliveryAddress:
@@ -8408,13 +8094,6 @@ components:
         lastName:
           type: string
         patronymic:
-          type: string
-      type: object
-    httpapi.requestCodeBody:
-      properties:
-        flow:
-          type: string
-        phone:
           type: string
       type: object
     httpapi.subscriptionBody:
@@ -8432,37 +8111,6 @@ components:
             p256dh:
               type: string
           type: object
-      type: object
-    httpapi.verifyCodeBody:
-      properties:
-        accountType:
-          type: string
-        checkId:
-          type: string
-        companyName:
-          type: string
-        consent:
-          type: boolean
-        deliveryAddress:
-          type: string
-        email:
-          type: string
-        flow:
-          type: string
-        fullName:
-          type: string
-        inn:
-          type: string
-        kpp:
-          type: string
-        lastName:
-          type: string
-        legalAddress:
-          type: string
-        patronymic:
-          type: string
-        phone:
-          type: string
       type: object
     order.Detail:
       properties:
@@ -8578,6 +8226,7 @@ components:
           $ref: "#/components/schemas/RUBAmount"
       type: object
     order.Summary:
+      required: [orderNumber, deliveryMethod, total, status, createdAt, itemsCount]
       properties:
         createdAt:
           format: date-time
@@ -8960,18 +8609,10 @@ components:
       type: object
     procurement.PricingSettings:
       properties:
-        avoidRoundHundreds:
-          type: boolean
         defaultExchangeRate:
-          type: number
-        domesticRetailMultiplier:
           type: number
         economics:
           $ref: "#/components/schemas/procurement.PricingEconomics"
-        internationalCostMultiplier:
-          type: number
-        internationalRetailMultiplier:
-          type: number
         marketplaceCostRate:
           type: number
         marketplaceLogisticsPerCm:
@@ -8988,8 +8629,6 @@ components:
           type: number
         retailMarkupMultiplier:
           type: number
-        retailRoundStep:
-          type: integer
         returnLossRate:
           type: number
         roundPrices:
@@ -9098,15 +8737,16 @@ components:
           type: string
       type: object
     procurement.SalesLink:
+      additionalProperties: false
+      required: [variantId]
       properties:
         channel:
           type: string
         externalId:
           type: string
-        sabyId:
-          type: string
         variantId:
           type: integer
+          minimum: 1
       type: object
     procurement.SupplierCreate:
       properties:
@@ -9156,11 +8796,12 @@ components:
           type: number
       type: object
     procurement.UnitPriceInput:
+      required: [mode]
       properties:
         mode:
           type: string
-          enum: ["", cost, retail]
-          description: Omitted for legacy input; cost uses landed cost, retail uses the exact store price.
+          enum: [cost, retail]
+          description: Explicit calculation mode is required. cost uses landed cost; retail uses the exact store price.
         markupRate:
           anyOf:
             - type: number

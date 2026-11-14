@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -28,7 +27,6 @@ const (
 	PermissionPaymentsManage   = "payments.manage"
 	PermissionProductsRead     = "products.read"
 	PermissionProductsEdit     = "products.edit"
-	PermissionProductsSync     = "products.sync"
 	PermissionProductsManage   = "products.manage"
 	PermissionDelete           = "catalog.delete"
 	PermissionReturnsDelete    = "returns.delete"
@@ -180,52 +178,46 @@ type OrderItem struct {
 }
 
 type Product struct {
-	TotalStock         int        `json:"totalStock"`
-	MinPrice           float64    `json:"minPrice"`
-	MaxPrice           float64    `json:"maxPrice"`
-	VariantsReady      bool       `json:"variantsReady"`
-	VariantTasks       []string   `json:"variantTasks"`
-	VariantCount       int        `json:"variantCount"`
-	StockUpdatedAt     *time.Time `json:"stockUpdatedAt"`
-	UpdatedAt          time.Time  `json:"updatedAt"`
-	ID                 int64      `json:"id"`
-	SabyID             string     `json:"sabyId"`
-	Slug               string     `json:"slug"`
-	ProductCode        string     `json:"productCode"`
-	Name               string     `json:"name"`
-	LatinName          string     `json:"latinName"`
-	ShortDescription   string     `json:"shortDescription"`
-	Description        string     `json:"description"`
-	CareInstructions   string     `json:"careInstructions"`
-	Status             string     `json:"status"`
-	Featured           bool       `json:"featured"`
-	CatalogSection     string     `json:"catalogSection"`
-	PlantKind          string     `json:"plantKind"`
-	LightLevel         string     `json:"lightLevel"`
-	Watering           string     `json:"watering"`
-	HeightClass        string     `json:"heightClass"`
-	CareLevel          string     `json:"careLevel"`
-	Placement          string     `json:"placement"`
-	PetSafety          string     `json:"petSafety"`
-	GrowthHabit        string     `json:"growthHabit"`
-	Image              string     `json:"image"`
-	Price              float64    `json:"price"`
-	Stock              int        `json:"stock"`
-	SKU                string     `json:"sku"`
-	VariantLabel       string     `json:"variantLabel"`
-	HeightCM           *int       `json:"heightCm"`
-	PotDiameterCM      *int       `json:"potDiameterCm"`
-	PackageLengthCM    *int       `json:"packageLengthCm"`
-	PackageWidthCM     *int       `json:"packageWidthCm"`
-	PackageHeightCM    *int       `json:"packageHeightCm"`
-	PackageWeightGrams *int       `json:"packageWeightGrams"`
-	WholesaleMinQty    int        `json:"wholesaleMinQty"`
-	OverrideFields     []string   `json:"overrideFields"`
-	// SabyFields — что этому товару разрешено брать из СБИС. Пусто значит
-	// «ничего»: карточка целиком наша.
-	SabyFields           []string              `json:"sabyFields"`
+	TotalStock           int                   `json:"totalStock"`
+	MinPrice             float64               `json:"minPrice"`
+	MaxPrice             float64               `json:"maxPrice"`
+	VariantsReady        bool                  `json:"variantsReady"`
+	VariantTasks         []string              `json:"variantTasks"`
+	VariantCount         int                   `json:"variantCount"`
+	StockUpdatedAt       *time.Time            `json:"stockUpdatedAt"`
+	UpdatedAt            time.Time             `json:"updatedAt"`
+	ID                   int64                 `json:"id"`
+	Slug                 string                `json:"slug"`
+	ProductCode          string                `json:"productCode"`
+	Name                 string                `json:"name"`
+	LatinName            string                `json:"latinName"`
+	ShortDescription     string                `json:"shortDescription"`
+	Description          string                `json:"description"`
+	CareInstructions     string                `json:"careInstructions"`
+	Status               string                `json:"status"`
+	Featured             bool                  `json:"featured"`
+	CatalogSection       string                `json:"catalogSection"`
+	PlantKind            string                `json:"plantKind"`
+	LightLevel           string                `json:"lightLevel"`
+	Watering             string                `json:"watering"`
+	HeightClass          string                `json:"heightClass"`
+	CareLevel            string                `json:"careLevel"`
+	Placement            string                `json:"placement"`
+	PetSafety            string                `json:"petSafety"`
+	GrowthHabit          string                `json:"growthHabit"`
+	Image                string                `json:"image"`
+	Price                float64               `json:"price"`
+	Stock                int                   `json:"stock"`
+	SKU                  string                `json:"sku"`
+	VariantLabel         string                `json:"variantLabel"`
+	HeightCM             *int                  `json:"heightCm"`
+	PotDiameterCM        *int                  `json:"potDiameterCm"`
+	PackageLengthCM      *int                  `json:"packageLengthCm"`
+	PackageWidthCM       *int                  `json:"packageWidthCm"`
+	PackageHeightCM      *int                  `json:"packageHeightCm"`
+	PackageWeightGrams   *int                  `json:"packageWeightGrams"`
+	WholesaleMinQty      int                   `json:"wholesaleMinQty"`
 	SabyCode             string                `json:"sabyCode"`
-	SabyUpdatedAt        *time.Time            `json:"sabyUpdatedAt"`
 	CategoryID           *int64                `json:"categoryId"`
 	Passport             catalog.PlantPassport `json:"passport"`
 	ImportantWarnings    []string              `json:"importantWarnings"`
@@ -252,63 +244,41 @@ type MediaHealth struct {
 }
 
 type ProductUpdate struct {
-	Variants           []VariantEdit          `json:"variants"`
-	Name               *string                `json:"name"`
-	LatinName          *string                `json:"latinName"`
-	ShortDescription   *string                `json:"shortDescription"`
-	Description        *string                `json:"description"`
-	CareInstructions   *string                `json:"careInstructions"`
-	Status             *string                `json:"status"`
-	Featured           *bool                  `json:"featured"`
-	CatalogSection     *string                `json:"catalogSection"`
-	PlantKind          *string                `json:"plantKind"`
-	LightLevel         *string                `json:"lightLevel"`
-	Watering           *string                `json:"watering"`
-	HeightClass        *string                `json:"heightClass"`
-	CareLevel          *string                `json:"careLevel"`
-	Placement          *string                `json:"placement"`
-	PetSafety          *string                `json:"petSafety"`
-	GrowthHabit        *string                `json:"growthHabit"`
-	Image              *string                `json:"image"`
-	PriceMinor         *int64                 `json:"priceMinor"`
-	VariantLabel       *string                `json:"variantLabel"`
-	HeightCM           *int                   `json:"heightCm"`
-	PotDiameterCM      *int                   `json:"potDiameterCm"`
-	PackageLengthCM    *int                   `json:"packageLengthCm"`
-	PackageWidthCM     *int                   `json:"packageWidthCm"`
-	PackageHeightCM    *int                   `json:"packageHeightCm"`
-	PackageWeightGrams *int                   `json:"packageWeightGrams"`
-	WholesaleMinQty    *int                   `json:"wholesaleMinQty"`
-	Stock              *int                   `json:"stock"`
-	SabyFields         *[]string              `json:"sabyFields"`
-	CategoryID         *int64                 `json:"categoryId"`
-	ClearCategory      bool                   `json:"clearCategory"`
-	Passport           *catalog.PlantPassport `json:"passport"`
-	ImportantWarnings  *[]string              `json:"importantWarnings"`
-	Attributes         map[string]any         `json:"attributes"`
-	ExternalIDs        *[]ExternalID          `json:"externalIds"`
+	Variants          []VariantEdit          `json:"variants"`
+	Name              *string                `json:"name"`
+	LatinName         *string                `json:"latinName"`
+	ShortDescription  *string                `json:"shortDescription"`
+	Description       *string                `json:"description"`
+	CareInstructions  *string                `json:"careInstructions"`
+	Status            *string                `json:"status"`
+	Featured          *bool                  `json:"featured"`
+	CatalogSection    *string                `json:"catalogSection"`
+	PlantKind         *string                `json:"plantKind"`
+	LightLevel        *string                `json:"lightLevel"`
+	Watering          *string                `json:"watering"`
+	HeightClass       *string                `json:"heightClass"`
+	CareLevel         *string                `json:"careLevel"`
+	Placement         *string                `json:"placement"`
+	PetSafety         *string                `json:"petSafety"`
+	GrowthHabit       *string                `json:"growthHabit"`
+	CategoryID        *int64                 `json:"categoryId"`
+	ClearCategory     bool                   `json:"clearCategory"`
+	Passport          *catalog.PlantPassport `json:"passport"`
+	ImportantWarnings *[]string              `json:"importantWarnings"`
+	Attributes        map[string]any         `json:"attributes"`
 }
 
 // ProductCreate — карточка, заведённая в магазине с нуля.
 type ProductCreate struct {
-	CreationID         string         `json:"creationId,omitempty"`
-	VariantAttributes  map[string]any `json:"variantAttributes"`
-	Name               string         `json:"name"`
-	LatinName          string         `json:"latinName"`
-	ShortDescription   string         `json:"shortDescription"`
-	Description        string         `json:"description"`
-	CatalogSection     string         `json:"catalogSection"`
-	CategoryID         *int64         `json:"categoryId"`
-	PriceMinor         int64          `json:"priceMinor"`
-	Stock              int            `json:"stock"`
-	Image              string         `json:"image"`
-	HeightCM           *int           `json:"heightCm"`
-	PotDiameterCM      *int           `json:"potDiameterCm"`
-	PackageLengthCM    *int           `json:"packageLengthCm"`
-	PackageWidthCM     *int           `json:"packageWidthCm"`
-	PackageHeightCM    *int           `json:"packageHeightCm"`
-	PackageWeightGrams *int           `json:"packageWeightGrams"`
-	Attributes         map[string]any `json:"attributes"`
+	CreationID        string         `json:"creationId,omitempty"`
+	VariantAttributes map[string]any `json:"variantAttributes"`
+	Name              string         `json:"name"`
+	LatinName         string         `json:"latinName"`
+	Description       string         `json:"description"`
+	CatalogSection    string         `json:"catalogSection"`
+	CategoryID        *int64         `json:"categoryId"`
+	PriceMinor        int64          `json:"priceMinor"`
+	Attributes        map[string]any `json:"attributes"`
 }
 
 // ImportRequest — массовый импорт из справочника СБИС по кодам товаров.
@@ -348,9 +318,7 @@ type Category struct {
 	Name          string `json:"name"`
 	Slug          string `json:"slug"`
 	SortOrder     int    `json:"sortOrder"`
-	Icon          string `json:"icon"`
 	ProductsCount int    `json:"productsCount"`
-	ChildrenCount int    `json:"childrenCount"`
 }
 
 type CategoryCreate struct {
@@ -385,16 +353,6 @@ type CategoryAttribute struct {
 	SortOrder         int               `json:"sortOrder"`
 }
 
-type SyncRequest struct {
-	ProductIDs []int64  `json:"productIds"`
-	Fields     []string `json:"fields"`
-}
-
-type SyncResult struct {
-	Updated int     `json:"updated"`
-	Skipped []int64 `json:"skipped"`
-}
-
 type DeleteDraftProductsRequest struct {
 	ProductIDs []int64 `json:"productIds"`
 }
@@ -412,23 +370,6 @@ type BulkPublishBlocked struct {
 type BulkPublishResult struct {
 	Published []int64              `json:"published"`
 	Blocked   []BulkPublishBlocked `json:"blocked"`
-}
-
-type Repository interface {
-	Dashboard(context.Context) (Dashboard, error)
-	ListCustomers(context.Context) ([]Customer, error)
-	UpdateCustomer(context.Context, Actor, int64, CustomerUpdate) (Customer, error)
-	ListOrders(context.Context) ([]Order, error)
-	UpdateOrderStatus(context.Context, Actor, int64, string, string) (Order, error)
-	ListProducts(context.Context) ([]Product, error)
-	UpdateProduct(context.Context, Actor, int64, ProductUpdate) (Product, error)
-	CreateProduct(context.Context, Actor, ProductCreate) (Product, error)
-	ImportProducts(context.Context, Actor, ImportRequest) (ImportResult, error)
-	SyncProducts(context.Context, Actor, SyncRequest) (SyncResult, error)
-	ListCategories(context.Context) ([]Category, error)
-	CreateCategory(context.Context, Actor, CategoryCreate) (Category, error)
-	UpdateCategory(context.Context, Actor, int64, CategoryUpdate) (Category, error)
-	DeleteCategory(context.Context, Actor, int64) error
 }
 
 type CustomerPage struct {

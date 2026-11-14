@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -17,20 +16,10 @@ func ValidateProductUpdate(actor Actor, update ProductUpdate) error {
 	if err := validateVariantEdits(actor, update.Variants); err != nil {
 		return err
 	}
-	if update.SabyFields != nil {
-		for _, field := range *update.SabyFields {
-			if field != "stock" {
-				return fmt.Errorf("%w: из СБИС поступает только остаток; контент и цена хранятся на сайте", ErrInvalidInput)
-			}
-		}
-	}
-	if actor.Role != RoleOwner && (update.Stock != nil || update.SabyFields != nil) {
-		return ErrForbidden
-	}
 	if Can(actor.Role, PermissionProductsManage) {
 		return nil
 	}
-	if update.PriceMinor != nil || update.Stock != nil || update.SabyFields != nil || update.ExternalIDs != nil || update.WholesaleMinQty != nil || update.Image != nil || update.Status != nil && *update.Status == "archived" {
+	if update.Status != nil && *update.Status == "archived" {
 		return ErrForbidden
 	}
 	return nil
@@ -55,60 +44,4 @@ func validateManagerAttributes(ctx context.Context, tx pgx.Tx, actor Actor, valu
 		}
 	}
 	return nil
-}
-
-type VariantContentUpdate struct {
-	Label      *string        `json:"label"`
-	Attributes map[string]any `json:"attributes"`
-}
-
-// UpdateVariantContent cannot write prices, stock, identity, activation or mappings.
-// Lock and validate the whole request inside one transaction before saving.
-func (repository *PostgresRepository) UpdateVariantContent(ctx context.Context, actor Actor, variantID int64, input VariantContentUpdate) (AdminVariant, error) {
-	if !Can(actor.Role, PermissionProductsEdit) {
-		return AdminVariant{}, ErrForbidden
-	}
-	if input.Label != nil && strings.TrimSpace(*input.Label) == "" {
-		return AdminVariant{}, fmt.Errorf("%w: укажите название варианта", ErrInvalidInput)
-	}
-	tx, err := repository.pool.Begin(ctx)
-	if err != nil {
-		return AdminVariant{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	var productID int64
-	var active bool
-	if err = tx.QueryRow(ctx, `SELECT product_id,is_active<>0 FROM product_variants WHERE id=$1 FOR UPDATE`, variantID).Scan(&productID, &active); err != nil {
-		return AdminVariant{}, err
-	}
-	if err = validateManagerAttributes(ctx, tx, actor, input.Attributes); err != nil {
-		return AdminVariant{}, err
-	}
-	if err = saveVariantPIMValues(ctx, tx, productID, variantID, input.Attributes); err != nil {
-		return AdminVariant{}, err
-	}
-	if active {
-		if err = validateRequiredVariantAttributes(ctx, tx, productID, variantID); err != nil {
-			return AdminVariant{}, err
-		}
-	}
-	if _, err = tx.Exec(ctx, `UPDATE product_variants SET label=COALESCE(BTRIM($2),label),updated_at=CURRENT_TIMESTAMP WHERE id=$1`, variantID, input.Label); err != nil {
-		return AdminVariant{}, err
-	}
-	if err = insertAudit(ctx, tx, actor, "variant.content.update", "variant", fmt.Sprint(variantID), nil, input); err != nil {
-		return AdminVariant{}, err
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return AdminVariant{}, err
-	}
-	items, err := repository.ListProductVariants(ctx, productID)
-	if err != nil {
-		return AdminVariant{}, err
-	}
-	for _, item := range items {
-		if item.ID == variantID {
-			return item, nil
-		}
-	}
-	return AdminVariant{}, pgx.ErrNoRows
 }

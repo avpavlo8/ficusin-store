@@ -28,7 +28,6 @@ var migrationSources = []migrationSource{
 	{"avatars", "customers", "avatar_object_key", "avatar_image", "COALESCE(avatar_mime,'application/octet-stream')", ""},
 	{"returns", "marketplace_return_photos", "object_key", "image", "content_type", ""},
 	{"procurement", "procurement_documents", "object_key", "content", "content_type", ""},
-	{"finance", "finance_imports", "object_key", "source_file", "CASE WHEN source_format='pdf' THEN 'application/pdf' ELSE 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' END", ""},
 	{"chat", "support_messages", "object_key", "image_data", "COALESCE(image_type,'application/octet-stream')", ",attachment_size=octet_length(image_data)"},
 	{"reviews", "product_review_photos", "object_key", "image", "content_type", ",storage_scope='private'"},
 }

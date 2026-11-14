@@ -7,9 +7,7 @@ const CookieName = "ficusin_session"
 var (
 	ErrAccountExists               = errors.New("account already exists")
 	ErrAccountNotFound             = errors.New("account not found")
-	ErrInvalidCredentials          = errors.New("invalid credentials")
 	ErrInvalidCode                 = errors.New("invalid or expired code")
-	ErrTooManyAttempts             = errors.New("too many attempts")
 	ErrRegistrationDetailsRequired = errors.New("registration details required")
 	ErrRequestTooSoon              = errors.New("code was requested too recently")
 	ErrEmailTaken                  = errors.New("email already belongs to another account")
@@ -58,14 +56,13 @@ type User struct {
 }
 
 // Registration carries the details needed the first time a phone number
-// completes OTP verification. Only FullName, Phone and AccountType are
+// completes call verification. Only FullName and AccountType are
 // required; everything else can be filled in later from the account page.
 type Registration struct {
 	Flow            string
 	FullName        string
 	LastName        string
 	Patronymic      string
-	Phone           string
 	Email           string
 	DeliveryAddress string
 	AccountType     string

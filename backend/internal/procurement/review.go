@@ -20,13 +20,7 @@ func (service *Service) UpdateSupplier(ctx context.Context, actor Actor, id int6
 		return Supplier{}, ErrInvalidInput
 	}
 	input.SupplierCreate = normalized
-	store, ok := service.store.(interface {
-		UpdateSupplier(context.Context, Actor, int64, SupplierUpdate) (Supplier, error)
-	})
-	if !ok {
-		return Supplier{}, ErrInvalidInput
-	}
-	return store.UpdateSupplier(ctx, actor, id, input)
+	return service.store.UpdateSupplier(ctx, actor, id, input)
 }
 
 func (store *PostgresStore) UpdateSupplier(ctx context.Context, actor Actor, id int64, input SupplierUpdate) (Supplier, error) {
@@ -64,13 +58,10 @@ func (store *PostgresStore) UpdateSupplier(ctx context.Context, actor Actor, id 
 }
 
 func (service *Service) DocumentPDF(ctx context.Context, id int64) ([]byte, error) {
-	store, ok := service.store.(interface {
-		DocumentPDF(context.Context, int64) ([]byte, error)
-	})
-	if !ok || id <= 0 {
+	if id <= 0 {
 		return nil, ErrInvalidInput
 	}
-	return store.DocumentPDF(ctx, id)
+	return service.store.DocumentPDF(ctx, id)
 }
 
 func (store *PostgresStore) DocumentPDF(ctx context.Context, id int64) ([]byte, error) {
@@ -96,13 +87,7 @@ func (service *Service) ProductPage(ctx context.Context, supplier int64, query, 
 	if limit < 1 || limit > 100 || offset < 0 {
 		return ProductPage{}, ErrInvalidInput
 	}
-	store, ok := service.store.(interface {
-		ProductPage(context.Context, int64, string, string, int, int) (ProductPage, error)
-	})
-	if !ok {
-		return ProductPage{}, ErrInvalidInput
-	}
-	return store.ProductPage(ctx, supplier, query, folder, limit, offset)
+	return service.store.ProductPage(ctx, supplier, query, folder, limit, offset)
 }
 func (store *PostgresStore) ProductPage(ctx context.Context, supplier int64, query, folder string, limit, offset int) (ProductPage, error) {
 	items, total, err := store.listProductPage(ctx, supplier, query, folder, limit, offset)

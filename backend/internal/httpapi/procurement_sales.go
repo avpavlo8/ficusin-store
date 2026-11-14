@@ -9,12 +9,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
 )
 
-// salesLinkService — узкое дополнение к procurementService: разбор продаж,
-// которым не нашлось товара.
-//
-// Отдельным интерфейсом с приведением типа, чтобы не расширять
-// procurementService: его реализует ещё и заглушка в тестах, и каждый новый
-// метод там стоит правки, никак с задачей не связанной.
+// Sales linking is part of the current procurement HTTP contract.
 type salesLinkService interface {
 	UnlinkedSales(context.Context, string) ([]procurement.UnlinkedSale, error)
 	SearchLinkableNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
@@ -26,16 +21,15 @@ type ignoredSalesService interface {
 	IgnoreSalesProduct(context.Context, procurement.Actor, string, string, bool) error
 }
 
-// salesLinking отвечает, умеет ли текущая сборка разбирать продажи руками.
+// Keep the unavailable response when the entire procurement dependency is absent.
 func (handlers procurementHandlers) salesLinking(response http.ResponseWriter) (salesLinkService, bool) {
-	service, able := handlers.service.(salesLinkService)
-	if !able {
+	if handlers.service == nil {
 		writeJSON(response, http.StatusServiceUnavailable, errorResponse{
 			Error: "Разбор продаж пока недоступен",
 		})
 		return nil, false
 	}
-	return service, true
+	return handlers.service, true
 }
 
 func (handlers procurementHandlers) unlinkedSales(response http.ResponseWriter, request *http.Request) {
@@ -49,11 +43,7 @@ func (handlers procurementHandlers) unlinkedSales(response http.ResponseWriter, 
 	var items []procurement.UnlinkedSale
 	var err error
 	if request.URL.Query().Get("ignored") == "1" {
-		if ignored, ok := handlers.service.(ignoredSalesService); ok {
-			items, err = ignored.UnlinkedSalesWithIgnored(request.Context(), request.URL.Query().Get("channel"))
-		} else {
-			items, err = service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
-		}
+		items, err = handlers.service.UnlinkedSalesWithIgnored(request.Context(), request.URL.Query().Get("channel"))
 	} else {
 		items, err = service.UnlinkedSales(request.Context(), request.URL.Query().Get("channel"))
 	}
@@ -69,8 +59,7 @@ func (handlers procurementHandlers) ignoreSales(response http.ResponseWriter, re
 	if !ok {
 		return
 	}
-	service, able := handlers.service.(ignoredSalesService)
-	if !able {
+	if handlers.service == nil {
 		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Исключение продаж пока недоступно"})
 		return
 	}
@@ -83,7 +72,7 @@ func (handlers procurementHandlers) ignoreSales(response http.ResponseWriter, re
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный товар для исключения"})
 		return
 	}
-	if err := service.IgnoreSalesProduct(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input.Channel, input.ExternalID, input.Ignored); err != nil {
+	if err := handlers.service.IgnoreSalesProduct(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, input.Channel, input.ExternalID, input.Ignored); err != nil {
 		handlers.failed(response, "ignore procurement sales", err)
 		return
 	}

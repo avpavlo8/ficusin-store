@@ -16,11 +16,11 @@ type procurementDraftService interface {
 }
 
 func (handlers procurementHandlers) draftService(response http.ResponseWriter) (procurementDraftService, bool) {
-	service, ok := handlers.service.(procurementDraftService)
-	if !ok {
+	service := handlers.service
+	if service == nil {
 		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Черновики пока недоступны"})
 	}
-	return service, ok
+	return service, service != nil
 }
 
 func (handlers procurementHandlers) loadPlanDraft(response http.ResponseWriter, request *http.Request) {

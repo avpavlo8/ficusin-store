@@ -8,6 +8,8 @@ import (
 )
 
 type storeStub struct {
+	catalogCache      map[string][]ChannelProduct
+	syncRequests      []string
 	planInput         PlanCreate
 	supplierInput     SupplierCreate
 	orderInput        OrderCreate
@@ -100,8 +102,23 @@ func (stub *storeStub) SetExclusion(_ context.Context, _ Actor, input ExclusionU
 func (stub *storeStub) LinkChannelProducts(_ context.Context, _ Actor, channel string, items []ChannelProduct) (ChannelLinkResult, error) {
 	return ChannelLinkResult{Channel: channel, Fetched: len(items)}, nil
 }
-func (stub *storeStub) RememberChannelProducts(context.Context, string, []ChannelProduct) error {
-	return nil
+func (*storeStub) RememberChannelProducts(context.Context, string, []ChannelProduct) error {
+	panic("unexpected catalogue cache write in this service fixture")
+}
+func (*storeStub) ListUnlinkedSales(context.Context, string, int) ([]UnlinkedSale, error) {
+	panic("unexpected manual sales list in this service fixture")
+}
+func (*storeStub) LinkSalesProduct(context.Context, Actor, SalesLink) (SalesLinkResult, error) {
+	panic("unexpected manual sales link in this service fixture")
+}
+func (*storeStub) SearchLinkableNomenclature(context.Context, string) ([]NomenclatureCandidate, error) {
+	panic("unexpected manual sales search in this service fixture")
+}
+func (*storeStub) IgnoreSalesProduct(context.Context, Actor, string, string, bool) error {
+	panic("unexpected manual sales ignore in this service fixture")
+}
+func (*storeStub) ListUnlinkedSalesIncludingIgnored(context.Context, string, int) ([]UnlinkedSale, error) {
+	panic("unexpected ignored sales list in this service fixture")
 }
 
 func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind string, channels []string) (ActionBatch, error) {
@@ -110,10 +127,6 @@ func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind st
 }
 func (stub *storeStub) ApproveBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
 	return ActionBatch{ID: batchID}, nil
-}
-func (stub *storeStub) ClaimAction(context.Context, string) (*ActionItem, error) { return nil, nil }
-func (stub *storeStub) FinishAction(context.Context, int64, string, int64, ActionExecution, error) (bool, error) {
-	return true, nil
 }
 func (stub *storeStub) RetryBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
 	return ActionBatch{ID: batchID}, nil
@@ -125,9 +138,7 @@ func (stub *storeStub) ListIntegrationHealth(context.Context) ([]IntegrationHeal
 type sabyRefreshExecutorStub struct{ refreshCalls int }
 
 func (stub *sabyRefreshExecutorStub) Configured(channel string) bool { return channel == "saby" }
-func (*sabyRefreshExecutorStub) Execute(context.Context, ActionItem) (ActionExecution, error) {
-	return ActionExecution{}, nil
-}
+
 func (stub *sabyRefreshExecutorStub) RefreshSabyCatalog(context.Context) (ChannelLinkResult, error) {
 	stub.refreshCalls++
 	return ChannelLinkResult{Channel: "saby", Fetched: 10, Linked: 10}, nil
@@ -136,9 +147,7 @@ func (stub *sabyRefreshExecutorStub) RefreshSabyCatalog(context.Context) (Channe
 type probeExecutorStub struct{ probeCalls int }
 
 func (*probeExecutorStub) Configured(string) bool { return true }
-func (*probeExecutorStub) Execute(context.Context, ActionItem) (ActionExecution, error) {
-	return ActionExecution{}, nil
-}
+
 func (stub *probeExecutorStub) Probe(context.Context, string) error {
 	stub.probeCalls++
 	return nil
@@ -161,7 +170,7 @@ func (stub parserStub) Parse([]byte) (ParsedDocument, error) { return stub.resul
 func TestCreateSupplierNormalizesInput(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
-	_, err := NewService(store).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
+	_, err := NewServiceWithExecutor(store, nil).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
 		Name: "  ТК Ярославский ", Kind: KindDomestic, CountryCode: "ru", DefaultCurrency: "rub",
 		TaxID: "7627031650", KPP: "762701001",
 	})
@@ -175,7 +184,7 @@ func TestCreateSupplierNormalizesInput(t *testing.T) {
 
 func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
 	t.Parallel()
-	store := &storeStub{}
+	store := &storeStub{catalogCache: map[string][]ChannelProduct{"ozon": {{ExternalID: "cached-offer"}}}}
 	service := NewServiceWithExecutor(store, channelCatalogStub{})
 	_, err := service.PrepareBatch(context.Background(), Actor{}, 12, "prices", []string{"saby_price", "ozon", "ozon", "unknown"})
 	if err != nil {
@@ -188,14 +197,14 @@ func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
 
 func TestPrepareReceiptDoesNotSynchronouslyRefreshSaby(t *testing.T) {
 	t.Parallel()
-	store := &storeStub{}
+	store := &storeStub{syncRequests: []string{}}
 	executor := &sabyRefreshExecutorStub{}
 	service := NewServiceWithExecutor(store, executor)
 	batch, err := service.PrepareBatch(context.Background(), Actor{}, 18, "receipt", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if batch.Kind != "receipt" || executor.refreshCalls != 0 {
+	if batch.Kind != "receipt" || executor.refreshCalls != 0 || len(store.syncRequests) != 1 || store.syncRequests[0] != "saby/catalog" {
 		t.Fatalf("batch=%+v refreshCalls=%d; HTTP preparation must not call Saby catalogue directly", batch, executor.refreshCalls)
 	}
 }
@@ -217,7 +226,7 @@ func TestWildberriesConnectionCheckReadsMirrorWithoutCallingAPI(t *testing.T) {
 func TestDeleteSupplierValidatesID(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
-	service := NewService(store)
+	service := NewServiceWithExecutor(store, nil)
 	if err := service.DeleteSupplier(context.Background(), Actor{}, 0); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
@@ -228,7 +237,7 @@ func TestDeleteSupplierValidatesID(t *testing.T) {
 
 func TestDeleteOrderValidatesID(t *testing.T) {
 	store := &storeStub{}
-	service := NewService(store)
+	service := NewServiceWithExecutor(store, nil)
 	if err := service.DeleteOrder(context.Background(), Actor{}, 0); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("error = %v", err)
 	}
@@ -239,7 +248,7 @@ func TestDeleteOrderValidatesID(t *testing.T) {
 
 func TestCreateSupplierRejectsUnknownCurrency(t *testing.T) {
 	t.Parallel()
-	_, err := NewService(&storeStub{}).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
+	_, err := NewServiceWithExecutor(&storeStub{}, nil).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
 		Name: "Поставщик", Kind: KindDomestic, DefaultCurrency: "CNY",
 	})
 	if !errors.Is(err, ErrInvalidInput) {
@@ -249,7 +258,7 @@ func TestCreateSupplierRejectsUnknownCurrency(t *testing.T) {
 
 func TestCreateOrderRequiresSupplier(t *testing.T) {
 	t.Parallel()
-	_, err := NewService(&storeStub{}).CreateOrder(context.Background(), Actor{}, OrderCreate{
+	_, err := NewServiceWithExecutor(&storeStub{}, nil).CreateOrder(context.Background(), Actor{}, OrderCreate{
 		SourceKind: SourceManual, Currency: "EUR",
 	})
 	if !errors.Is(err, ErrInvalidInput) {
@@ -261,7 +270,7 @@ func TestImportDocumentValidatesAndDelegatesParsedPDF(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
 	parsed := ParsedDocument{ParserKind: "domestic_payment_invoice", Lines: []ParsedLine{{RawName: "Фикус"}}}
-	result, err := NewServiceWithParser(store, parserStub{result: parsed}).ImportDocument(
+	result, err := newServiceWithParser(store, parserStub{result: parsed}).ImportDocument(
 		context.Background(), Actor{}, DocumentUpload{
 			SupplierID: 3, FileName: " invoice.pdf ", ContentType: "application/pdf", Content: []byte("%PDF-test"),
 		})
@@ -275,7 +284,7 @@ func TestImportDocumentValidatesAndDelegatesParsedPDF(t *testing.T) {
 
 func TestImportDocumentRejectsNonPDF(t *testing.T) {
 	t.Parallel()
-	_, err := NewServiceWithParser(&storeStub{}, parserStub{}).ImportDocument(
+	_, err := newServiceWithParser(&storeStub{}, parserStub{}).ImportDocument(
 		context.Background(), Actor{}, DocumentUpload{SupplierID: 1, FileName: "invoice.pdf", Content: []byte("hello")},
 	)
 	if !errors.Is(err, ErrInvalidInput) {
@@ -286,7 +295,7 @@ func TestImportDocumentRejectsNonPDF(t *testing.T) {
 func TestSearchNomenclatureAndResolveAliasValidateInput(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
-	service := NewService(store)
+	service := NewServiceWithExecutor(store, nil)
 	items, err := service.SearchNomenclature(context.Background(), "  Фикус ")
 	if err != nil || len(items) != 1 || store.searchInput != "Фикус" {
 		t.Fatalf("unexpected search: items=%+v input=%q err=%v", items, store.searchInput, err)
@@ -298,4 +307,8 @@ func TestSearchNomenclatureAndResolveAliasValidateInput(t *testing.T) {
 	if _, err := service.ResolveAlias(context.Background(), Actor{}, 17, AliasResolution{MatchStatus: "ignored", SabyID: "X1"}); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
+}
+
+func newServiceWithParser(store Store, parser Parser) *Service {
+	return &Service{store: store, parser: parser}
 }

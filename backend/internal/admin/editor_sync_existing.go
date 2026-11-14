@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -73,6 +74,13 @@ func (r *PostgresRepository) SyncExistingEditorPlan(ctx context.Context, actor A
 			}
 			if linked == "!ambiguous" {
 				skip(channel, "несколько связей; владелец должен проверить настройку")
+				continue
+			}
+			if priceErr := ce.GuardContentPriceConflict(ctx, tx, variant, r.editorPublicationMode); priceErr != nil {
+				if !errors.Is(priceErr, ce.ErrPricePublicationBusy) {
+					return out, priceErr
+				}
+				skip(channel, "подтверждённая цена ещё проверяется; контент сохранён на сайте, повторите синхронизацию после завершения цены")
 				continue
 			}
 			var status, mode, oldHash string

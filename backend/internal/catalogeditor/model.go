@@ -242,7 +242,14 @@ type Packaging struct {
 	Height float64 `json:"heightCm"`
 	Weight float64 `json:"weightGrams"`
 }
+type PriceRequest struct {
+	TargetID       string `json:"targetId"`
+	PriceMinor     int64  `json:"priceMinor"`
+	CompareAtMinor *int64 `json:"compareAtMinor,omitempty"`
+}
+
 type Request struct {
+	Price          *PriceRequest  `json:"price,omitempty"`
 	Saby           Saby           `json:"saby,omitempty"`
 	SabyID         string         `json:"sabyId,omitempty"`
 	SabyUUID       string         `json:"sabyUUID,omitempty"`
@@ -271,6 +278,7 @@ type Saby struct {
 	ExistingCode string   `json:"existingCode"`
 }
 type RemoteIDs struct {
+	IsCreated    *bool  `json:"isCreated,omitempty"`
 	UUID         string `json:"uuid,omitempty"`
 	ImageCount   int    `json:"imageCount,omitempty"`
 	RemoteStatus string `json:"remoteStatus,omitempty"`

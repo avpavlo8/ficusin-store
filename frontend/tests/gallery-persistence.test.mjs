@@ -9,7 +9,6 @@ test("shared cover appears in every gallery but is persisted once at product sco
     source: "https://images.example/cover.jpg",
     type: "image/jpeg",
     name: "Cover",
-    size: 0,
   };
   const first = {
     id: "first-photo",
@@ -17,7 +16,6 @@ test("shared cover appears in every gallery but is persisted once at product sco
     source: "https://images.example/first.jpg",
     type: "image/jpeg",
     name: "First",
-    size: 0,
   };
   const second = {
     ...first,

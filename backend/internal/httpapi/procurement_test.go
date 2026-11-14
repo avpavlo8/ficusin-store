@@ -15,6 +15,8 @@ import (
 )
 
 type procurementStub struct {
+	// Unused current capabilities stay nil so an unexpected call fails the test.
+	procurementService
 	firstPrices        []procurement.SabyFirstPrice
 	firstPriceActor    procurement.Actor
 	firstPriceOrderID  int64
@@ -26,6 +28,22 @@ type procurementStub struct {
 	aliasInputs        []procurement.AliasResolution
 	deletedSupplierIDs []int64
 	deletedOrderIDs    []int64
+}
+
+func (*procurementStub) UnlinkedSales(context.Context, string) ([]procurement.UnlinkedSale, error) {
+	return nil, nil
+}
+func (*procurementStub) UnlinkedSalesWithIgnored(context.Context, string) ([]procurement.UnlinkedSale, error) {
+	return nil, nil
+}
+func (*procurementStub) IgnoreSalesProduct(context.Context, procurement.Actor, string, string, bool) error {
+	return nil
+}
+func (*procurementStub) SearchLinkableNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error) {
+	return nil, nil
+}
+func (*procurementStub) LinkSalesProduct(context.Context, procurement.Actor, procurement.SalesLink) (procurement.SalesLinkResult, error) {
+	return procurement.SalesLinkResult{}, nil
 }
 
 func (stub *procurementStub) Dashboard(context.Context) (procurement.Dashboard, error) {
@@ -154,6 +172,17 @@ func TestProcurementDashboardAvailableToOwner(t *testing.T) {
 	}
 }
 
+func TestProcurementProductListsUnavailableWithoutService(t *testing.T) {
+	for _, query := range []string{"", "?limit=25&offset=0"} {
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), procurementDependencies(nil, admin.RoleOwner)).ServeHTTP(response,
+			adminRequest(http.MethodGet, "/api/v1/admin/procurement/products"+query, ""))
+		if response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("missing service list %q: %d", query, response.Code)
+		}
+	}
+}
+
 func TestProcurementSupplierCreation(t *testing.T) {
 	t.Parallel()
 	service := &procurementStub{}
@@ -251,5 +280,33 @@ func TestProcurementFirstSabyFileRequiresEditAndPassesExactPrices(t *testing.T) 
 	}
 	if response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatal("first price workbook is cacheable")
+	}
+}
+
+type pricingValidationStub struct{ *procurementStub }
+
+func (stub *pricingValidationStub) PreviewUnitPrice(ctx context.Context, input procurement.UnitPriceInput) (procurement.UnitPricePreview, error) {
+	// Invalid requests must be rejected before a store or external adapter is used.
+	return procurement.NewServiceWithExecutor(nil, nil).PreviewUnitPrice(ctx, input)
+}
+func TestProcurementPricingPreviewRequiresExplicitMode(t *testing.T) {
+	for _, body := range []string{`{"costRub":100,"retailRub":200}`, `{"mode":"","costRub":100,"retailRub":200}`, `{"mode":"unknown","costRub":100,"retailRub":200}`} {
+		deps := procurementDependencies(&procurementStub{}, admin.RoleOwner)
+		deps.Procurement = &pricingValidationStub{&procurementStub{}}
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), deps).ServeHTTP(response, adminRequest(http.MethodPost, "/api/v1/admin/procurement/pricing/preview", body))
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("implicit/invalid mode accepted: %s => %d %s", body, response.Code, response.Body.String())
+		}
+	}
+}
+func TestProcurementSettingsRejectRetiredCalculatorKnobs(t *testing.T) {
+	for _, field := range []string{"domesticRetailMultiplier", "internationalCostMultiplier", "internationalRetailMultiplier", "retailRoundStep", "avoidRoundHundreds"} {
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), procurementDependencies(&procurementStub{}, admin.RoleOwner)).ServeHTTP(response,
+			adminRequest(http.MethodPut, "/api/v1/admin/procurement/settings", `{"`+field+`":null}`))
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("retired knob accepted: %s => %d %s", field, response.Code, response.Body.String())
+		}
 	}
 }

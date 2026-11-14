@@ -5,73 +5,6 @@
    этого не изменился, а на 100 КБ в одном файле больше никто не
    натыкается. Подключение и порядок — в ../styles.css. */
 
-/* Переключатели вместо галочек: у флажка не видно, включён он или нет,
-   пока не приглядишься, а у бегунка это читается с одного взгляда. */
-.sync-options {
-  margin: 18px 0;
-  display: grid;
-  gap: 8px;
-}
-.sync-options label {
-  padding: 12px 14px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: white;
-  cursor: pointer;
-}
-.sync-options label:hover {
-  border-color: var(--sage);
-}
-.sync-options span {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.sync-options strong {
-  font-weight: 500;
-}
-.sync-options small {
-  color: #778079;
-}
-.sync-options input[type="checkbox"] {
-  appearance: none;
-  margin: 0;
-  flex: none;
-  width: 42px;
-  height: 24px;
-  border-radius: 999px;
-  background: #d9ded6;
-  position: relative;
-  cursor: pointer;
-  transition: background 0.15s;
-  order: 2;
-}
-.sync-options input[type="checkbox"]::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.15s;
-}
-.sync-options input[type="checkbox"]:checked {
-  background: var(--green);
-}
-.sync-options input[type="checkbox"]:checked::after {
-  transform: translateX(18px);
-}
-.sync-options input[type="checkbox"]:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 2px;
-}
 .admin-checkbox {
   display: flex;
   gap: 12px;
@@ -605,78 +538,6 @@
 .plant-passport {
   background: #f7f4ec;
 }
-.passport-sections {
-  border-top: 1px solid #ccd2cb;
-}
-.passport-sections > section {
-  padding: 32px 0;
-  border-bottom: 1px solid #ccd2cb;
-  scroll-margin-top: 72px;
-}
-.passport-sections h3,
-.passport-faq h3 {
-  margin: 0 0 22px;
-  color: var(--green);
-  font:
-    400 27px Georgia,
-    serif;
-}
-.passport-sections dl {
-  margin: 0;
-}
-.passport-sections dl > div {
-  display: grid;
-  grid-template-columns: minmax(150px, 28%) 1fr;
-  gap: 28px;
-  padding: 13px 0;
-}
-.passport-sections dt {
-  color: #718078;
-  font-size: 13px;
-}
-.passport-sections dd {
-  margin: 0;
-  color: #33443a;
-  line-height: 1.65;
-  white-space: pre-line;
-}
-.passport-faq {
-  max-width: 1000px;
-  margin: 46px 0 0 264px;
-}
-.passport-faq p {
-  margin: 10px 0 0;
-  color: #58655c;
-  line-height: 1.65;
-  white-space: pre-line;
-}
-.passport-faq details {
-  padding: 18px 0;
-  border-bottom: 1px solid var(--line);
-}
-.passport-faq summary {
-  color: var(--green);
-  font-weight: 700;
-  cursor: pointer;
-}
-.passport-empty {
-  max-width: 760px;
-  padding: 28px 0;
-  border-block: 1px solid var(--line);
-  color: #68756d;
-}
-.passport-empty strong {
-  display: block;
-  margin-bottom: 8px;
-  color: var(--green);
-  font:
-    400 24px Georgia,
-    serif;
-}
-.passport-empty p {
-  margin: 0;
-  line-height: 1.6;
-}
 .pdp-reviews {
   background: #fff;
 }
@@ -1065,13 +926,6 @@
   :root {
     --header-h: 72px;
   }
-  .announcement {
-    justify-content: center;
-    font-size: 10px;
-  }
-  .announcement span:last-child {
-    display: none;
-  }
   .header {
     height: 72px;
     padding: 0 18px;
@@ -1154,10 +1008,6 @@
     align-items: start;
     flex-direction: column;
   }
-  .procurement-safety {
-    align-items: start;
-    flex-direction: column;
-  }
   .sales-sync-grid {
     grid-template-columns: 1fr;
   }
@@ -1196,9 +1046,6 @@
   }
   .admin-form-grid label.wide {
     grid-column: auto;
-  }
-  .external-mapping-row {
-    grid-template-columns: 1fr;
   }
   .breadcrumbs {
     padding: 14px 18px;
@@ -1249,14 +1096,6 @@
   .plant-passport,
   .pdp-reviews {
     padding: 60px 18px;
-  }
-  .passport-sections dl > div {
-    grid-template-columns: 1fr;
-    gap: 6px;
-    padding: 12px 0;
-  }
-  .passport-faq {
-    margin: 38px 0 0;
   }
   .review-modal {
     padding: 0;
@@ -1320,9 +1159,6 @@
   overflow-x: hidden;
   background: #f8f0e5;
   color: #2c241b;
-}
-.product-page > .announcement {
-  display: none;
 }
 .product-page > .header {
   width: calc(100% - 36px);
@@ -1842,37 +1678,6 @@
   padding: 22px 24px;
   background: rgba(255, 250, 243, 0.7);
 }
-.product-page .passport-sections {
-  max-height: 470px;
-  overflow: auto;
-  border-top: 0;
-  scrollbar-width: thin;
-}
-.product-page .passport-sections > section {
-  padding: 12px 0;
-}
-.product-page .passport-sections h3 {
-  margin: 0 0 8px;
-  font:
-    700 12px Arial,
-    sans-serif;
-}
-.product-page .passport-sections dl > div {
-  padding: 7px 0;
-  grid-template-columns: 42% 1fr;
-  gap: 12px;
-}
-.product-page .passport-sections dt,
-.product-page .passport-sections dd {
-  font-size: 11px;
-  line-height: 1.4;
-}
-.product-page .passport-faq {
-  margin: 20px 0 0;
-}
-.product-page .passport-faq h3 {
-  font-size: 16px;
-}
 .product-page .pdp-reviews .pdp-section-heading .eyebrow {
   display: none;
 }
@@ -2076,7 +1881,6 @@
   .product-page .pdp-characteristics-panel dl > div {
     grid-template-columns: 1fr 1fr;
   }
-  .product-page .passport-sections,
   .product-page .review-feed {
     max-height: none;
   }

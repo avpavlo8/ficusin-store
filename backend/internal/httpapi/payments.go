@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,21 +14,18 @@ import (
 
 type paymentService interface {
 	Configured() bool
-	Start(ctx context.Context, orderNumber string) (string, error)
-	Sync(ctx context.Context, providerPaymentID string) error
-}
-
-type adjustablePaymentService interface {
+	AuthorizeOrderPayment(context.Context, string, string, int64) (bool, error)
 	StartOutstanding(ctx context.Context, orderNumber string) (string, payment.Balance, error)
 	SyncOutstanding(ctx context.Context, providerPaymentID string) error
-}
-
-type shipmentOfferPaymentService interface {
 	StartShipmentOffer(context.Context, string, int64) (string, error)
 }
 
 func startShipmentOfferPaymentHandler(logger *slog.Logger, authentication authService, payments paymentService) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if authentication == nil {
+			writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
+			return
+		}
 		cookie, err := request.Cookie(auth.CookieName)
 		if err != nil {
 			writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
@@ -38,12 +36,11 @@ func startShipmentOfferPaymentHandler(logger *slog.Logger, authentication authSe
 			writeJSON(response, http.StatusUnauthorized, errorResponse{Error: "Требуется авторизация"})
 			return
 		}
-		service, ok := payments.(shipmentOfferPaymentService)
-		if !ok || !available(payments) {
+		if !available(payments) {
 			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Оплата картой временно недоступна"})
 			return
 		}
-		url, err := service.StartShipmentOffer(request.Context(), request.PathValue("token"), user.ID)
+		url, err := payments.StartShipmentOffer(request.Context(), request.PathValue("token"), user.ID)
 		if err != nil {
 			logger.Info("shipment offer payment not started", "error", err)
 			writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
@@ -60,9 +57,11 @@ func paymentMethodsHandler(authentication authService, payments paymentService) 
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		delivery := strings.TrimSpace(request.URL.Query().Get("delivery"))
 		wholesale := false
-		if cookie, err := request.Cookie(auth.CookieName); err == nil {
-			if user, err := authentication.UserByToken(request.Context(), cookie.Value); err == nil && user != nil {
-				wholesale = user.WholesaleStatus == "approved"
+		if authentication != nil {
+			if cookie, err := request.Cookie(auth.CookieName); err == nil {
+				if user, err := authentication.UserByToken(request.Context(), cookie.Value); err == nil && user != nil {
+					wholesale = user.WholesaleStatus == "approved"
+				}
 			}
 		}
 		writeJSON(response, http.StatusOK, map[string]any{
@@ -92,16 +91,9 @@ func startPaymentHandler(logger *slog.Logger, authentication authService, paymen
 				}
 			}
 		}
-		access, ok := payments.(interface {
-			AuthorizeOrderPayment(context.Context, string, string, int64) (bool, error)
-		})
-		allowed := false
-		if ok {
-			var err error
-			allowed, err = access.AuthorizeOrderPayment(request.Context(), orderNumber, request.Header.Get("X-Order-Payment-Token"), customerID)
-			if err != nil {
-				logger.Error("authorize order payment failed", "error", err)
-			}
+		allowed, err := payments.AuthorizeOrderPayment(request.Context(), orderNumber, request.Header.Get("X-Order-Payment-Token"), customerID)
+		if err != nil {
+			logger.Error("authorize order payment failed", "error", err)
 		}
 		if !allowed {
 			writeJSON(response, http.StatusNotFound, errorResponse{Error: "Заказ недоступен. Войдите по телефону, указанному при оформлении"})
@@ -112,34 +104,21 @@ func startPaymentHandler(logger *slog.Logger, authentication authService, paymen
 			writeJSON(response, http.StatusTooManyRequests, errorResponse{Error: "Слишком много попыток оплаты. Попробуйте позже"})
 			return
 		}
-		if advanced, ok := payments.(adjustablePaymentService); ok {
-			url, balance, err := advanced.StartOutstanding(request.Context(), orderNumber)
-			if err != nil {
-				logger.Info("payment not started", "error", err, "order", orderNumber)
-				message := "Не удалось начать оплату. Проверьте заказ или попробуйте ещё раз позже"
-				if !balance.Ready {
-					message = "Заказ принят. Оплата будет доступна после подтверждения наличия и стоимости доставки менеджером"
-				} else if balance.Due <= 0 {
-					message = "Заказ уже полностью оплачен"
-				}
-				writeJSON(response, http.StatusConflict, errorResponse{Error: message})
-				return
-			}
-			balance.Issues = nil
-			balance.Refunds = nil
-			writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance})
-			return
-		}
-
-		url, err := payments.Start(request.Context(), orderNumber)
+		url, balance, err := payments.StartOutstanding(request.Context(), orderNumber)
 		if err != nil {
-			logger.Error("start payment failed", "error", err, "order", orderNumber)
-			writeJSON(response, http.StatusBadRequest, errorResponse{
-				Error: "Не удалось начать оплату. Проверьте заказ или попробуйте ещё раз позже",
-			})
+			logger.Info("payment not started", "error", err, "order", orderNumber)
+			message := "Не удалось начать оплату. Проверьте заказ или попробуйте ещё раз позже"
+			if !balance.Ready {
+				message = "Заказ принят. Оплата будет доступна после подтверждения наличия и стоимости доставки менеджером"
+			} else if balance.Due <= 0 {
+				message = "Заказ уже полностью оплачен"
+			}
+			writeJSON(response, http.StatusConflict, errorResponse{Error: message})
 			return
 		}
-		writeJSON(response, http.StatusOK, map[string]string{"confirmationUrl": url})
+		balance.Issues = nil
+		balance.Refunds = nil
+		writeJSON(response, http.StatusOK, map[string]any{"confirmationUrl": url, "payment": balance})
 	})
 }
 
@@ -149,24 +128,27 @@ func startPaymentHandler(logger *slog.Logger, authentication authService, paymen
 func yooKassaWebhookHandler(logger *slog.Logger, payments paymentService) http.Handler {
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		var body struct {
-			Event  string `json:"event"`
-			Object struct {
-				ID string `json:"id"`
-			} `json:"object"`
+			Type   string                     `json:"type"`
+			Event  string                     `json:"event"`
+			Object map[string]json.RawMessage `json:"object"`
 		}
-		if err := decodeJSON(request, &body); err != nil || body.Object.ID == "" {
+		// The provider sends a complete object. Keep strict, bounded envelope
+		// parsing, but extract only its ID; status and money are verified by GET.
+		var id string
+		if err := decodeJSON(request, &body); err != nil ||
+			body.Type != "notification" || body.Event == "" ||
+			json.Unmarshal(body.Object["id"], &id) != nil || strings.TrimSpace(id) == "" {
+			writeJSON(response, http.StatusOK, map[string]bool{"ok": true})
+			return
+		}
+		if !strings.HasPrefix(body.Event, "payment.") {
 			writeJSON(response, http.StatusOK, map[string]bool{"ok": true})
 			return
 		}
 		if available(payments) {
-			var err error
-			if advanced, ok := payments.(adjustablePaymentService); ok {
-				err = advanced.SyncOutstanding(request.Context(), body.Object.ID)
-			} else {
-				err = payments.Sync(request.Context(), body.Object.ID)
-			}
+			err := payments.SyncOutstanding(request.Context(), strings.TrimSpace(id))
 			if err != nil {
-				logger.Error("payment sync failed", "error", err, "payment_id", body.Object.ID)
+				logger.Error("payment sync failed", "error", err, "payment_id", id)
 				writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "retry"})
 				return
 			}

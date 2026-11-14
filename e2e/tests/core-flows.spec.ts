@@ -22,6 +22,30 @@ test("@desktop autocomplete показывает товары и переход 
   await expect(page).toHaveURL(/\/\?q=%D1%84%D0%B8%D0%BA%D1%83%D1%81#catalog$/);
 });
 
+test("@desktop account profile loading preserves focused autocomplete and its query", async ({ page }) => {
+  await mockApi(page, owner);
+  let releaseProfile!: () => void;
+  const profileReady = new Promise<void>((resolve) => { releaseProfile = resolve; });
+  await page.route("**/api/v1/auth/me", async (route) => {
+    await profileReady;
+    await route.fulfill({ json: { user: owner.user } });
+  });
+  await page.goto("/account/profile");
+  await expect(page.getByText("Загружаем ваши данные…")).toBeVisible();
+  const search = page.locator(".header-search input");
+  await search.fill("фикус");
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue("фикус");
+  await expect(page.getByRole("option", { name: /Фикус Бенджамина/ })).toBeVisible();
+  releaseProfile();
+  await expect(page.locator(".account-content")).toBeVisible();
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue("фикус");
+  await expect(page.getByRole("option", { name: /Фикус Бенджамина/ })).toBeVisible();
+  await page.getByRole("option", { name: /Все результаты/ }).click();
+  await expect(page).toHaveURL(/\/\?q=%D1%84%D0%B8%D0%BA%D1%83%D1%81#catalog$/);
+});
+
 test("@desktop локальный поиск избранного не перехватывает переход ко всей выдаче", async ({ page }) => {
   await mockApi(page);
   await page.goto("/favorites");
@@ -35,7 +59,7 @@ test("@desktop прямой URL корзины меняет количество
   await mockApi(page);
   await setStoredCounts(page, [], { "1": 1 });
   await page.goto("/cart");
-  const drawer = page.locator(".drawer.open");
+  const drawer = page.locator(".cart-page-panel");
   await expect(page).toHaveURL(/\/cart$/);
   await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
   await drawer.getByRole("button", { name: "Увеличить" }).click();
@@ -78,7 +102,7 @@ test("@desktop удалённый товар не возвращается по�
   await mockApi(page, owner);
   await setStoredCounts(page, [], { "1": 1, "2": 2 });
   await page.goto("/cart");
-  const drawer = page.locator(".drawer.open");
+  const drawer = page.locator(".cart-page-panel");
   await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
   await expect(drawer.getByText("Фикус Бенджамина")).toBeVisible();
   await expect(page.getByLabel(/Корзина, товаров: 3/)).toBeVisible();
@@ -117,13 +141,6 @@ test("@desktop кабинет называет, сколько осталось 
   const loyalty = page.locator(".loyalty-card");
   await expect(loyalty.getByRole("meter")).toHaveAttribute("aria-valuetext", "От 0% до 1%: пройдено 64% пути");
   await expect(loyalty.locator(".loyalty-next")).toHaveText(/Ещё 3\s600\s₽ до следующего уровня/);
-});
-
-test("@desktop профиль сохраняет адресные подсказки после обновления UI", async ({ page }) => {
-  await mockApi(page, owner);
-  await page.goto("/account/profile");
-  await page.getByRole("button", { name: "Изменить" }).click();
-  await expect(page.getByLabel("Адрес доставки")).toBeVisible();
 });
 
 // Остальным проверкам service worker выключен: он перехватывает запросы и

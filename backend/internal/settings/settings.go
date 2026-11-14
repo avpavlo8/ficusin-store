@@ -9,6 +9,7 @@ package settings
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrUnknownSetting = errors.New("unknown setting")
 
 // Keys. Adding one here and to defaults is all it takes for it to appear in
 // the panel.
@@ -27,9 +30,7 @@ const (
 	CDEKSenderPhone     = "cdek.sender_phone"
 	CDEKSenderAddress   = "cdek.sender_address"
 	PaymentsEnabled     = "payments.enabled"
-	TelegramEnabled     = "telegram.enabled"
 	AutoCancelHours     = "orders.auto_cancel_hours"
-	SabyStockEnabled    = "saby.stock_enabled"
 	MetrikaID           = "analytics.metrika_id"
 	YandexVerification  = "seo.yandex_verification"
 	GoogleVerification  = "seo.google_verification"
@@ -67,21 +68,9 @@ var Definitions = []Definition{
 		Kind:  "switch",
 	},
 	{
-		Key:   SabyStockEnabled,
-		Title: "Списывать остатки в СБИС",
-		Note:  "Выключено — магазин только записывает в журнал, что он сделал бы с настоящим складом: заказ занимает растение, отгрузка списывает. Наружу ничего не уходит, и это стоит проверить до того, как трогать живой склад.",
-		Kind:  "switch",
-	},
-	{
-		Key:   TelegramEnabled,
-		Title: "Уведомления в Telegram",
-		Note:  "Выключите, чтобы тестовые заказы не сыпались менеджеру.",
-		Kind:  "switch",
-	},
-	{
 		Key:   AutoCancelHours,
 		Title: "Отменять неоплаченный заказ через, часов",
-		Note:  "Заказ освобождает товар обратно на склад. 0 — не отменять автоматически.",
+		Note:  "Закрывает просроченный неоплаченный заказ и его платёжную ссылку. Локальный резерв больше не создаётся. 0 — не отменять автоматически.",
 		Kind:  "number",
 	},
 	{
@@ -122,16 +111,12 @@ var Definitions = []Definition{
 	},
 }
 
-// defaults are what a setting means before anyone has touched it. Both
-// integrations start switched on so that an existing shop does not quietly
-// lose them the moment this ships.
+// defaults are what a setting means before anyone has touched it.
 var defaults = map[string]string{
 	CDEKPackagingSeason: "summer",
 	PaymentsEnabled:     "1",
 	CDEKOrdersEnabled:   "0",
-	TelegramEnabled:     "1",
 	AutoCancelHours:     "24",
-	SabyStockEnabled:    "0",
 	CDEKSenderName:      "",
 	CDEKSenderPhone:     "",
 	CDEKSenderAddress:   "",
@@ -230,25 +215,6 @@ func (service *Service) Number(key string) int {
 	return value
 }
 
-// DefaultNumber — умолчание настройки для тех, у кого самих настроек нет.
-// Нужно там, где сервис собирают без панели: в тестах цена доставки всё
-// равно обязана быть настоящей, иначе тест проверяет выдуманный магазин.
-func DefaultNumber(key string) int {
-	value, _ := strconv.Atoi(defaults[key])
-	return value
-}
-
-// NonNegative — правило для цены: отрицательного счёта за доставку не
-// бывает. Живёт здесь, а не в двух местах: цену доставки читают и витрина,
-// и оформление заказа, и разойтись они не должны — покупатель увидит одно
-// число, а заплатит другое.
-func NonNegative(value int) int {
-	if value < 0 {
-		return 0
-	}
-	return value
-}
-
 // All returns every setting with its current value, for the panel.
 func (service *Service) All() map[string]string {
 	values := make(map[string]string, len(Definitions))
@@ -261,6 +227,13 @@ func (service *Service) All() map[string]string {
 // Save writes the changes and refreshes the cache at once, so the person who
 // flipped a switch sees it take effect immediately.
 func (service *Service) Save(ctx context.Context, changes map[string]string) error {
+	// Validate the whole request before writes: an old UI must not silently
+	// report success for a retired switch or partially update other preferences.
+	for key := range changes {
+		if _, known := defaults[key]; !known {
+			return ErrUnknownSetting
+		}
+	}
 	for _, definition := range Definitions {
 		value, changed := changes[definition.Key]
 		if !changed {

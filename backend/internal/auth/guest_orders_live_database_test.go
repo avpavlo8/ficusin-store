@@ -47,7 +47,7 @@ func TestVerifiedGuestOrdersOnLiveDatabase(t *testing.T) {
 			seedCustomer := func(phone, email string) int64 {
 				t.Helper()
 				var id int64
-				if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','CI guest orders',CURRENT_TIMESTAMP) RETURNING id`, email, phone).Scan(&id); err != nil {
+				if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'CI guest orders',CURRENT_TIMESTAMP) RETURNING id`, email, phone).Scan(&id); err != nil {
 					t.Fatal(err)
 				}
 				return id

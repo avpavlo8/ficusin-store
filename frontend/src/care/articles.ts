@@ -11,9 +11,9 @@ export type CareArticle = {
   title: string;
   description: string;
   category: string;
-  image: string;
   firstAction: string;
   sections: CareSection[];
+  // Editorial references for checking article content, independent of the rendered page.
   sources: { title: string; url: string }[];
 };
 
@@ -24,7 +24,6 @@ export const careArticles: CareArticle[] = [
     category: "Вредители",
     description:
       "Белые комочки на листьях и стеблях: как проверить, что это червец, убрать вредителя и не пропустить его возвращение.",
-    image: "about",
     firstAction:
       "Отставьте растение от остальных и осмотрите пазухи листьев. Сначала убедитесь, что перед вами насекомые, а не следы воды или частицы субстрата.",
     sections: [
@@ -192,7 +191,6 @@ export const careArticles: CareArticle[] = [
     category: "Вредители",
     description:
       "Светлая крапинка, тусклые листья и тонкая паутинка: где искать клеща и как выстроить обработку.",
-    image: "climate",
     firstAction:
       "Осмотрите нижнюю сторону листьев через лупу. При подозрении на клеща отделите растение от остальных: раннее поражение может быть ещё без паутинки.",
     sections: [
@@ -360,7 +358,6 @@ export const careArticles: CareArticle[] = [
     category: "Самочувствие растения",
     description:
       "Пожелтение — сигнал, а не готовый диагноз. Проверяем грунт, свет и листья, чтобы выбрать подходящее действие.",
-    image: "lighting",
     firstAction:
       "Проверьте влажность внутри кома и вспомните, что изменилось недавно. Не поливайте и не подкармливайте растение только потому, что появился жёлтый лист.",
     sections: [
@@ -534,7 +531,6 @@ export const careArticles: CareArticle[] = [
     category: "Полив и пересадка",
     description:
       "Растение вянет и после полива, и без него. Разбираемся, как отличить пересушенный ком от переувлажнения и когда пора проверить корни.",
-    image: "repotting",
     firstAction:
       "Достаньте внутренний горшок из кашпо, слейте стоящую воду и проверьте влажность глубже поверхности. Вялые листья не всегда означают, что пора поливать.",
     sections: [

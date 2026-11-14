@@ -8,25 +8,34 @@ versioned HTTP endpoints under `/api/v1`.
 
 ```bash
 go mod download
+# macOS example; on Linux use an installed TTF.
+export PROCUREMENT_PDF_FONT=/System/Library/Fonts/Supplemental/Arial.ttf
 go test ./...
-go run ./cmd/api
+APP_ENV=development DATABASE_URL='postgresql://...' \
+MIGRATIONS_DIR='../timeweb/migrations' AUTH_COOKIE_SECURE=false go run ./cmd/api
 ```
 
-Required environment variables:
+The PDF font is needed for local PDF generation and its Go tests. The Docker
+image supplies DejaVu at `/app/fonts/DejaVuSans.ttf`; its default works without
+the macOS path above.
+
+Environment:
 
 - `DATABASE_URL`;
-- `DATABASE_SSL_CA` for verified public TLS;
-- `DATABASE_SSL_VERIFY=false` only as a temporary Timeweb workaround;
+- `DATABASE_SSL_CA` accepts the provider's inline PEM when an additional trust
+  root is needed; TLS verification stays enabled by default;
 - `PORT` (defaults to `8080`);
 - `STATIC_DIR` when the API should also serve a built SPA.
 - `MIGRATIONS_DIR` to apply ordered `.sql` migrations on startup;
 - `AUTH_COOKIE_SECURE` and `AUTH_SESSION_DAYS`;
 - `CDEK_CLIENT_ID` / `CDEK_CLIENT_SECRET` for pick-up point delivery;
-- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ORDER_CHAT_ID`.
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ORDER_CHAT_ID` are required for production
+  startup; development/staging use the disabled sender.
 
-Every integration key comes from the environment only. An empty value means
-"the feature is off", never a crash. The full table with the consequence of
-each empty value is in [`../AGENTS.md`](../AGENTS.md).
+Every integration key comes from the environment only. Most optional empty keys
+disable their feature. Phone verification without `SMSRU_API_KEY` uses the
+development stub, so production needs the real key. Exact startup requirements
+and the consequence of missing keys are in [`../AGENTS.md`](../AGENTS.md).
 
 ## Endpoints
 

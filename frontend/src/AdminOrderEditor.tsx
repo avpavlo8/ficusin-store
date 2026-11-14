@@ -1077,7 +1077,6 @@ export function AdminOrderEditor({
             items={adjustment.items}
             subtotal={adjustment.subtotal}
             netPaid={payment.netPaid}
-            email={order.email}
             address={order.address}
             disabled={disabled || busy}
             compositionDirty={hasUnsavedChanges}
@@ -1293,7 +1292,6 @@ export function AdminOrderEditor({
               offers={adjustment.shipmentOffers ?? []}
               deliveryMethod={adjustment.deliveryMethod}
               deliveryFee={adjustment.deliveryFee}
-              cdekTariffCode={adjustment.cdekTariffCode}
               busy={busy || disabled}
               readOnly={compositionReadOnly || hasUnsavedChanges}
               setBusy={setBusy}

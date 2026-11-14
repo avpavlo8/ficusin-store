@@ -43,7 +43,6 @@ type Event struct {
 	Term        string         `json:"term"`
 	ProductCode string         `json:"productCode"`
 	SKU         string         `json:"sku"`
-	OrderNumber string         `json:"orderNumber"`
 	Value       float64        `json:"value"`
 	Quantity    int            `json:"quantity"`
 	Properties  map[string]any `json:"properties"`
@@ -65,21 +64,12 @@ type Attribution struct {
 	Referrer         string `json:"referrer"`
 }
 
+// Summary is the sales-ledger view used by the current admin dashboard.
+// Raw browser events remain a separate journal, not sales or paid revenue.
 type Summary struct {
 	Period          int               `json:"period"`
-	Visitors        int               `json:"visitors"`
-	Sessions        int               `json:"sessions"`
-	ProductViews    int               `json:"productViews"`
-	CartAdds        int               `json:"cartAdds"`
-	Checkouts       int               `json:"checkouts"`
 	Orders          int               `json:"orders"`
 	Revenue         float64           `json:"revenue"`
-	AbandonedCarts  int               `json:"abandonedCarts"`
-	CheckoutErrors  int               `json:"checkoutErrors"`
-	Funnel          []FunnelStep      `json:"funnel"`
-	Sources         []SourceRow       `json:"sources"`
-	Products        []ProductRow      `json:"products"`
-	Searches        []SearchRow       `json:"searches"`
 	Daily           []DailyRow        `json:"daily"`
 	SoldUnits       int               `json:"soldUnits"`
 	AverageCheck    float64           `json:"averageCheck"`
@@ -128,33 +118,10 @@ type ExcludedSaleRow struct {
 	Reason            string `json:"reason"`
 }
 
-type FunnelStep struct {
-	Name     string `json:"name"`
-	Sessions int    `json:"sessions"`
-}
-type SourceRow struct {
-	Source   string  `json:"source"`
-	Sessions int     `json:"sessions"`
-	Orders   int     `json:"orders"`
-	Revenue  float64 `json:"revenue"`
-}
-type ProductRow struct {
-	ProductCode string  `json:"productCode"`
-	Views       int     `json:"views"`
-	CartAdds    int     `json:"cartAdds"`
-	Orders      int     `json:"orders"`
-	Revenue     float64 `json:"revenue"`
-}
-type SearchRow struct {
-	Query       string `json:"query"`
-	Searches    int    `json:"searches"`
-	ZeroResults int    `json:"zeroResults"`
-}
 type DailyRow struct {
-	Date     string  `json:"date"`
-	Sessions int     `json:"sessions"`
-	Orders   int     `json:"orders"`
-	Revenue  float64 `json:"revenue"`
+	Date    string  `json:"date"`
+	Orders  int     `json:"orders"`
+	Revenue float64 `json:"revenue"`
 }
 
 type Store struct {
@@ -297,12 +264,8 @@ func (store *Store) Summary(ctx context.Context, days int, channel string) (Summ
 	endLocal := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, location)
 	since := endLocal.AddDate(0, 0, -days)
 	previousSince := since.AddDate(0, 0, -days)
-	result := Summary{Period: days, Funnel: []FunnelStep{}, Sources: []SourceRow{}, Products: []ProductRow{}, Searches: []SearchRow{}, Daily: []DailyRow{}, SalesChannels: []SalesChannelRow{}, SalesProducts: []SalesProductRow{}, ExcludedSales: []ExcludedSaleRow{}, PeriodFrom: since.Format("2006-01-02"), PeriodTo: endLocal.Add(-time.Second).Format("2006-01-02"), Channel: channel}
-	err := store.pool.QueryRow(ctx, `SELECT COUNT(DISTINCT visitor_id)::int,COUNT(DISTINCT session_id)::int,COUNT(*) FILTER(WHERE event_name='view_item')::int,COUNT(*) FILTER(WHERE event_name='add_to_cart')::int,COUNT(DISTINCT session_id) FILTER(WHERE event_name='begin_checkout')::int FROM analytics_events WHERE occurred_at >= $1`, since).Scan(&result.Visitors, &result.Sessions, &result.ProductViews, &result.CartAdds, &result.Checkouts)
-	if err != nil {
-		return result, fmt.Errorf("analytics totals: %w", err)
-	}
-	err = store.pool.QueryRow(ctx, `SELECT
+	result := Summary{Period: days, Daily: []DailyRow{}, SalesChannels: []SalesChannelRow{}, SalesProducts: []SalesProductRow{}, ExcludedSales: []ExcludedSaleRow{}, PeriodFrom: since.Format("2006-01-02"), PeriodTo: endLocal.Add(-time.Second).Format("2006-01-02"), Channel: channel}
+	err := store.pool.QueryRow(ctx, `SELECT
 		COUNT(DISTINCT source_document_id) FILTER(WHERE event_type='sale')::INTEGER,
 		COALESCE(SUM(gross_rub*effect),0)::DOUBLE PRECISION,
 		COALESCE(SUM(units*effect),0)::INTEGER,
@@ -327,83 +290,25 @@ func (store *Store) Summary(ctx context.Context, days int, channel string) (Summ
 	if err != nil {
 		return result, fmt.Errorf("analytics comparison: %w", err)
 	}
-	err = store.pool.QueryRow(ctx, `SELECT COUNT(*) FILTER(WHERE has_cart AND NOT has_order AND last_activity < CURRENT_TIMESTAMP-INTERVAL '24 hours')::int,COALESCE(SUM(errors),0)::int FROM (SELECT session_id,BOOL_OR(event_name='add_to_cart') has_cart,BOOL_OR(event_name='order_created' AND trusted=1) has_order,MAX(occurred_at) last_activity,COUNT(*) FILTER(WHERE event_name='checkout_error') errors FROM analytics_events WHERE occurred_at >= $1 GROUP BY session_id) sessions`, since).Scan(&result.AbandonedCarts, &result.CheckoutErrors)
-	if err != nil {
-		return result, fmt.Errorf("analytics losses: %w", err)
-	}
-	rows, err := store.pool.Query(ctx, `SELECT step,sessions FROM (SELECT step,COUNT(DISTINCT session_id)::int sessions,MIN(position) position FROM analytics_events CROSS JOIN LATERAL (VALUES(CASE event_name WHEN 'page_view' THEN 'Посетили сайт' WHEN 'view_item' THEN 'Открыли товар' WHEN 'add_to_cart' THEN 'Добавили в корзину' WHEN 'begin_checkout' THEN 'Начали оформление' END,CASE event_name WHEN 'page_view' THEN 1 WHEN 'view_item' THEN 2 WHEN 'add_to_cart' THEN 3 WHEN 'begin_checkout' THEN 4 END)) s(step,position) WHERE occurred_at >= $1 AND step IS NOT NULL GROUP BY step UNION ALL SELECT 'Оплатили заказ',COUNT(DISTINCT analytics_session_id)::int,5 FROM orders WHERE created_at >= $1 AND status <> 'cancelled' AND (payment_status='paid' OR status='completed')) funnel ORDER BY position`, since)
-	if err != nil {
-		return result, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var item FunnelStep
-		if err := rows.Scan(&item.Name, &item.Sessions); err != nil {
-			return result, err
-		}
-		result.Funnel = append(result.Funnel, item)
-	}
-	if err := rows.Err(); err != nil {
-		return result, err
-	}
-	rows, err = store.pool.Query(ctx, `WITH traffic AS (SELECT COALESCE(NULLIF(source,''),'Прямые заходы') source,COUNT(DISTINCT session_id)::int sessions FROM analytics_events WHERE occurred_at >= $1 GROUP BY 1), sales AS (SELECT COALESCE(NULLIF(attribution->>'source',''),'Прямые заходы') source,COUNT(*)::int orders,COALESCE(SUM(total),0)::double precision revenue FROM orders WHERE created_at >= $1 AND status <> 'cancelled' AND (payment_status='paid' OR status='completed') GROUP BY 1) SELECT COALESCE(t.source,s.source),COALESCE(t.sessions,0),COALESCE(s.orders,0),COALESCE(s.revenue,0) FROM traffic t FULL JOIN sales s USING(source) ORDER BY COALESCE(t.sessions,0) DESC LIMIT 12`, since)
-	if err != nil {
-		return result, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var item SourceRow
-		if err := rows.Scan(&item.Source, &item.Sessions, &item.Orders, &item.Revenue); err != nil {
-			return result, err
-		}
-		result.Sources = append(result.Sources, item)
-	}
-	rows, err = store.pool.Query(ctx, `WITH engagement AS (SELECT product_code,COUNT(*) FILTER(WHERE event_name='view_item')::int views,COUNT(*) FILTER(WHERE event_name='add_to_cart')::int cart_adds FROM analytics_events WHERE occurred_at >= $1 AND product_code<>'' GROUP BY product_code), sales AS (SELECT p.product_code::text product_code,SUM(oi.quantity)::int orders,COALESCE(SUM(oi.unit_price*oi.quantity),0)::double precision revenue FROM orders o JOIN order_items oi ON oi.order_id=o.id JOIN products p ON p.id=oi.product_id WHERE o.created_at >= $1 AND o.status <> 'cancelled' AND (o.payment_status='paid' OR o.status='completed') GROUP BY p.product_code) SELECT COALESCE(e.product_code,s.product_code),COALESCE(e.views,0),COALESCE(e.cart_adds,0),COALESCE(s.orders,0),COALESCE(s.revenue,0) FROM engagement e FULL JOIN sales s USING(product_code) ORDER BY COALESCE(e.views,0) DESC,COALESCE(s.orders,0) DESC LIMIT 20`, since)
-	if err != nil {
-		return result, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var item ProductRow
-		if err := rows.Scan(&item.ProductCode, &item.Views, &item.CartAdds, &item.Orders, &item.Revenue); err != nil {
-			return result, err
-		}
-		result.Products = append(result.Products, item)
-	}
-	rows, err = store.pool.Query(ctx, `SELECT COALESCE(properties->>'query',''),COUNT(*)::int,COUNT(*) FILTER(WHERE CASE WHEN COALESCE(properties->>'results','') ~ '^[0-9]+$' THEN (properties->>'results')::int ELSE 0 END=0)::int FROM analytics_events WHERE occurred_at >= $1 AND event_name='search' GROUP BY 1 HAVING COALESCE(properties->>'query','')<>'' ORDER BY 2 DESC LIMIT 20`, since)
-	if err != nil {
-		return result, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var item SearchRow
-		if err := rows.Scan(&item.Query, &item.Searches, &item.ZeroResults); err != nil {
-			return result, err
-		}
-		result.Searches = append(result.Searches, item)
-	}
-	rows, err = store.pool.Query(ctx, `WITH dates AS (
+	rows, err := store.pool.Query(ctx, `WITH dates AS (
 		SELECT generate_series($1::TIMESTAMPTZ AT TIME ZONE 'Europe/Moscow',
 			($2::TIMESTAMPTZ-INTERVAL '1 day') AT TIME ZONE 'Europe/Moscow',INTERVAL '1 day')::DATE local_day
-	), traffic AS (
-		SELECT (occurred_at AT TIME ZONE 'Europe/Moscow')::DATE local_day,COUNT(DISTINCT session_id)::INT sessions
-		FROM analytics_events WHERE occurred_at >= $1 AND occurred_at < $2 GROUP BY 1
 	), sales AS (
 		SELECT (event_at AT TIME ZONE 'Europe/Moscow')::DATE local_day,
 			COUNT(DISTINCT source_document_id) FILTER(WHERE event_type='sale')::INT orders,
 			COALESCE(SUM(gross_rub*effect),0)::DOUBLE PRECISION revenue
 		FROM sales_events WHERE reconciliation_status='counted' AND event_status='confirmed'
 			AND event_at >= $1 AND event_at < $2 AND ($3='' OR channel=$3) GROUP BY 1
-	) SELECT TO_CHAR(dates.local_day,'YYYY-MM-DD'),COALESCE(traffic.sessions,0),
+	) SELECT TO_CHAR(dates.local_day,'YYYY-MM-DD'),
 		COALESCE(sales.orders,0),COALESCE(sales.revenue,0)
-	FROM dates LEFT JOIN traffic USING(local_day) LEFT JOIN sales USING(local_day) ORDER BY dates.local_day`, since, endLocal, channel)
+	FROM dates LEFT JOIN sales USING(local_day) ORDER BY dates.local_day`, since, endLocal, channel)
 	if err != nil {
 		return result, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item DailyRow
-		if err := rows.Scan(&item.Date, &item.Sessions, &item.Orders, &item.Revenue); err != nil {
+		if err := rows.Scan(&item.Date, &item.Orders, &item.Revenue); err != nil {
 			return result, err
 		}
 		result.Daily = append(result.Daily, item)

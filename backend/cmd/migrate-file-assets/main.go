@@ -19,7 +19,7 @@ import (
 func main() {
 	apply := flag.Bool("apply", false, "copy verified objects and commit references (default dry-run)")
 	limit := flag.Int("limit", 100, "maximum rows per file kind")
-	kinds := flag.String("kinds", "", "comma-separated avatars,returns,procurement,finance,reviews (default all)")
+	kinds := flag.String("kinds", "", "comma-separated avatars,returns,procurement,reviews,chat (default all)")
 	flag.Parse()
 	cfg, err := config.Load()
 	if err != nil {

@@ -794,7 +794,7 @@ export function Products({
           )}
           {view === "catalog" && can("products.manage") && (
             <>
-              {can("products.sync") && (
+              {can("integrations.edit") && (
                 <button type="button" className="admin-action" onClick={() => setImporting(true)}>
                   Импорт из СБИС
                 </button>

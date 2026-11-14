@@ -2,18 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { claimInstallOffer, installOfferSeenKey } from "../src/lib/install-offer.ts";
 import { notificationMutation } from "../src/lib/app-notifications.ts";
-test("install offer claims a browser once, installed apps never claim it", () => {
-  const data = new Map();
-  const storage = {
-    getItem: (key) => data.get(key) || null,
-    setItem: (key, value) => data.set(key, value),
-  };
-  assert.equal(claimInstallOffer(storage, true), false);
-  assert.equal(data.size, 0);
-  assert.equal(claimInstallOffer(storage, false), true);
-  assert.equal(data.get(installOfferSeenKey), "1");
-  assert.equal(claimInstallOffer(storage, false), false);
-});
 test("notification switches mutate only their own channel and keep a shared device subscription", () => {
   const subscription = {
     endpoint: "https://push.example/device",
@@ -42,6 +30,8 @@ test("StrictMode or repeated visibility callbacks cannot claim the same persiste
     getItem: (key) => data.get(key) || null,
     setItem: (key, value) => data.set(key, value),
   };
+  assert.equal(claimInstallOffer(storage, true), false);
+  assert.equal(data.size, 0);
   assert.deepEqual(
     [
       claimInstallOffer(storage, false),
@@ -50,6 +40,7 @@ test("StrictMode or repeated visibility callbacks cannot claim the same persiste
     ],
     [true, false, false],
   );
+  assert.equal(data.get(installOfferSeenKey), "1");
   // Closing/reloading retains the already-shown marker, not a weekly snooze.
   const reloaded = await import("../src/lib/install-offer.ts?reloaded");
   assert.equal(reloaded.claimInstallOffer(storage, false), false);

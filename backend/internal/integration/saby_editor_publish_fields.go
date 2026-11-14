@@ -59,9 +59,13 @@ func (p *SabyEditorPublisher) buildSabyEditorFields(card *sabyEditorNativeRecord
 	if err != nil {
 		return nil, nil, err
 	}
-	fields["PriceData"], err = sabyEditorSetPrice(card.value("PriceData"), p.Client.priceListID, r.PriceMinor)
-	if err != nil {
-		return nil, nil, err
+	// Existing-card content saves do not approve a price change. Omit the
+	// unmanaged price list so only the explicit price publication can alter it.
+	if state.Created {
+		fields["PriceData"], err = sabyEditorSetPrice(card.value("PriceData"), p.Client.priceListID, r.PriceMinor)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	images, ids, err := sabyEditorImageData(card.value("ImageData"), state.Images)
 	if err != nil {
@@ -191,30 +195,32 @@ func (p *SabyEditorPublisher) verifySabyEditorFields(card *sabyEditorNativeRecor
 	if !barcodeFound {
 		return errors.New("СБИС не подтвердил штрихкод EAN-13")
 	}
-	prices, err := parseSabyEditorNativeRecordSet(card.value("PriceData"))
-	if err != nil {
-		return err
-	}
-	priceFound := false
-	for i := range prices.rows {
-		list, e := sabyEditorNativeInt(prices.cell(i, "PriceList"))
-		if e == nil && list == p.Client.priceListID {
-			var n json.Number
-			if json.Unmarshal(prices.cell(i, "Price"), &n) != nil {
-				return errors.New("СБИС не вернул сохранённую цену")
-			}
-			minor, e := money.Parse(string(n))
-			if e != nil || minor != r.PriceMinor {
-				return errors.New("Цена СБИС не совпала с ценой сайта")
-			}
-			if priceFound {
-				return errors.New("СБИС вернул неоднозначную цену")
-			}
-			priceFound = true
+	if state.Created {
+		prices, err := parseSabyEditorNativeRecordSet(card.value("PriceData"))
+		if err != nil {
+			return err
 		}
-	}
-	if !priceFound {
-		return errors.New("СБИС не подтвердил цену выбранного прайс-листа")
+		priceFound := false
+		for i := range prices.rows {
+			list, e := sabyEditorNativeInt(prices.cell(i, "PriceList"))
+			if e == nil && list == p.Client.priceListID {
+				var n json.Number
+				if json.Unmarshal(prices.cell(i, "Price"), &n) != nil {
+					return errors.New("СБИС не вернул сохранённую цену")
+				}
+				minor, e := money.Parse(string(n))
+				if e != nil || minor != r.PriceMinor {
+					return errors.New("Цена СБИС не совпала с ценой сайта")
+				}
+				if priceFound {
+					return errors.New("СБИС вернул неоднозначную цену")
+				}
+				priceFound = true
+			}
+		}
+		if !priceFound {
+			return errors.New("СБИС не подтвердил цену выбранного прайс-листа")
+		}
 	}
 	images, err := parseSabyEditorNativeRecordSet(card.value("ImageData"))
 	if err != nil {

@@ -61,7 +61,7 @@ func TestFailedReceiptPriceRefreshPreservesPurchaseAndExternalState(t *testing.T
 					t.Fatal(err)
 				}
 			}
-			must(tx.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Price refresh',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("refresh-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actor))
+			must(tx.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Price refresh',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("refresh-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actor))
 			must(tx.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'domestic','RUB') RETURNING id`, fmt.Sprintf("Refresh %d", unique)).Scan(&supplier))
 			must(tx.QueryRow(ctx, `INSERT INTO products(name,slug,status,catalog_section) VALUES('Refresh plant',$1,'draft','plants') RETURNING id`, fmt.Sprintf("refresh-%d", unique)).Scan(&product))
 			must(tx.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor,is_active) VALUES($1,'D12',50000,1) RETURNING id`, product).Scan(&variant))

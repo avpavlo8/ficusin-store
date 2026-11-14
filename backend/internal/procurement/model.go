@@ -61,29 +61,24 @@ type Dashboard struct {
 }
 
 type PricingSettings struct {
-	Economics                     PricingEconomics `json:"economics"`
-	Version                       int              `json:"version"`
-	DefaultExchangeRate           float64          `json:"defaultExchangeRate"`
-	TrolleyCostCurrency           float64          `json:"trolleyCostCurrency"`
-	TrolleyCostRUB                float64          `json:"trolleyCostRub"`
-	TrolleyVolumeCM3              float64          `json:"trolleyVolumeCm3"`
-	TrolleyFillRatio              float64          `json:"trolleyFillRatio"`
-	ReturnLossRate                float64          `json:"returnLossRate"`
-	MarketplaceCostRate           float64          `json:"marketplaceCostRate"`
-	TaxRate                       float64          `json:"taxRate"`
-	ReserveRate                   float64          `json:"reserveRate"`
-	PackageRUB                    float64          `json:"packageRub"`
-	PriceChangeThreshold          float64          `json:"priceChangeThreshold"`
-	DomesticRetailMultiplier      float64          `json:"domesticRetailMultiplier"`
-	InternationalCostMultiplier   float64          `json:"internationalCostMultiplier"`
-	InternationalRetailMultiplier float64          `json:"internationalRetailMultiplier"`
-	MarketplaceStrikeMarkup       float64          `json:"marketplaceStrikeMarkup"`
-	RetailRoundStep               int              `json:"retailRoundStep"`
-	AvoidRoundHundreds            bool             `json:"avoidRoundHundreds"`
-	RecommendationDays            int              `json:"recommendationDays"`
-	TargetCoverDays               int              `json:"targetCoverDays"`
-	RetailMarkupMultiplier        float64          `json:"retailMarkupMultiplier"`
-	RoundPrices                   bool             `json:"roundPrices"`
+	Economics               PricingEconomics `json:"economics"`
+	Version                 int              `json:"version"`
+	DefaultExchangeRate     float64          `json:"defaultExchangeRate"`
+	TrolleyCostCurrency     float64          `json:"trolleyCostCurrency"`
+	TrolleyCostRUB          float64          `json:"trolleyCostRub"`
+	TrolleyVolumeCM3        float64          `json:"trolleyVolumeCm3"`
+	TrolleyFillRatio        float64          `json:"trolleyFillRatio"`
+	ReturnLossRate          float64          `json:"returnLossRate"`
+	MarketplaceCostRate     float64          `json:"marketplaceCostRate"`
+	TaxRate                 float64          `json:"taxRate"`
+	ReserveRate             float64          `json:"reserveRate"`
+	PackageRUB              float64          `json:"packageRub"`
+	PriceChangeThreshold    float64          `json:"priceChangeThreshold"`
+	MarketplaceStrikeMarkup float64          `json:"marketplaceStrikeMarkup"`
+	RecommendationDays      int              `json:"recommendationDays"`
+	TargetCoverDays         int              `json:"targetCoverDays"`
+	RetailMarkupMultiplier  float64          `json:"retailMarkupMultiplier"`
+	RoundPrices             bool             `json:"roundPrices"`
 	// MarketplaceLogisticsPerCM — сколько рублей за сантиметр высоты
 	// растения площадка берёт за доставку. В исходной книге это был
 	// столбец «Логистика» = высота × 10.
@@ -693,11 +688,6 @@ type NomenclatureCandidate struct {
 	Name           string  `json:"name"`
 	Balance        int     `json:"balance"`
 	Price          float64 `json:"price"`
-	TotalSales     int     `json:"totalSales"`
-	SabySales      int     `json:"sabySales"`
-	WBSales        int     `json:"wbSales"`
-	OzonSales      int     `json:"ozonSales"`
-	SiteSales      int     `json:"siteSales"`
 	SupplierLinked bool    `json:"supplierLinked"`
 }
 

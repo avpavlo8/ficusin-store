@@ -1,8 +1,8 @@
 import {expect,test,type Page} from '@playwright/test';
 import {owner} from './helpers';
-const categories=[{id:1,parentId:null,name:'Растения',slug:'plants',sortOrder:1,productsCount:0,childrenCount:1},{id:2,parentId:1,name:'Аглаонемы',slug:'aglaonema',sortOrder:2,productsCount:2,childrenCount:0}];
+const categories=[{id:1,parentId:null,name:'Растения',slug:'plants',sortOrder:1,productsCount:0},{id:2,parentId:1,name:'Аглаонемы',slug:'aglaonema',sortOrder:2,productsCount:2}];
 const passport={origin:'',lighting:'Рассеянный свет',watering:'Умеренный',humidity:'',temperature:'',soil:'',fertilizer:'',repotting:'',careDifficulty:'',growthRate:'',matureSize:'',toxicity:'',problems:'',pests:'',faq:[]};
-const product=(id:number)=>({id,sabyId:'',sabyCode:'',slug:`plant-${id}`,name:id===1?'Аглаонема Мария':id===2?'Хлорофитум':`Растение ${id}`,latinName:'Aglaonema',shortDescription:'Старое краткое описание',description:id===2?'':'Описание растения',careInstructions:'Уход',status:'draft',featured:false,image:'/assets/hero-monstera.webp',price:1490,stock:0,sku:String(id),variantLabel:'D11',wholesaleMinQty:1,overrideFields:[],sabyFields:['stock'],passport,importantWarnings:[],externalIds:[],attributes:{light:'diffused'},categoryId:2,catalogSection:'plants',variantCount:2,updatedAt:'2026-10-15T12:00:00Z'});
+const product=(id:number)=>({id,sabyCode:'',slug:`plant-${id}`,name:id===1?'Аглаонема Мария':id===2?'Хлорофитум':`Растение ${id}`,latinName:'Aglaonema',shortDescription:'Старое краткое описание',description:id===2?'':'Описание растения',careInstructions:'Уход',status:'draft',featured:false,image:'/assets/hero-monstera.webp',price:1490,stock:0,sku:String(id),variantLabel:'D11',wholesaleMinQty:1,passport,importantWarnings:[],externalIds:[],attributes:{light:'diffused'},categoryId:2,catalogSection:'plants',variantCount:2,updatedAt:'2026-10-15T12:00:00Z'});
 const schema=[{id:1,code:'light',name:'Освещение',dataType:'enum',unit:'',options:['diffused'],optionLabels:{diffused:'Рассеянный свет'},audience:'customer',scope:'product',required:false,filterable:true,showOnPdp:true,keyCharacteristic:true,badge:false,sortOrder:1}];
 const effective=['length_cm','width_cm','height_cm','weight_grams'].map((code,i)=>({id:i+2,code:`package_${code}`,name:['Длина упаковки','Ширина упаковки','Высота упаковки','Вес упаковки'][i],unit:i===3?'г':'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:true}));
 effective.push(...['length_cm','width_cm','height_cm'].map((code,i)=>({id:20+i,code:`package_winter_${code}`,name:['Длина зимней упаковки','Ширина зимней упаковки','Высота зимней упаковки'][i],unit:'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:false})));
@@ -16,7 +16,7 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
  if(variantGalleryPhoto)media.push({id:++nextMediaId,productId:1,variantId:10,url:'/assets/hero-monstera.webp?photo=variant',primary:true,sortOrder:0});
  await page.route('**/api/v1/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname,method=req.method();calls.push(path);if(!['GET','HEAD'].includes(method)&&!path.endsWith('/pricing/preview'))mutations.push({path,method,body:req.postDataJSON()});const send=(body:unknown,status=200)=>route.fulfill({status,json:body});
  if(path==='/api/v1/auth/me')return send({user:{...owner.user,adminRole:role}});
- if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role,permissions:contentOnly?['dashboard.read','products.read','products.edit']:role==='manager'?['dashboard.read','products.read','products.edit','products.manage']:['dashboard.read','products.read','products.edit','products.manage','products.sync','catalog.delete'],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
+ if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role,permissions:contentOnly?['dashboard.read','products.read','products.edit']:role==='manager'?['dashboard.read','products.read','products.edit','products.manage']:['dashboard.read','products.read','products.edit','products.manage','integrations.edit','catalog.delete'],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
  if(path==='/api/v1/admin/products'&&method==='GET')return send({products});
  if(path==='/api/v1/admin/products'&&method==='POST'){const body=req.postDataJSON();if(body.creationId&&creations.has(body.creationId))return send({product:creations.get(body.creationId)});const p={...product(++nextId),...body,image:'',price:body.priceMinor/100,status:'draft'};products.push(p);variants.set(p.id,[{...size(++nextId,p.id,'Основной'),externalIds:[],price:p.price,attributes:body.variantAttributes}]);if(body.creationId)creations.set(body.creationId,p);if(loseCreateResponse){loseCreateResponse=false;return send({error:'Ответ создания потерян'},503)}return send({product:p});}
  if(path==='/api/v1/admin/catalog-editor/references')return send({categories:[{id:'fixture-category',name:'Тестовая категория СБИС'}],folders:[{id:'fixture-folder',name:'Тестовый раздел СБИС'}]});
@@ -29,8 +29,6 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
  if(/\/categories\/\d+\/attributes$/.test(path))return send({attributes:[...schema,...effective,...[{code:'pot_diameter_cm',name:'Диаметр горшка'},{code:'height_cm',name:'Высота'}].map((f,i)=>({...schema[0],...f,id:40+i,dataType:'number',unit:'см',scope:'variant',options:[]}))]});
  if(/\/categories\/\d+\/effective-attributes$/.test(path))return send({attributes:effective});
  const rows=path.match(/\/products\/(\d+)\/variants$/);if(rows)return send({variants:variants.get(Number(rows[1]))||[]});
- if(path.endsWith('/relationships'))return send({relationships:{mappings:[],suppliers:[],sales:[]}});
- if(path.endsWith('/price-proposals'))return send({proposals:[]});
  const mediaRoute=path.match(/\/(products|variants)\/(\d+)\/media(?:\/(copy|\d+)(?:\/(primary))?)?$/);
  if(mediaRoute){const [,kind,rawId,action,primary]=mediaRoute;const id=Number(rawId);const belongs=(row:typeof media[number])=>kind==='products'?row.productId===id:row.variantId===id;
   if(method==='GET')return send({media:media.filter(belongs)});
@@ -155,10 +153,10 @@ test('@desktop @phone creation destinations have native accessible checkboxes an
  const box=await wb.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(16);expect(box!.height).toBeGreaterThanOrEqual(16);await expect(e.locator('.editor-save-actions').getByRole('button',{name:'Создать товар',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
-test('@desktop route editor has product, marketplace and FAQ tabs without obsolete generated content',async({page})=>{
- const f=await fixture(page);await open(page);const e=await edit(page);await expect(page).toHaveURL(/product=1/);await expect(page.getByRole('dialog')).toHaveCount(0);
- await expect(e.getByRole('tab')).toHaveCount(3);await expect(e.getByText(/AI|ИИ|Сгенерировать|SEO/)).toHaveCount(0);await expect(e.getByLabel('Короткое описание')).toHaveCount(0);
- await e.locator('.editor-care-topic > summary').filter({hasText:'На заметку'}).click();await expect(e.getByLabel('На заметку',{exact:true})).toBeVisible();expect(f.calls.filter(p=>p.includes('ai-'))).toEqual([]);
+test('@desktop route editor has product, marketplace and FAQ tabs with editable care notes',async({page})=>{
+ await fixture(page);await open(page);const e=await edit(page);await expect(page).toHaveURL(/product=1/);await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(e.getByRole('tab')).toHaveCount(3);
+ await e.locator('.editor-care-topic > summary').filter({hasText:'На заметку'}).click();await expect(e.getByLabel('На заметку',{exact:true})).toBeVisible();
 });
 
 test('@desktop unified product and two variant edits survive reload',async({page})=>{
@@ -343,7 +341,7 @@ test('@desktop @phone Saby create/link controls preserve an existing code withou
 });
 
 test('@desktop Saby edits stay local until unified Save',async({page})=>{
- const f=await fixture(page);await open(page);const e=await edit(page);await sabyFields(e);expect(f.plans.size).toBe(0);expect(f.calls.some(p=>p.endsWith('/saby-export'))).toBe(false);await page.reload();await expect(e.getByRole('combobox',{name:'Категория в СБИС',exact:true})).toHaveValue('Тестовая категория СБИС');await saveEditor(e);expect(f.plans.get(1).variants[0].saby.category.id).toBe('fixture-category');expect(f.calls.some(p=>p.endsWith('/saby-export'))).toBe(false);
+ const f=await fixture(page);await open(page);const e=await edit(page);await sabyFields(e);expect(f.plans.size).toBe(0);expect(f.mutations).toHaveLength(0);await page.reload();await expect(e.getByRole('combobox',{name:'Категория в СБИС',exact:true})).toHaveValue('Тестовая категория СБИС');await saveEditor(e);expect(f.plans.get(1).variants[0].saby.category.id).toBe('fixture-category');expect(f.mutations.map(({path,method})=>({path,method}))).toEqual([{path:'/api/v1/admin/products/1/editor-plan',method:'PUT'}]);
 });
 
 test('@desktop @phone late catalog snapshot cannot discard a route editor draft',async({page})=>{
@@ -489,4 +487,135 @@ test('@desktop manager editor capability does not grant catalogue import or bulk
  await expect(selection.getByRole('button',{name:'Проверить объединение',exact:true})).toHaveCount(0);
  await expect(selection.getByRole('button',{name:'Удалить черновики',exact:true})).toHaveCount(0);
  expect(f.mutations).toHaveLength(0);
+
+});
+
+test('@desktop @phone saved price proposals require an explicit channel confirmation with the saved fingerprint',async({page})=>{
+ await fixture(page);
+ let approvals=0;
+ let price={id:91,variantId:10,channel:'wb',targetId:'WB-price-fixture',priceMinor:250000,compareAtMinor:300000,expectedSitePriceMinor:149000,status:'draft',message:'Готово к проверке',fingerprint:'exact-price-snapshot',executionMode:'live',canApprove:true,canRetry:false,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{prices:[price],publicationMode:'live'}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/91/approve',route=>{approvals++;expect(route.request().postDataJSON()).toEqual({fingerprint:'exact-price-snapshot'});price={...price,status:'queued',canApprove:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeEnabled();await expect(panel).toContainText('Базовая цена WB');expect(approvals).toBe(0);
+ await saveEditor(e);await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeEnabled();expect(approvals).toBe(0);
+ await panel.getByRole('button',{name:'Подтвердить цену',exact:true}).click();await expect(panel).toContainText('В очереди');expect(approvals).toBe(1);
+ await e.getByRole('tab',{name:'Товар',exact:true}).click();await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();expect(approvals).toBe(1);
+});
+
+test('@desktop price confirmation conflict remains visible and never discards the unsaved editor draft',async({page})=>{
+ await fixture(page);
+ let approvals=0;
+ const price={id:92,variantId:10,channel:'avito',targetId:'AVITO-price-fixture',priceMinor:250000,compareAtMinor:null,expectedSitePriceMinor:149000,status:'draft',message:'Готово',fingerprint:'stale-snapshot',executionMode:'live',canApprove:true,canRetry:false,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{prices:[price],publicationMode:'live'}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/92/approve',route=>{approvals++;return route.fulfill({status:409,json:{error:'Предложение цены изменилось'}})});
+ await open(page);const e=await edit(page);await e.getByLabel('Название товара *',{exact:true}).fill('Несохранённое имя');await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await panel.getByRole('button',{name:'Подтвердить цену',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('Предложение цены изменилось');expect(approvals).toBe(1);
+ await e.getByRole('tab',{name:'Товар',exact:true}).click();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Несохранённое имя');
+ await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1600');await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeDisabled();expect(approvals).toBe(1);
+});
+
+test('@desktop disabled publication keeps migrated price drafts unapproved',async({page})=>{
+ await fixture(page);let approvals=0;
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'disabled',prices:[{id:93,variantId:10,channel:'ozon',targetId:'OZON-migrated',priceMinor:250000,compareAtMinor:320000,expectedSitePriceMinor:149000,status:'draft',message:'Перенесённый черновик',fingerprint:'migrated',executionMode:'disabled',canApprove:false,canRetry:false,blockReason:'Отправка отключена'}]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/*/approve',route=>{approvals++;return route.fulfill({json:{}})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});await expect(panel).toContainText('Перенесённый черновик');await expect(panel).toContainText('Отправка цен отключена');await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toHaveCount(0);expect(approvals).toBe(0);
+});
+
+test('@desktop mock price retry stays explicit and uses the operation fingerprint',async({page})=>{
+ await fixture(page);let retries=0;
+ let price={id:94,variantId:10,channel:'ozon',targetId:'OZON-local',priceMinor:250000,compareAtMinor:320000,expectedSitePriceMinor:149000,status:'failed',message:'Локальная ошибка',fingerprint:'exact-retry',executionMode:'mock',canApprove:false,canRetry:true,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'mock',prices:[price]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/94/retry',route=>{retries++;expect(route.request().postDataJSON()).toEqual({fingerprint:'exact-retry'});price={...price,status:'queued',canRetry:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});await expect(panel).toContainText('Реальные цены площадок не меняются');expect(retries).toBe(0);await panel.getByRole('button',{name:'Повторить отправку',exact:true}).click();await expect(panel).toContainText('В очереди');expect(retries).toBe(1);
+});
+
+
+test('@desktop WB price confirmation shows the effective integer-discount price before approval',async({page})=>{
+ await fixture(page);let approvals=0;
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'live',prices:[{id:95,variantId:10,channel:'wb',targetId:'WB-rounded',priceMinor:150025,compareAtMinor:200000,expectedSitePriceMinor:149000,status:'draft',message:'Проверьте округление',fingerprint:'rounded-price',executionMode:'live',canApprove:true,canRetry:false,blockReason:''}]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/95/approve',route=>{approvals++;return route.fulfill({json:{}})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Расчётная цена'})}).last().locator('dd')).toContainText(/1\s?500,25/);
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Скидка WB'})}).last().locator('dd')).toHaveText('24%');
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Цена WB после округления скидки'})}).last().locator('dd')).toContainText(/1\s?520/);
+ expect(approvals).toBe(0);
+});
+
+
+test('@desktop read-only price reconciliation keeps the frozen fingerprint after the site price changes',async({page})=>{
+ const f=await fixture(page);f.variants.get(1)![0].price=1600;let checks=0;
+ let price={id:96,variantId:10,channel:'wb',targetId:'WB-inflight',priceMinor:250000,compareAtMinor:300000,expectedSitePriceMinor:149000,status:'needs_attention',message:'Ответ не получен',fingerprint:'frozen-old-request',executionMode:'live',canApprove:false,canRetry:true,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'live',prices:[price]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/96/retry',route=>{checks++;expect(route.request().postDataJSON()).toEqual({fingerprint:'frozen-old-request'});price={...price,status:'queued',canRetry:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});const check=panel.getByRole('button',{name:'Проверить результат',exact:true});await expect(check).toBeEnabled();await check.click();await expect(panel).toContainText('В очереди');expect(checks).toBe(1);
+});
+
+test('@desktop editor price mode is explicit in saved plans and restored without losing local intent',async({page})=>{
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,priceMode:'manual'}]});await open(page);const e=await edit(page);const modes=e.getByRole('group',{name:'Режим цен маркетплейсов'});
+ await expect(modes.getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('manual');
+ await modes.getByRole('button',{name:'Авто',exact:true}).click();await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('auto');
+ await page.reload();await expect(page.locator('.editor-page').getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Авто',exact:true})).toHaveAttribute('aria-pressed','true');
+});
+
+for(const savedMode of ['manual',undefined] as const)test(`@desktop late saved ${savedMode || 'legacy'} price mode cannot overwrite an explicit auto draft choice`,async({page})=>{
+ const f=await fixture(page);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/v1/admin/products/1/editor-plan',async route=>{if(route.request().method()!=='GET')return route.fallback();await held;return route.fulfill({json:{config:{variants:[{variantId:10,priceMode:savedMode,ozonPrice:'4321.45',wbPrice:'3210.25'}]},publications:[],links:{},barcodes:{},publicationMode:'disabled'}})});
+ await open(page);const e=await edit(page);const auto=e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Авто',exact:true});await auto.click();release();await expect(auto).toHaveAttribute('aria-pressed','true');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('auto');
+});
+
+
+test('@desktop saved manual marketplace amounts survive a fresh browser draft and Save unchanged',async({page})=>{
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'}]});
+ await open(page);let e=await edit(page);
+ for(const [label,value] of [['Цена Wildberries, ₽','3210.25'],['Цена Ozon, ₽','4321.45']])await expect(e.getByLabel(label,{exact:true})).toHaveValue(value);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+ await page.evaluate(()=>localStorage.removeItem('ficusin:product-edit-draft:v1:1'));await page.reload();e=page.locator('.editor-page');
+ await expect(e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');
+ for(const [label,value] of [['Цена Wildberries, ₽','3210.25'],['Цена Ozon, ₽','4321.45']])await expect(e.getByLabel(label,{exact:true})).toHaveValue(value);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+});
+
+test('@desktop a late saved plan preserves newer manual price edits including zero',async({page})=>{
+ await fixture(page);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/v1/admin/products/1/editor-plan',async route=>{if(route.request().method()!=='GET')return route.fallback();await held;return route.fulfill({json:{config:{variants:[{variantId:10,priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'}]},publications:[],links:{},barcodes:{},publicationMode:'disabled'}})});
+ await open(page);const e=await edit(page);const manual=e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Вручную',exact:true});await manual.click();await e.getByLabel('Цена Wildberries, ₽',{exact:true}).fill('0');await e.getByLabel('Цена Ozon, ₽',{exact:true}).fill('5220.21');
+ const response=page.waitForResponse(r=>r.url().endsWith('/editor-plan')&&r.request().method()==='GET');release();await response;
+ await expect(manual).toHaveAttribute('aria-pressed','true');await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('0');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('5220.21');
+});
+
+
+test('@desktop legacy saved amounts without a price mode require manual intent until explicit Auto',async({page})=>{
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,ozonPrice:'4321.45',wbPrice:'3210.25'}]});await open(page);const e=await edit(page);const modes=e.getByRole('group',{name:'Режим цен маркетплейсов'});
+ await expect(modes.getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('3210.25');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('4321.45');expect(f.mutations).toHaveLength(0);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+ await modes.getByRole('button',{name:'Авто',exact:true}).click();await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('2490');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('2990');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'auto',ozonPrice:'2990',wbPrice:'2490'});
+});
+
+test('@desktop @phone marketplace dictionary pagination retains canonical IDs in the local draft',async({page})=>{
+ const f=await fixture(page);
+ f.plans.set(1,{variants:[{variantId:10,saby:{mode:'link',existingCode:'fixture-code',category:{id:'fixture-category',name:'Категория'},folder:{id:'fixture-folder',name:'Раздел'}},marketplace:{name:'',article:'10',description:'',brand:'',model:'',tnved:'',units:1,ozon:{enabled:false,mode:'create',existingId:'',category:{id:'123',typeId:456,name:'Растения Ozon'}},wb:{enabled:false,mode:'create',existingId:'',category:{id:'',name:''}}}}]});
+ const reads:URLSearchParams[]=[];
+ await page.route('**/api/v1/admin/catalog-editor/references?*',route=>{
+  const params=new URL(route.request().url()).searchParams;
+  if(params.get('channel')!=='ozon')return route.fallback();
+  if(params.get('kind')==='attributes')return route.fulfill({json:{data:{result:[{id:85,name:'Бренд',dictionary_id:2}]}}});
+  reads.push(params);
+  return route.fulfill({json:{data:params.get('cursor')?{result:[{id:901,value:'Первая марка'},{id:902,value:'Вторая марка'}]}:{result:[{id:901,value:'Первая марка'}],next:901}}});
+ });
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
+ const brand=e.getByRole('combobox',{name:'Бренд *',exact:true});await brand.click();
+ const list=e.getByRole('listbox',{name:'Бренд *',exact:true});await expect(list.getByRole('option')).toHaveCount(1);
+ await list.getByRole('button',{name:'Показать ещё',exact:true}).click();await expect(list.getByRole('option')).toHaveCount(2);
+ await list.getByRole('option',{name:'Вторая марка',exact:true}).click();await expect(brand).toHaveValue('Вторая марка');
+ expect(reads.map(p=>({channel:p.get('channel'),kind:p.get('kind'),category:p.get('category'),typeId:p.get('typeId'),attribute:p.get('attribute'),cursor:p.get('cursor')}))).toEqual([{channel:'ozon',kind:'values',category:'123',typeId:'456',attribute:'85',cursor:''},{channel:'ozon',kind:'values',category:'123',typeId:'456',attribute:'85',cursor:'901'}]);
+ await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('ficusin:product-edit-draft:v1:1')||'{}').variants?.find((v:{serverId:number})=>v.serverId===10)?.marketplace?.brandId)).toBe(902);
+ await page.reload();await expect(page.locator('.editor-page').getByRole('combobox',{name:'Бренд *',exact:true})).toHaveValue('Вторая марка');
+});
+
+test('@desktop owner integration permission keeps catalogue import available',async({page})=>{
+ await fixture(page,{role:'owner'});await open(page);
+ await expect(page.getByRole('button',{name:'Импорт из СБИС',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Добавить товар',exact:true})).toBeEnabled();
 });

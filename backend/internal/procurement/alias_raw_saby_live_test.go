@@ -97,8 +97,8 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 	targetCode := fmt.Sprintf("X%d", 100000000+unique%800000000)
 	var actorID, supplierID, aliasID, orderID, documentID, lineID int64
 
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Alias pricing owner',CURRENT_TIMESTAMP) RETURNING id`,
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Alias pricing owner',CURRENT_TIMESTAMP) RETURNING id`,
 		fmt.Sprintf("alias-pricing-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}

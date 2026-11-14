@@ -6,6 +6,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "./adminShared";
 import { useProductMarketplacePricing } from "./useProductMarketplacePricing";
+import { EditorPricePublications } from "./EditorPricePublications";
 import { NumericInput } from "./NumericInput";
 import { AutoTextarea } from "./AutoTextarea";
 import { categoryVariantName } from "./variantNaming";
@@ -233,7 +234,6 @@ export function ProductCreationPage({
               source: item.url,
               name: "Фото варианта",
               type: "image/jpeg",
-              size: 0,
             }));
         if (!latest.current.remoteInitialized) {
           const placeholder = latest.current.variants?.find((item) => item.id === "first");
@@ -246,7 +246,6 @@ export function ProductCreationPage({
                 ? { price: placeholder.price }
                 : {}),
               ...(placeholder.label !== "Основной вариант" ? { label: placeholder.label } : {}),
-              saby: placeholder.saby,
               sabyEditor: placeholder.sabyEditor,
               sabyEditorTouched: placeholder.sabyEditorTouched,
               ozon: placeholder.ozon,
@@ -276,7 +275,6 @@ export function ProductCreationPage({
                         source: item.url,
                         name: "Фото товара",
                         type: "image/jpeg",
-                        size: 0,
                       })),
                     ...localMedia,
                   ],
@@ -360,6 +358,9 @@ export function ProductCreationPage({
         config: {
           variants: Array<{
             variantId: number;
+            priceMode?: "auto" | "manual";
+            ozonPrice: string;
+            wbPrice: string;
             saby: SabyEditorConfig;
             marketplace: MarketplaceCommon;
           }>;
@@ -394,7 +395,6 @@ export function ProductCreationPage({
                     code: "",
                     category: blankCategory(),
                     folder: blankCategory(),
-                    mirrorFound: false,
                   }
                 : undefined);
             const sabyEditor =
@@ -407,7 +407,32 @@ export function ProductCreationPage({
                     defaults: { category: current.sabyCategory, folder: current.sabyFolder },
                   })
                 : undefined;
-            const next = { ...row, marketplace: row.marketplace || saved?.marketplace, sabyEditor };
+            // Older plans stored amounts without their mode. Preserve that
+            // intent until the owner explicitly chooses Auto; do not infer that
+            // an old amount came from the current formula.
+            const savedPriceMode =
+              saved?.priceMode ||
+              ([saved?.ozonPrice, saved?.wbPrice].some(
+                (value) => typeof value === "string" && value.trim() !== "",
+              )
+                ? "manual"
+                : undefined);
+            // Formula previews may have filled a fresh draft before the plan
+            // arrives. Later polls must preserve local edits, including zero.
+            const restoreManualPrices =
+              row.marketplacePriceMode === undefined && savedPriceMode === "manual";
+            const next = {
+              ...row,
+              ...(restoreManualPrices && typeof saved?.ozonPrice === "string"
+                ? { ozon: { ...(row.ozon || current.ozon), price: saved.ozonPrice } }
+                : {}),
+              ...(restoreManualPrices && typeof saved?.wbPrice === "string"
+                ? { wb: { ...(row.wb || current.wb), price: saved.wbPrice } }
+                : {}),
+              marketplacePriceMode: row.marketplacePriceMode ?? savedPriceMode,
+              marketplace: row.marketplace || saved?.marketplace,
+              sabyEditor,
+            };
             return JSON.stringify(next) === JSON.stringify(row) ? row : next;
           });
           if (hydrated?.some((row, index) => row !== current.variants?.[index]))
@@ -636,7 +661,7 @@ export function ProductCreationPage({
         }
         const id = crypto.randomUUID();
         await saveDraftMedia(id, file);
-        const photo: DraftMedia = { id, name: file.name, type: file.type, size: file.size };
+        const photo: DraftMedia = { id, name: file.name, type: file.type };
         update(appendGalleryMedia(latest.current, variant.id, photo));
       }
     } catch {
@@ -672,7 +697,6 @@ export function ProductCreationPage({
       mediaCustomized: true,
       price: variant.price,
       active: false,
-      saby: emptyProductDraft().saby,
       ozon: emptyProductDraft().ozon,
       wb: emptyProductDraft().wb,
     };
@@ -849,7 +873,6 @@ export function ProductCreationPage({
           ...variantToDraft(row),
           ...(previous
             ? {
-                saby: previous.saby,
                 marketplacePriceMode: previous.marketplacePriceMode,
                 marketplace: previous.marketplace,
                 sabyEditor: previous.sabyEditor,
@@ -1004,6 +1027,7 @@ export function ProductCreationPage({
         .filter((row) => row.serverId && !row.archived && !row.removePending)
         .map((row) => ({
           variantId: row.serverId,
+          priceMode: row.marketplacePriceMode || "auto",
           saby: sabyOf(row, latest.current),
           marketplace: marketplaceOf(row, latest.current),
           ozonPrice: (row.ozon || latest.current.ozon).price,
@@ -1563,6 +1587,10 @@ export function ProductCreationPage({
                     </label>
                   )}
                   {priceField}
+                  <p className="editor-secondary">
+                    Цены площадок подтверждаются отдельно во вкладке «Маркетплейсы» после
+                    сохранения.
+                  </p>
                   <label>
                     Оптовый минимум, шт.
                     <NumericInput
@@ -1860,6 +1888,16 @@ export function ProductCreationPage({
                   }}
                 />
               </fieldset>
+              {typeof productId === "number" && productId > 0 && (
+                <EditorPricePublications
+                  productId={productId}
+                  variantId={variant.serverId}
+                  draftPriceMinor={Math.round(Number(variant.price) * 100)}
+                  saving={saving}
+                  revision={collectionsRevision}
+                  canManage={canManage}
+                />
+              )}
               {channelStatuses
                 .filter((status) => status.variantId === variant.serverId)
                 .map((status) => (

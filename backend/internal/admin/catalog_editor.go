@@ -112,7 +112,7 @@ func saveVariantEdits(ctx context.Context, tx pgx.Tx, actor Actor, productID int
 			}
 		}
 		if edit.ID > 0 && edit.PriceMinor != nil && oldPrice != *edit.PriceMinor {
-			if err := createManualPriceProposals(ctx, tx, actor, id, oldPrice, *edit.PriceMinor); err != nil {
+			if err := stageEditorPriceProposals(ctx, tx, actor, id, *edit.PriceMinor); err != nil {
 				return err
 			}
 		}

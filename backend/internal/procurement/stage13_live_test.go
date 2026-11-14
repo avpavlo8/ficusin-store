@@ -61,23 +61,19 @@ func TestStage13PartialSalesDoNotCountUnpaidPlants(t *testing.T) {
 	if count != 1 || units != 1 || gross != 500 {
 		t.Fatalf("unpaid or duplicated sale count=%d units=%d gross=%v", count, units, gross)
 	}
-	var packaging float64
-	checkPack := func(want float64) {
-		t.Helper()
-		if err = pool.QueryRow(ctx, `SELECT COALESCE(SUM(p.amount_rub),0)::DOUBLE PRECISION FROM finance_packaging_snapshots p JOIN sales_events s ON s.id=p.sales_event_id WHERE s.source_document_id=$1`, prefix).Scan(&packaging); err != nil || packaging != want {
-			t.Fatalf("packaging=%v want=%v err=%v", packaging, want, err)
-		}
-	}
-	checkPack(0)
 	if _, err = pool.Exec(ctx, `UPDATE shipment_offers SET delivery_method='cdek',status='shipped' WHERE id=$1`, offerID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = store.RefreshSiteSales(ctx, date, date); err != nil {
 		t.Fatal(err)
 	}
-	checkPack(150)
 	if _, err = store.RefreshSiteSales(ctx, date, date); err != nil {
 		t.Fatal(err)
 	}
-	checkPack(150)
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*),COALESCE(SUM(units),0),COALESCE(SUM(gross_rub),0)::DOUBLE PRECISION FROM sales_events WHERE source_document_id=$1 AND reconciliation_status='counted'`, prefix).Scan(&count, &units, &gross); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 || units != 1 || gross != 500 {
+		t.Fatalf("shipment refresh changed partial sale count=%d units=%d gross=%v", count, units, gross)
+	}
 }

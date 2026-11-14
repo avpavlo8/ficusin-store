@@ -25,7 +25,7 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 	repository := NewPostgresRepository(pool)
 	unique := time.Now().UnixNano()
 	var staffID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Stage 03 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage-03-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&staffID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Stage 03 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage-03-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&staffID); err != nil {
 		t.Fatal(err)
 	}
 	owner := Actor{CustomerID: staffID, Role: RoleOwner}
@@ -43,28 +43,6 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor,is_active) VALUES($1,'P15 H35',12000,1) RETURNING id`, productB).Scan(&variantB); err != nil {
 		t.Fatal(err)
 	}
-
-	t.Run("Saby price import is rejected and preserves site content", func(t *testing.T) {
-		sabyID := fmt.Sprintf("stage-03-saby-%d", unique)
-		if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,description,price_minor,balance) VALUES($1,$2,'Имя СБИС','Описание СБИС',15500,9)`, sabyID, fmt.Sprintf("X%d", unique)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := pool.Exec(ctx, `UPDATE products SET saby_id=$2,description='Ручной контент' WHERE id=$1`, productA, sabyID); err != nil {
-			t.Fatal(err)
-		}
-		for index := 0; index < 2; index++ {
-			if _, err := repository.SyncProducts(ctx, owner, SyncRequest{ProductIDs: []int64{productA}, Fields: []string{"price"}}); !errors.Is(err, ErrInvalidInput) {
-				t.Fatalf("Saby must not overwrite site prices: %v", err)
-			}
-		}
-		var description string
-		if err := pool.QueryRow(ctx, `SELECT description FROM products WHERE id=$1`, productA).Scan(&description); err != nil {
-			t.Fatal(err)
-		}
-		if description != "Ручной контент" {
-			t.Fatalf("Saby import overwrote content: %q", description)
-		}
-	})
 
 	t.Run("external article conflict is rejected and relink keeps legacy history", func(t *testing.T) {
 		oldID := fmt.Sprintf("OZON-%d-A", unique)
@@ -97,29 +75,6 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		}
 		if legacy != 1 || active != 1 {
 			t.Fatalf("legacy=%d active=%d", legacy, active)
-		}
-	})
-
-	t.Run("one product exposes two suppliers", func(t *testing.T) {
-		var sabyID string
-		if err := pool.QueryRow(ctx, `SELECT saby_id FROM products WHERE id=$1`, productA).Scan(&sabyID); err != nil {
-			t.Fatal(err)
-		}
-		for index := 0; index < 2; index++ {
-			var supplierID int64
-			if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,country_code,default_currency) VALUES($1,'domestic','RU','RUB') RETURNING id`, fmt.Sprintf("Stage 03 supplier %d %d", unique, index)).Scan(&supplierID); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := pool.Exec(ctx, `INSERT INTO procurement_supplier_products(supplier_id,saby_id,supplier_article,availability_status,canonical_variant_id) VALUES($1,$2,$3,'available',$4)`, supplierID, sabyID, fmt.Sprintf("SUP-%d", index), variantA); err != nil {
-				t.Fatal(err)
-			}
-		}
-		relations, err := repository.ProductRelationships(ctx, productA)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(relations.Suppliers) != 2 {
-			t.Fatalf("suppliers=%d, want 2", len(relations.Suppliers))
 		}
 	})
 
@@ -174,7 +129,7 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		if _, err := pool.Exec(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,unit_price,quantity) SELECT $1,$2,id,sku,'Историческое имя','P15 H35',120,1 FROM product_variants WHERE id=$3`, orderID, productB, variantB); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := repository.UpdateVariantContent(ctx, manager, variantB, VariantContentUpdate{Attributes: map[string]any{code: float64(17.5)}}); err != nil {
+		if _, err := repository.UpdateProduct(ctx, manager, productB, ProductUpdate{Variants: []VariantEdit{{ID: variantB, Attributes: map[string]any{code: float64(17.5)}}}}); err != nil {
 			t.Fatal(err)
 		}
 		var products int
@@ -223,7 +178,8 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		}
 	})
 
-	if _, err := repository.UpdateProductVariant(ctx, manager, variantA, VariantInput{Label: "manager", PriceMinor: 1, Stock: 1, WholesaleMinQty: 1, Active: true}); !errors.Is(err, ErrForbidden) {
+	price := int64(1)
+	if _, err := repository.UpdateProduct(ctx, manager, productA, ProductUpdate{Variants: []VariantEdit{{ID: variantA, PriceMinor: &price}}}); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("manager changed commercial fields: %v", err)
 	}
 }

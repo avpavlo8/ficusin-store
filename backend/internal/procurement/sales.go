@@ -4,36 +4,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"log/slog"
-	"strings"
 	"time"
 )
 
 const salesHistoryDays = 365
 
-// salesRefreshDays — глубина ежедневного обмена с площадками.
+// salesRefreshDays — окно обычного задания синхронизации продаж.
 //
-// Год целиком каждые сутки — это двенадцать окон по месяцу и шесть тысяч
-// отправлений ради нескольких новых строк, и чем дольше живёт магазин,
-// тем дороже этот заход. История уже лежит у нас в базе, а ReplaceSales
-// чистит только тот период, который ей передали, — значит узкое окно
-// ничего не теряет.
+// Полный год на каждом пятиминутном задании повторял бы дорогую загрузку
+// ради нескольких новых строк. История уже лежит у нас в базе, а ReplaceSales
+// заменяет только переданный период. PostgreSQL назначает обычные задания
+// с этим окном и глубокую проверку года раз в неделю.
 //
 // Почему не «только вчера»: отправление становится доставленным не в день
 // заказа, а через неделю-две, и его статус меняется задним числом.
 // Суточное окно такие продажи не увидело бы никогда.
 const salesRefreshDays = 30
 
-// salesDeepEvery — как часто всё же переспрашивать год. Он нужен не ради
-// свежих продаж, а ради починки: возвраты и корректировки площадки
-// проводят задним числом, а день, когда обмен отказал, иначе остался бы
-// пустым навсегда.
-const salesDeepEvery = 7 * 24 * time.Hour
-
 var salesMoscow = time.FixedZone("Europe/Moscow", 3*60*60)
 
 type SalesStore interface {
+	IntegrationSyncRunner
 	RefreshSiteSales(context.Context, time.Time, time.Time) (int, error)
 	ReplaceSales(context.Context, string, time.Time, time.Time, []SalesRecord) (int, error)
 	MarkSalesSync(context.Context, string, string, error) error
@@ -57,25 +49,15 @@ type SalesWorker struct {
 	source   SalesSource
 	logger   *slog.Logger
 	interval time.Duration
-	// externalEvery — cadence of channels without a dedicated mirror. WB is
-	// deliberately absent: WBMirrorWorker owns every read from that API.
-	externalEvery time.Duration
-	// externalAt — когда площадки ответили в последний раз. Отмечаем только
-	// удачную попытку: неудачная должна повториться на ближайшем такте, а не
-	// ждать сутки, иначе один отказ площадки съест весь день.
-	externalAt map[string]time.Time
-	// deepAt — когда в последний раз переспросили год целиком.
-	deepAt map[string]time.Time
-	now    func() time.Time
-	owner  string
-	siteAt time.Time
+	now      func() time.Time
+	owner    string
+	siteAt   time.Time
 }
 
 func NewSalesWorker(store SalesStore, source SalesSource, logger *slog.Logger) *SalesWorker {
 	return &SalesWorker{
 		store: store, source: source, logger: logger,
-		interval: time.Minute, externalEvery: 6 * time.Hour,
-		externalAt: map[string]time.Time{}, deepAt: map[string]time.Time{}, now: time.Now,
+		interval: time.Minute, now: time.Now,
 		owner: fmt.Sprintf("sales-%d", time.Now().UnixNano()),
 	}
 }
@@ -109,36 +91,17 @@ func (worker *SalesWorker) run(ctx context.Context) {
 			}
 		}
 	}
-	if coordinator, ok := worker.store.(IntegrationSyncCoordinator); ok {
-		for _, channel := range []string{"saby", "ozon"} {
-			worker.runCoordinated(ctx, coordinator, channel, from, to)
-		}
-		return
-	}
 	for _, channel := range []string{"saby", "ozon"} {
-		if !worker.externalDue(channel) {
-			continue
-		}
-		deep := worker.deepDue(channel)
-		since := to.AddDate(0, 0, -(salesRefreshDays - 1))
-		if deep {
-			since = from
-		}
-		if !worker.syncExternal(ctx, channel, since, to) {
-			continue
-		}
-		if deep {
-			worker.deepAt[channel] = worker.now().UTC()
-		}
+		worker.runCoordinated(ctx, channel, from, to)
 	}
 }
 
-func (worker *SalesWorker) runCoordinated(ctx context.Context, coordinator IntegrationSyncCoordinator, channel string, deepFrom, to time.Time) {
+func (worker *SalesWorker) runCoordinated(ctx context.Context, channel string, deepFrom, to time.Time) {
 	if worker.source == nil || !worker.source.Configured(channel) {
 		_ = worker.store.MarkSalesSync(ctx, channel, "disabled", nil)
 		return
 	}
-	claim, err := coordinator.ClaimIntegrationSync(ctx, channel, "sales", worker.owner, 20*time.Minute)
+	claim, err := worker.store.ClaimIntegrationSync(ctx, channel, "sales", worker.owner, 20*time.Minute)
 	if err != nil {
 		worker.logger.Error("claim marketplace sales synchronization failed", "channel", channel, "error", err)
 		return
@@ -163,7 +126,7 @@ func (worker *SalesWorker) runCoordinated(ctx context.Context, coordinator Integ
 	}
 	latest := latestSalesEvent(records)
 	retry := retryDelay(syncErr)
-	applied, finishErr := coordinator.FinishIntegrationSync(ctx, *claim, len(records), from, to, latest, retry, syncErr)
+	applied, finishErr := worker.store.FinishIntegrationSync(ctx, *claim, len(records), from, to, latest, retry, syncErr)
 	if finishErr != nil {
 		worker.logger.Error("finish marketplace sales synchronization failed", "channel", channel, "error", finishErr)
 		return
@@ -202,51 +165,6 @@ func retryDelay(err error) time.Duration {
 	return 0
 }
 
-// externalDue отвечает, пора ли снова беспокоить площадку.
-func (worker *SalesWorker) externalDue(channel string) bool {
-	last, known := worker.externalAt[channel]
-	return !known || worker.now().UTC().Sub(last) >= worker.externalEvery
-}
-
-// deepDue отвечает, пора ли переспросить всю историю. После перезапуска
-// приложения память пуста, и первый заход всегда глубокий — так пустая
-// база заполняется сама, без отдельного шага наливки.
-func (worker *SalesWorker) deepDue(channel string) bool {
-	last, known := worker.deepAt[channel]
-	return !known || worker.now().UTC().Sub(last) >= salesDeepEvery
-}
-
-func (worker *SalesWorker) syncExternal(ctx context.Context, channel string, from, to time.Time) bool {
-	if worker.source == nil || !worker.source.Configured(channel) {
-		_ = worker.store.MarkSalesSync(ctx, channel, "disabled", nil)
-		return false
-	}
-	if err := worker.store.MarkSalesSync(ctx, channel, "running", nil); err != nil {
-		worker.logger.Error("mark sales synchronization failed", "channel", channel, "error", err)
-		return false
-	}
-	records, err := worker.source.FetchSales(ctx, channel, from, to)
-	if err != nil {
-		// Отказ площадки попадает на плашку канала как есть, и короткой строки
-		// там не хватало: «не вернул отправлений» одинаково звучит и когда
-		// отправлений нет, и когда они есть, но без кода продавца.
-		if reporter, able := worker.source.(SalesDiagnostics); able {
-			if detailed := reporter.DescribeSalesFailure(ctx, channel, from, to, err); detailed != nil {
-				err = detailed
-			}
-		}
-	} else {
-		_, err = worker.store.ReplaceSales(ctx, channel, from, to, records)
-	}
-	if err != nil {
-		_ = worker.store.MarkSalesSync(ctx, channel, "error", err)
-		worker.logger.Warn("marketplace sales synchronization failed", "channel", channel, "error", err)
-		return false
-	}
-	worker.externalAt[channel] = worker.now().UTC()
-	return true
-}
-
 func day(value time.Time) time.Time {
 	year, month, date := value.Date()
 	return time.Date(year, month, date, 0, 0, 0, 0, time.UTC)
@@ -254,44 +172,4 @@ func day(value time.Time) time.Time {
 
 func validSalesChannel(value string) bool {
 	return value == "site" || value == "saby" || value == "wb" || value == "ozon"
-}
-
-func normalizeSalesRecords(records []SalesRecord, from, to time.Time) ([]SalesRecord, error) {
-	type key struct {
-		date       string
-		externalID string
-	}
-	aggregated := make(map[key]SalesRecord, len(records))
-	for _, record := range records {
-		record.Date = day(record.Date)
-		record.ExternalID = strings.TrimSpace(record.ExternalID)
-		record.SabyID = strings.TrimSpace(record.SabyID)
-		if record.ExternalID == "" || record.Date.Before(from) || record.Date.After(to) {
-			return nil, ErrInvalidInput
-		}
-		itemKey := key{date: record.Date.Format("2006-01-02"), externalID: record.ExternalID}
-		item := aggregated[itemKey]
-		item.Date, item.ExternalID = record.Date, record.ExternalID
-		if record.SabyID != "" {
-			item.SabyID = record.SabyID
-		}
-		item.Units += record.Units
-		minor, amountErr := money.Minor(record.GrossRUB)
-		if amountErr != nil {
-			return nil, ErrInvalidInput
-		}
-		previous, amountErr := money.Minor(item.GrossRUB)
-		if amountErr != nil || minor > money.MaxMinor-previous || minor < -money.MaxMinor-previous {
-			return nil, ErrInvalidInput
-		}
-		item.GrossRUB = money.Rubles(previous + minor)
-		aggregated[itemKey] = item
-	}
-	result := make([]SalesRecord, 0, len(aggregated))
-	for _, record := range aggregated {
-		if record.Units != 0 || record.GrossRUB != 0 {
-			result = append(result, record)
-		}
-	}
-	return result, nil
 }

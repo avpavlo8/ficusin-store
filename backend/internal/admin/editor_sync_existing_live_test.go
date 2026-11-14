@@ -27,7 +27,7 @@ func TestManagerExistingEditorSyncOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var customer int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,password_hash,full_name,consent_at) VALUES($1,'','Editor sync test',NOW()) RETURNING id`, "editor-sync-"+tag).Scan(&customer); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,full_name,consent_at) VALUES($1,'Editor sync test',NOW()) RETURNING id`, "editor-sync-"+tag).Scan(&customer); err != nil {
 		t.Fatal(err)
 	}
 	repo := NewPostgresRepository(pool).WithEditorPublicationMode("mock")
@@ -40,7 +40,6 @@ func TestManagerExistingEditorSyncOnLiveDatabase(t *testing.T) {
 	defer func() {
 		pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
-		pool.Exec(ctx, `DELETE FROM catalog_saby_exports WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
 		pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, customer)
 		pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, product.ID)
 		pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)

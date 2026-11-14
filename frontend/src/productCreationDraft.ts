@@ -5,36 +5,20 @@ import type {
   ChannelCategory,
 } from "./catalogEditorChannels";
 import type { PlantPassport } from "./adminTypes";
-import type { SabyStepDraft } from "./ProductCreationSabyStep";
-
-export const creationSteps = [
-  { id: "main", label: "Основное" },
-  { id: "saby", label: "СБИС" },
-  { id: "ozon", label: "Озон" },
-  { id: "wb", label: "Валдберес" },
-  { id: "attributes", label: "Характеристики" },
-  { id: "media", label: "Медиа" },
-  { id: "care", label: "Уход и FAQ" },
-] as const;
-export type CreationStep = (typeof creationSteps)[number]["id"];
 type ChannelDraft = {
   enabled: boolean;
   name: string;
-  category: string;
   price: string;
   article: string;
   description: string;
   brand?: string;
   model?: string;
   tnved?: string;
-  country?: string;
-  composition?: string;
 };
 export type DraftMedia = {
   id: string;
   name: string;
   type: string;
-  size: number;
   source?: string;
   serverId?: number;
 };
@@ -51,7 +35,6 @@ export type DraftVariant = {
   label: string;
   sku: string;
   price: string;
-  stock: number;
   wholesaleMinQty: string;
   active: boolean;
   archived: boolean;
@@ -61,7 +44,6 @@ export type DraftVariant = {
   mediaInitialized?: boolean;
   mediaCustomized?: boolean;
   sabyId?: string;
-  saby?: SabyStepDraft;
   ozon?: ChannelDraft;
   wb?: ChannelDraft;
 };
@@ -72,7 +54,6 @@ export type ProductCreationDraft = {
   sabyFolder?: ChannelCategory;
   version: 1;
   updatedAt: string;
-  step: CreationStep;
   name: string;
   pot: string;
   height: string;
@@ -80,7 +61,6 @@ export type ProductCreationDraft = {
   categoryId?: number;
   description: string;
   latinName: string;
-  saby: SabyStepDraft;
   ozon: ChannelDraft;
   wb: ChannelDraft;
   attributes: Record<string, string | number | boolean | string[] | null>;
@@ -92,7 +72,6 @@ export type ProductCreationDraft = {
   cover?: DraftMedia | null;
   remoteInitialized?: boolean;
   editorTab?: "product" | "channels" | "faq";
-  channelTab?: "saby" | "ozon" | "wb";
   variants?: DraftVariant[];
   selectedVariantId?: string;
   warnings?: string;
@@ -102,7 +81,6 @@ export const draftStorageKey = "ficusin:product-creation-draft:v1";
 const channel = (): ChannelDraft => ({
   enabled: false,
   name: "",
-  category: "",
   price: "",
   article: "",
   description: "",
@@ -110,14 +88,12 @@ const channel = (): ChannelDraft => ({
 export const emptyProductDraft = (): ProductCreationDraft => ({
   version: 1,
   updatedAt: "",
-  step: "main",
   name: "",
   pot: "",
   height: "",
   price: "",
   description: "",
   latinName: "",
-  saby: { mode: "create", folderId: "", initialStock: "", query: "", selected: null },
   ozon: channel(),
   wb: channel(),
   attributes: {},
@@ -138,7 +114,6 @@ export function loadProductDraft(
       typeof data.name !== "string" ||
       !Array.isArray(data.media) ||
       !Array.isArray(data.faq) ||
-      !data.saby ||
       !data.ozon ||
       !data.wb
     )
@@ -154,15 +129,6 @@ export function loadProductDraft(
 export function saveProductDraft(draft: ProductCreationDraft, key = draftStorageKey) {
   localStorage.setItem(key, JSON.stringify(draft));
 }
-export function readCreationStep(fallback: CreationStep): CreationStep {
-  const id = new URLSearchParams(location.search).get("step");
-  return (
-    creationSteps.find((step) => step.id === id)?.id ||
-    creationSteps.find((step) => step.id === fallback)?.id ||
-    "main"
-  );
-}
-
 // Files are stored separately from the synchronous text journal so large media
 // cannot exhaust localStorage or delay a keystroke's save.
 function mediaDB(): Promise<IDBDatabase> {

@@ -90,7 +90,6 @@ type AdminVariant struct {
 	Attributes      map[string]any `json:"attributes"`
 	ExternalIDs     []ExternalID   `json:"externalIds"`
 	Images          []string       `json:"images"`
-	ManagedFields   []string       `json:"managedFields"`
 }
 
 type VariantInput struct {
@@ -513,12 +512,12 @@ func decodeStrings(raw []byte) []string {
 func (repository *PostgresRepository) ListProductVariants(ctx context.Context, productID int64) ([]AdminVariant, error) {
 	rows, err := repository.pool.Query(ctx, `
 		SELECT v.id,v.product_id,v.sku,v.label,v.base_price_minor,
-			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM order_sale_inventory i WHERE i.variant_id=v.id),0)::INTEGER,
+			COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i WHERE i.variant_id=v.id),0)::INTEGER,
 			v.wholesale_min_qty,v.is_active=1,v.archived_at IS NOT NULL,
 			COALESCE((SELECT jsonb_object_agg(d.code,av.value) FROM variant_attribute_values av JOIN attribute_definitions d ON d.id=av.attribute_id WHERE av.variant_id=v.id),'{}'::jsonb),
 			COALESCE((SELECT jsonb_agg(jsonb_build_object('provider',e.provider,'type',e.id_type,'externalId',e.external_id) ORDER BY e.provider,e.id_type) FROM product_external_ids e WHERE e.variant_id=v.id AND e.status='active' AND NOT (e.provider='wildberries' AND e.id_type IN ('sku','nm_id'))),'[]'::jsonb),
-			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,m.object_key) ORDER BY m.is_primary DESC,m.sort_order,m.id) FROM product_media m LEFT JOIN media_mirror mirror ON mirror.source_url=m.object_key WHERE m.variant_id=v.id),'[]'::jsonb),p.saby_fields
-		FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.product_id=$1 ORDER BY v.archived_at NULLS FIRST,v.id
+			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,m.object_key) ORDER BY m.is_primary DESC,m.sort_order,m.id) FROM product_media m LEFT JOIN media_mirror mirror ON mirror.source_url=m.object_key WHERE m.variant_id=v.id),'[]'::jsonb)
+		FROM product_variants v WHERE v.product_id=$1 ORDER BY v.archived_at NULLS FIRST,v.id
 	`, productID)
 	if err != nil {
 		return nil, fmt.Errorf("list variants: %w", err)
@@ -529,7 +528,7 @@ func (repository *PostgresRepository) ListProductVariants(ctx context.Context, p
 		var item AdminVariant
 		var priceMinor int64
 		var attributes, external, images []byte
-		if err := rows.Scan(&item.ID, &item.ProductID, &item.SKU, &item.Label, &priceMinor, &item.Stock, &item.WholesaleMinQty, &item.Active, &item.Archived, &attributes, &external, &images, &item.ManagedFields); err != nil {
+		if err := rows.Scan(&item.ID, &item.ProductID, &item.SKU, &item.Label, &priceMinor, &item.Stock, &item.WholesaleMinQty, &item.Active, &item.Archived, &attributes, &external, &images); err != nil {
 			return nil, err
 		}
 		item.Price = float64(priceMinor) / 100
@@ -747,143 +746,6 @@ func (repository *PostgresRepository) CreateProductVariant(ctx context.Context, 
 		}
 	}
 	return AdminVariant{}, pgx.ErrNoRows
-}
-
-func (repository *PostgresRepository) UpdateProductVariant(ctx context.Context, actor Actor, variantID int64, input VariantInput) (AdminVariant, error) {
-	if !Can(actor.Role, PermissionProductsManage) {
-		return AdminVariant{}, ErrForbidden
-	}
-	if actor.Role != RoleOwner && input.Stock != 0 {
-		return AdminVariant{}, ErrForbidden
-	}
-	if err := validateVariantInput(input); err != nil {
-		return AdminVariant{}, err
-	}
-	tx, err := repository.pool.Begin(ctx)
-	if err != nil {
-		return AdminVariant{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	var productID, oldPrice int64
-	var sabyStock bool
-	if err = tx.QueryRow(ctx, `SELECT v.product_id,v.base_price_minor,'stock'=ANY(p.saby_fields) FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1 FOR UPDATE OF v`, variantID).Scan(&productID, &oldPrice, &sabyStock); err != nil {
-		return AdminVariant{}, err
-	}
-	err = tx.QueryRow(ctx, `UPDATE product_variants SET label=BTRIM($2),base_price_minor=$3,wholesale_min_qty=$4,is_active=$5,archived_at=CASE WHEN $5=1 THEN NULL ELSE archived_at END,updated_at=CURRENT_TIMESTAMP WHERE id=$1 RETURNING product_id`, variantID, input.Label, input.PriceMinor, input.WholesaleMinQty, boolToSmallInt(input.Active)).Scan(&productID)
-	if err != nil {
-		return AdminVariant{}, err
-	}
-	if actor.Role == RoleOwner && !sabyStock {
-		if err := setVariantStock(ctx, tx, variantID, input.Stock); err != nil {
-			return AdminVariant{}, err
-		}
-	}
-	if err := saveVariantPIMValues(ctx, tx, productID, variantID, input.Attributes); err != nil {
-		return AdminVariant{}, err
-	}
-	if input.Active {
-		if err := validateRequiredVariantAttributes(ctx, tx, productID, variantID); err != nil {
-			return AdminVariant{}, err
-		}
-	}
-	if err := replaceVariantExternalIDs(ctx, tx, productID, variantID, input.ExternalIDs); err != nil {
-		return AdminVariant{}, err
-	}
-	if oldPrice != input.PriceMinor {
-		if err := createManualPriceProposals(ctx, tx, actor, variantID, oldPrice, input.PriceMinor); err != nil {
-			return AdminVariant{}, err
-		}
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return AdminVariant{}, err
-	}
-	items, err := repository.ListProductVariants(ctx, productID)
-	if err != nil {
-		return AdminVariant{}, err
-	}
-	for _, item := range items {
-		if item.ID == variantID {
-			return item, nil
-		}
-	}
-	return AdminVariant{}, pgx.ErrNoRows
-}
-
-// CopyProductVariant отдаёт копию выключенной: активный SKU обязан иметь
-// заполненные обязательные атрибуты, а копия их не проверяет. Включение
-// проходит через обычный путь редактирования, где проверка есть.
-func (repository *PostgresRepository) CopyProductVariant(ctx context.Context, actor Actor, variantID int64) (AdminVariant, error) {
-	if !Can(actor.Role, PermissionProductsManage) {
-		return AdminVariant{}, ErrForbidden
-	}
-	tx, err := repository.pool.Begin(ctx)
-	if err != nil {
-		return AdminVariant{}, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	var productID, newID int64
-	err = tx.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor,price_override_minor,wholesale_min_qty,is_active,marketplace_scope,updated_at) SELECT product_id,label || ' — копия',base_price_minor,price_override_minor,wholesale_min_qty,0,marketplace_scope,CURRENT_TIMESTAMP FROM product_variants WHERE id=$1 RETURNING id,product_id`, variantID).Scan(&newID, &productID)
-	if err != nil {
-		return AdminVariant{}, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value,source,updated_at) SELECT $2,attribute_id,value,'local',CURRENT_TIMESTAMP FROM variant_attribute_values WHERE variant_id=$1`, variantID, newID); err != nil {
-		return AdminVariant{}, err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at) SELECT warehouse_id,$2,0,0,TIMESTAMPTZ '1970-01-01 00:00:00+00' FROM inventory WHERE variant_id=$1 ON CONFLICT DO NOTHING`, variantID, newID); err != nil {
-		return AdminVariant{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return AdminVariant{}, err
-	}
-	items, err := repository.ListProductVariants(ctx, productID)
-	if err != nil {
-		return AdminVariant{}, err
-	}
-	for _, item := range items {
-		if item.ID == newID {
-			return item, nil
-		}
-	}
-	return AdminVariant{}, pgx.ErrNoRows
-}
-
-func (repository *PostgresRepository) ArchiveProductVariant(ctx context.Context, actor Actor, variantID int64) error {
-	if !Can(actor.Role, PermissionProductsManage) {
-		return ErrForbidden
-	}
-	tag, err := repository.pool.Exec(ctx, `UPDATE product_variants SET is_active=0,archived_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, variantID)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() != 1 {
-		return pgx.ErrNoRows
-	}
-	return nil
-}
-func (repository *PostgresRepository) DeleteProductVariant(ctx context.Context, actor Actor, variantID int64) error {
-	if !Can(actor.Role, PermissionProductsManage) {
-		return ErrForbidden
-	}
-	tx, err := repository.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	var productID int64
-	if err = tx.QueryRow(ctx, `SELECT product_id FROM product_variants WHERE id=$1 FOR UPDATE`, variantID).Scan(&productID); err != nil {
-		return err
-	}
-	if err = removeProductVariant(ctx, tx, actor, productID, variantID); err != nil {
-		return err
-	}
-	var retained bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants WHERE id=$1)`, variantID).Scan(&retained); err != nil {
-		return err
-	}
-	if retained {
-		return fmt.Errorf("%w: связанный размер можно только архивировать", ErrInvalidInput)
-	}
-	return tx.Commit(ctx)
 }
 
 func (repository *PostgresRepository) ListCatalogFilters(ctx context.Context) ([]CatalogFilter, error) {

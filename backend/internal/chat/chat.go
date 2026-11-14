@@ -399,13 +399,6 @@ func (s *Store) MarkRead(ctx context.Context, id, through int64, staff bool) err
 	_, err := s.pool.Exec(ctx, `UPDATE support_conversations SET `+column+`=GREATEST(`+column+`,COALESCE((SELECT MAX(id) FROM support_messages WHERE conversation_id=$1 AND id<=$2),0)) WHERE id=$1`, id, through)
 	return err
 }
-func (s *Store) Photo(ctx context.Context, threadID, messageID int64) (string, []byte, error) {
-	kind, _, attachmentKind, data, err := s.Attachment(ctx, threadID, messageID)
-	if err == nil && attachmentKind != "image" {
-		return "", nil, pgx.ErrNoRows
-	}
-	return kind, data, err
-}
 func (s *Store) List(ctx context.Context, status, query string, offset int) ([]Summary, error) {
 	rows, err := s.pool.Query(ctx, `SELECT c.id,COALESCE(NULLIF(u.full_name,''),'Посетитель №'||c.id),c.status,COALESCE(NULLIF(LEFT(m.body,160),''),NULLIF(m.attachment_name,''),NULLIF(m.reference->>'label',''),'Фотография'),(SELECT COUNT(*) FROM support_messages WHERE conversation_id=c.id AND sender='customer' AND id>c.staff_read_id),c.updated_at,o.id,o.order_number,o.status FROM support_conversations c LEFT JOIN customers u ON u.id=c.customer_id LEFT JOIN LATERAL(SELECT body,attachment_name,reference FROM support_messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1)m ON true LEFT JOIN LATERAL(SELECT id,order_number,status FROM orders WHERE c.customer_id IS NOT NULL AND customer_id=c.customer_id ORDER BY id DESC LIMIT 1)o ON true WHERE ($1='' OR c.status=$1) AND ($2='' OR COALESCE(u.full_name,'') ILIKE '%'||$2||'%' OR EXISTS(SELECT 1 FROM support_messages WHERE conversation_id=c.id AND body ILIKE '%'||$2||'%') OR c.id::text=$2) ORDER BY c.updated_at DESC,c.id DESC LIMIT 51 OFFSET $3`, status, query, offset)
 	if err != nil {

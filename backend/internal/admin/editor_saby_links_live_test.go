@@ -99,9 +99,9 @@ func TestEditorSabyLinksReadMirrorWithoutChangingIdentityOrSavedPlan(t *testing.
 			t.Fatalf("read replaced editable saved choices: %+v", view.Config)
 		}
 		for id, want := range map[int64]EditorSabyLink{
-			exact:     {ID: tag + "-exact", Code: "X" + tag + "-exact", Folder: EditorCategory{ID: tag + "-folder", Name: "Каталог / Растения"}, MirrorFound: true},
-			legacy:    {ID: tag + "-numeric-id", Code: "X" + tag + "-legacy", Folder: EditorCategory{ID: tag + "-folder", Name: "Каталог / Растения"}, MirrorFound: true},
-			alias:     {ID: tag + "-alias-id", Code: "X" + tag + "-alias", MirrorFound: true},
+			exact:     {ID: tag + "-exact", Code: "X" + tag + "-exact", Folder: EditorCategory{ID: tag + "-folder", Name: "Каталог / Растения"}},
+			legacy:    {ID: tag + "-numeric-id", Code: "X" + tag + "-legacy", Folder: EditorCategory{ID: tag + "-folder", Name: "Каталог / Растения"}},
+			alias:     {ID: tag + "-alias-id", Code: "X" + tag + "-alias"},
 			ambiguous: {ID: tag + "-ambiguous-id", Code: "X" + tag + "-ambiguous"},
 			missing:   {ID: tag + "-missing-id", Code: "X" + tag + "-missing"},
 		} {

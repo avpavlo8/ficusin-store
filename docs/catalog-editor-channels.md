@@ -12,7 +12,7 @@ Publication requests retain the mode of the explicit Save/Create action. Workers
 
 `mock` runs the real HTTP adapters through an in-memory vendor emulator. Its transport rejects all external hosts and never makes a network connection. The UI clearly labels local API checks and fixture categories. Emulator cards survive backend restarts in `catalog_editor_mock_state`. Mock dictionaries are namespaced separately (`mock/*`), and verified mock IDs are stored separately from canonical production integration IDs. The local preview launcher explicitly selects this mode and sets `CATALOG_PUBLICATION_LIVE_ENABLED=false`.
 
-`live` requires **both** `APP_ENV=production` and `CATALOG_PUBLICATION_LIVE_ENABLED=true`, as well as the mode value itself. Development and staging refuse live publication. No real creation or deployment was performed during implementation. Live credentials, account permissions and category-specific acceptance remain to be verified before any authorised real run.
+`live` requires **both** `APP_ENV=production` and `CATALOG_PUBLICATION_LIVE_ENABLED=true`, as well as the mode value itself. Development and staging refuse live publication. Production inspection on 2026-11-13 found live receipts for Ozon (`linked`), Saby (`needs_attention`) and WB (`failed`). This proves the live worker ran, not that all channels passed acceptance. Review failed/ambiguous receipts through the existing recovery process; never discard them during cleanup.
 
 Metadata uses `CATALOG_OZON_CLIENT_ID`, `CATALOG_OZON_API_KEY`, `CATALOG_WB_API_TOKEN` (standard integration variables remain fallbacks). Production write execution uses the same configured seller account. No keys are stored in drafts or sent to the frontend.
 
@@ -27,9 +27,22 @@ The bottom checkboxes only select new destinations and are hidden for establishe
 
 Publication leases, attempts and progress are persisted. The latest edit is queued in a separate pending snapshot while an earlier operation is in flight, and promoted once the receipt is resolved. Lost create responses and expired create leases are reconciled by exact article plus barcode, never blindly resent. An unresolved creation becomes `needs_attention`. Confirmed validation failures can be corrected and saved; `POST /admin/products/{id}/editor-publications/{channel}/retry` resumes failed work without losing receipts. External links are unique per marketplace and mode. Publication success means a card exists; it does not assert moderation approval, required documents, sale eligibility or stock availability.
 
+## Existing-card prices
+
+Existing-card content saves preserve seller prices: WB skips the price stages,
+Ozon re-reads and retains its current price/old_price tuple in the content import,
+and Saby omits PriceData from content Update. Initial card creation still sets
+its initial price. Subsequent price changes are separate immutable draft commands
+in the same editor publication process, explicitly approved by an owner or manager with `products.manage`.
+WB keeps base price/integer discount, Ozon keeps exact kopecks and old_price, and
+Avito uses its direct price API with fresh-stock/minimum-price checks. Card receipts
+and price receipts remain separate; price-only actions never create or rebind cards.
+See [editor-price-publications.md](editor-price-publications.md) for the UI, mode
+gates, target serialization, recovery and migration from retired manual proposals.
+
 ## Native Saby publication
 
-An explicit Save/Create in enabled production queues Saby through the same durable publication worker. Disabled preparations remain disabled, while local/staging Saby simulation remains isolated. The editor never sends its native creation through the older CommerceML exporter or its technical catalogue.
+An explicit Save/Create in enabled production queues Saby through the same durable publication worker. Disabled preparations remain disabled, while local/staging Saby simulation remains isolated. The retired CommerceML exporter and its HTTP endpoint have been removed; all editor catalogue writes use the native publisher.
 
 The frozen Saby request includes the selected native category/folder, site name with a pot-size suffix only when applicable, description, current site price, public photos, canonical attributes and a stable generated 200-prefixed EAN-13. Saby's numeric integration ID, native business number, UUID and EAN remain separate identifiers. Existing numeric links always mean Update, including when a recovered browser draft still says `mode:create`. Unchanged saves retain their finished receipt.
 
@@ -37,7 +50,7 @@ Native Create creates a server draft. The worker records the irreversible bounda
 
 Native Save prepares its exact managed payload, expected image IDs and verification evidence in a separate durable step before sending Update. If a process dies during Update, its expired lease resumes verification, not another POST. An interrupted Move likewise reads its result back first. An interrupted temporary image upload pauses for manual review because its unknown attachment ID cannot be safely recreated. Incomplete older Save evidence also pauses rather than reporting an unverified success.
 
-The old manual catalogue exporter and native editor publications exclude each other under the same variant lock. An unresolved legacy export must finish before a new editor send, and an unfinished native publication blocks a competing legacy export. Existing unlinked nomenclature is selected by an exact unique cached business code; names never establish a link.
+The retirement migration refuses unfinished legacy exports under an exclusive lock and archives terminal history. Historical export identities remain protected; there is no second catalogue writer. Existing unlinked nomenclature is selected by an exact unique cached business code; names never establish a link.
 
 ## Verification
 

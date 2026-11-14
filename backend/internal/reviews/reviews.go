@@ -2,9 +2,7 @@ package reviews
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
@@ -175,15 +173,6 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 		return 0, err
 	}
 	return id, nil
-}
-
-func reviewMediaKey(reviewID int64, contentType string) (string, error) {
-	token := make([]byte, 16)
-	if _, err := rand.Read(token); err != nil {
-		return "", err
-	}
-	extension := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4", "video/webm": "webm"}[contentType]
-	return fmt.Sprintf("reviews/%d/%s.%s", reviewID, hex.EncodeToString(token), extension), nil
 }
 
 func validMediaSignature(contentType string, data []byte) bool {

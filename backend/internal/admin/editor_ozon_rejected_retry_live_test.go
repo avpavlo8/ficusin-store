@@ -40,7 +40,7 @@ func TestOzonRejectedSavePreservesCreationReceiptOnLocalDatabase(t *testing.T) {
 	must(migrate.Apply(ctx, pool, "../../../timeweb/migrations"))
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var actorID, productID, variantID int64
-	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Ozon retry fixture',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&actorID))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Ozon retry fixture',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&actorID))
 	defer func() {
 		pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id=$1`, variantID)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id=$1`, variantID)

@@ -1,9 +1,9 @@
 # API inventory and contract policy
 
 Owner: Storefront & Commerce
-Last reviewed: 2026-10-23
+Last reviewed: 2026-11-13
 
-`docs/openapi.yaml` covers all 241 registered HTTP operations, including optional
+`docs/openapi.yaml` covers the registered HTTP operations, including optional
 chat and Avito integrations. Buyer-facing commerce, authentication, payments and
 refunds have detailed request/response contracts; some backoffice response payloads
 remain intentionally unspecified rather than being guessed. It must never describe an endpoint that the router no longer
@@ -36,8 +36,11 @@ it is not yet represented by a detailed OpenAPI schema.
 
 ## Compatibility rules
 
-1. `/api/v1` changes are additive. Removing or renaming a field requires a new
-   version or a measured deprecation window.
+1. Buyer-facing `/api/v1` changes preserve compatibility. Retiring an internal
+   admin endpoint requires tracing current UI callers, workers, tests and any
+   external integrations; update router, handlers, OpenAPI and checks together.
+   An endpoint having no current UI caller is evidence, not proof that its
+   durable queue or historical records can be dropped.
 2. Cart keys and order item IDs are exact immutable Ficusin SKUs, never product
    card IDs or external provider IDs.
 3. Errors exposed to customers contain a safe Russian message and the response

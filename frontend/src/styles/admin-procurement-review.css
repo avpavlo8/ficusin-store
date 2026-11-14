@@ -226,16 +226,6 @@
   font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
-.admin-page .procurement-stages {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  padding: 12px 20px 12px 36px;
-  border: 1px solid #d0d2d5;
-  border-radius: 8px;
-  background: #e7e8e9;
-  font-size: 14px;
-}
 .admin-page .procurement-readonly-fields {
   border: 0;
   padding: 0;
@@ -461,10 +451,6 @@
   }
   .admin-page .procurement-order-dialog > header {
     padding: 14px 16px;
-  }
-  .admin-page .procurement-stages {
-    gap: 10px 22px;
-    font-size: 13px;
   }
   .admin-page .procurement-filter-bar {
     gap: 8px;

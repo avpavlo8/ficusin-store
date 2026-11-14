@@ -34,7 +34,7 @@ func filterUnchangedOrderEditFields(ctx context.Context, tx pgx.Tx, orderID int6
 		}
 		unchanged := len(requested) == len(current)
 		for _, line := range requested {
-			if current[line.identity()] != line.Quantity {
+			if current[line.SKU] != line.Quantity {
 				unchanged = false
 			}
 		}

@@ -1,6 +1,7 @@
 import { request } from "@playwright/test";
 import { mkdirSync, chmodSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { isStagingOrigin } from "./staging-target";
 
 export const stagingState = (owner = false) =>
   resolve(__dirname, ".staging-auth", owner ? "owner.json" : "gate.json");
@@ -9,7 +10,7 @@ export async function prepareStagingSession(owner = false) {
   const baseURL = process.env.FICUSIN_BASE_URL || "";
   const token = process.env.STAGING_ACCESS_TOKEN;
   if (
-    !/^https:\/\/(?:[^/]+\.twc1\.net|staging\.ficusin\.ru)$/.test(baseURL) ||
+    !isStagingOrigin(baseURL) ||
     !token
   )
     throw new Error("Only isolated staging credentials are allowed");

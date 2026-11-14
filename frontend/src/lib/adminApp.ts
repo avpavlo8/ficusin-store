@@ -1,19 +1,3 @@
-import type { InstallPromptEvent } from "./pwa";
-
-let installPrompt: InstallPromptEvent | null = null;
-const listeners = new Set<() => void>();
-export const getAdminInstallPrompt = () => installPrompt;
-export function subscribeAdminInstall(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-export function clearAdminInstallPrompt() {
-  installPrompt = null;
-  listeners.forEach((listener) => listener());
-}
-
 export function initializeAdminApp() {
   const path = location.pathname;
   const target = new URLSearchParams(location.search).get("returnTo") || "";
@@ -32,10 +16,6 @@ export function initializeAdminApp() {
     .querySelector('meta[name="apple-mobile-web-app-title"]')
     ?.setAttribute("content", "Управление");
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", "#244734");
-  window.addEventListener("beforeinstallprompt", (event) => {
-    event.preventDefault();
-    installPrompt = event as InstallPromptEvent;
-    listeners.forEach((listener) => listener());
-  });
-  window.addEventListener("appinstalled", clearAdminInstallPrompt);
+  // Keep installation available through the browser menu without a promotion.
+  window.addEventListener("beforeinstallprompt", (event) => event.preventDefault());
 }

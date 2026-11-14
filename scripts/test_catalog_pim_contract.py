@@ -19,12 +19,9 @@ class CatalogPIMContractTest(unittest.TestCase):
 
     def test_orders_snapshot_product_variant_and_sku(self):
         migration = text("timeweb/migrations/056_catalog_pim_final.sql")
-        service = text("backend/internal/order/service.go")
         for fragment in ("variant_snapshot", "order_items_product_fk", "legacy_product_ref TEXT", "order_items_catalog_identity_check"):
             self.assertIn(fragment, migration)
         self.assertIn("product_id IS NOT NULL AND variant_id IS NOT NULL AND sku IS NOT NULL", migration)
-        self.assertIn("item.ProductID, item.VariantID, item.ID", service)
-        self.assertIn("WHERE pv.sku = $1", service)
 
     def test_unresolved_historical_order_keeps_legacy_reference_without_fake_sku(self):
         migration = text("timeweb/migrations/056_catalog_pim_final.sql")
@@ -57,10 +54,7 @@ class CatalogPIMContractTest(unittest.TestCase):
 
     def test_enum_options_are_normalized(self):
         migration = text("timeweb/migrations/056_catalog_pim_final.sql")
-        pim = text("backend/internal/admin/catalog_pim.go")
         self.assertIn("ALTER TABLE attribute_definitions DROP COLUMN IF EXISTS options", migration)
-        self.assertIn("attribute_options", pim)
-        self.assertIn("replaceAttributeOptions", pim)
 
     def test_cart_and_pdp_switch_on_sku(self):
         storefront = text("frontend/src/StorefrontPage.tsx")
@@ -71,30 +65,6 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("variant?.images?.length ? variant.images : product.images", pdp)
         self.assertIn("setActiveImage(0)", pdp)
 
-    def test_filters_are_owner_configured_and_values_are_live(self):
-        query = text("backend/internal/catalog/postgres.go")
-        ui = text("frontend/src/StorefrontPage.tsx")
-        admin_ui = text("frontend/src/AdminPim.tsx")
-        self.assertIn("catalog_filters", query)
-        self.assertIn("facetPopulation", ui)
-        self.assertNotIn('const catalogFacets =', ui)
-        self.assertIn("/api/v1/admin/catalog-filters", admin_ui)
-
-    def test_role_boundaries_exist_for_system_definitions(self):
-        pim = text("backend/internal/admin/catalog_pim.go")
-        manage = text("backend/internal/admin/manage.go")
-        permissions = text("backend/internal/admin/admin.go")
-        self.assertIn("if actor.Role != RoleOwner", pim)
-        self.assertIn("PermissionProductsManage", permissions)
-        self.assertIn("PermissionDelete", permissions)
-        self.assertNotIn("permission == PermissionProductsManage", permissions.split("case RoleManager:", 1)[1])
-        self.assertNotIn("permission == PermissionDelete", permissions.split("case RoleManager:", 1)[1])
-        self.assertIn("PermissionDelete", manage)
-
-    def test_variant_delete_is_safe_only_before_sale(self):
-        pim = text("backend/internal/admin/catalog_pim.go")
-        self.assertIn("SELECT EXISTS(SELECT 1 FROM order_items WHERE variant_id=$1)", pim)
-        self.assertIn("проданный SKU можно только архивировать", pim)
 
     def test_dynamic_collections_are_live_pim_queries(self):
         migration = text("timeweb/migrations/057_dynamic_collection_rules.sql")
@@ -112,16 +82,6 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertIn("Товар должен соответствовать всем условиям", ui)
         self.assertRegex(ui, r"Предпросмотр\s+ничего не сохраняет")
 
-    def test_sku_media_has_repository_routes_and_admin_ui(self):
-        repository = text("backend/internal/admin/variant_media.go")
-        routes = text("backend/internal/httpapi/admin_catalog_routes.go")
-        ui = text("frontend/src/VariantMediaManager.tsx")
-        pim = text("frontend/src/AdminPim.tsx")
-        self.assertIn("variant_id", repository)
-        self.assertIn('GET /api/v1/admin/variants/{id}/media', routes)
-        self.assertIn('POST /api/v1/admin/variants/{id}/media', routes)
-        self.assertIn("Фото SKU имеют приоритет", ui)
-        self.assertIn("VariantMediaManager", pim)
 
     def test_review_backfill_avoids_illegal_update_target_lateral_reference(self):
         migration = text("timeweb/migrations/055_catalog_spu_sku_attributes.sql")

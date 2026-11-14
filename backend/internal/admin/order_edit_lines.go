@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
 	"github.com/jackc/pgx/v5"
@@ -19,7 +20,7 @@ type existingOrderEditLine struct {
 func lockOrderEditStock(ctx context.Context, tx pgx.Tx, orderID int64, requested []OrderEditLine) error {
 	skus := make([]string, 0, len(requested))
 	for _, line := range requested {
-		skus = append(skus, line.identity())
+		skus = append(skus, strings.TrimSpace(line.SKU))
 	}
 	rows, err := tx.Query(ctx, `SELECT variant_id FROM order_items WHERE order_id=$1 AND variant_id IS NOT NULL UNION SELECT id FROM product_variants WHERE sku=ANY($2::TEXT[]) ORDER BY variant_id`, orderID, skus)
 	if err != nil {
@@ -71,7 +72,7 @@ func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, custom
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	if err = order.RecordMovement(ctx, tx, orderID, order.MovementRelease); err != nil {
+	if err = order.RecordStockRelease(ctx, tx, orderID); err != nil {
 		return err
 	}
 	if err = releaseOrderReservationsForEdit(ctx, tx, orderID); err != nil {
@@ -99,14 +100,14 @@ func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, custom
     'packageHeightCm',COALESCE(shipping_package_dimension(pv.id,'package_height_cm'),0)::INTEGER,
     'packageWeightGrams',COALESCE(variant_numeric_attribute(pv.id,'package_weight_grams'),0)::INTEGER)
    FROM product_variants pv JOIN products p ON p.id=pv.product_id
-   WHERE pv.sku=$1 AND pv.is_active=1 AND pv.archived_at IS NULL AND p.status='published' LIMIT 1`, want.identity()).Scan(&line.sku, &line.variantID, &line.productID, &line.name, &line.variantLabel, &priceMinor, &line.sabyID, &line.heightCM, &line.potDiameterCM, &packing)
+   WHERE pv.sku=$1 AND pv.is_active=1 AND pv.archived_at IS NULL AND p.status='published' LIMIT 1`, strings.TrimSpace(want.SKU)).Scan(&line.sku, &line.variantID, &line.productID, &line.name, &line.variantLabel, &priceMinor, &line.sabyID, &line.heightCM, &line.potDiameterCM, &packing)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("товар %s больше не доступен", want.identity())
+			return fmt.Errorf("товар %s больше не доступен", strings.TrimSpace(want.SKU))
 		}
 		if err != nil {
 			return err
 		}
-		_, preorder, err := reserveVariantForEdit(ctx, tx, orderID, line.variantID, want.Quantity)
+		preorder, err := needsPreorderForEdit(ctx, tx, orderID, line.variantID, want.Quantity)
 		if err != nil {
 			return err
 		}
@@ -158,9 +159,6 @@ func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, custom
 		if tag.RowsAffected() != 1 {
 			return ErrInvalidInput
 		}
-	}
-	if err = order.RecordMovement(ctx, tx, orderID, order.MovementReserve); err != nil {
-		return err
 	}
 	_, err = tx.Exec(ctx, `UPDATE orders SET has_preorder=$2,delivery_fee_pending=$3,stock_released_at=NULL WHERE id=$1`, orderID, boolToSmallInt(hasPreorder), boolToSmallInt(feePending))
 	return err

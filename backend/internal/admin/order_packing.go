@@ -245,13 +245,10 @@ func (repository *PostgresRepository) packingDestination(ctx context.Context, st
 	if city <= 0 || office == "" {
 		return 0, "", "", "", errors.New("выберите город и пункт выдачи СДЭК")
 	}
-	service, ok := repository.shipmentQuotes.(interface {
-		GetOffices(context.Context, int) ([]integration.CDEKOffice, error)
-	})
-	if !ok {
-		return 0, "", "", "", errors.New("проверка пункта СДЭК недоступна")
+	if repository.shipmentQuotes == nil || !repository.shipmentQuotes.Configured() {
+		return 0, "", "", "", errors.New("СДЭК не настроен")
 	}
-	offices, err := service.GetOffices(ctx, city)
+	offices, err := repository.shipmentQuotes.GetOffices(ctx, city)
 	if err != nil {
 		return 0, "", "", "", fmt.Errorf("не удалось проверить пункт СДЭК: %w", err)
 	}

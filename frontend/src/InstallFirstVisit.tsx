@@ -52,7 +52,7 @@ export function InstallFirstVisit() {
           <path d="m6 6 12 12M18 6 6 18" />
         </svg>
       </button>
-      <InstallHint inline compact onInstalled={close} />
+      <InstallHint compact onInstalled={close} />
     </aside>
   );
 }

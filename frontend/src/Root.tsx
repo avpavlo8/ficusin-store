@@ -72,27 +72,6 @@ export default function Root() {
     return withFooter(<NotFoundPage />);
   }
   const query = new URLSearchParams(window.location.search);
-  const paymentPreview = query.get("preview");
-  if (
-    import.meta.env.DEV &&
-    path === "/checkout" &&
-    (paymentPreview === "payment-success" ||
-      paymentPreview === "payment-pending" ||
-      paymentPreview === "payment-failed")
-  ) {
-    return withFooter(
-      <PaymentResultPage
-        orderNumber="LOCAL-1024"
-        preview={
-          paymentPreview === "payment-success"
-            ? "success"
-            : paymentPreview === "payment-failed"
-              ? "failed"
-              : "pending"
-        }
-      />,
-    );
-  }
   const paymentReturn = path === "/" ? query.get("paid")?.trim() : null;
   if (paymentReturn) return withFooter(<PaymentResultPage orderNumber={paymentReturn} />);
   if (path === "/discounts") return withFooter(<DiscountPlantsPage />);

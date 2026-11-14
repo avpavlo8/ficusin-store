@@ -1,8 +1,11 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"testing"
 
@@ -17,9 +20,113 @@ func rejectedOzonFixture() (*CatalogPublisher, *catalogMockTransport, ce.Request
 	p := NewMockCatalog()
 	transport := p.Executor.client.Transport.(*catalogMockTransport)
 	r := cardFixture("ozon")
+	r.Action = "create"
 	r.Packaging.Weight = 1000
-	transport.cards["ozon:"+r.SellerArticle("ozon")] = mockCard{ID: 990000111, Offer: r.SellerArticle("ozon"), Barcode: r.Barcode, Images: r.Images, Document: map[string]any{"weight": float64(1)}}
+	uncreated := false
+	transport.cards["ozon:"+r.SellerArticle("ozon")] = mockCard{IsCreated: &uncreated, ID: 990000111, Offer: r.SellerArticle("ozon"), Barcode: r.Barcode, Images: r.Images, Document: map[string]any{"weight": float64(1)}}
 	return p, transport, r, ce.Progress{Stage: "reconcile", CreateAttempted: true, ReapplyPayload: true, TaskID: 111}
+}
+
+func TestOzonRejectedRetryPreservesPriceWhenCreationStateTrueOrMissing(t *testing.T) {
+	for _, missing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "created", true: "missing state"}[missing], func(t *testing.T) {
+			p, transport, r, progress := rejectedOzonFixture()
+			card := transport.cards["ozon:"+r.SellerArticle("ozon")]
+			created := true
+			card.IsCreated = &created
+			card.Price, card.OldPrice = 123.45, 199.99
+			transport.cards["ozon:"+r.SellerArticle("ozon")] = card
+			priceReads := 0
+			p.Executor.client.Transport = ozonRetryTransport(func(req *http.Request) (*http.Response, error) {
+				if req.URL.Path == "/v5/product/info/prices" {
+					priceReads++
+				}
+				resp, err := transport.RoundTrip(req)
+				if err != nil {
+					return resp, err
+				}
+				if missing && req.URL.Path == "/v3/product/info/list" {
+					var payload map[string]any
+					json.NewDecoder(resp.Body).Decode(&payload)
+					resp.Body.Close()
+					for _, raw := range payload["items"].([]any) {
+						delete(raw.(map[string]any)["statuses"].(map[string]any), "is_created")
+					}
+					body, _ := json.Marshal(payload)
+					resp.Body = io.NopCloser(bytes.NewReader(body))
+				}
+				return resp, err
+			})
+			for i := 0; i < 8; i++ {
+				result, err := p.Advance(context.Background(), "ozon", r, progress)
+				if err != nil {
+					t.Fatal(err)
+				}
+				progress = result.Progress
+				if result.Status == "created" {
+					break
+				}
+			}
+			updated := transport.cards["ozon:"+r.SellerArticle("ozon")]
+			if priceReads != 1 || updated.Price != 123.45 || updated.OldPrice != 199.99 || updated.Document["weight"] != float64(1000) {
+				t.Fatal("published/unknown price was not preserved", priceReads, updated.Price, updated.OldPrice)
+			}
+		})
+	}
+}
+
+func TestOzonExplicitLinkedUncreatedDraftCanInitializeMissingPrice(t *testing.T) {
+	p := NewMockCatalog()
+	transport := p.Executor.client.Transport.(*catalogMockTransport)
+	r := cardFixture("ozon")
+	progress := ce.Progress{}
+	for i := 0; i < 15; i++ {
+		result, err := p.Advance(context.Background(), "ozon", r, progress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		progress = result.Progress
+		if result.Status == "created" {
+			break
+		}
+	}
+	if progress.IDs.ProductID == "" {
+		t.Fatal("missing explicit card identity")
+	}
+	key := "ozon:" + r.SellerArticle("ozon")
+	card := transport.cards[key]
+	created := false
+	card.IsCreated = &created
+	card.Price, card.OldPrice = 0, 0
+	card.Barcode = ""
+	transport.cards[key] = card
+	r.Action, r.ExistingID = "update", card.Offer
+	r.Packaging.Weight = 1000
+	reads, writes := 0, 0
+	p.Executor.client.Transport = ozonRetryTransport(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/v5/product/info/prices" {
+			reads++
+		}
+		if req.URL.Path == "/v3/product/import" {
+			writes++
+		}
+		return transport.RoundTrip(req)
+	})
+	progress = ce.Progress{}
+	for i := 0; i < 15; i++ {
+		result, err := p.Advance(context.Background(), "ozon", r, progress)
+		if err != nil {
+			t.Fatal(err)
+		}
+		progress = result.Progress
+		if result.Status == "synced" {
+			break
+		}
+	}
+	updated := transport.cards[key]
+	if writes != 1 || reads != 0 || updated.ID != card.ID || updated.Document["weight"] != float64(1000) || updated.Price != 5000.25 {
+		t.Fatalf("explicit uncreated link could not initialize price: writes%d reads%d card%+v", writes, reads, updated)
+	}
 }
 
 func TestOzonRejectedDraftReimportsCorrectedPayloadAfterIdentityReadback(t *testing.T) {

@@ -22,6 +22,7 @@ func RunPublisher(ctx context.Context, pool *pgxpool.Pool, publisher Publisher, 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
+		logPriceStep(ctx, pool, publisher, mode, logger)
 		if err := PublicationStep(ctx, pool, publisher, mode); err != nil && ctx.Err() == nil {
 			logger.Error("catalog publication worker", "error", err)
 		}
@@ -52,18 +53,15 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	if e != nil {
 		return e
 	}
-	if channel == "saby" {
-		var legacyBusy bool
-		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND state IN ('queued','checking','verifying','unknown'))`, variant).Scan(&legacyBusy); e != nil {
+	var priceBusy bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_editor_price_publications WHERE variant_id=$1 AND execution_mode=$2 AND status IN('queued','processing','needs_attention'))`, variant, mode).Scan(&priceBusy); e != nil {
+		return e
+	}
+	if priceBusy {
+		if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET next_attempt_at=NOW()+INTERVAL '10 seconds' WHERE variant_id=$1 AND channel=$2`, variant, channel); e != nil {
 			return e
 		}
-		if legacyBusy {
-			_, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET next_attempt_at=NOW()+INTERVAL '20 seconds',message='Ожидаем завершения предыдущей отправки в СБИС' WHERE variant_id=$1 AND channel='saby'`, variant)
-			if e != nil {
-				return e
-			}
-			return tx.Commit(ctx)
-		}
+		return tx.Commit(ctx)
 	}
 	var request Request
 	var progress Progress

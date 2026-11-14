@@ -10,11 +10,9 @@ import {
 // Installation is offered by the first-visit banner or explicitly in Account.
 // Neither this component nor a page load requests notification permission.
 export function InstallHint({
-  inline = false,
   compact = false,
   onInstalled,
 }: {
-  inline?: boolean;
   compact?: boolean;
   onInstalled?: () => void;
 }) {
@@ -65,10 +63,7 @@ export function InstallHint({
     }
   };
   return (
-    <aside
-      className={inline ? "home-install" : "install-hint"}
-      aria-label="Установить приложение Фикусин"
-    >
+    <aside className="home-install" aria-label="Установить приложение Фикусин">
       <img src="/assets/brand/graphite-v1/app-192-v2.png" alt="" />
       <div>
         <strong>{installed ? "Фикусин уже установлен" : "Фикусин на экране «Домой»"}</strong>

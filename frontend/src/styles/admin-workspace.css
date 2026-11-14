@@ -996,69 +996,6 @@
   }
 }
 
-.admin-app-install {
-  position: relative;
-  flex-shrink: 0;
-  font-size: 13px;
-}
-.admin-app-install > summary {
-  cursor: pointer;
-  padding: 12px;
-  min-height: 44px;
-  color: var(--workspace-green);
-  border-radius: 7px;
-}
-.admin-app-install > summary:hover {
-  background: #dedfe1;
-}
-.admin-app-install > summary:focus-visible {
-  outline: 2px solid var(--workspace-green);
-  outline-offset: 2px;
-}
-.admin-app-install-panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  z-index: 40;
-  width: min(340px, calc(100vw - 32px));
-  padding: 20px;
-  border: 1px solid var(--workspace-line);
-  border-radius: 12px;
-  background: var(--workspace-paper);
-  color: var(--workspace-ink);
-  line-height: 1.5;
-}
-.admin-app-install-panel img {
-  display: block;
-  margin-bottom: 12px;
-  border-radius: 10px;
-}
-.admin-app-install-panel p,
-.admin-app-install-panel ol {
-  margin: 10px 0 0;
-}
-.admin-app-install-panel ol {
-  padding-left: 20px;
-}
-.admin-app-install-panel button {
-  margin-top: 16px;
-  min-height: 44px;
-}
-@media (max-width: 700px) {
-  .admin-app-install {
-    order: 5;
-    flex-basis: 100%;
-  }
-  .admin-app-install > summary {
-    padding: 8px 0;
-    min-height: 44px;
-  }
-  .admin-app-install-panel {
-    left: 0;
-    right: auto;
-  }
-}
-
 .ws-avatar-image {
   display: block;
   width: 100%;

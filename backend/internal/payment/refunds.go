@@ -42,9 +42,8 @@ type RefundIssue struct {
 	ActorID     *int64  `json:"actorId,omitempty"`
 	NeedsReview bool    `json:"needsReview"`
 
-	LastError        string `json:"lastError"`
-	ReceiptStatus    string `json:"receiptStatus"`
-	ReceiptReference string `json:"receiptReference"`
+	LastError     string `json:"lastError"`
+	ReceiptStatus string `json:"receiptStatus"`
 }
 
 func (service *Service) refundIssues(ctx context.Context, orderID int64) ([]RefundIssue, error) {

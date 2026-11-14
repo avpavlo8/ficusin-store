@@ -109,7 +109,7 @@ func TestCreationRealizationHooksPostgres(t *testing.T) {
 		}
 		exec(string(raw))
 	}
-	service := NewService(pool, nil, nil, creationRealizationSettings{}, quietLogger())
+	service := NewService(pool, nil, creationRealizationSettings{}, quietLogger())
 	checkout := func(method string) int64 {
 		t.Helper()
 		created, err := service.Create(ctx, CreateInput{Customer: CustomerInput{Name: "Synthetic checkout", Phone: "+79990000001", Email: "test@example.invalid"}, Delivery: "pickup", Items: []ItemInput{{ID: "1", Quantity: 2}}, PaymentMethod: method, OnlinePaymentReady: true, Consent: true, OfferAccepted: true})

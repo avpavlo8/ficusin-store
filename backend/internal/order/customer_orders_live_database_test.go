@@ -24,7 +24,7 @@ func TestCustomerOrderViewsOnLiveDatabase(t *testing.T) {
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	prefix := "CI-ORDER-VIEWS-" + suffix
 	var customerID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','CI order views',CURRENT_TIMESTAMP) RETURNING id`, prefix+"@example.invalid", "+7"+suffix).Scan(&customerID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'CI order views',CURRENT_TIMESTAMP) RETURNING id`, prefix+"@example.invalid", "+7"+suffix).Scan(&customerID); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {

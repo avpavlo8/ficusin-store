@@ -52,9 +52,7 @@ async function setup(
     wholesaleMinQty: 1,
     attributes: {},
     externalIds: [],
-    sabyFields: [],
-    overrideFields: [],
-    importantWarnings: [],
+      importantWarnings: [],
     variantCount: 2,
     updatedAt: "2026-11-13T00:00:00Z",
     passport: { faq: [] },
@@ -74,7 +72,6 @@ async function setup(
       { provider: "saby", type: "id", externalId: index ? "1102" : "1101" },
     ],
     images: [],
-    managedFields: [],
   }));
   const mutations: string[] = [];
   await page.route("**/api/v1/**", async (route) => {
@@ -149,14 +146,12 @@ async function setup(
             code: "X-FIRST",
             category,
             folder,
-            mirrorFound: true,
           },
           "11": {
             id: "1102",
             code: "X-SECOND",
             category: { id: "", name: "" },
             folder: { id: "", name: "" },
-            mirrorFound: false,
           },
         },
       });

@@ -64,10 +64,10 @@ func (repository *PostgresRepository) AddUploadedProductMedia(
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE products
-		SET saby_fields=array_remove(saby_fields,'photo'), updated_at=CURRENT_TIMESTAMP
+		SET updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
 	`, productID); err != nil {
-		return ProductMedia{}, fmt.Errorf("detach Saby photo sync: %w", err)
+		return ProductMedia{}, fmt.Errorf("update product media timestamp: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO media_mirror(source_url, card_url, large_url, attempts, failure, mirrored_at, checked_at)
@@ -127,10 +127,10 @@ func (repository *PostgresRepository) DeleteProductMedia(ctx context.Context, ac
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE products
-		SET saby_fields=array_remove(saby_fields,'photo'), updated_at=CURRENT_TIMESTAMP
+		SET updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
 	`, productID); err != nil {
-		return fmt.Errorf("detach Saby photo sync: %w", err)
+		return fmt.Errorf("update product media timestamp: %w", err)
 	}
 	if _, err := tx.Exec(ctx, "DELETE FROM product_media WHERE id=$1 AND product_id=$2", mediaID, productID); err != nil {
 		return fmt.Errorf("delete product media: %w", err)
@@ -176,10 +176,10 @@ func (repository *PostgresRepository) SetPrimaryProductMedia(ctx context.Context
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE products
-		SET saby_fields=array_remove(saby_fields,'photo'), updated_at=CURRENT_TIMESTAMP
+		SET updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1
 	`, productID); err != nil {
-		return fmt.Errorf("detach Saby photo sync: %w", err)
+		return fmt.Errorf("update product media timestamp: %w", err)
 	}
 	if _, err := tx.Exec(ctx, "UPDATE product_media SET is_primary=CASE WHEN id=$2 THEN 1 ELSE 0 END WHERE product_id=$1", productID, mediaID); err != nil {
 		return fmt.Errorf("set primary product media: %w", err)

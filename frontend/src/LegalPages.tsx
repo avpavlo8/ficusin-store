@@ -36,7 +36,6 @@ function LegalPage({
   document = false,
   contents = true,
 }: {
-  eyebrow?: string;
   title: string;
   children: ReactNode;
   description?: string;
@@ -139,7 +138,6 @@ function ContactsMap() {
 export function OfferPage() {
   return (
     <LegalPage
-      eyebrow="Правовая информация"
       title="Публичная оферта"
       document
       description="Условия покупки в интернет-магазине «Фикусин»."
@@ -218,7 +216,6 @@ export function OfferPage() {
 export function PrivacyPage() {
   return (
     <LegalPage
-      eyebrow="Правовая информация"
       title="Политика конфиденциальности"
       document
       description="Как «Фикусин» обрабатывает и защищает персональные данные покупателей."
@@ -326,7 +323,6 @@ export function PrivacyPage() {
 export function RequisitesPage() {
   return (
     <LegalPage
-      eyebrow="Продавец"
       title="Контакты и реквизиты"
       contents={false}
       description="Сведения о продавце и способы связи с магазином."
@@ -393,7 +389,6 @@ export function RequisitesPage() {
 export function ContactsPage() {
   return (
     <LegalPage
-      eyebrow="Мы рядом"
       title="Контакты"
       contents={false}
       description="Приезжайте за растением или напишите нам. Поможем с выбором, заказом и уходом."
@@ -460,7 +455,6 @@ export function ContactsPage() {
 export function DeliveryPage() {
   return (
     <LegalPage
-      eyebrow="Покупателям"
       title="Доставка и возврат"
       description="Как получить заказ, оплатить покупку и обратиться в магазин, если что-то пошло не так."
     >

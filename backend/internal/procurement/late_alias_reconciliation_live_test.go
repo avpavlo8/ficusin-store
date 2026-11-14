@@ -29,8 +29,8 @@ func TestResolveAliasCollapsesLateInvoiceLineOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	var actorID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Late alias owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("late-alias-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Late alias owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("late-alias-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	var supplierID int64
@@ -115,8 +115,8 @@ func TestManualInvoicePairOverridesWrongAliasAndPreservesPlanPrice(t *testing.T)
 		}
 	}
 	var actorID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Manual pair owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("manual-pair-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Manual pair owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("manual-pair-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	var supplierID int64
@@ -200,7 +200,7 @@ func TestManualInvoicePairSwapsAlreadyMatchedCarmonaRows(t *testing.T) {
 		}
 	}
 	var actorID, supplierID, orderID, documentID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Swap owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("swap-%d@example.invalid", unique), fmt.Sprintf("+76%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Swap owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("swap-%d@example.invalid", unique), fmt.Sprintf("+76%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,country_code,default_currency) VALUES($1,'international','NL','EUR') RETURNING id`, fmt.Sprintf("Swap supplier %d", unique)).Scan(&supplierID); err != nil {

@@ -248,6 +248,7 @@ func (p *CatalogPublisher) lookup(ctx context.Context, ch, identifier string, by
 				PrimaryImage json.RawMessage   `json:"primary_image"`
 				Statuses     struct {
 					StatusName string `json:"status_name"`
+					IsCreated  *bool  `json:"is_created"`
 				} `json:"statuses"`
 				Sources []struct {
 					SKU int64 `json:"sku"`
@@ -267,7 +268,7 @@ func (p *CatalogPublisher) lookup(ctx context.Context, ch, identifier string, by
 		if byArticle && v.OfferID != identifier {
 			return ce.RemoteIDs{}, errors.New("Ozon вернул товар с другим артикулом")
 		}
-		ids := ce.RemoteIDs{ProductID: strconv.FormatInt(v.ID, 10), OfferID: v.OfferID, ImageCount: len(v.Images), RemoteStatus: v.Statuses.StatusName}
+		ids := ce.RemoteIDs{ProductID: strconv.FormatInt(v.ID, 10), OfferID: v.OfferID, ImageCount: len(v.Images), RemoteStatus: v.Statuses.StatusName, IsCreated: v.Statuses.IsCreated}
 		if ids.ImageCount == 0 && len(v.PrimaryImage) > 0 && string(v.PrimaryImage) != "null" && string(v.PrimaryImage) != `""` && string(v.PrimaryImage) != "[]" {
 			ids.ImageCount = 1
 		}
@@ -415,6 +416,23 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 	if s.Stage == "" {
 		s.Stage = "check"
 	}
+	if ch == "wb" && r.Action == "updating" && (s.Stage == "price" || s.Stage == "price-readback") {
+		ids, err := p.lookup(ctx, ch, r.SellerArticle(ch), true)
+		if err != nil {
+			return ce.Result{Progress: s}, err
+		}
+		if ids.ProductID != s.IDs.ProductID {
+			return result("needs_attention", "Связь WB изменилась. Цена не отправлялась")
+		}
+		if ids.ImageCount < len(r.Images) {
+			s.Checks++
+			if s.Checks > 90 {
+				return result("needs_attention", "WB не подтвердил фотографии обновлённой карточки")
+			}
+			return result("queued", "Ожидаем фотографии WB. Цена и скидка не менялись")
+		}
+		return result("synced", "Контент WB обновлён. Цена и скидка сохранены; изменения цен подтверждаются отдельно")
+	}
 	switch s.Stage {
 	case "check", "reconcile":
 		ids, e := p.lookup(ctx, ch, r.SellerArticle(ch), true)
@@ -460,6 +478,7 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 		return result("queued", "Проверка пройдена. Карточка ожидает отправки.")
 	case "create", "update":
 		updating := s.Stage == "update"
+		ownedUncreatedUpdate := false
 		if updating {
 			ids, e := p.lookup(ctx, ch, s.IDs.OfferID, true)
 			if e != nil {
@@ -471,6 +490,12 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			if s.ReapplyPayload && (r.Barcode == "" || ids.Barcode != r.Barcode) {
 				return ce.Result{}, errors.New("штрихкод ранее созданной карточки не подтверждён; нужна явная проверка связи")
 			}
+			// A positively identified rejected creation may not have a price-list
+			// record yet. Its corrected initial import retains the creation intent.
+			// Published cards and unknown vendor states must preserve live prices.
+			creationRetry := s.ReapplyPayload && s.CreateAttempted && s.TaskID > 0 && r.Action == "create" && r.Channel.Mode == "create"
+			trustedLink := r.Action == "updating" && r.ExistingID != "" && s.UpdateRequest != nil && ids.Barcode == s.IDs.Barcode
+			ownedUncreatedUpdate = ch == "ozon" && ids.IsCreated != nil && !*ids.IsCreated && (creationRetry || trustedLink)
 		}
 		s.CreateAttempted = true
 		if ch == "ozon" {
@@ -481,6 +506,15 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 					return ce.Result{Progress: s}, e
 				}
 				return ce.Result{Progress: ce.Progress{Stage: "check"}}, e
+			}
+			if updating && !ownedUncreatedUpdate {
+				price, oldPrice, err := p.Executor.readEditorOzonPrice(ctx, s.IDs.OfferID)
+				if err != nil {
+					return ce.Result{Progress: s}, err
+				}
+				item := body["items"].([]any)[0].(map[string]any)
+				item["price"] = strconv.FormatFloat(price, 'f', 2, 64)
+				item["old_price"] = strconv.FormatFloat(oldPrice, 'f', 2, 64)
 			}
 			var out struct {
 				Result struct {
@@ -530,7 +564,7 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			endpoint := "/content/v2/cards/upload"
 			var requestBody any = body
 			if updating {
-				updated, err := p.wbUpdate(ctx, r, s.IDs.ProductID, body)
+				updated, err := p.wbUpdate(ctx, s.IDs.ProductID, body)
 				if err != nil {
 					return ce.Result{}, err
 				}
@@ -771,7 +805,7 @@ func (e *MarketplaceExecutor) LookupEditorCard(ctx context.Context, channel, ide
 	return (&CatalogPublisher{Executor: e}).lookup(ctx, channel, strings.TrimSpace(identifier), false)
 }
 
-func (p *CatalogPublisher) wbUpdate(ctx context.Context, r ce.Request, id string, created []map[string]any) ([]map[string]any, error) {
+func (p *CatalogPublisher) wbUpdate(ctx context.Context, id string, created []map[string]any) ([]map[string]any, error) {
 	var out struct {
 		Cards []map[string]any `json:"cards"`
 	}

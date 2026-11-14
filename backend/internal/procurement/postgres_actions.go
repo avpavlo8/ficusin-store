@@ -1091,17 +1091,13 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 	if len(items) == 0 || !oneOf(items[0].Channel, "wb", "ozon", "saby_price") || items[0].ExternalOperationID != "" {
 		return true, nil
 	}
-	var source string
 	var unified bool
-	if err := store.pool.QueryRow(ctx, `SELECT batch.source,batch.unified_price_snapshot IS NOT NULL FROM procurement_action_batches batch
-		JOIN procurement_action_items item ON item.batch_id=batch.id WHERE item.id=$1`, items[0].ID).Scan(&source, &unified); err != nil {
+	if err := store.pool.QueryRow(ctx, `SELECT batch.unified_price_snapshot IS NOT NULL FROM procurement_action_batches batch
+		JOIN procurement_action_items item ON item.batch_id=batch.id WHERE item.id=$1`, items[0].ID).Scan(&unified); err != nil {
 		return false, fmt.Errorf("read price action source: %w", err)
 	}
 	if unified {
 		return store.guardUnifiedPriceActions(ctx, items[0])
-	}
-	if source == "manual" {
-		return store.guardClaimedManualPriceActions(ctx, items[0])
 	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
@@ -1195,62 +1191,6 @@ func (store *PostgresStore) GuardClaimedPriceActions(ctx context.Context, items 
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit stale price action guard: %w", err)
-	}
-	return false, nil
-}
-
-func (store *PostgresStore) guardClaimedManualPriceActions(ctx context.Context, item ActionItem) (bool, error) {
-	tx, err := store.pool.Begin(ctx)
-	if err != nil {
-		return false, fmt.Errorf("begin manual price guard: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	var batchID int64
-	var channel string
-	var expectedSitePrice, currentSitePrice int64
-	var externalArticle, currentArticle, marketplaceScope string
-	var variantID int64
-	var proposalPrice float64
-	if err := tx.QueryRow(ctx, `SELECT batch.id,item.channel,
-		batch.manual_site_price_minor,variant.base_price_minor,item.external_article,variant.marketplace_scope,
-		CASE item.channel WHEN 'wb' THEN COALESCE(directory.wb_nm_ids[1],'')
-			WHEN 'ozon' THEN COALESCE(directory.ozon_articles[1],'')
-			ELSE COALESCE(directory.master_code,'') END,variant.id,item.new_value::float8
-		FROM procurement_action_items item
-		JOIN procurement_action_batches batch ON batch.id=item.batch_id AND batch.source='manual'
-		JOIN product_variants variant ON variant.id=batch.manual_variant_id
-		LEFT JOIN canonical_product_directory directory ON directory.variant_id=variant.id
-		WHERE item.id=$1 FOR SHARE OF variant`, item.ID).Scan(&batchID, &channel,
-		&expectedSitePrice, &currentSitePrice, &externalArticle, &marketplaceScope, &currentArticle, &variantID, &proposalPrice); err != nil {
-		return false, fmt.Errorf("check manual price and link before upload: %w", err)
-	}
-	formulaCurrent := true
-	if oneOf(channel, "wb", "ozon") {
-		quotes, enabled, err := UnifiedVariantPriceQuotes(ctx, tx, variantID)
-		if err != nil {
-			return false, err
-		}
-		if enabled {
-			q := quotes[channel]
-			formulaCurrent = q.PriceRUB != nil && float64(*q.PriceRUB) == proposalPrice
-		}
-	}
-	if formulaCurrent && expectedSitePrice == currentSitePrice && externalArticle != "" && externalArticle == currentArticle && (!oneOf(channel, "wb", "ozon") || marketplaceScope != "site_only") {
-		return true, tx.Commit(ctx)
-	}
-	if _, err := tx.Exec(ctx, `UPDATE procurement_action_items SET status='skipped',
-		error_message='Цена сайта, связь или разрешённые каналы изменились после подтверждения. Подготовьте предложение снова.',
-		locked_until=NULL,lock_owner='',lock_token=lock_token+1,updated_at=CURRENT_TIMESTAMP
-		WHERE batch_id=$1 AND channel=$2 AND status IN ('queued','processing')
-			AND COALESCE(external_operation_id,'')=''`, batchID, channel); err != nil {
-		return false, fmt.Errorf("skip stale manual price: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `UPDATE procurement_action_batches SET status='partially_completed',updated_at=CURRENT_TIMESTAMP
-		WHERE id=$1 AND status NOT IN ('cancelled','completed')`, batchID); err != nil {
-		return false, fmt.Errorf("mark stale manual price batch: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return false, fmt.Errorf("commit stale manual price guard: %w", err)
 	}
 	return false, nil
 }
@@ -1656,14 +1596,6 @@ func countUnits(lines []ParsedLine) int {
 		units += line.Quantity
 	}
 	return units
-}
-
-func planSabyIDs(items []PlanItem) []string {
-	result := make([]string, 0, len(items))
-	for _, item := range items {
-		result = append(result, item.SabyID)
-	}
-	return result
 }
 
 type auditExecutor interface {

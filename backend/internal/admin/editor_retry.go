@@ -21,8 +21,14 @@ func (r *PostgresRepository) RetryEditorPublication(ctx context.Context, actor A
 	}
 	defer tx.Rollback(ctx)
 	var id int64
+	if e = tx.QueryRow(ctx, `SELECT id FROM products WHERE id=$1 FOR UPDATE`, productID).Scan(&id); e != nil {
+		return ErrInvalidInput
+	}
 	if e = tx.QueryRow(ctx, `SELECT id FROM product_variants WHERE id=$1 AND product_id=$2 FOR UPDATE`, variantID, productID).Scan(&id); e != nil {
 		return ErrInvalidInput
+	}
+	if e = ce.GuardContentPriceConflict(ctx, tx, variantID, r.editorPublicationMode); e != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidInput, e)
 	}
 	var status string
 	var progress ce.Progress

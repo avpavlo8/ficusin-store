@@ -7,14 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-type liveOrderNotifier struct{}
-
-func (liveOrderNotifier) SendOrder(context.Context, integration.TelegramOrder) error { return nil }
 
 type liveCommerceExpirySettings struct{}
 
@@ -39,6 +34,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	sabyID := "ci-commerce-saby-" + suffix
+	parentSabyID := "ci-commerce-parent-saby-" + suffix
 	email := "commerce-" + suffix + "@example.invalid"
 	phone := "+7000" + suffix[len(suffix)-7:]
 	var productID, variantID, warehouseID int64
@@ -109,6 +105,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	var orderID, preorderID int64
 	defer func() {
 		if preorderID != 0 {
+			_, _ = pool.Exec(ctx, "DELETE FROM procurement_requests WHERE customer_order_id=$1", preorderID)
 			_, _ = pool.Exec(ctx, "DELETE FROM consent_events WHERE order_id=$1", preorderID)
 			_, _ = pool.Exec(ctx, "DELETE FROM orders WHERE id=$1", preorderID)
 		}
@@ -119,10 +116,10 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		}
 		_, _ = pool.Exec(ctx, "DELETE FROM outbox WHERE recipient=$1", email)
 		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
-		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id=$1", sabyID)
+		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id IN ($1,$2)", sabyID, parentSabyID)
 	}()
 
-	service := NewService(pool, nil, liveOrderNotifier{}, nil, quietLogger())
+	service := NewService(pool, nil, nil, quietLogger())
 	created, err := service.Create(ctx, CreateInput{
 		Customer: CustomerInput{
 			Name: "CI Commerce", Phone: phone, Email: email,
@@ -204,8 +201,56 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	if cancelled != "cancelled:cancelled:true:0:0" {
 		t.Fatalf("cancellation is not atomic/idempotent: %s", cancelled)
 	}
+	t.Run("historical reservation releases only its own units once", func(t *testing.T) {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		if _, err := tx.Exec(ctx, `UPDATE orders SET stock_released_at=NULL WHERE id=$1`, orderID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE order_items SET reserved_qty=1 WHERE order_id=$1`, orderID); err != nil {
+			t.Fatal(err)
+		}
+		// Two other historical units belong to other orders and must survive.
+		if _, err := tx.Exec(ctx, `UPDATE inventory SET reserved_qty=3 WHERE variant_id=$1`, variantID); err != nil {
+			t.Fatal(err)
+		}
+		for attempt := 0; attempt < 2; attempt++ {
+			if err := ReleaseStock(ctx, tx, orderID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var available, reserved, releases, releasedQuantity int
+		if err := tx.QueryRow(ctx, `SELECT available_qty,reserved_qty,
+			(SELECT COUNT(*) FROM stock_movements WHERE order_id=$1 AND kind='release'),
+			(SELECT SUM(quantity)::INTEGER FROM stock_movements WHERE order_id=$1 AND kind='release')
+			FROM inventory WHERE variant_id=$2`, orderID, variantID).Scan(&available, &reserved, &releases, &releasedQuantity); err != nil {
+			t.Fatal(err)
+		}
+		if available != 5 || reserved != 2 || releases != 1 || releasedQuantity != 1 {
+			t.Fatalf("historical release affected physical/other stock or repeated: available=%d reserved=%d entries=%d released=%d", available, reserved, releases, releasedQuantity)
+		}
+	})
+
 	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
 		t.Fatal(err)
+	}
+	// After a product merge, the parent compatibility identity may refer to
+	// another size. Demand must follow the purchased variant, never that parent.
+	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,name,balance) VALUES($1,'Parent identity for another size',0)`, parentSabyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE products SET saby_id=$2 WHERE id=$1`, productID, parentSabyID); err != nil {
+		t.Fatal(err)
+	}
+	var purchasedSaby, parentSaby string
+	if err := pool.QueryRow(ctx, `SELECT v.saby_id,p.saby_id FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1`, variantID).Scan(&purchasedSaby, &parentSaby); err != nil {
+		t.Fatal(err)
+	}
+	if purchasedSaby != sabyID || parentSaby != parentSabyID || purchasedSaby == parentSaby {
+		t.Fatalf("fixture does not distinguish purchased/parent identity: variant=%q parent=%q", purchasedSaby, parentSaby)
 	}
 	preorder, err := service.Create(ctx, CreateInput{
 		Customer: CustomerInput{Name: "CI Preorder", Phone: phone, Email: email},
@@ -225,5 +270,14 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	}
 	if preorderMethod != payment.MethodOnline {
 		t.Fatalf("preorder payment method = %q, want future online payment", preorderMethod)
+	}
+	var requests, requestedQuantity int
+	var requestedSabyID string
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*),COALESCE(MAX(saby_id),''),COALESCE(SUM(quantity),0)::INTEGER
+		FROM procurement_requests WHERE customer_order_id=$1 AND kind='customer_order' AND status='open'`, preorderID).Scan(&requests, &requestedSabyID, &requestedQuantity); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || requestedSabyID != sabyID || requestedQuantity != 1 {
+		t.Fatalf("preorder demand lost purchased SKU identity/quantity: count=%d saby=%q quantity=%d", requests, requestedSabyID, requestedQuantity)
 	}
 }

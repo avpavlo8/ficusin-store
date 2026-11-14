@@ -1716,7 +1716,6 @@ export function Procurement({
             setUploadDialog(false);
             void load();
           }}
-          onError={onError}
         />
       )}
       {requestDialog && (

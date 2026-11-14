@@ -18,11 +18,11 @@ type namedDraftService interface {
 }
 
 func (handlers procurementHandlers) namedDraftService(response http.ResponseWriter) (namedDraftService, bool) {
-	service, ok := handlers.service.(namedDraftService)
-	if !ok {
+	service := handlers.service
+	if service == nil {
 		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Черновики пока недоступны"})
 	}
-	return service, ok
+	return service, service != nil
 }
 
 func (handlers procurementHandlers) listNamedPlanDrafts(w http.ResponseWriter, r *http.Request) {

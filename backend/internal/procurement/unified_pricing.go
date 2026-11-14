@@ -54,13 +54,6 @@ func (p *PricingPackage) valid() bool {
 	}
 	return true
 }
-func retainedRate(tax float64, c ChannelCosts) float64 {
-	other := 0.
-	if c.OtherRate != nil {
-		other = *c.OtherRate
-	}
-	return 1 - tax - *c.CommissionRate - *c.AcquiringRate - other
-}
 func validateUnified(p *UnifiedPricing, channels map[string]ChannelCosts, tax float64) bool {
 	if p == nil || !p.Enabled {
 		return true

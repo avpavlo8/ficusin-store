@@ -24,7 +24,7 @@ func TestManagerFullProductEditorOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var customer int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,password_hash,full_name,consent_at) VALUES($1,'','Full editor manager',NOW()) RETURNING id`, "full-editor-"+tag).Scan(&customer); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,full_name,consent_at) VALUES($1,'Full editor manager',NOW()) RETURNING id`, "full-editor-"+tag).Scan(&customer); err != nil {
 		t.Fatal(err)
 	}
 	actor := Actor{CustomerID: customer, Role: RoleManager}
@@ -34,9 +34,8 @@ func TestManagerFullProductEditorOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		pool.Exec(ctx, `DELETE FROM procurement_action_batches WHERE manual_variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
+		pool.Exec(ctx, `DELETE FROM catalog_editor_price_publications WHERE product_id=$1`, product.ID)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
-		pool.Exec(ctx, `DELETE FROM catalog_saby_exports WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
 		pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, customer)
 		pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, product.ID)
 		pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)
@@ -51,7 +50,7 @@ func TestManagerFullProductEditorOnLiveDatabase(t *testing.T) {
 	label := "D13"
 	newLabel := "D17"
 	inactive := false
-	_, err = repo.UpdateProduct(ctx, actor, product.ID, ProductUpdate{PriceMinor: &price, WholesaleMinQty: &wholesale, Variants: []VariantEdit{{ID: id, Label: &label, PriceMinor: &price, WholesaleMinQty: &wholesale}, {ID: -1, Label: &newLabel, PriceMinor: &price, Active: &inactive}}})
+	_, err = repo.UpdateProduct(ctx, actor, product.ID, ProductUpdate{Variants: []VariantEdit{{ID: id, Label: &label, PriceMinor: &price, WholesaleMinQty: &wholesale}, {ID: -1, Label: &newLabel, PriceMinor: &price, Active: &inactive}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,8 +67,7 @@ func TestManagerFullProductEditorOnLiveDatabase(t *testing.T) {
 			t.Fatalf("commercial fields not saved: %+v", v)
 		}
 	}
-	// Legacy full-variant update must preserve a current inventory row even
-	// when an old client omits stock (the Go zero value is not an adjustment).
+	// Commercial editor changes cannot change current inventory quantities.
 	var warehouse int64
 	if err = pool.QueryRow(ctx, `SELECT id FROM warehouses LIMIT 1`).Scan(&warehouse); err != nil {
 		t.Fatal(err)
@@ -77,20 +75,13 @@ func TestManagerFullProductEditorOnLiveDatabase(t *testing.T) {
 	if _, err = pool.Exec(ctx, `INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty) VALUES($1,$2,7,2) ON CONFLICT(warehouse_id,variant_id) DO UPDATE SET available_qty=7,reserved_qty=2`, warehouse, id); err != nil {
 		t.Fatal(err)
 	}
-	_, err = repo.UpdateProductVariant(ctx, actor, id, VariantInput{Label: "D13", PriceMinor: price, WholesaleMinQty: 3, Active: false})
+	_, err = repo.UpdateProduct(ctx, actor, product.ID, ProductUpdate{Variants: []VariantEdit{{ID: id, Label: &label, PriceMinor: &price, WholesaleMinQty: &wholesale, Active: &inactive}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var available, reserved int
 	if err = pool.QueryRow(ctx, `SELECT available_qty,reserved_qty FROM inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouse, id).Scan(&available, &reserved); err != nil || available != 7 || reserved != 2 {
 		t.Fatalf("manager modified stock %d/%d %v", available, reserved, err)
-	}
-	stock := 0
-	if _, err = repo.UpdateProduct(ctx, actor, product.ID, ProductUpdate{Stock: &stock}); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("manual stock allowed: %v", err)
-	}
-	if _, err = repo.CreateProductVariant(ctx, actor, product.ID, VariantInput{Stock: 1}); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("manual new stock allowed: %v", err)
 	}
 	if _, err = repo.ImportProducts(ctx, actor, ImportRequest{Codes: []string{"not-a-real-code"}}); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("global import allowed: %v", err)
@@ -117,15 +108,14 @@ func TestManagerFullProductEditorOnLiveDatabase(t *testing.T) {
 	if err != nil || len(view.Publications) != 1 || view.Publications[0].Channel != "saby" || view.Publications[0].ExecutionMode != "mock" {
 		t.Fatalf("manager cannot submit configured editor plan: %+v %v", view, err)
 	}
-	// Legacy DELETE deletes free variants; atomic editor removal archives dependencies.
-	if err = repo.DeleteProductVariant(ctx, actor, newID); err != nil {
+	// The canonical atomic editor removal deletes free variants and archives
+	// referenced ones; no alternate legacy variant DELETE API is required.
+	if _, err = repo.UpdateProduct(ctx, actor, product.ID, ProductUpdate{Variants: []VariantEdit{{ID: newID, Remove: true}, {ID: id, Remove: true}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err = repo.DeleteProductVariant(ctx, actor, id); !errors.Is(err, ErrInvalidInput) {
-		t.Fatalf("linked DELETE must require archive: %v", err)
-	}
-	if _, err = repo.UpdateProduct(ctx, actor, product.ID, ProductUpdate{Variants: []VariantEdit{{ID: id, Remove: true}}}); err != nil {
-		t.Fatal(err)
+	var freeExists bool
+	if err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants WHERE id=$1)`, newID).Scan(&freeExists); err != nil || freeExists {
+		t.Fatalf("free variant not deleted: %v", err)
 	}
 	var archived bool
 	if err = pool.QueryRow(ctx, `SELECT archived_at IS NOT NULL FROM product_variants WHERE id=$1`, id).Scan(&archived); err != nil || !archived {

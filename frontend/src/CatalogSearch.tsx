@@ -9,7 +9,6 @@ export function CatalogSearch({
   value,
   onChange,
   onSearch,
-  inlineResults = false,
   className = "header-search",
   placeholder = "Поиск по каталогу",
   autoFocus = false,
@@ -18,8 +17,6 @@ export function CatalogSearch({
   value?: string;
   onChange?: (value: string) => void;
   onSearch?: (value: string) => void;
-  /** Keep «Все результаты» on this page. Only the catalogue owns a results section. */
-  inlineResults?: boolean;
   className?: string;
   placeholder?: string;
   autoFocus?: boolean;
@@ -78,10 +75,7 @@ export function CatalogSearch({
     setOpen(false);
     root.current?.querySelector("input")?.blur();
     if (onSearch) onSearch(trimmed);
-    else if (inlineResults) {
-      setOpen(false);
-      document.getElementById("catalog")?.scrollIntoView();
-    } else window.location.assign(`/?q=${encodeURIComponent(trimmed)}#catalog`);
+    else window.location.assign(`/?q=${encodeURIComponent(trimmed)}#catalog`);
   };
   const choose = (index: number) => {
     if (selection) {

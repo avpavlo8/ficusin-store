@@ -3080,7 +3080,6 @@ export function ProcurementUploadDialog({
   orders: ProcurementOrder[];
   onClose: () => void;
   onSaved: () => void;
-  onError: (value: string) => void;
 }) {
   const dialogRef = useProcurementDialog(() => {
     if (!saving) onClose();

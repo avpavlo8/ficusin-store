@@ -89,7 +89,6 @@
   background: #e8eee4;
 }
 body.menu-open .install-first-visit,
-body.drawer-open .install-first-visit,
 body.quick-chat-open .install-first-visit,
 body:has(dialog[open]) .install-first-visit {
   display: none;

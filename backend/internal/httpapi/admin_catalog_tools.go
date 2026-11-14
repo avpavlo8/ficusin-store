@@ -16,27 +16,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func adminProductIsPlant(ctx context.Context, repository adminRepository, product admin.Product) (bool, error) {
-	if product.CategoryID == nil {
-		return false, nil
-	}
-	categories, err := repository.ListCategories(ctx)
-	if err != nil {
-		return false, err
-	}
-	byID := make(map[int64]admin.Category, len(categories))
-	for _, category := range categories {
-		byID[category.ID] = category
-	}
-	category, exists := byID[*product.CategoryID]
-	visited := map[int64]bool{}
-	for exists && category.ParentID != nil && !visited[category.ID] {
-		visited[category.ID] = true
-		category, exists = byID[*category.ParentID]
-	}
-	return exists && category.Slug == "plants", nil
-}
-
 func prepareProductCopies(raw []byte) (card, large []byte, err error) {
 	large, err = photos.Prepare(raw, photos.SizeLarge.MaxSide)
 	if err != nil {

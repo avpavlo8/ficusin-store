@@ -20,10 +20,6 @@ type catalogPIMRepository interface {
 	RemoveCategoryAttribute(context.Context, admin.Actor, int64, int64) error
 	ListProductVariants(context.Context, int64) ([]admin.AdminVariant, error)
 	CreateProductVariant(context.Context, admin.Actor, int64, admin.VariantInput) (admin.AdminVariant, error)
-	UpdateProductVariant(context.Context, admin.Actor, int64, admin.VariantInput) (admin.AdminVariant, error)
-	CopyProductVariant(context.Context, admin.Actor, int64) (admin.AdminVariant, error)
-	ArchiveProductVariant(context.Context, admin.Actor, int64) error
-	DeleteProductVariant(context.Context, admin.Actor, int64) error
 	ListCatalogFilters(context.Context) ([]admin.CatalogFilter, error)
 	CreateCatalogFilter(context.Context, admin.Actor, admin.CatalogFilterInput) (admin.CatalogFilter, error)
 	UpdateCatalogFilter(context.Context, admin.Actor, int64, admin.CatalogFilterInput) (admin.CatalogFilter, error)
@@ -228,94 +224,6 @@ func productVariantsHandler(adminAPI adminHandlers) http.HandlerFunc {
 			return
 		}
 		writeJSON(response, http.StatusCreated, map[string]any{"variant": item})
-	}
-}
-
-func productVariantHandler(adminAPI adminHandlers) http.HandlerFunc {
-	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsEdit)
-		if !ok {
-			return
-		}
-		variantID, ok := pimPathID(response, request, "variantId")
-		if !ok {
-			return
-		}
-		repository, ok := pimRepository(adminAPI, response)
-		if !ok {
-			return
-		}
-		if request.Method == http.MethodDelete {
-			if !admin.Can(actor.Role, admin.PermissionProductsManage) {
-				writeJSON(response, http.StatusForbidden, errorResponse{Error: "Недостаточно прав для удаления варианта"})
-				return
-			}
-			if err := repository.DeleteProductVariant(request.Context(), actor, variantID); err != nil {
-				adminAPI.failed(response, "delete product variant", err)
-				return
-			}
-			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true})
-			return
-		}
-		if !admin.Can(actor.Role, admin.PermissionProductsManage) {
-			managerVariantContent(adminAPI, response, request, actor, variantID)
-			return
-		}
-		input, decoded := decodeEditorVariantInput(response, request, actor)
-		if !decoded {
-			return
-		}
-		item, err := repository.UpdateProductVariant(request.Context(), actor, variantID, input)
-		if err != nil {
-			adminAPI.failed(response, "update product variant", err)
-			return
-		}
-		writeJSON(response, http.StatusOK, map[string]any{"variant": item})
-	}
-}
-
-func copyProductVariantHandler(adminAPI adminHandlers) http.HandlerFunc {
-	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsManage)
-		if !ok {
-			return
-		}
-		variantID, ok := pimPathID(response, request, "variantId")
-		if !ok {
-			return
-		}
-		repository, ok := pimRepository(adminAPI, response)
-		if !ok {
-			return
-		}
-		item, err := repository.CopyProductVariant(request.Context(), actor, variantID)
-		if err != nil {
-			adminAPI.failed(response, "copy product variant", err)
-			return
-		}
-		writeJSON(response, http.StatusCreated, map[string]any{"variant": item})
-	}
-}
-
-func archiveProductVariantHandler(adminAPI adminHandlers) http.HandlerFunc {
-	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := adminAPI.authorize(response, request, admin.PermissionProductsManage)
-		if !ok {
-			return
-		}
-		variantID, ok := pimPathID(response, request, "variantId")
-		if !ok {
-			return
-		}
-		repository, ok := pimRepository(adminAPI, response)
-		if !ok {
-			return
-		}
-		if err := repository.ArchiveProductVariant(request.Context(), actor, variantID); err != nil {
-			adminAPI.failed(response, "archive product variant", err)
-			return
-		}
-		writeJSON(response, http.StatusOK, map[string]bool{"archived": true})
 	}
 }
 

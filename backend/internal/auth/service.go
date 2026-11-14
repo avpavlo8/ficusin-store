@@ -346,7 +346,7 @@ func (service *Service) SaveAvatar(
 			fileassets.Discard(service.fileStorage, key)
 		}
 	}()
-	// A lost autocommit UPDATE reply may still have keepFile its reference.
+	// A lost autocommit UPDATE reply may still have committed its reference.
 	// Retain the object after attempting the mutation; a possible orphan is safer
 	// than deleting bytes referenced by a successful but unacknowledged write.
 	keepFile = true

@@ -36,9 +36,6 @@
 .quick-chat-open .chat-launcher {
   bottom: 24px;
 }
-.quick-chat-open .floating-cart {
-  display: none;
-}
 .quick-chat-loading {
   position: fixed;
   right: 24px;
@@ -51,8 +48,7 @@
   box-shadow: 0 12px 48px #182b3a33;
   border-radius: 12px;
 }
-body.menu-open .chat-launcher,
-body.drawer-open .chat-launcher {
+body.menu-open .chat-launcher {
   display: none;
 }
 @media (max-width: 850px), (max-height: 500px) and (pointer: coarse) {
@@ -79,8 +75,7 @@ body.drawer-open .chat-launcher {
 }
 
 @media (max-width: 850px), (max-height: 500px) and (pointer: coarse) {
-  body.quick-chat-open .tab-bar,
-  body.quick-chat-open .install-hint {
+  body.quick-chat-open .tab-bar {
     display: none;
   }
 }

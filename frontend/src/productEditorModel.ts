@@ -28,7 +28,6 @@ export function productToDraft(product: Product): ProductCreationDraft {
             source: product.image,
             name: "Основное фото",
             type: "image/jpeg",
-            size: 0,
           },
         ]
       : [],
@@ -41,7 +40,6 @@ export function variantToDraft(variant: AdminVariant): DraftVariant {
     label: variant.label,
     sku: variant.sku,
     price: String(variant.price),
-    stock: variant.stock,
     wholesaleMinQty: String(variant.wholesaleMinQty),
     active: variant.active,
     archived: variant.archived,
@@ -61,12 +59,10 @@ export function seedVariant(draft: ProductCreationDraft): DraftVariant {
     label: "Основной вариант",
     sku: "",
     price: draft.price,
-    stock: 0,
     wholesaleMinQty: "1",
     active: true,
     archived: false,
     externalIds: [],
-    saby: { ...draft.saby },
     ozon: { ...draft.ozon },
     wb: { ...draft.wb },
     attributes: {

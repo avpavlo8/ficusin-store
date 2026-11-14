@@ -40,7 +40,6 @@ export type SabyReadLink = {
   code: string;
   category: ChannelCategory;
   folder: ChannelCategory;
-  mirrorFound: boolean;
 };
 export const blankCategory = (): ChannelCategory => ({ id: "", name: "" });
 export const blankMarketplaceChannel = (): MarketplaceChannel => ({
@@ -125,7 +124,6 @@ export type OzonAttribute = {
   charcType?: number;
   maxCount?: number;
   max_value_count?: number;
-  attribute_complex_id?: number;
 };
 export function flattenCategories(channel: "ozon" | "wb", data: unknown): ChannelCategory[] {
   const raw = data as {

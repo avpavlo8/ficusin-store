@@ -13,18 +13,8 @@ import (
 type OrderEditLine struct {
 	// SKU опознаёт строку заказа. Продаётся конкретный размер, поэтому одна
 	// карточка товара ещё не говорит, что именно уходит покупателю.
-	SKU string `json:"sku"`
-	// ProductID — имя поля до «Каталога v2». Оставлено, чтобы вкладка
-	// админки, открытая до релиза, доработала до перезагрузки.
-	ProductID string `json:"productId"`
-	Quantity  int    `json:"quantity"`
-}
-
-func (line OrderEditLine) identity() string {
-	if sku := strings.TrimSpace(line.SKU); sku != "" {
-		return sku
-	}
-	return strings.TrimSpace(line.ProductID)
+	SKU      string `json:"sku"`
+	Quantity int    `json:"quantity"`
 }
 
 type OrderEdit struct {
@@ -52,7 +42,7 @@ func normalizeOrderEditLines(lines []OrderEditLine) ([]OrderEditLine, error) {
 	result := make([]OrderEditLine, 0, len(lines))
 	positions := map[string]int{}
 	for _, line := range lines {
-		sku := line.identity()
+		sku := strings.TrimSpace(line.SKU)
 		if sku == "" || line.Quantity <= 0 || line.Quantity > 100 {
 			return nil, fmt.Errorf("некорректный товар или количество")
 		}
@@ -98,7 +88,7 @@ func releaseOrderReservationsForEdit(ctx context.Context, tx pgx.Tx, orderID int
 	return nil
 }
 
-func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, orderID, variantID int64, quantity int) (int, bool, error) {
+func needsPreorderForEdit(ctx context.Context, tx pgx.Tx, orderID, variantID int64, quantity int) (bool, error) {
 	// The availability snapshot decides whether manager review is needed.
 	// Use confirmed Saby stock: other warehouses and stale local values cannot
 	// turn a request into an immediately payable order. No reservation is made.
@@ -113,9 +103,9 @@ func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, orderID, variantID in
 		JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
 		WHERE i.variant_id=$1 AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 	`, variantID, orderID).Scan(&available, &fresh); err != nil {
-		return 0, false, err
+		return false, err
 	}
-	return 0, !fresh || available < quantity, nil
+	return !fresh || available < quantity, nil
 }
 
 func currentAdminOrder(ctx context.Context, repository *PostgresRepository, id int64) (Order, error) {
@@ -252,7 +242,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 				if needed < 0 {
 					needed = 0
 				}
-				_, preorder, err = reserveVariantForEdit(ctx, tx, id, *line.variant, needed)
+				preorder, err = needsPreorderForEdit(ctx, tx, id, *line.variant, needed)
 				if err != nil {
 					return Order{}, err
 				}

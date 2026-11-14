@@ -7,7 +7,6 @@ import json
 import os
 import urllib.request
 import urllib.error
-import uuid
 import re
 
 
@@ -44,7 +43,6 @@ def shape(value, depth=0):
 
 receipt_id = int(os.environ["SABY_RECEIPT_ID"])
 assert receipt_id > 0
-guid = str(uuid.UUID(os.environ["SABY_RECEIPT_GUID"]))
 auth = request("https://online.sbis.ru/oauth/service/", {
     "app_client_id": os.environ["SABY_APP_CLIENT_ID"],
     "app_secret": os.environ["SABY_APP_SECRET"],

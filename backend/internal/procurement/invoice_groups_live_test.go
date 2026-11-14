@@ -35,7 +35,7 @@ func TestInvoiceGroupPreservesRowsQuantitiesAndAliasIdentity(t *testing.T) {
 	_, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,balance,section_path,seen_at) VALUES($1,$1,'Кактус микс D5',0,ARRAY['Цветы'],now())`, saby)
 	must(err)
 	var actorID, supplierID, orderID, planID, planAliasID int64
-	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Invoice group test',now()) RETURNING id`, fmt.Sprintf("group-%d@example.invalid", unique), fmt.Sprintf("+76%09d", unique%1000000000)).Scan(&actorID))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Invoice group test',now()) RETURNING id`, fmt.Sprintf("group-%d@example.invalid", unique), fmt.Sprintf("+76%09d", unique%1000000000)).Scan(&actorID))
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, fmt.Sprintf("Group %d", unique)).Scan(&supplierID))
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_supplier_aliases(supplier_id,raw_name,normalized_name,supplier_article,pot_diameter_cm,height_cm,match_status)
  VALUES($1,'Кактус микс','кактус микс','CACTUS',5,10,'unmatched') RETURNING id`, supplierID).Scan(&planAliasID))

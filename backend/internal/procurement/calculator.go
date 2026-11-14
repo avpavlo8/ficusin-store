@@ -76,7 +76,7 @@ func allocateMoneyPerUnit(total float64, weights []allocationWeight) map[int64]f
 func calculateAllocatedLine(
 	settings PricingSettings,
 	kind string,
-	unitPrice, exchangeRate, trolleyPerUnit, ryazanPerUnit, heightCM float64, additional ...float64,
+	unitPrice, exchangeRate, trolleyPerUnit, ryazanPerUnit float64, additional ...float64,
 ) calculatedLine {
 	purchaseDecimal := money.Decimal(unitPrice)
 	if kind == KindInternational {

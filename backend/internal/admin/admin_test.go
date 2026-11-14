@@ -26,7 +26,6 @@ func TestRolePermissions(t *testing.T) {
 		{name: "manager cannot bulk delete catalog", role: RoleManager, permission: PermissionDelete, want: false},
 		{name: "administrator remains content only", role: RoleAdministrator, permission: PermissionProductsManage, want: false},
 		{name: "manager can edit products", role: RoleManager, permission: PermissionProductsEdit, want: true},
-		{name: "manager cannot sync products", role: RoleManager, permission: PermissionProductsSync, want: false},
 		{name: "manager cannot edit customers", role: RoleManager, permission: PermissionCustomersEdit, want: false},
 		{name: "manager cannot edit discounts", role: RoleManager, permission: PermissionDiscountsEdit, want: false},
 		{name: "unknown role has no access", role: "unknown", permission: PermissionDashboard, want: false},

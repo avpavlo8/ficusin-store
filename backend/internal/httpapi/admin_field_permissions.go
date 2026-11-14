@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -23,7 +22,7 @@ func validateManagerProductFields(response http.ResponseWriter, actor admin.Acto
 		return true
 	}
 	allowed := map[string]bool{}
-	for _, key := range []string{"variants", "name", "latinName", "shortDescription", "description", "careInstructions", "status", "featured", "catalogSection", "plantKind", "lightLevel", "watering", "heightClass", "careLevel", "placement", "petSafety", "growthHabit", "variantLabel", "heightCm", "potDiameterCm", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightGrams", "categoryId", "clearCategory", "passport", "importantWarnings", "attributes"} {
+	for _, key := range []string{"variants", "name", "latinName", "shortDescription", "description", "careInstructions", "status", "featured", "catalogSection", "plantKind", "lightLevel", "watering", "heightClass", "careLevel", "placement", "petSafety", "growthHabit", "categoryId", "clearCategory", "passport", "importantWarnings", "attributes"} {
 		allowed[key] = true
 	}
 	for key := range fields {
@@ -56,51 +55,17 @@ func validateManagerProductFields(response http.ResponseWriter, actor admin.Acto
 	return true
 }
 
-func managerVariantContent(handlers adminHandlers, response http.ResponseWriter, request *http.Request, actor admin.Actor, id int64) {
-	var fields map[string]json.RawMessage
-	if decodeJSON(request, &fields) != nil || fields == nil {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
-		return
-	}
-	for key := range fields {
-		if key != "label" && key != "attributes" {
-			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Цены, остатки и связи SKU доступны владельцу. Ничего не сохранено."})
-			return
-		}
-	}
-	var input admin.VariantContentUpdate
-	raw, _ := json.Marshal(fields)
-	if json.Unmarshal(raw, &input) != nil {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
-		return
-	}
-	repository, ok := handlers.repository.(interface {
-		UpdateVariantContent(context.Context, admin.Actor, int64, admin.VariantContentUpdate) (admin.AdminVariant, error)
-	})
-	if !ok {
-		writeJSON(response, http.StatusNotImplemented, errorResponse{Error: "Редактирование характеристик недоступно"})
-		return
-	}
-	item, err := repository.UpdateVariantContent(request.Context(), actor, id, input)
-	if err != nil {
-		handlers.failed(response, "update variant content", err)
-		return
-	}
-	writeJSON(response, http.StatusOK, map[string]any{"variant": item})
-}
-
-// decodeEditorVariantInput keeps manual inventory edits out of the product
-// editor even when a legacy client explicitly sends a null or zero stock.
+// Reject explicit manual inventory fields even when a client sends null/zero.
 func decodeEditorVariantInput(w http.ResponseWriter, r *http.Request, actor admin.Actor) (admin.VariantInput, bool) {
 	var fields map[string]json.RawMessage
 	if decodeJSON(r, &fields) != nil || fields == nil {
-		writeJSON(w, 400, errorResponse{Error: "Некорректные данные"})
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
 		return admin.VariantInput{}, false
 	}
 	if actor.Role != admin.RoleOwner {
 		for key := range fields {
 			if strings.EqualFold(key, "stock") {
-				writeJSON(w, 403, errorResponse{Error: "Остатки обновляются из СБИС"})
+				writeJSON(w, http.StatusForbidden, errorResponse{Error: "Остатки обновляются из СБИС"})
 				return admin.VariantInput{}, false
 			}
 		}
@@ -110,7 +75,7 @@ func decodeEditorVariantInput(w http.ResponseWriter, r *http.Request, actor admi
 	decoder.DisallowUnknownFields()
 	var input admin.VariantInput
 	if decoder.Decode(&input) != nil {
-		writeJSON(w, 400, errorResponse{Error: "Некорректные данные"})
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
 		return input, false
 	}
 	return input, true

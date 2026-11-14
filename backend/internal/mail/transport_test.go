@@ -58,7 +58,7 @@ func TestSMTPRefusesUnencryptedAuthentication(t *testing.T) {
 	}()
 	_, port, _ := net.SplitHostPort(listener.Addr().String())
 	n, _ := strconv.Atoi(port)
-	sender := NewSender(Config{Host: "127.0.0.1", Port: n, Username: "robot@example.com", Password: "test-only", From: "robot@example.com"}, nil)
+	sender := NewSender(Config{Host: "127.0.0.1", Port: n, Username: "robot@example.com", Password: "test-only", From: "robot@example.com"})
 	err = sender.Send(context.Background(), Letter{To: "recipient@example.com", Body: "test"})
 	if err == nil || !strings.Contains(err.Error(), "STARTTLS") {
 		t.Fatalf("expected required TLS, got %v", err)
@@ -86,7 +86,7 @@ func TestSMTPCancellationClosesStalledConnection(t *testing.T) {
 	}()
 	_, port, _ := net.SplitHostPort(listener.Addr().String())
 	n, _ := strconv.Atoi(port)
-	sender := NewSender(Config{Host: "127.0.0.1", Port: n, From: "robot@example.com"}, nil)
+	sender := NewSender(Config{Host: "127.0.0.1", Port: n, From: "robot@example.com"})
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	if err := sender.Send(ctx, Letter{To: "recipient@example.com"}); err == nil {
