@@ -27,6 +27,20 @@ func readEvent(ctx context.Context, q queryer, orderID, offerID int64) (Event, e
 		if e.Trigger == "handover" {
 			e.Trigger = ""
 		}
+		if e.Trigger == "created" {
+			var desired []byte
+			readErr := q.QueryRow(ctx, `SELECT r.request FROM order_sale_intents i JOIN order_sale_revisions r ON r.id=i.desired_revision_id WHERE i.id=$1`, e.IntentID).Scan(&desired)
+			if readErr == nil {
+				var target Request
+				if json.Unmarshal(desired, &target) != nil {
+					return e, ErrConflict
+				}
+				original.Lines = target.Event.Lines
+			}
+			if readErr != nil && !errors.Is(readErr, pgx.ErrNoRows) {
+				return e, readErr
+			}
+		}
 		e.OrderNumber = original.OrderNumber
 		e.DeliveryMethod = original.DeliveryMethod
 		e.Status = original.Status
@@ -256,6 +270,11 @@ func Prepare(ctx context.Context, pool *pgxpool.Pool, actorID int64, input Prepa
 	result := []Event{}
 	for _, s := range selections {
 		e, err := Enqueue(ctx, tx, s.OrderID, s.ShipmentOfferID, "manual")
+		if err == nil && e.Trigger == "created" {
+			if err = QueueRevision(ctx, tx, s.OrderID); err == nil {
+				e, err = readEvent(ctx, tx, s.OrderID, 0)
+			}
+		}
 		if err != nil {
 			return nil, err
 		}

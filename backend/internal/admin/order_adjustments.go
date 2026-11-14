@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/avpavlo8/ficusin-store/backend/internal/order"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -45,10 +45,6 @@ type editableOrderLine struct {
 	variantLabel  string
 	heightCM      *int
 	potDiameterCM *int
-	price         float64
-	quantity      int
-	reserved      int
-	preorder      bool
 	sabyID        string
 }
 
@@ -175,8 +171,9 @@ func currentAdminOrder(ctx context.Context, repository *PostgresRepository, id i
 // EditOrder replaces the requested composition transactionally. Existing
 // lines keep the price agreed when the order was placed; newly added lines
 // use today's storefront price and the customer's current retail discount.
-// Historical stock reservations are released. Editing does not create a new
-// reservation; the stock snapshot only decides whether manager review is needed.
+// Historical legacy reservations are released. A creation-time realization
+// keeps its document identity and receives an audited durable revision of the
+// final composition and net goods prices in the same transaction.
 func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor, id int64, edit OrderEdit) (Order, error) {
 	if !Can(actor.Role, PermissionOrdersEdit) {
 		return Order{}, ErrForbidden
@@ -218,7 +215,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	if status == "cancelled" || status == "completed" || status == "shipped" {
 		return Order{}, fmt.Errorf("состав уже закрытого или отправленного заказа менять нельзя")
 	}
-	if err := guardCreationRealizationEdit(ctx, tx, id, &edit); err != nil {
+	if err := filterUnchangedOrderEditFields(ctx, tx, id, &edit); err != nil {
 		return Order{}, err
 	}
 	if edit.RecheckAvailability {
@@ -281,6 +278,34 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 		}
 		return currentAdminOrder(ctx, repository, id)
 	}
+	commercialEdit := edit.Items != nil || edit.Discount != nil
+	if commercialEdit {
+		// Partial shipments have their own carrier/packing lifecycle and need
+		// not have a whole-order packing workflow. Their immutable item rows
+		// cannot disappear through order_items' ON DELETE CASCADE relation.
+		var activePartial bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=$1 AND (status IN ('payment_pending','paid','shipping','shipped','ready','completed') OR cdek_create_state IN ('creating','unknown') OR (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled')))`, id).Scan(&activePartial); err != nil {
+			return Order{}, err
+		}
+		if activePartial {
+			return Order{}, fmt.Errorf("%w: состав и скидка зафиксированы активной частичной отправкой; сначала сверьте её оплату и передачу перевозчику", ErrInvalidInput)
+		}
+	}
+	var requestedLines []OrderEditLine
+	if edit.Items != nil {
+		requestedLines, err = normalizeOrderEditLines(*edit.Items)
+		if err != nil {
+			return Order{}, err
+		}
+		if err = lockOrderEditStock(ctx, tx, id, requestedLines); err != nil {
+			return Order{}, err
+		}
+	}
+	if commercialEdit {
+		if err := ordersale.BeforeOrderEdit(ctx, tx, id); err != nil {
+			return Order{}, err
+		}
+	}
 	if _, err := tx.Exec(ctx, `UPDATE shipment_offers SET status='stale',updated_at=CURRENT_TIMESTAMP WHERE order_id=$1 AND status IN ('draft','packaging_required','notifying','offered')`, id); err != nil {
 		return Order{}, err
 	}
@@ -291,121 +316,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	}
 
 	if edit.Items != nil {
-		lines, err := normalizeOrderEditLines(*edit.Items)
-		if err != nil {
-			return Order{}, err
-		}
-		oldPrices := map[string]float64{}
-		oldSnapshots := map[string][]byte{}
-		rows, err := tx.Query(ctx, `SELECT COALESCE(sku,''),unit_price::DOUBLE PRECISION,variant_snapshot FROM order_items WHERE order_id=$1`, id)
-		if err != nil {
-			return Order{}, err
-		}
-		for rows.Next() {
-			var sku string
-			var price float64
-			var snapshot []byte
-			if err := rows.Scan(&sku, &price, &snapshot); err != nil {
-				rows.Close()
-				return Order{}, err
-			}
-			if sku != "" {
-				oldPrices[sku] = price
-				oldSnapshots[sku] = snapshot
-			}
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return Order{}, err
-		}
-
-		_ = order.RecordMovement(ctx, tx, id, order.MovementRelease)
-		if err := releaseOrderReservationsForEdit(ctx, tx, id); err != nil {
-			return Order{}, err
-		}
-		if _, err := tx.Exec(ctx, `UPDATE procurement_requests SET status='cancelled',updated_at=CURRENT_TIMESTAMP WHERE customer_order_id=$1 AND kind='customer_order' AND status='open'`, id); err != nil {
-			return Order{}, err
-		}
-		if _, err := tx.Exec(ctx, `DELETE FROM order_items WHERE order_id=$1`, id); err != nil {
-			return Order{}, err
-		}
-
-		discountBPS := 0
-		if customerID != nil {
-			_ = tx.QueryRow(ctx, `SELECT COALESCE(retail_discount_bps,0) FROM customers WHERE id=$1`, *customerID).Scan(&discountBPS)
-		}
-		hasPreorder := false
-		for _, requested := range lines {
-			var line editableOrderLine
-			var priceMinor int64
-			var packageSnapshot []byte
-			// Строка ищется по SKU. Прежний запрос искал товар по products.slug —
-			// колонке, которую миграция 056 вывела из оборота, — и всегда брал
-			// первый вариант карточки, то есть мог поставить в заказ не тот размер
-			// и не ту цену, которые выбрал покупатель.
-			if err := tx.QueryRow(ctx, `
-				SELECT pv.sku,pv.id,p.id,p.name,pv.label,pv.base_price_minor,COALESCE(pv.saby_id,''),
-					variant_numeric_attribute(pv.id,'height_cm')::INTEGER,
-					variant_numeric_attribute(pv.id,'pot_diameter_cm')::INTEGER,
-					jsonb_build_object('packageLengthCm',COALESCE(shipping_package_dimension(pv.id,'package_length_cm'),0)::INTEGER,
-					'packageWidthCm',COALESCE(shipping_package_dimension(pv.id,'package_width_cm'),0)::INTEGER,
-					'packageHeightCm',COALESCE(shipping_package_dimension(pv.id,'package_height_cm'),0)::INTEGER,
-					'packageWeightGrams',COALESCE(variant_numeric_attribute(pv.id,'package_weight_grams'),0)::INTEGER)
-				FROM product_variants pv JOIN products p ON p.id=pv.product_id
-				WHERE pv.sku=$1 AND pv.is_active=1 AND pv.archived_at IS NULL AND p.status='published'
-				LIMIT 1
-			`, requested.identity()).Scan(&line.sku, &line.variantID, &line.productID, &line.name, &line.variantLabel, &priceMinor, &line.sabyID, &line.heightCM, &line.potDiameterCM, &packageSnapshot); err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					return Order{}, fmt.Errorf("товар %s больше не доступен", requested.identity())
-				}
-				return Order{}, err
-			}
-			line.quantity = requested.Quantity
-			if price, ok := oldPrices[line.sku]; ok {
-				line.price = price
-			} else {
-				minor := priceMinor
-				if discountBPS > 0 {
-					if discountBPS > 9000 {
-						discountBPS = 9000
-					}
-					minor = (priceMinor*int64(10000-discountBPS) + 5000) / 10000
-				}
-				line.price = float64(minor) / 100
-			}
-			line.reserved, line.preorder, err = reserveVariantForEdit(ctx, tx, id, line.variantID, line.quantity)
-			if err != nil {
-				return Order{}, err
-			}
-			hasPreorder = hasPreorder || line.preorder
-			// Retained SKUs keep the checkout packing even if the season changed.
-			if snapshot, exists := oldSnapshots[line.sku]; exists {
-				packageSnapshot = snapshot
-			}
-			// Строка обязана нести полный кортеж PRODUCT + variant + SKU:
-			// order_items_catalog_identity_check отвергает всё остальное, а без
-			// снимка размеров историю заказа потом нечем объяснить.
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder,reserved_qty)
-				VALUES($1,$2,$3,$4,$5,$6,jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)) || $13::JSONB,$9,$10,$11,$12)
-			`, id, line.productID, line.variantID, line.sku, line.name, line.variantLabel, line.heightCM, line.potDiameterCM, line.price, line.quantity, boolToSmallInt(line.preorder), line.reserved, packageSnapshot); err != nil {
-				return Order{}, err
-			}
-			if line.preorder {
-				if _, err := tx.Exec(ctx, `INSERT INTO procurement_requests(kind,saby_id,requested_name,quantity,customer_order_id,status,notes) VALUES('customer_order',NULLIF($1,''),$2,$3,$4,'open','Предзаказ после изменения заказа')`, line.sabyID, line.name, line.quantity, id); err != nil {
-					return Order{}, err
-				}
-			}
-		}
-		if err := order.RecordMovement(ctx, tx, id, order.MovementReserve); err != nil {
-			return Order{}, err
-		}
-
-		// Изменение состава выполняет только менеджер. Оно не должно само по
-		// себе возвращать уже подтверждённую доставку в pending. Если доставка
-		// была неизвестна, она останется pending до передачи DeliveryFee; если
-		// уже была подтверждена — сохранит это состояние.
-		if _, err := tx.Exec(ctx, `UPDATE orders SET has_preorder=$2,delivery_fee_pending=$3,stock_released_at=NULL WHERE id=$1`, id, boolToSmallInt(hasPreorder), boolToSmallInt(oldFeePending)); err != nil {
+		if err = replaceOrderEditLines(ctx, tx, id, customerID, oldFeePending, requestedLines); err != nil {
 			return Order{}, err
 		}
 	}
@@ -446,6 +357,12 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	}
 	if _, err := tx.Exec(ctx, `UPDATE orders SET subtotal=$2::numeric/100,total=$2::numeric/100+CASE WHEN delivery_payee='shop' THEN delivery_fee ELSE 0 END,manager_discount_type=$3,manager_discount_value=$4,manager_discount_amount=$5::numeric/100,shipment_revision=shipment_revision+1 WHERE id=$1`, id, gross-amount, discount.Type, discount.Value, amount); err != nil {
 		return Order{}, err
+	}
+
+	if commercialEdit {
+		if err := ordersale.QueueRevision(ctx, tx, id); err != nil {
+			return Order{}, err
+		}
 	}
 
 	var after map[string]any

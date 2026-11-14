@@ -15,6 +15,7 @@ import (
 // A live provider must fill it from verified native header and movement rows.
 // Every field is serialized, including false flags: missing means unknown.
 type StockProof struct {
+	RevisionID          int64            `json:"revisionId,omitempty"`
 	Version             int              `json:"version"`
 	Test                bool             `json:"test"`
 	ExecutionMode       string           `json:"executionMode"`
@@ -76,8 +77,11 @@ func validStockEvidence(request Request, result Result, cancellation, partial bo
 	var proof StockProof
 	decoder := json.NewDecoder(bytes.NewReader(result.StockProof))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&proof) != nil || decoder.Decode(new(any)) != io.EOF ||
-		!completeProofObject(result.StockProof, "version", "test", "executionMode", "intentId", "eventKey", "eventFingerprint", "operationKey", "documentId", "documentUUID", "siteWarehouseId", "nativeWarehouseId", "movementWarehouseId", "organizationId", "regulationId", "buyerId", "posted", "hasEntries", "postingErrors", "staleEntries", "postingQueued", "entriesQueued", "lines") {
+	required := []string{"version", "test", "executionMode", "intentId", "eventKey", "eventFingerprint", "operationKey", "documentId", "documentUUID", "siteWarehouseId", "nativeWarehouseId", "movementWarehouseId", "organizationId", "regulationId", "buyerId", "posted", "hasEntries", "postingErrors", "staleEntries", "postingQueued", "entriesQueued", "lines"}
+	if request.RevisionID > 0 {
+		required = append(required, "revisionId")
+	}
+	if decoder.Decode(&proof) != nil || decoder.Decode(new(any)) != io.EOF || !completeProofObject(result.StockProof, required...) || proof.RevisionID != request.RevisionID {
 		return false
 	}
 	if proof.Version != 1 || proof.ExecutionMode != request.ExecutionMode || proof.IntentID != request.IntentID || proof.EventKey != request.Event.Key || proof.EventFingerprint != request.Event.Fingerprint ||
@@ -202,7 +206,7 @@ func mockStockProof(request Request, progress Progress) (json.RawMessage, error)
 	if request.ExecutionMode != "mock" {
 		return nil, fmt.Errorf("mock stock proof rejects live requests")
 	}
-	proof := StockProof{Version: 1, Test: true, ExecutionMode: "mock", IntentID: request.IntentID, EventKey: request.Event.Key, EventFingerprint: request.Event.Fingerprint, OperationKey: request.OperationKey,
+	proof := StockProof{RevisionID: request.RevisionID, Version: 1, Test: true, ExecutionMode: "mock", IntentID: request.IntentID, EventKey: request.Event.Key, EventFingerprint: request.Event.Fingerprint, OperationKey: request.OperationKey,
 		DocumentID: progress.DocumentID, DocumentUUID: progress.DocumentUUID, SiteWarehouseID: request.SiteWarehouseID, NativeWarehouseID: request.NativeWarehouseID, MovementWarehouseID: request.MovementWarehouseID,
 		OrganizationID: request.OrganizationID, RegulationID: request.RegulationID, BuyerID: request.BuyerID, Posted: true, HasEntries: true, Lines: []StockProofLine{}}
 	for i, line := range request.Event.Lines {

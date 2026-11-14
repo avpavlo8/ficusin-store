@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"strings"
 	"time"
 )
 
@@ -50,7 +51,7 @@ func createdStockReady(ctx context.Context, q queryer, r Request) (bool, error) 
 	}
 	return len(quantities) > 0, nil
 }
-func persistPublicationResult(ctx context.Context, pool *pgxpool.Pool, id, intentID int64, token string, result Result, delay time.Duration) error {
+func persistPublicationResult(ctx context.Context, pool *pgxpool.Pool, id, intentID int64, token string, result Result, delay time.Duration, revision *RevisionCommand) error {
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -66,6 +67,20 @@ func persistPublicationResult(ctx context.Context, pool *pgxpool.Pool, id, inten
 	if err = tx.QueryRow(ctx, `SELECT desired_state,cancellation_blocked,create_attempted,post_attempted FROM order_sale_publications WHERE id=$1 AND lease_token=$2 AND status='processing' FOR UPDATE`, id, token).Scan(&desired, &blocked, &created, &posted); err != nil {
 		return err
 	}
+	if err = persistOriginRevisionProof(ctx, tx, intentID, &result); err != nil {
+		return err
+	}
+	if err = persistRevisionResult(ctx, tx, revision, &result); err != nil {
+		return err
+	}
+	var pending bool
+	if err = tx.QueryRow(ctx, `SELECT order_sale_revision_pending(order_id) FROM order_sale_intents WHERE id=$1`, intentID).Scan(&pending); err != nil {
+		return err
+	}
+	if result.State == "posted" && pending {
+		result.State = "queued"
+		result.Message = "Подтверждён предыдущий состав; ожидает следующая сохранённая редакция"
+	}
 	result.Progress.DesiredState = desired
 	result.Progress.CreateAttempted = created
 	result.Progress.PostAttempted = posted
@@ -73,7 +88,11 @@ func persistPublicationResult(ctx context.Context, pool *pgxpool.Pool, id, inten
 	// request was in flight. The next stage reverses it instead of losing proof.
 	if desired == "cancelled" && result.State != "cancelled" && !result.Progress.IdentityConflict && !cancellationStage(result.Progress.Stage) {
 		result.State = "queued"
-		result.Progress.Stage = "inspect-cancel"
+		if revision != nil && result.Progress.Stage == "verified" {
+			result.Progress.Stage = "revision-verify-post"
+		} else {
+			result.Progress.Stage = "inspect-cancel"
+		}
 		result.Message = "Запрошена отмена; проверяем собственный документ без повторного создания"
 	}
 	if blocked {
@@ -94,7 +113,7 @@ func persistPublicationResult(ctx context.Context, pool *pgxpool.Pool, id, inten
 		cancelProof = json.RawMessage(`{}`)
 	}
 	command, err := tx.Exec(ctx, `UPDATE order_sale_publications SET status=$3,message=$4,progress=$5,document_id=$6,document_uuid=$7,
- stock_verified=stock_verified OR $8,stock_proof=CASE WHEN $8 THEN $9 ELSE stock_proof END,stock_verified_at=CASE WHEN $8 THEN COALESCE(stock_verified_at,NOW()) ELSE stock_verified_at END,
+ stock_verified=stock_verified OR $8,stock_proof=CASE WHEN $8 AND NOT stock_verified THEN $9 ELSE stock_proof END,stock_verified_at=CASE WHEN $8 THEN COALESCE(stock_verified_at,NOW()) ELSE stock_verified_at END,
  cancellation_verified=cancellation_verified OR $11,cancellation_proof=CASE WHEN $11 THEN $12 ELSE cancellation_proof END,cancellation_verified_at=CASE WHEN $11 THEN COALESCE(cancellation_verified_at,NOW()) ELSE cancellation_verified_at END,
  lease_token='',lease_until=NULL,next_attempt_at=NOW()+$10::INTERVAL,updated_at=NOW() WHERE id=$1 AND lease_token=$2 AND status='processing'`, id, token, result.State, result.Message, raw, result.Progress.DocumentID, result.Progress.DocumentUUID, result.StockVerified, proof, delay.String(), result.CancellationVerified, cancelProof)
 	if err != nil {
@@ -120,8 +139,22 @@ func persistPublicationResult(ctx context.Context, pool *pgxpool.Pool, id, inten
 	if command.RowsAffected() != 1 {
 		return fmt.Errorf("realization lease changed; read-only recovery required")
 	}
+	if result.CancellationVerified && revision == nil {
+		var base int64
+		if err = tx.QueryRow(ctx, `SELECT COALESCE(base_revision_id,0) FROM order_sale_intents WHERE id=$1`, intentID).Scan(&base); err != nil {
+			return err
+		}
+		if base > 0 {
+			if err = recordRevisionEffect(ctx, tx, intentID, base, "cancel_unpost", false, result.CancellationProof, time.Now(), nil); err != nil {
+				return err
+			}
+		}
+	}
 	if result.CancellationVerified {
 		if _, err = tx.Exec(ctx, `UPDATE order_sale_intents SET cancellation_verified=TRUE,cancellation_verified_at=COALESCE(cancellation_verified_at,NOW()) WHERE id=$1`, intentID); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `SELECT order_sale_refresh_hold_releases($1)`, intentID); err != nil {
 			return err
 		}
 	}
@@ -129,6 +162,9 @@ func persistPublicationResult(ctx context.Context, pool *pgxpool.Pool, id, inten
 }
 
 func cancellationStage(stage string) bool {
+	if strings.HasPrefix(stage, "revision-") {
+		return true
+	}
 	switch stage {
 	case "inspect-cancel", "discover-cancel", "cancel", "verify-cancel", "reconcile-cancel", "cancelled":
 		return true

@@ -6972,18 +6972,31 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    OrderRealizationRevision:
+      type: object
+      required: [id, number, state, createdAt]
+      properties:
+        id: { type: integer }
+        number: { type: integer }
+        state: { type: string }
+        createdAt: { type: string, format: date-time }
+        appliedAt: { type: string, format: date-time }
     OrderRealizationPublication:
       type: object
-      required: [id, executionMode, status, message, documentId, documentUUID, attempts, canRetry, updatedAt, siteWarehouseId, stockVerified, testMode, desiredState, cancellationVerified]
+      required: [id, executionMode, status, message, documentId, documentUUID, attempts, canRetry, updatedAt, siteWarehouseId, stockVerified, testMode, desiredState, cancellationVerified, revisionPending]
       properties:
         id: { type: integer }
         executionMode: { type: string, enum: [mock, live] }
         status: { type: string, enum: [queued, processing, posted, needs_attention, failed, cancelled] }
         desiredState: { type: string, enum: [posted, cancelled] }
         cancellationVerified: { type: boolean, description: Verified stop before posting or verified removal of posting; cached stock is refreshed independently. }
-        cancellationKind: { type: string, enum: [no_remote, unposted_draft, unposted_full] }
+        cancellationKind: { type: string, enum: [no_remote, unposted_draft, unposted_full, revision_unposted] }
         stockVerifiedAt: { type: string, format: date-time }
         cancellationVerifiedAt: { type: string, format: date-time }
+        desiredRevision: { $ref: '#/components/schemas/OrderRealizationRevision' }
+        appliedRevision: { $ref: '#/components/schemas/OrderRealizationRevision' }
+        activeRevision: { $ref: '#/components/schemas/OrderRealizationRevision' }
+        revisionPending: { type: boolean, description: The latest saved order contents have not yet been verified in the same Saby document. Previous stockVerified proof does not verify this revision. }
         message: { type: string }
         documentId: { type: string, description: Native numeric identifier in live mode; STG-SALE identifier in mock mode. }
         documentUUID: { type: string }

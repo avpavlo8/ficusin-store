@@ -356,7 +356,7 @@ func TestSabyRealizationProviderLostCreateStopsWithoutSecondDocument(t *testing.
 	}
 }
 
-func TestSabyRealizationProviderLostSavedReplyReconcilesWithoutDuplicate(t *testing.T) {
+func TestSabyRealizationProviderLostSavedReplyRequiresOwnedIDWithoutDuplicate(t *testing.T) {
 	h := newRealizationProviderHarness(t)
 	h.loseSave = true
 	h.staleAfterSave = 2
@@ -370,8 +370,25 @@ func TestSabyRealizationProviderLostSavedReplyReconcilesWithoutDuplicate(t *test
 			break
 		}
 	}
-	if result.State != "posted" || h.writeCount("РеалИсх.CustomDocNomUpdate") != 1 || h.writeCount("РеалИсх.DocNomCreate") != 1 {
-		t.Fatalf("lost save duplicated or stalled: %s %s writes%v", result.State, result.Message, h.writes)
+	if result.State != "needs_attention" || h.writeCount("РеалИсх.CustomDocNomUpdate") != 1 || h.writeCount("РеалИсх.DocNomCreate") != 1 || h.writeCount("Документ.PostAsync") != 0 || len(result.Progress.OwnedRowIDs) != 0 {
+		t.Fatalf("lost save adopted an unacknowledged ID: %s %s writes%v", result.State, result.Message, h.writes)
+	}
+	// The vendor may expose a matching row later. It still has no retained
+	// positive acknowledgement, and cancel must not promote it to an owned row.
+	h.mu.Lock()
+	h.staleRemaining = 0
+	h.rows[0].([]any)[0] = int64(990001)
+	h.mu.Unlock()
+	for _, desired := range []string{"posted", "cancelled"} {
+		p = result.Progress
+		p.DesiredState = desired
+		for i := 0; i < 3; i++ {
+			result = runProviderStep(t, h, r, p)
+			p = result.Progress
+		}
+		if result.State != "needs_attention" || h.writeCount("Документ.PostAsync") != 0 || h.writeCount("Документ.CancelPosting") != 0 || h.writeCount("РеалИсх.CustomDocNomUpdate") != 1 || len(p.OwnedRowIDs) != 0 {
+			t.Fatal("lost save retry adopted or mutated unknown row")
+		}
 	}
 }
 

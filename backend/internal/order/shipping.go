@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -142,6 +143,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			cdek_last_error='Остатка растений недостаточно для заявки СДЭК. Проверьте наличие и решите вручную.',
 			cdek_next_attempt_at=NULL
 		WHERE o.delivery_method='cdek' AND o.delivery_payee='shop' AND o.cdek_uuid=''
+ AND NOT order_sale_revision_pending(o.id)
 			AND o.cdek_create_state NOT IN ('unknown','manual_review','registered')
 			AND o.has_preorder=0 AND o.status NOT IN ('cancelled','completed')
 			AND (o.payment_status IN ('paid','on_delivery') OR (o.payment_status IN ('pending','partially_paid') AND o.cdek_checkout_requested=1))
@@ -165,6 +167,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			cdek_last_error='Оплаченная отправка: остатка растений недостаточно. Проверьте наличие и решите вручную.',
 			cdek_next_attempt_at=NULL, updated_at=CURRENT_TIMESTAMP
 		WHERE so.status='paid' AND so.delivery_method='cdek' AND so.delivery_payee='shop'
+ AND NOT order_sale_revision_pending(so.order_id)
 			AND so.cdek_uuid='' AND so.cdek_create_state NOT IN ('unknown','manual_review','registered')
 			AND (EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
@@ -222,6 +225,7 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 		WITH candidates AS (
 			SELECT so.id FROM shipment_offers so JOIN orders o ON o.id=so.order_id
 				WHERE so.status='paid' AND so.delivery_method='cdek' AND so.cdek_uuid=''
+ AND NOT order_sale_revision_pending(so.order_id)
 					AND so.delivery_payee='shop'
 					AND so.cdek_create_state NOT IN ('unknown','manual_review')
 					AND NOT EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NULL)
@@ -266,6 +270,16 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 	}
 	rows.Close()
 	for _, item := range waiting {
+		pendingRevision, revisionErr := ordersale.RevisionPending(ctx, worker.pool, item.orderID)
+		if revisionErr != nil || pendingRevision {
+			if revisionErr != nil {
+				worker.logger.Error("check shipment realization revision failed", "error", revisionErr, "offer_id", item.offerID)
+			}
+			if _, err := worker.pool.Exec(ctx, `UPDATE shipment_offers SET status='paid',cdek_create_state='new',cdek_last_error='Ожидаем обновления состава заказа в СБИС',cdek_next_attempt_at=NOW()+INTERVAL '30 seconds',updated_at=NOW() WHERE id=$1 AND status='shipping' AND cdek_uuid='' AND cdek_create_state='creating'`, item.offerID); err != nil {
+				worker.logger.Error("defer shipment offer revision failed", "error", err, "offer_id", item.offerID)
+			}
+			continue
+		}
 		short, checkErr := worker.offerStockShort(ctx, item.offerID)
 		if checkErr != nil {
 			worker.recordOfferCreateFailure(ctx, item.offerID, item.number, item.attempts, checkErr)
@@ -633,6 +647,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			SELECT o.id
 			FROM orders o
 				WHERE o.delivery_method = 'cdek'
+ AND NOT order_sale_revision_pending(o.id)
 					-- The shop collects delivery with the order; CDEK must not collect it again.
 					AND o.delivery_payee = 'shop'
 					AND o.cdek_uuid = ''
@@ -707,6 +722,16 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 	rows.Close()
 
 	for _, item := range waiting {
+		pendingRevision, revisionErr := ordersale.RevisionPending(ctx, worker.pool, item.id)
+		if revisionErr != nil || pendingRevision {
+			if revisionErr != nil {
+				worker.logger.Error("check order realization revision failed", "error", revisionErr, "order_id", item.id)
+			}
+			if _, err := worker.pool.Exec(ctx, `UPDATE orders SET cdek_create_state='pending',cdek_last_error='Ожидаем обновления состава заказа в СБИС',cdek_next_attempt_at=NOW()+INTERVAL '30 seconds' WHERE id=$1 AND cdek_uuid='' AND cdek_create_state='creating'`, item.id); err != nil {
+				worker.logger.Error("defer order shipment revision failed", "error", err, "order_id", item.id)
+			}
+			continue
+		}
 		short, checkErr := worker.orderStockShort(ctx, item.id)
 		if checkErr != nil {
 			worker.recordCreateFailure(ctx, item.id, item.number, item.attempts, checkErr)

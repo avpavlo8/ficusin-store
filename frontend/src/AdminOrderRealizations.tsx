@@ -3,6 +3,13 @@ import { api, money } from "./adminShared";
 import { WorkspaceState } from "./WorkspaceUI";
 import "./styles/order-realizations.css";
 
+type Revision = {
+  id: number;
+  number: number;
+  state: string;
+  createdAt: string;
+  appliedAt?: string;
+};
 type Publication = {
   id: number;
   executionMode: "mock" | "live";
@@ -10,6 +17,10 @@ type Publication = {
   status: "queued" | "processing" | "posted" | "needs_attention" | "failed" | "cancelled";
   desiredState?: "posted" | "cancelled";
   cancellationVerified?: boolean;
+  desiredRevision?: Revision;
+  appliedRevision?: Revision;
+  activeRevision?: Revision;
+  revisionPending?: boolean;
   message: string;
   documentId: string;
   documentUUID: string;
@@ -81,6 +92,7 @@ function PublicationState({
     publication.executionMode === "live" &&
     publication.status === "posted" &&
     publication.stockVerified &&
+    !publication.revisionPending &&
     Boolean(publication.documentId.trim() && publication.documentUUID.trim());
   const cancellation =
     publication.desiredState === "cancelled" || publication.status === "cancelled";
@@ -93,24 +105,29 @@ function PublicationState({
           : "Отмена не подтверждена"
       : cancellation && ["queued", "processing"].includes(publication.status)
         ? "Проверяем отмену списания"
-        : publication.status === "posted"
-          ? test
-            ? "Тестовая реализация завершена"
-            : verified
-              ? "Проведено в СБИС"
-              : "Проведение не подтверждено"
-          : {
-              queued: "В очереди обмена",
-              processing: "Обрабатывается",
-              needs_attention: "Нужна сверка",
-              failed: "Ошибка обмена",
-            }[publication.status];
+        : publication.revisionPending &&
+            ["queued", "processing", "posted"].includes(publication.status)
+          ? "Обновляем состав в СБИС"
+          : publication.status === "posted"
+            ? test
+              ? "Тестовая реализация завершена"
+              : verified
+                ? "Проведено в СБИС"
+                : "Проведение не подтверждено"
+            : {
+                queued: "В очереди обмена",
+                processing: "Обрабатывается",
+                needs_attention: "Нужна сверка",
+                failed: "Ошибка обмена",
+              }[publication.status];
   const state =
     !test &&
-    ((publication.status === "posted" && !verified) ||
+    ((publication.status === "posted" && !verified && !publication.revisionPending) ||
       (publication.status === "cancelled" && !publication.cancellationVerified))
       ? "needs_attention"
-      : publication.status;
+      : publication.revisionPending && publication.status === "posted"
+        ? "processing"
+        : publication.status;
   return (
     <div
       className="order-realizations-publication"
@@ -125,6 +142,9 @@ function PublicationState({
           {test ? "Тестовый документ" : "Документ СБИС"}: {publication.documentId}
         </small>
       )}
+      {publication.revisionPending && !cancellation && (
+        <p>Изменения заказа сохранены. Обновление реализации ещё не подтверждено.</p>
+      )}
       {test ? (
         <p className="order-realizations-test-note">
           Документ СБИС и реальные списания не создавались.
@@ -135,6 +155,8 @@ function PublicationState({
             ? "Списание остановлено или проведение снято. Остаток обновляется из СБИС."
             : "Нет подтверждения отмены. Требуется проверка."}
         </p>
+      ) : publication.revisionPending && !cancellation ? (
+        publication.message && <p>{publication.message}</p>
       ) : publication.status === "posted" && !verified ? (
         <p>Нет подтверждения документа и складского движения. Требуется проверка.</p>
       ) : verified ? (

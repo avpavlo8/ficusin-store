@@ -290,3 +290,21 @@ func TestOrderWorkflowLocalDatabase(t *testing.T) {
 		t.Fatal(status)
 	}
 }
+
+func TestPendingRevisionBlocksAssemblyAndPickupHandover(t *testing.T) {
+	for _, status := range []string{"new", "assembling", "ready"} {
+		f := readyFacts()
+		f.DeliveryMethod = "pickup"
+		f.Status = status
+		f.RevisionPending = true
+		state := flow.Evaluate(f)
+		if state.ReadyForAssembly || len(state.ManualStatuses) != 0 || !has(state, "realization_sync") {
+			t.Fatal("stale realization allowed fulfilment", status, state)
+		}
+		f.RevisionPending = false
+		settled := flow.Evaluate(f)
+		if !settled.ReadyForAssembly {
+			t.Fatal("settled revision remained blocked", status, settled)
+		}
+	}
+}

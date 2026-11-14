@@ -41,6 +41,7 @@ type Facts struct {
 	Status, PaymentStatus, PaymentMethod, DeliveryMethod, CDEKState string
 	FeePending, RepackRequested, AddressConfirmed, PaymentUncertain bool
 	Lines                                                           []Line
+	RevisionPending                                                 bool
 	BoxesConfirmed                                                  bool
 }
 
@@ -74,6 +75,9 @@ func Evaluate(f Facts) State {
 			}
 		}
 		add("payment", message, "payment")
+	}
+	if f.RevisionPending {
+		add("realization_sync", "Изменения заказа ещё обновляются в СБИС", "items")
 	}
 	if f.PaymentUncertain {
 		add("payment_check", "Нужно уточнить результат оплаты", "payment")
@@ -123,7 +127,7 @@ func Evaluate(f Facts) State {
 		if f.Status == "assembling" && (s.ReadyForAssembly || cashReady) {
 			s.ManualStatuses = append(s.ManualStatuses, "ready")
 		}
-		if f.Status == "ready" && (f.PaymentStatus == "paid" || f.PaymentMethod == "on_delivery") {
+		if f.Status == "ready" && !f.RevisionPending && (f.PaymentStatus == "paid" || f.PaymentMethod == "on_delivery") {
 			s.ManualStatuses = append(s.ManualStatuses, "completed")
 		}
 	}
@@ -152,7 +156,8 @@ const factsSQL = `
     JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
     WHERE i.variant_id=lines.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours') stock ON TRUE),'[]'::jsonb),
   COALESCE((SELECT boxes FROM order_packing_workflows w WHERE w.order_id=o.id AND w.order_revision=o.shipment_revision AND w.state NOT IN ('draft','cancelled','stale') LIMIT 1),'[]'::jsonb),
-  COALESCE((SELECT jsonb_object_agg(oi.id::text,oi.quantity) FROM order_items oi WHERE oi.order_id=o.id),'{}'::jsonb)
+  COALESCE((SELECT jsonb_object_agg(oi.id::text,oi.quantity) FROM order_items oi WHERE oi.order_id=o.id),'{}'::jsonb),
+  order_sale_revision_pending(o.id)
  FROM orders o WHERE o.id=ANY($1::bigint[]) ORDER BY o.id`
 
 func Read(ctx context.Context, db Querier, ids []int64) (map[int64]State, error) {
@@ -169,7 +174,7 @@ func Read(ctx context.Context, db Querier, ids []int64) (map[int64]State, error)
 		var id int64
 		var f Facts
 		var lines, boxes, quantities []byte
-		if err = rows.Scan(&id, &f.Status, &f.PaymentStatus, &f.PaymentMethod, &f.DeliveryMethod, &f.FeePending, &f.RepackRequested, &f.CDEKState, &f.AddressConfirmed, &f.PaymentUncertain, &lines, &boxes, &quantities); err != nil {
+		if err = rows.Scan(&id, &f.Status, &f.PaymentStatus, &f.PaymentMethod, &f.DeliveryMethod, &f.FeePending, &f.RepackRequested, &f.CDEKState, &f.AddressConfirmed, &f.PaymentUncertain, &lines, &boxes, &quantities, &f.RevisionPending); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal(lines, &f.Lines); err != nil {
@@ -178,7 +183,10 @@ func Read(ctx context.Context, db Querier, ids []int64) (map[int64]State, error)
 		f.BoxesConfirmed = validBoxes(boxes, quantities)
 		result[id] = Evaluate(f)
 	}
-	return result, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 func validBoxes(raw, quantities []byte) bool {
 	// Box JSON is shared with the established packing workflow; validate the

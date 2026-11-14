@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -57,9 +56,9 @@ func TestCreationRealizationEditGuardPostgres(t *testing.T) {
 		rejected, cleared bool
 	}{
 		{name: "unchanged default form retains item IDs", id: 1, items: []OrderEditLine{{SKU: "24", Quantity: 1}, {SKU: "13", Quantity: 1}, {SKU: "13", Quantity: 1}}, discount: &OrderDiscount{Type: "fixed"}, cleared: true},
-		{name: "changed quantity rejected", id: 1, items: []OrderEditLine{{SKU: "13", Quantity: 3}, {SKU: "24", Quantity: 1}}, rejected: true},
-		{name: "changed SKU rejected", id: 1, items: []OrderEditLine{{SKU: "14", Quantity: 2}, {SKU: "24", Quantity: 1}}, rejected: true},
-		{name: "changed price discount rejected", id: 1, discount: &OrderDiscount{Type: "fixed", Value: 50}, rejected: true},
+		{name: "changed quantity stays editable", id: 1, items: []OrderEditLine{{SKU: "13", Quantity: 3}, {SKU: "24", Quantity: 1}}},
+		{name: "changed SKU stays editable", id: 1, items: []OrderEditLine{{SKU: "14", Quantity: 2}, {SKU: "24", Quantity: 1}}},
+		{name: "changed price discount stays editable", id: 1, discount: &OrderDiscount{Type: "fixed", Value: 50}},
 		{name: "metadata only allowed", id: 1},
 		{name: "historical handover order keeps existing edit behavior", id: 2, items: []OrderEditLine{{SKU: "13", Quantity: 3}}},
 	}
@@ -75,11 +74,11 @@ func TestCreationRealizationEditGuardPostgres(t *testing.T) {
 				copy := append([]OrderEditLine{}, tc.items...)
 				edit.Items = &copy
 			}
-			err = guardCreationRealizationEdit(ctx, tx, tc.id, &edit)
-			if errors.Is(err, ErrInvalidInput) != tc.rejected {
+			err = filterUnchangedOrderEditFields(ctx, tx, tc.id, &edit)
+			if (err != nil) != tc.rejected {
 				t.Fatalf("unexpected guard result: %v", err)
 			}
-			if tc.cleared && edit.Items != nil {
+			if tc.cleared && (edit.Items != nil || edit.Discount != nil) {
 				t.Fatal("unchanged form would recreate frozen order item IDs")
 			}
 			if tc.id == 2 && edit.Items == nil {

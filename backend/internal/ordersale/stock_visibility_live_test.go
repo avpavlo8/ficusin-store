@@ -73,7 +73,11 @@ func runEarlyStockVisibilityTests(t *testing.T, ctx context.Context, pool *pgxpo
 		exec(`UPDATE order_sale_publications SET desired_state='cancelled' WHERE intent_id=$1`, second.IntentID)
 		check(first.OrderID, 2, 3)
 		exec(`UPDATE order_sale_intents SET cancellation_verified=TRUE,cancellation_verified_at=NOW() WHERE id=$1`, second.IntentID)
-		check(first.OrderID, 3, 3)
+		// This job never reached a writer: retain an explicit verified no-remote
+		// cancellation, rather than bypassing the publication's evidence.
+		exec(`UPDATE order_sale_publications SET status='cancelled',cancellation_verified=TRUE,cancellation_verified_at=NOW(),cancellation_proof='{"kind":"no_remote"}' WHERE intent_id=$1`, second.IntentID)
+		// The first order can use its already deducted unit plus three free ones.
+		check(first.OrderID, 3, 4)
 		// Mock documents never cause a real imported balance to include a debit.
 		exec(`UPDATE order_sale_dispatch_control SET execution_mode='mock' WHERE singleton`)
 		third := create(9100003)

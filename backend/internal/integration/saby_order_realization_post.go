@@ -150,7 +150,7 @@ func (client *SabyClient) PostOrderRealization(ctx context.Context, expected Sab
 // write or follows a redirect with credentials. Only proven methods are allowed.
 func (client *SabyClient) sabyOrderRealizationWriteRPCOnce(ctx context.Context, method string, params any) (json.RawMessage, int, error) {
 	switch method {
-	case "Документ.PostAsync", "Документ.CancelPosting", "РеалИсх.DocNomCreate", "РеалИсх.CustomDocNomUpdate", "РеалИсх.Записать":
+	case "Документ.PostAsync", "Документ.CancelPosting", "РеалИсх.DocNomCreate", "РеалИсх.CustomDocNomUpdate", "РеалИсх.CustomDocNomDelete", "РеалИсх.Записать":
 	default:
 		return nil, 0, errors.New("Неподдерживаемое изменение реализации СБИС")
 	}

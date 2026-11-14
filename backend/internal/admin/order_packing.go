@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/avpavlo8/ficusin-store/backend/internal/money"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"math"
 	"strings"
 	"time"
@@ -435,6 +436,13 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 	err = tx.QueryRow(ctx, `SELECT shipment_revision,status,delivery_method,payment_method,delivery_payee,COALESCE(cdek_office_code,''),COALESCE(email,''),cdek_uuid,cdek_create_state,COALESCE(cdek_city_code,0),has_preorder=1,subtotal::double precision,delivery_fee::double precision FROM orders WHERE id=$1 FOR UPDATE`, id).Scan(&revision, &status, &delivery, &method, &payee, &office, &email, &uuid, &cdekState, &city, &preorder, &subtotal, &oldFee)
 	if err != nil {
 		return OrderPackingState{}, err
+	}
+	pendingRevision, err := ordersale.RevisionPending(ctx, tx, id)
+	if err != nil {
+		return OrderPackingState{}, err
+	}
+	if pendingRevision {
+		return OrderPackingState{}, errors.New("дождитесь обновления состава заказа в СБИС перед подтверждением упаковки")
 	}
 	if revision != input.Revision {
 		return OrderPackingState{}, errors.New("заказ изменился — обновите карточку")

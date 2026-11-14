@@ -72,12 +72,28 @@ func loadPublication(ctx context.Context, q queryer, intentID int64) (*Publicati
 		}
 		v.CanRetry = carrier == "clear"
 	}
+	if err = loadRevisionViews(ctx, q, intentID, &v); err != nil {
+		return nil, err
+	}
 	return &v, nil
 }
 func ensurePublication(ctx context.Context, tx pgx.Tx, e *Event, warehouseID int64, explicit bool) error {
 	c, err := readDispatchControl(ctx, tx, true)
 	if err != nil {
 		return err
+	}
+	var frozenConfig []byte
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(origin_config,'null') FROM order_sale_intents WHERE id=$1`, e.IntentID).Scan(&frozenConfig); err != nil {
+		return err
+	}
+	if explicit && string(frozenConfig) != "null" {
+		var frozen DispatchControl
+		if json.Unmarshal(frozenConfig, &frozen) != nil {
+			return ErrConflict
+		}
+		if frozen.Mode == "disabled" {
+			return admissionUnknownError{}
+		}
 	}
 	if !c.Enabled || c.Mode == "disabled" {
 		return nil
@@ -92,6 +108,20 @@ func ensurePublication(ctx context.Context, tx pgx.Tx, e *Event, warehouseID int
 		}
 		e.Publication = existing
 		return nil
+	}
+	if string(frozenConfig) != "null" {
+		var frozen DispatchControl
+		if json.Unmarshal(frozenConfig, &frozen) != nil {
+			return ErrConflict
+		}
+		if frozen.Mode != c.Mode {
+			if explicit {
+				return admissionModeError{}
+			}
+			return nil
+		}
+		frozen.Enabled = c.Enabled
+		c = frozen
 	}
 	// Keep the intent visible but do not freeze an unusable request. After a
 	// missing mapping is fixed, explicit preparation can create its first job.
@@ -183,7 +213,13 @@ func RetryPublication(ctx context.Context, pool *pgxpool.Pool, id int64) error {
 		return ErrRetryUnsafe
 	}
 	if desired == "cancelled" {
-		if p.Stage == "cancel" {
+		if revisionWriteStage(p.Stage) {
+			var safe bool
+			p, safe = recoverProgress(p)
+			if !safe {
+				return ErrRetryUnsafe
+			}
+		} else if p.Stage == "cancel" {
 			p.Stage = "reconcile-cancel"
 			p.Unknown = true
 		} else if !cancellationStage(p.Stage) {

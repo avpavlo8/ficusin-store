@@ -37,6 +37,10 @@ func EnqueueCreated(ctx context.Context, tx pgx.Tx, orderID int64) (Event, error
 	e.Source = "automatic"
 	e.State = "queued"
 	e.WarehouseID = c.SiteWarehouseID
+	e, _, err = revisionLiveEvent(ctx, tx, orderID, e)
+	if err != nil {
+		return e, err
+	}
 	finish(&e)
 	raw, err := json.Marshal(e)
 	if err != nil {
@@ -46,12 +50,19 @@ func EnqueueCreated(ctx context.Context, tx pgx.Tx, orderID int64) (Event, error
 	if err != nil {
 		return e, err
 	}
+	cfg, _ := json.Marshal(c)
+	if _, err = tx.Exec(ctx, `UPDATE order_sale_intents SET origin_config=$2 WHERE id=$1`, e.IntentID, cfg); err != nil {
+		return e, err
+	}
 	for _, l := range e.Lines {
 		if _, err = tx.Exec(ctx, `INSERT INTO order_sale_intent_lines(intent_id,order_item_id,quantity,variant_id) VALUES($1,$2,$3,$4)`, e.IntentID, l.OrderItemID, l.Quantity, l.VariantID); err != nil {
 			return e, err
 		}
 	}
 	if err = ensurePublication(ctx, tx, &e, c.SiteWarehouseID, false); err != nil {
+		return e, err
+	}
+	if err = BeforeOrderEdit(ctx, tx, orderID); err != nil {
 		return e, err
 	}
 	return e, nil

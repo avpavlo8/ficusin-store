@@ -82,6 +82,12 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 	} else if progress.Stage != "inspect" || progress.DocumentID != "" || progress.Unknown {
 		return attention("Отсутствует сохранённое подтверждение этапа; повторная запись не выполнялась")
 	}
+	// Matching SKU/price totals cannot establish ownership of a new row after
+	// a lost save reply. Without its positive ID neither posting nor cancellation
+	// may adopt, replace, or delete that row.
+	if receipt.Phase == "save" && receipt.SavedRowID <= 0 && (progress.Unknown || progress.Stage == "reconcile-fill") {
+		return attention("СБИС не подтвердил ID сохранённой строки; требуется ручная сверка без повторной записи и проведения")
+	}
 	if progress.DesiredState == "cancelled" {
 		return p.cancelStep(ctx, request, result, receipt, plan)
 	}

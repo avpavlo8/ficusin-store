@@ -251,3 +251,30 @@ test('@desktop @phone cancellation never claims a return before proof', async ({
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
   expect(f.runtimeErrors).toEqual([]);
 });
+
+test('@desktop @phone an edited composition waits for its own proof in the same document', async ({ page }) => {
+  const f = await fixture(page, { mode: 'live' });
+  const revision = { id: 2, number: 1, state: 'queued', createdAt: '2026-11-14T09:00:00Z' };
+  f.events[0].publication = makePublication({ executionMode: 'live', testMode: false,
+    status: 'posted', stockVerified: true, revisionPending: true, desiredRevision: revision,
+    documentId: '42807', documentUUID: '00000000-0000-4000-8000-000000042807', message: '' });
+  await page.goto('/admin?section=orders&view=realizations');
+  const panel = page.getByRole('region', { name: 'Реализация по заказам', exact: true });
+  const row = panel.locator('[data-event="order:17"]');
+  await expect(row).toContainText('Обновляем состав в СБИС');
+  await expect(row).toContainText('Изменения заказа сохранены. Обновление реализации ещё не подтверждено.');
+  await expect(row.getByText('Складское движение подтверждено.', { exact: true })).toHaveCount(0);
+  await expect(row).toContainText('Документ СБИС: 42807');
+  Object.assign(f.events[0].publication!, { status: 'needs_attention', message: 'Ответ обновления потерян. Проверяем тот же документ.' });
+  await panel.getByRole('button', { name: 'Обновить', exact: true }).click();
+  await expect(row).toContainText('Нужна сверка');
+  await expect(row.getByText('Проведено в СБИС', { exact: true })).toHaveCount(0);
+  Object.assign(f.events[0].publication!, { status: 'posted', revisionPending: false, appliedRevision: { ...revision, state: 'applied' }, message: '' });
+  await panel.getByRole('button', { name: 'Обновить', exact: true }).click();
+  await expect(row).toContainText('Проведено в СБИС');
+  await expect(row).toContainText('Складское движение подтверждено.');
+  await expect(row).toContainText('Документ СБИС: 42807');
+  expect(f.mutations).toEqual([]);
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+  expect(f.runtimeErrors).toEqual([]);
+});

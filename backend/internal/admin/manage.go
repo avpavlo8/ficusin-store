@@ -372,6 +372,15 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 	if currentStatus == "cancelled" || currentStatus == "completed" {
 		return Order{}, fmt.Errorf("%w: закрытый заказ доступен только для просмотра", ErrInvalidInput)
 	}
+	if status == "assembling" || status == "ready" || status == "shipped" || status == "completed" {
+		pending, err := ordersale.RevisionPending(ctx, tx, id)
+		if err != nil {
+			return Order{}, err
+		}
+		if pending {
+			return Order{}, fmt.Errorf("%w: дождитесь обновления состава заказа в СБИС перед сборкой или выдачей", ErrInvalidInput)
+		}
+	}
 	if status != "" && status != "cancelled" && status != currentStatus {
 		states, err := orderworkflow.Read(ctx, tx, []int64{id})
 		if err != nil {
