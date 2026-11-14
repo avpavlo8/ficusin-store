@@ -1,3 +1,8 @@
+import {
+  initialAttributeFilters,
+  initialRangeFilters,
+  type RangeValue,
+} from "./lib/catalog-query-filters";
 import { NumericInput } from "./NumericInput";
 import { HomeBenefits } from "./HomeBenefits";
 import { useEffect, useMemo, useState } from "react";
@@ -80,7 +85,6 @@ type CollectionMeta = {
   count?: number;
   selectsVariant?: boolean;
 };
-type RangeValue = { min: string; max: string };
 type Facet = {
   name: string;
   unit?: string;
@@ -140,29 +144,6 @@ const categoryIconPaths: Record<string, string> = {
   fertilizer: "M9 3h6v4l3 4v9H6v-9l3-4V3Zm0 10h6",
   tools: "M14 5a4 4 0 0 0 5 5l-9 9-4-4 9-9",
 };
-
-function initialAttributeFilters() {
-  const result: Record<string, string> = {};
-  new URLSearchParams(window.location.search).forEach((value, key) => {
-    if (key.startsWith("filter.")) result[key.slice(7)] = value;
-  });
-  return result;
-}
-
-function initialRangeFilters() {
-  const result: Record<string, RangeValue> = {};
-  new URLSearchParams(window.location.search).forEach((value, key) => {
-    if (key.startsWith("min.")) {
-      const code = key.slice(4);
-      result[code] = { min: value, max: result[code]?.max || "" };
-    }
-    if (key.startsWith("max.")) {
-      const code = key.slice(4);
-      result[code] = { min: result[code]?.min || "", max: value };
-    }
-  });
-  return result;
-}
 
 function CatalogDropdown({
   label,
@@ -297,9 +278,12 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const [inStockOnly, setInStockOnly] = useState(
     () => new URLSearchParams(window.location.search).get("stock") === "1",
   );
-  const [attributeFilters, setAttributeFilters] =
-    useState<Record<string, string>>(initialAttributeFilters);
-  const [rangeFilters, setRangeFilters] = useState<Record<string, RangeValue>>(initialRangeFilters);
+  const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>(() =>
+    initialAttributeFilters(window.location.search),
+  );
+  const [rangeFilters, setRangeFilters] = useState<Record<string, RangeValue>>(() =>
+    initialRangeFilters(window.location.search),
+  );
   const [sort, setSort] = useState(
     () => new URLSearchParams(window.location.search).get("sort") || "popular",
   );
@@ -537,8 +521,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       setInStockOnly(params.get("stock") === "1");
       setSort(params.get("sort") || "popular");
       setPriceRange({ min: params.get("priceMin") || "", max: params.get("priceMax") || "" });
-      setAttributeFilters(initialAttributeFilters());
-      setRangeFilters(initialRangeFilters());
+      setAttributeFilters(initialAttributeFilters(window.location.search));
+      setRangeFilters(initialRangeFilters(window.location.search));
     };
     window.addEventListener("popstate", restoreLocation);
     return () => window.removeEventListener("popstate", restoreLocation);

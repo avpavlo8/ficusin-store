@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -148,7 +150,8 @@ func yooKassaWebhookHandler(logger *slog.Logger, payments paymentService) http.H
 		if available(payments) {
 			err := payments.SyncOutstanding(request.Context(), strings.TrimSpace(id))
 			if err != nil {
-				logger.Error("payment sync failed", "error", err, "payment_id", id)
+				reference := sha256.Sum256([]byte(strings.TrimSpace(id)))
+				logger.Error("payment sync failed", "error_type", fmt.Sprintf("%T", err), "payment_ref", fmt.Sprintf("%x", reference))
 				writeJSON(response, http.StatusInternalServerError, errorResponse{Error: "retry"})
 				return
 			}

@@ -1,8 +1,13 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -91,5 +96,22 @@ func TestPaymentHandlersKeepMissingAuthDependencyAnonymous(t *testing.T) {
 	startShipmentOfferPaymentHandler(discardLogger(), nil, nil).ServeHTTP(response, request)
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("shipment payment proceeded without authentication: %d", response.Code)
+	}
+}
+
+func TestPaymentWebhookFailureLogDoesNotExposeUntrustedFields(t *testing.T) {
+	var output bytes.Buffer
+	id := "payment\r\nforged_payment"
+	body, _ := json.Marshal(map[string]any{"type": "notification", "event": "payment.succeeded", "object": map[string]string{"id": id}})
+	service := &webhookPaymentStub{configured: true, err: errors.New("provider-secret\nforged_error")}
+	response := httptest.NewRecorder()
+	yooKassaWebhookHandler(slog.New(slog.NewTextHandler(&output, nil)), service).ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body)))
+	log := output.String()
+	expected := sha256.Sum256([]byte(id))
+	if response.Code != http.StatusInternalServerError || len(service.ids) != 1 || service.ids[0] != id {
+		t.Fatal("verified provider retry changed")
+	}
+	if strings.Contains(log, "forged_payment") || strings.Contains(log, "provider-secret") || strings.Contains(log, "forged_error") || strings.Count(log, "\n") != 1 || !strings.Contains(log, fmt.Sprintf("%x", expected)) {
+		t.Fatalf("untrusted values entered failure log: %q", log)
 	}
 }
