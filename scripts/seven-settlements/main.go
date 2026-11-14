@@ -281,7 +281,10 @@ func run() error {
 		return errors.New("wrong_database_identity_or_mode")
 	}
 	var actor int64
-	if err := pool.QueryRow(ctx, `SELECT a.customer_id FROM admin_users a JOIN customers c ON c.id=a.customer_id WHERE a.role='owner' AND a.is_active AND (lower(a.email)='avpavlo8@gmail.com' OR lower(c.email)='avpavlo8@gmail.com')`).Scan(&actor); err != nil || actor <= 0 {
+	// Ownership comes from admin_users, never a mutable profile/email match.
+	// The operation is explicitly authorized by this shop's owner. Refuse an
+	// ambiguous actor instead of guessing among multiple active owners.
+	if err := pool.QueryRow(ctx, `SELECT a.customer_id FROM admin_users a JOIN customers c ON c.id=a.customer_id WHERE a.role='owner' AND a.is_active AND (SELECT COUNT(*) FROM admin_users WHERE role='owner' AND is_active AND customer_id IS NOT NULL)=1`).Scan(&actor); err != nil || actor <= 0 {
 		return errors.New("approved_owner_not_found")
 	}
 	client := integration.NewYooKassaClient(env.Shop, env.Secret, env.Tax, env.VAT)
