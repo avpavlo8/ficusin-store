@@ -89,6 +89,47 @@ def inspect(cursor):
           FROM variants""")[0]
     return report
 
+def verify_private_objects(cursor, env):
+    spec=importlib.util.spec_from_file_location('object_reader',Path(__file__).with_name('readonly-private-object-verification.py'))
+    reader=importlib.util.module_from_spec(spec);spec.loader.exec_module(reader)
+    import hashlib
+    result={}
+    for kind,(table,key,data) in FILES.items():
+        scope=" AND storage_scope='private'" if kind=='reviews' else ''
+        rows=select(cursor,f"SELECT {key} object_key,{data} legacy_data FROM public.{table} WHERE NULLIF({key},'') IS NOT NULL{scope} LIMIT 101")
+        if len(rows)>100:raise guards.PreflightError('object_inventory_limit_exceeded')
+        summary={'readable':0,'checksumMatched':0,'noRetainedSource':0,'mismatch':0,'unavailable':0}
+        for row in rows:
+            try:raw=reader.signed_get(env,row['object_key'])
+            except Exception:
+                summary['unavailable']+=1
+                continue
+            summary['readable']+=1
+            if row['legacy_data'] is None:summary['noRetainedSource']+=1
+            elif hashlib.sha256(raw).digest()==hashlib.sha256(bytes(row['legacy_data'])).digest():summary['checksumMatched']+=1
+            else:summary['mismatch']+=1
+        result[kind]=summary
+    return result
+
+def publication_diagnostics(cursor):
+    rows=select(cursor,"""SELECT channel,status,message,progress->>'stage' stage,
+      progress->>'ambiguous' ambiguous,progress->>'createAttempted' create_attempted,
+      COALESCE(progress#>>'{ids,productId}','')<>'' has_remote_id,
+      COALESCE(progress#>>'{ids,uuid}','')<>'' has_uuid,
+      COALESCE(progress#>>'{native,preparedHash}','') LIKE 'json-v1:%' prepared_hash_v1,
+      COALESCE(progress#>>'{native,preparedRequestHash}','') LIKE 'json-v1:%' request_hash_v1,
+      pending_payload IS NOT NULL has_pending,attempts,lease_until>NOW() leased
+      FROM public.catalog_editor_publications WHERE channel IN('saby','wb') ORDER BY variant_id LIMIT 10""")
+    output=[]
+    for row in rows:
+        message=str(row.pop('message','')).lower()
+        row['reasonTags']=[tag for tag,words in {'tnved':['тнвэд','тн вэд','tnved'], 'hash':['hash','хеш','хэш'], 'timeout':['timeout','timed out'], 'not_found':['not found','не найден'], 'preflight':['preflight'], 'identity':['identity','идентич'], 'mandatory':['обязател','required'], 'api_error':['ошиб','error']}.items() if any(word in message for word in words)]
+        row['httpStatuses']=sorted(set(re.findall(r'(?i)HTTP[ :]+([45][0-9]{2})',message)))
+        for field in ['stage','ambiguous','create_attempted']:
+            if row[field] is not None and not re.fullmatch(r'[a-z_-]{1,60}',str(row[field])):row[field]='redacted'
+        output.append(row)
+    return output
+
 def storage_flags(env):
     def text(key):
         return str(env.get(key, '')).strip()
@@ -112,7 +153,10 @@ def main():
                 expected=urllib.parse.unquote(urllib.parse.urlsplit(env['DATABASE_URL']).username)
                 if connection.execute("SELECT current_database(),current_user,current_setting('transaction_read_only')").fetchone()!=('default_db',expected,'on'):
                     raise guards.PreflightError('wrong_database_identity_or_readonly')
-                with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor: report=inspect(cursor)
+                with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
+                    report=inspect(cursor)
+                    report['objectVerification']=verify_private_objects(cursor,env)
+                    report['publicationDiagnostics']=publication_diagnostics(cursor)
         report.update(expectedProductionCommit=args.expected_commit,storage=storage_flags(env),readOnly=True,
                       databaseWrites=0,providerCalls=0,objectsWritten=0,checkedAt=datetime.datetime.now(datetime.timezone.utc).isoformat())
         print(json.dumps(report,sort_keys=True));return 0

@@ -27,3 +27,24 @@ class Tests(unittest.TestCase):
         self.assertNotIn('SECRET',str(inventory.storage_flags(env)))
 
 if __name__=='__main__':unittest.main()
+
+class ReadOnlyObjectTests(unittest.TestCase):
+    def setUp(self):
+        spec=importlib.util.spec_from_file_location('object_reader',Path(__file__).with_name('readonly-private-object-verification.py'))
+        self.reader=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.reader)
+    def test_exact_get_escaping_and_signed_authorization(self):
+        class Response:
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def read(self,limit):return b'original bytes'
+        class Opener:
+            def open(inner,request,timeout):
+                self.assertEqual(request.method,'GET')
+                self.assertEqual(request.full_url,'https://s3.twcstorage.ru/private/old/a%20%2B%20b.png')
+                self.assertIn('AWS4-HMAC-SHA256 Credential=access/',request.get_header('Authorization'))
+                self.assertIsNone(request.data)
+                return Response()
+        self.assertEqual(self.reader.signed_get({'PRIVATE_S3_BUCKET':'private','S3_ACCESS_KEY':'access','S3_SECRET_KEY':'secret'},'old/a + b.png',Opener()),b'original bytes')
+    def test_non_timeweb_or_insecure_configuration_blocked(self):
+        for endpoint in ['http://s3.twcstorage.ru','https://evil.example','https://s3.twcstorage.ru/path','https://user:pass@s3.twcstorage.ru','https://s3.twcstorage.ru?key=x']:
+            with self.assertRaises(ValueError):self.reader.signed_get({'PRIVATE_S3_ENDPOINT':endpoint},'key')
