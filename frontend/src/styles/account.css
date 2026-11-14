@@ -80,12 +80,6 @@
   border-radius: 50%;
   object-fit: cover;
 }
-.account-button-photo.placeholder {
-  background: var(--green);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-}
 
 /* --- Личный кабинет: общий каркас для всех разделов --- */
 .account-avatar {

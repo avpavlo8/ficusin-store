@@ -17,6 +17,11 @@ This keeps one Timeweb application while establishing a strict code boundary.
 The frontend and API can be deployed independently later without changing the
 business layer or public API.
 
+The canonical Vite configuration is `frontend/vite.config.ts`. The dev, build
+and preview scripts select it explicitly. TypeScript checks the Node config
+project with `noEmit`; it does not generate sibling `.js`/`.d.ts` copies that
+could shadow newer TypeScript settings during local development.
+
 ## Boundary rules
 
 - Go reads `DATABASE_URL` and application integration secrets. Operational

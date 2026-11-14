@@ -8,23 +8,24 @@ import (
 )
 
 type ActionWorker struct {
-	store    Store
-	executor Executor
+	store    ActionWorkerStore
+	executor GroupExecutor
 	logger   *slog.Logger
 	interval time.Duration
 	owner    string
 }
 
-type claimedPriceActionGuard interface {
+// ActionWorkerStore requires the durable group claim and last-boundary price
+// guard used by the production store. Individual Saby/Avito actions are still
+// selected by ClaimActionGroup through its single-action delegate.
+type ActionWorkerStore interface {
+	ActionGroupStore
 	GuardClaimedPriceActions(context.Context, []ActionItem) (bool, error)
+	FinishAction(context.Context, int64, string, int64, ActionExecution, error) (bool, error)
 }
 
 func (worker *ActionWorker) priceActionsCurrent(ctx context.Context, items []ActionItem) bool {
-	guard, ok := worker.store.(claimedPriceActionGuard)
-	if !ok {
-		return true
-	}
-	current, err := guard.GuardClaimedPriceActions(ctx, items)
+	current, err := worker.store.GuardClaimedPriceActions(ctx, items)
 	if err != nil {
 		worker.logger.Error("check site price before procurement export failed", "error", err)
 		return false
@@ -35,7 +36,7 @@ func (worker *ActionWorker) priceActionsCurrent(ctx context.Context, items []Act
 	return current
 }
 
-func NewActionWorker(store Store, executor Executor, logger *slog.Logger) *ActionWorker {
+func NewActionWorker(store ActionWorkerStore, executor GroupExecutor, logger *slog.Logger) *ActionWorker {
 	return &ActionWorker{store: store, executor: executor, logger: logger, interval: 3 * time.Second, owner: fmt.Sprintf("actions-%d", time.Now().UnixNano())}
 }
 
@@ -56,61 +57,35 @@ func (worker *ActionWorker) Run(ctx context.Context) {
 }
 
 func (worker *ActionWorker) runOne(ctx context.Context) {
-	groupStore, groups := worker.store.(ActionGroupStore)
-	groupExecutor, executesGroups := worker.executor.(GroupExecutor)
-	if groups && executesGroups {
-		items, err := groupStore.ClaimActionGroup(ctx, worker.owner)
-		if err != nil {
-			worker.logger.Error("claim procurement action group failed", "error", err)
-			return
-		}
-		if len(items) == 0 {
-			return
-		}
-		if !worker.priceActionsCurrent(ctx, items) {
-			return
-		}
-		for _, outcome := range groupExecutor.ExecuteGroup(ctx, items) {
-			item := items[0]
-			for _, candidate := range items {
-				if candidate.ID == outcome.ItemID {
-					item = candidate
-					break
-				}
-			}
-			if applied, err := worker.store.FinishAction(ctx, outcome.ItemID, item.LockOwner, item.LockToken, outcome.Result, outcome.Err); err != nil {
-				worker.logger.Error("finish procurement action failed", "action_id", outcome.ItemID, "error", err)
-				continue
-			} else if !applied {
-				worker.logger.Warn("ignored stale procurement action finisher", "action_id", outcome.ItemID, "lease_token", item.LockToken)
-				continue
-			}
-			if outcome.Err != nil {
-				worker.logger.Warn("procurement action failed", "action_id", outcome.ItemID, "error", outcome.Err)
-			}
-		}
-		return
-	}
-	item, err := worker.store.ClaimAction(ctx, worker.owner)
+
+	items, err := worker.store.ClaimActionGroup(ctx, worker.owner)
 	if err != nil {
-		worker.logger.Error("claim procurement action failed", "error", err)
+		worker.logger.Error("claim procurement action group failed", "error", err)
 		return
 	}
-	if item == nil {
+	if len(items) == 0 {
 		return
 	}
-	if !worker.priceActionsCurrent(ctx, []ActionItem{*item}) {
+	if !worker.priceActionsCurrent(ctx, items) {
 		return
 	}
-	result, executeErr := worker.executor.Execute(ctx, *item)
-	if applied, err := worker.store.FinishAction(ctx, item.ID, item.LockOwner, item.LockToken, result, executeErr); err != nil {
-		worker.logger.Error("finish procurement action failed", "action_id", item.ID, "error", err)
-		return
-	} else if !applied {
-		worker.logger.Warn("ignored stale procurement action finisher", "action_id", item.ID, "lease_token", item.LockToken)
-		return
-	}
-	if executeErr != nil {
-		worker.logger.Warn("procurement action failed", "action_id", item.ID, "channel", item.Channel, "error", executeErr)
+	for _, outcome := range worker.executor.ExecuteGroup(ctx, items) {
+		item := items[0]
+		for _, candidate := range items {
+			if candidate.ID == outcome.ItemID {
+				item = candidate
+				break
+			}
+		}
+		if applied, err := worker.store.FinishAction(ctx, outcome.ItemID, item.LockOwner, item.LockToken, outcome.Result, outcome.Err); err != nil {
+			worker.logger.Error("finish procurement action failed", "action_id", outcome.ItemID, "error", err)
+			continue
+		} else if !applied {
+			worker.logger.Warn("ignored stale procurement action finisher", "action_id", outcome.ItemID, "lease_token", item.LockToken)
+			continue
+		}
+		if outcome.Err != nil {
+			worker.logger.Warn("procurement action failed", "action_id", outcome.ItemID, "error", outcome.Err)
+		}
 	}
 }

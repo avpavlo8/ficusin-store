@@ -87,19 +87,12 @@ function HeaderMenuBranch({
 }
 
 function AccountBadge({ user }: { user: StoreUser }) {
-  if (user.avatarUpdatedAt) {
-    return (
-      <img
-        className="account-button-photo"
-        src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`}
-        alt=""
-      />
-    );
-  }
   return (
-    <span className="account-button-photo placeholder">
-      {user.fullName.trim().charAt(0).toUpperCase() || "◯"}
-    </span>
+    <img
+      className="account-button-photo"
+      src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`}
+      alt=""
+    />
   );
 }
 

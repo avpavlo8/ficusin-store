@@ -362,12 +362,12 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/procurement -run '^TestUnified|^TestFailedReceiptPriceRefresh|^TestProcurementChannelEditTargetsExactVariant|^TestReceiptReadOnlyRecheck|^TestPricingSettingsRoundTripAndVersionGuardOnDatabase$' -v
+        run: go test ./internal/procurement -run '^TestUnified|^TestFailedReceiptPriceRefresh|^TestProcurementChannelEditTargetsExactVariant|^TestReceiptReadOnlyRecheck|^TestPricingSettingsRoundTripAndVersionGuardOnDatabase$|^TestSalesWorkerUsesDurableWindowsAndCooldownAcrossRestartOnDatabase$' -v
       - name: Verify measurement import, retired settings and legacy archive rollback guards
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/migrate ./internal/settings -run '^TestAgreedMeasurementsAtomicImport$|^TestLegacyArchivePreservesDataAndActiveWorkflows$|^TestRetiredCatalogArchivePreservesHistory$|^TestLegacySabyExporterRetirementOnDatabase$|^TestManualPricesMoveToEditorDraftsOnDatabase$|^TestRetiredTelegramSettingOnDatabase$|^TestRetiredSabyFlagsPreserveStockAndOriginalArraysOnDatabase$|^TestRetiredCustomerFieldsPreservePhoneAuthenticationOnDatabase$|^TestUnusedDomainFieldsArchiveExactValuesOnDatabase$|^TestTypedDimensionsRetirementPreservesCanonicalPIMOnDatabase$|^TestUnusedProcurementSettingsArchivePreservesPendingHistoryOnDatabase$' -v
+        run: go test ./internal/migrate ./internal/settings -run '^TestAgreedMeasurementsAtomicImport$|^TestLegacyArchivePreservesDataAndActiveWorkflows$|^TestRetiredCatalogArchivePreservesHistory$|^TestLegacySabyExporterRetirementOnDatabase$|^TestManualPricesMoveToEditorDraftsOnDatabase$|^TestRetiredTelegramSettingOnDatabase$|^TestRetiredSabyFlagsPreserveStockAndOriginalArraysOnDatabase$|^TestRetiredCustomerFieldsPreservePhoneAuthenticationOnDatabase$|^TestUnusedDomainFieldsArchiveExactValuesOnDatabase$|^TestTypedDimensionsRetirementPreservesCanonicalPIMOnDatabase$|^TestUnusedProcurementSettingsArchivePreservesPendingHistoryOnDatabase$|^TestRetiredWorkflowTimestampsPreserveHistoryOnDatabase$' -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest

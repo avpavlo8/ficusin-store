@@ -36,8 +36,6 @@ type Store interface {
 	AssignSupplier(context.Context, Actor, string, int64) error
 	PrepareBatch(context.Context, Actor, int64, string, []string) (ActionBatch, error)
 	ApproveBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
-	ClaimAction(context.Context, string) (*ActionItem, error)
-	FinishAction(context.Context, int64, string, int64, ActionExecution, error) (bool, error)
 	RetryBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
 	ListIntegrationHealth(context.Context) ([]IntegrationHealth, error)
 	RecordIntegrationCheck(context.Context, string, bool, error) (IntegrationHealth, error)
@@ -48,10 +46,9 @@ type Executor interface {
 	Execute(context.Context, ActionItem) (ActionExecution, error)
 }
 
-// ActionGroupStore and GroupExecutor are optional bulk extensions used by
-// marketplace adapters. Both Wildberries and Ozon accept up to 1000 prices in
-// one request; claiming them together avoids seller-wide rate limits while the
-// base Store/Executor interfaces stay compatible with lightweight test stubs.
+// ActionGroupStore and GroupExecutor are the production worker contracts.
+// Marketplace prices share bulk requests; other channels retain individual
+// execution inside these delegates.
 type ActionGroupStore interface {
 	ClaimActionGroup(context.Context, string) ([]ActionItem, error)
 }

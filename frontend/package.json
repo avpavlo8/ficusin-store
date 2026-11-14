@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "vite --config vite.config.ts",
+    "build": "tsc -b && vite build --config vite.config.ts",
     "budget": "node scripts/check-bundle-budget.mjs",
-    "preview": "vite preview",
+    "preview": "vite preview --config vite.config.ts",
     "lint": "eslint . --max-warnings=0 && npm run lint:modules && npm run lint:css",
     "lint:css": "node scripts/check-dead-css.mjs",
     "test:money": "node --experimental-strip-types --test tests/money.test.mjs",

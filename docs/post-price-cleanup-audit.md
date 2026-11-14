@@ -581,3 +581,74 @@ iCloud eviction: неизменённые файлы читались как EOF
 и сохранены. После этого весь выбранный archive/settings PG-набор, OpenAPI
 и 15 navigation-сценариев прошли. Исходники и тесты ради этого сбоя
 не ослаблялись; production не затрагивалась.
+
+## Очистка worker-fallback и остаточных timestamps после `03a3fd1`
+
+### Удалённые механизмы
+
+- Единственный production NewSalesWorker получает PostgresStore. Он всегда
+  реализует IntegrationSyncCoordinator, поэтому ветка externalAt/deepAt/
+  externalEvery и методы externalDue/deepDue/syncExternal работали только
+  со старыми тестовыми заглушками. Удалены этот планировщик в памяти и его
+  собственный deep cadence; текущие claim/finish, month/deep windows,
+  диагностика ошибок и durable backoff остаются. Источником глубокого окна
+  теперь в контракте явно является полученный claim, как и раньше в production.
+- Единственный production NewActionWorker получает PostgresStore и
+  ProcurementExecutor с групповыми методами. Снята альтернативная одиночная
+  ветка и необязательный price guard. Constructor требует рабочие group/guard
+  контракты. ClaimAction и Execute сохраняют реальных потребителей внутри
+  групповых делегатов СБИС/Avito; удалять сами методы было бы ошибкой.
+  Из базового service Store убраны только лишние требования worker-методов
+  и их заглушки. Охрана stale price и lease/token результата остаётся обязательной.
+- Источник DB shipped_at — миграция финансового recognition, единственный
+  оставшийся writer — stamp_actual_shipment_time. Все её потребители уже
+  удалены вместе с финансовыми триггерами. У products/product_variants.
+  saby_updated_at нет runtime reader/writer; inventory.synced_at и текущие
+  stock/identity связи не заменяются этим историческим полем.
+  Миграция 220 под общим lock архивирует все четыре колонки, включая NULL,
+  в detached retired_workflow_timestamps и снимает два stamp-триггера, функцию
+  и колонки без CASCADE. Старые применённые миграции не редактировались.
+- Vite раньше получал сгенерированные tsc копии vite.config.js/d.ts рядом
+  с каноническим .ts; порядок загрузки Vite предпочитает .js. Node tsconfig
+  теперь noEmit, dev/build/preview явно выбирают .ts. Удалены только две
+  игнорируемые локальные копии, lockfiles не менялись. Два последовательных
+  build подтвердили отсутствие повторной генерации, preview отдал итоговый bundle.
+- Внутренний AccountBadge имеет единственный caller внутри avatarUpdatedAt
+  guard. Недостижимый fallback инициалов и его CSS удалены; avatar URL,
+  alt и доступное имя ссылки проверены существующим browser-сценарием.
+
+### Сохранённые данные и проверки
+
+TestRetiredWorkflowTimestampsPreserveHistoryOnDatabase использует клоны четырёх
+текущих таблиц и настоящий старый stamp function из применённой миграции.
+Проверены existing/empty/dependent view: точная дата с микросекундами/NULL,
+все остальные поля строк, в том числе неизвестная заявка СДЭК, отсутствие FK
+у архива и сохранность после удаления рабочих строк. Неожиданный view
+атомарно восстанавливает колонки, триггеры и исходные строки; частичного
+архива нет. Переходы заказов/отправлений работают после снятия функции.
+
+TestSalesWorkerUsesDurableWindowsAndCooldownAcrossRestartOnDatabase работает
+с настоящей отдельной PostgreSQL queue: новый worker не обходит next attempt
+или Retry-After cooldown, выполняет 365/30/30/365-дневные окна по claim,
+сохраняет покрытие/число строк/последнее событие. Existing coordinator live
+test подтверждает lease fencing. Group worker проверяет fail-closed guard,
+свой owner/token каждого результата и отсутствие повторной отправки при
+устаревшем finish. Оба новых PG-теста добавлены в существующие CI-шаги.
+
+Полные Go test/vet/build прошли; cmd-анализ достижимости не нашёл кандидатов.
+Полный выбранный archive/settings PG-набор прошёл на схеме 220. На свежей
+seed-копии прошли order/admin/procurement/saby live-сценарии; изолированный
+publisher test запускается отдельно на предназначенной ему disposable БД,
+вместе с WB/Ozon/СБИС publisher checks. Повторные глобальные fixture-тесты
+требуют свежей копии: они могут оставлять события продаж и письма; проверки
+не ослаблялись ради повторного использования уже изменённой базы.
+
+Чистая установка применила все 220 миграций; отдельная копия схемы 219
+успешно обновилась до 220. API готов, четыре колонки и stamp function отсутствуют.
+CRM acceptance через настоящий локальный API прошёл для owner/manager в
+1440/390 px с сохранением галереи и границ прав. SITE_URL локального API
+совпадает с browser origin; проверка Origin остаётся включённой.
+Frontend: build/lint/format/budget, 76 unit, 18 уникальных browser-сценариев
+(15 navigation и 3 avatar); эти же три avatar дополнительно повторены.
+OpenAPI остаётся 236 операций / 91 схема. Другие browser-спецификации этой
+итерацией не перепроверялись. Production/внешние операции не запускались.
