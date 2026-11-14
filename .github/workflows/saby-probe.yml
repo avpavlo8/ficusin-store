@@ -1,28 +1,42 @@
-name: Read-only blocked publication reconciliation
+name: Approved production cutover preflight and backup
 on:
   workflow_dispatch:
     inputs:
+      operation:
+        description: Read-only inventory or fresh tagged backup of fixed production database
+        type: choice
+        options: [inspect, backup]
+        required: true
       expected_commit:
-        description: Exact current production main commit
+        description: Exact currently deployed main commit
         type: string
         required: true
 permissions:
   contents: read
 jobs:
-  audit:
+  release:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install read-only database client
-        run: python3 -m pip install 'psycopg[binary]==3.2.13'
-      - name: Test bounded read-only inventory guards
-        run: python3 -m unittest discover -s scripts -p 'test_production*reconciliation.py'
-      - name: Read exact blocked marketplace publications without writes
+      - run: python3 -m pip install 'psycopg[binary]==3.2.13'
+      - name: Read-only SQL and storage guard tests
+        run: python3 -m unittest discover -s scripts -p 'test_production_legacy_inventory.py'
+      - name: Verify exact production and recovery points without writes
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/production-catalog-readonly-reconciliation.py --expected-commit "$EXPECTED_COMMIT"
+        run: python3 scripts/production-release-preflight.py --expected-commit "$EXPECTED_COMMIT"
+      - name: Read all legacy data counts and verify private object bytes
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: python3 scripts/production-legacy-data-inventory.py --expected-commit "$EXPECTED_COMMIT"
+      - name: Create one fixed tagged fresh recovery point
+        if: inputs.operation == 'backup'
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+        run: python3 scripts/production-release-backup.py --apply

@@ -1,22 +1,28 @@
 """Create one fresh, tagged recovery point before the approved production release."""
 import argparse,json,os,time,urllib.request,urllib.error,urllib.parse
+import importlib.util
+from pathlib import Path
+_spec=importlib.util.spec_from_file_location('backup_guards',Path(__file__).with_name('production-release-preflight.py'));guards=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(guards)
 APP=229223
 DB=4192781
-SHA='15989cc1f2d46baad54ce7ebbf379531c86c7f23'
-TAG='ficusin-release-20261113-pr636'
+SHA='4a3f4dd4799b881d2e367d93a47c13e7a3f77273'
+TAG='ficusin-release-20261114-41bd7ec'
 BASE='https://api.timeweb.cloud/api/v1'
 def request(method,path,body=None):
     allowed=path in (f'/apps/{APP}',f'/dbs/{DB}/backups') or path.startswith(f'/dbs/{DB}/backups/') and path.rsplit('/',1)[-1].isdigit()
     assert allowed and (method=='GET' or method=='POST' and path==f'/dbs/{DB}/backups')
     req=urllib.request.Request(BASE+path,method=method,data=None if body is None else json.dumps(body).encode(),headers={'Authorization':'Bearer '+os.environ['TIMEWEB_CLOUD_TOKEN'],'Content-Type':'application/json'})
-    with urllib.request.urlopen(req,timeout=30) as response: return json.load(response)
+    with urllib.request.build_opener(guards.NoRedirect()).open(req,timeout=30) as response:
+        raw=response.read((4<<20)+1)
+        assert len(raw)<=4<<20
+        return json.loads(raw)
 def safe(backup):
     return {key:backup.get(key) for key in ('id','status','created_at')}
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--apply',action='store_true');args=parser.parse_args()
     assert os.environ.get('GITHUB_ACTIONS')=='true'
     app=request('GET',f'/apps/{APP}')['app'];env=app['envs']
-    assert app['id']==APP and app['name']=='ficusin-store' and app['commit_sha']==SHA
+    guards.production_settings(app,SHA)
     assert (env.get('APP_ENV','').strip() or 'production')=='production'
     assert urllib.parse.urlsplit(env['DATABASE_URL']).path=='/default_db'
     backups=request('GET',f'/dbs/{DB}/backups')['backups']
