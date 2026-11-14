@@ -3,10 +3,12 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -56,6 +58,14 @@ func editorPlanHandler(h adminHandlers) http.HandlerFunc {
 			v, err = repo.SaveEditorPlan(r.Context(), actor, id, in.Config, in.Submit)
 		}
 		if err != nil {
+			if errors.Is(err, admin.ErrInvalidInput) {
+				message := strings.TrimPrefix(err.Error(), admin.ErrInvalidInput.Error()+": ")
+				if message == admin.ErrInvalidInput.Error() {
+					message = "Проверьте настройки площадок"
+				}
+				writeJSON(w, http.StatusBadRequest, errorResponse{Error: message})
+				return
+			}
 			h.failed(w, "editor plan", err)
 			return
 		}

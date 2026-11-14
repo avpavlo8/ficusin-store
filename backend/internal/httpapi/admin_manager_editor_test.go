@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
@@ -15,11 +18,32 @@ type managerEditorPlanStub struct {
 	id        int64
 	plan      admin.EditorPlan
 	submitted bool
+	err       error
 }
 
 func (s *managerEditorPlanStub) SaveEditorPlan(_ context.Context, actor admin.Actor, id int64, plan admin.EditorPlan, submit bool) (admin.EditorPlanView, error) {
 	s.actor, s.id, s.plan, s.submitted = actor, id, plan, submit
-	return admin.EditorPlanView{}, nil
+	return admin.EditorPlanView{}, s.err
+}
+
+func TestEditorPlanShowsValidationAndHidesInternalErrors(t *testing.T) {
+	for _, tt := range []struct {
+		err    error
+		status int
+		want   string
+		hidden string
+	}{
+		{fmt.Errorf("%w: формула цены изменилась; пересчитайте цену ozon перед сохранением", admin.ErrInvalidInput), 400, "формула цены изменилась", ""},
+		{admin.ErrInvalidInput, 400, "Проверьте настройки площадок", ""},
+		{errors.New("private database diagnostic"), 503, "Не удалось выполнить операцию", "private database diagnostic"},
+	} {
+		repo := &managerEditorPlanStub{err: tt.err}
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), adminDependencies(repo, admin.RoleOwner, "")).ServeHTTP(response, adminRequest(http.MethodPut, "/api/v1/admin/products/61/editor-plan", `{"config":{"variants":[]},"submit":true}`))
+		if response.Code != tt.status || !strings.Contains(response.Body.String(), tt.want) || tt.hidden != "" && strings.Contains(response.Body.String(), tt.hidden) {
+			t.Fatalf("unexpected editor-plan error: %d %s", response.Code, response.Body.String())
+		}
+	}
 }
 
 func TestManagerCanSubmitFullEditorPlanWithoutGrantingAdministrator(t *testing.T) {
