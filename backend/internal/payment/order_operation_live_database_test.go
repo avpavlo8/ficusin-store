@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -49,17 +50,11 @@ func TestOutstandingPaymentSerializationOnLiveDatabase(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	results := make(chan error, 8)
-	for index := range 8 {
+	for range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var paymentURL string
-			var requestErr error
-			if index%2 == 0 {
-				paymentURL, _, requestErr = service.StartOutstanding(ctx, number)
-			} else {
-				paymentURL, requestErr = service.Start(ctx, number)
-			}
+			paymentURL, _, requestErr := service.StartOutstanding(ctx, number)
 			if requestErr == nil && paymentURL != "https://payments.example.invalid/ci" {
 				requestErr = fmt.Errorf("unexpected payment URL %q", paymentURL)
 			}
@@ -114,7 +109,7 @@ func TestOutstandingPaymentSerializationOnLiveDatabase(t *testing.T) {
 	if _, err = pool.Exec(ctx, `UPDATE orders SET payment_status='partially_paid' WHERE id=$1`, id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.Start(ctx, number); err != nil {
+	if _, _, err = service.StartOutstanding(ctx, number); err != nil {
 		t.Fatalf("customer could not reuse delivery-only top-up: %v", err)
 	}
 	provider.mu.Lock()
@@ -201,7 +196,7 @@ func TestDiscountedOrderPaymentUsesDiscountedTotalOnLiveDatabase(t *testing.T) {
 	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, id) }()
 	provider := &livePaymentProvider{}
 	service := NewService(pool, provider, "https://ficusin.example.invalid", slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if _, err := service.Start(ctx, number); err != nil {
+	if _, _, err := service.StartOutstanding(ctx, number); err != nil {
 		t.Fatal(err)
 	}
 	provider.mu.Lock()
@@ -212,5 +207,52 @@ func TestDiscountedOrderPaymentUsesDiscountedTotalOnLiveDatabase(t *testing.T) {
 	}
 	if provider.request.Amount != 1461 || total != 1461 {
 		t.Fatalf("discount lost in payment: amount %.2f receipt %.2f", provider.request.Amount, total)
+	}
+}
+
+func TestOutstandingSyncRejectsWrongIdentityAndAmountOnLiveDatabase(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	number := fmt.Sprintf("CURRENT-SYNC-%d", time.Now().UnixNano())
+	var id int64
+	if err = pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,payment_method,payment_status,status) VALUES($1,'Sync fixture','+70000000000','sync@example.invalid','pickup',0,100,100,'online','pending','confirmed') RETURNING id`, number).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, id)
+	remote := number + "-provider"
+	if _, err = pool.Exec(ctx, `INSERT INTO payments(order_id,idempotence_key,provider_payment_id,amount,status) VALUES($1,$2,$2,100,'pending')`, id, remote); err != nil {
+		t.Fatal(err)
+	}
+	provider := &livePaymentProvider{status: integration.Payment{ID: "different-payment", Status: "succeeded", Paid: true, Amount: 100}}
+	service := NewService(pool, provider, "https://fixture.invalid", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err = service.SyncOutstanding(ctx, remote); err == nil {
+		t.Fatal("provider identity mismatch accepted")
+	}
+	var state string
+	var recorded bool
+	if err = pool.QueryRow(ctx, `SELECT o.payment_status||':'||p.status,p.paid_at IS NOT NULL FROM orders o JOIN payments p ON p.order_id=o.id WHERE o.id=$1`, id).Scan(&state, &recorded); err != nil || state != "pending:pending" || recorded {
+		t.Fatalf("foreign payment changed local state: %s/%v %v", state, recorded, err)
+	}
+	provider.status = integration.Payment{ID: remote, Status: "succeeded", Paid: true, Amount: 99.99}
+	if err = service.SyncOutstanding(ctx, remote); err != nil {
+		t.Fatal(err)
+	}
+	balance, err := service.BalanceForOrder(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if balance.Paid != 0 || balance.Due != 100 || balance.PaymentStatus != StatusPending {
+		t.Fatalf("wrong amount credited to order: %+v", balance)
+	}
+	if err = pool.QueryRow(ctx, `SELECT paid_at IS NOT NULL FROM payments WHERE order_id=$1`, id).Scan(&recorded); err != nil || recorded {
+		t.Fatalf("wrong amount marked paid: %v %v", recorded, err)
 	}
 }

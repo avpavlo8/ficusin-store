@@ -23,3 +23,10 @@ retired UI component from surviving solely because another file imports its type
 The guard covers this Vite entry only, not external packages, CSS selectors or
 individual unused exports. Computed import targets are reported for manual review.
 Its virtual-source regression fixtures run as part of ordinary frontend lint.
+
+### Product media editor
+
+Both PDP editing actions open the shared product editor. The photo shortcut
+uses `editor=media` to select the product tab and focus its gallery after loading.
+Draft uploads, ordering, the shared cover and Save use the same controls as
+catalog editing; there is no separate PDP media dialog or immediate-save uploader.

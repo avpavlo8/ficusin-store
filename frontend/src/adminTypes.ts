@@ -1,5 +1,7 @@
 export type Role = "owner" | "administrator" | "manager" | "";
 
+export type ProductMedia = { id: number; url: string; primary: boolean; sortOrder: number };
+
 export type Section =
   | "chat"
   | "dashboard"

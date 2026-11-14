@@ -174,7 +174,12 @@ export function ProductPhotoGallery({
     setOver(null);
   };
   return (
-    <aside className="editor-gallery" aria-label="Фото и видео товара">
+    <aside
+      id="product-media"
+      tabIndex={-1}
+      className="editor-gallery"
+      aria-label="Фото и видео товара"
+    >
       <div className="editor-gallery-heading">
         <h2>Обложка</h2>
       </div>

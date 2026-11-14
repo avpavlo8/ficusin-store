@@ -64,7 +64,6 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [revision, setRevision] = useState(0);
 
   const [activeTab, setActiveTab] = useState<ProductTab>("about");
   const linkedCareTarget = useRef<string | null>(null);
@@ -154,7 +153,7 @@ export default function ProductPage({ slug }: { slug: string }) {
       .catch((reason) =>
         setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"),
       );
-  }, [slug, revision]);
+  }, [slug]);
 
   useEffect(() => {
     fetch("/api/v1/categories")
@@ -473,11 +472,7 @@ export default function ProductPage({ slug }: { slug: string }) {
         adminUser?.adminRole === "administrator" ||
         adminUser?.adminRole === "manager") && (
         <Suspense fallback={null}>
-          <PdpAdminTools
-            slug={slug}
-            adminRole={adminUser.adminRole}
-            onChanged={() => setRevision((value) => value + 1)}
-          />
+          <PdpAdminTools slug={slug} adminRole={adminUser.adminRole} />
         </Suspense>
       )}
       <section className="pdp-main">

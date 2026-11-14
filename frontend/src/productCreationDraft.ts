@@ -142,11 +142,15 @@ function mediaDB(): Promise<IDBDatabase> {
   });
 }
 export async function saveDraftMedia(id: string, file: Blob): Promise<void> {
+  // WebKit can reject Blob/File values during IndexedDB serialization. Keep
+  // their exact bytes and MIME type; legacy Blob records remain readable below.
+  const stored = { version: 1, bytes: await file.arrayBuffer(), type: file.type };
   const db = await mediaDB();
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction("media", "readwrite");
-      tx.objectStore("media").put(file, id);
+      const request = tx.objectStore("media").put(stored, id);
+      request.onerror = () => reject(request.error);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
@@ -161,7 +165,17 @@ export async function readDraftMedia(id: string): Promise<Blob | undefined> {
     return await new Promise<Blob | undefined>((resolve, reject) => {
       const tx = db.transaction("media", "readonly");
       const request = tx.objectStore("media").get(id);
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const stored = request.result;
+        if (stored == null || stored instanceof Blob) resolve(stored);
+        else if (
+          stored.version === 1 &&
+          stored.bytes instanceof ArrayBuffer &&
+          typeof stored.type === "string"
+        )
+          resolve(new Blob([stored.bytes], { type: stored.type }));
+        else reject(new Error("Файл черновика повреждён"));
+      };
       request.onerror = () => reject(request.error);
     });
   } finally {

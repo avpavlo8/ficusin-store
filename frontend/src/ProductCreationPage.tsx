@@ -43,7 +43,7 @@ import {
 } from "./catalogEditorChannels";
 import type { Category, CategoryAttribute, Product } from "./adminTypes";
 import type { AdminVariant } from "./AdminPim";
-import type { ProductMedia } from "./ProductMediaManager";
+import type { ProductMedia } from "./adminTypes";
 import {
   draftStorageKey,
   loadProductDraft,
@@ -86,18 +86,20 @@ export function ProductCreationPage({
     };
   });
   const [tab, setTab] = useState<"product" | "channels" | "faq">(() =>
-    new URLSearchParams(location.search).get("editor") === "faq" ||
-    initial.draft.editorTab === "faq"
-      ? "faq"
-      : new URLSearchParams(location.search).get("editor") === "channels" ||
-          initial.draft.editorTab === "channels" ||
-          ["ozon", "wb", "saby", "relationships"].includes(
-            new URLSearchParams(location.search).get("step") ||
-              new URLSearchParams(location.search).get("tab") ||
-              "",
-          )
-        ? "channels"
-        : "product",
+    new URLSearchParams(location.search).get("editor") === "media"
+      ? "product"
+      : new URLSearchParams(location.search).get("editor") === "faq" ||
+          initial.draft.editorTab === "faq"
+        ? "faq"
+        : new URLSearchParams(location.search).get("editor") === "channels" ||
+            initial.draft.editorTab === "channels" ||
+            ["ozon", "wb", "saby", "relationships"].includes(
+              new URLSearchParams(location.search).get("step") ||
+                new URLSearchParams(location.search).get("tab") ||
+                "",
+            )
+          ? "channels"
+          : "product",
   );
   const [saveError, setSaveError] = useState(initial.error);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -112,6 +114,12 @@ export function ProductCreationPage({
   const [remoteNotice, setRemoteNotice] = useState("");
   const [loading, setLoading] = useState(Boolean(product));
   const [remoteLoaded, setRemoteLoaded] = useState(!product);
+  useEffect(() => {
+    if (!remoteLoaded || new URLSearchParams(location.search).get("editor") !== "media") return;
+    const gallery = document.getElementById("product-media");
+    gallery?.focus({ preventScroll: true });
+    gallery?.scrollIntoView({ block: "start" });
+  }, [remoteLoaded]);
   const [remoteRevision, setRemoteRevision] = useState(0);
   const [collectionsRevision, setCollectionsRevision] = useState(0);
   const [channelStatuses, setChannelStatuses] = useState<

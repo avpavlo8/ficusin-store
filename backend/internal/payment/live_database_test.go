@@ -61,6 +61,12 @@ func (provider *livePaymentProvider) CancelPayment(_ context.Context, paymentID,
 	return nil
 }
 
+// This transport advertises the same receipt capability as YooKassa, so the
+// active outstanding-payment path must retain actual item names and amounts.
+type receiptPaymentProvider struct{ livePaymentProvider }
+
+func (*receiptPaymentProvider) RefundUsesReceipt() bool { return true }
+
 // TestPaymentLifecycleOnLiveDatabase proves the money state machine against
 // the fully migrated schema without contacting YooKassa or moving real money.
 func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
@@ -133,13 +139,13 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id=$1", sabyID)
 	}()
 
-	provider := &livePaymentProvider{}
+	provider := &receiptPaymentProvider{}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := NewService(pool, provider, "https://ficusin.example.invalid", logger)
 	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Start(ctx, orderNumber); err == nil || provider.creates != 0 {
+	if _, _, err := service.StartOutstanding(ctx, orderNumber); err == nil || provider.creates != 0 {
 		t.Fatalf("stale Saby stock opened payment: err=%v creates=%d", err, provider.creates)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP WHERE variant_id=$1`, variantID); err != nil {
@@ -148,21 +154,21 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY[]::text[] WHERE id=$1`, productID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Start(ctx, orderNumber); err == nil || provider.creates != 0 {
+	if _, _, err := service.StartOutstanding(ctx, orderNumber); err == nil || provider.creates != 0 {
 		t.Fatalf("unconfirmed stock opened payment: err=%v creates=%d", err, provider.creates)
 	}
 	if _, err := pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY['stock']::text[] WHERE id=$1`, productID); err != nil {
 		t.Fatal(err)
 	}
-	firstURL, err := service.Start(ctx, orderNumber)
+	firstURL, firstBalance, err := service.StartOutstanding(ctx, orderNumber)
 	if err != nil {
 		t.Fatalf("start payment: %v", err)
 	}
-	secondURL, err := service.Start(ctx, orderNumber)
+	secondURL, secondBalance, err := service.StartOutstanding(ctx, orderNumber)
 	if err != nil {
 		t.Fatalf("repeat payment: %v", err)
 	}
-	if firstURL != secondURL || provider.creates != 1 {
+	if firstURL != secondURL || provider.creates != 1 || cents(firstBalance.Due) != 149000 || cents(secondBalance.Due) != 149000 {
 		t.Fatalf("payment is not idempotent: urls=%q/%q creates=%d", firstURL, secondURL, provider.creates)
 	}
 	if provider.request.Amount != 1490 || len(provider.request.Items) != 1 || provider.request.Items[0].Name != "CI payment product" {
@@ -189,18 +195,17 @@ func TestPaymentLifecycleOnLiveDatabase(t *testing.T) {
 	if provider.captures != 1 {
 		t.Fatalf("captures=%d, want 1", provider.captures)
 	}
-	if err := service.Sync(ctx, "ci-provider-payment"); err != nil {
+	if err := service.SyncOutstanding(ctx, "ci-provider-payment"); err != nil {
 		t.Fatalf("sync paid payment: %v", err)
 	}
 	var state string
 	if err := pool.QueryRow(ctx, `
-		SELECT o.payment_status || ':' || (o.paid_at IS NOT NULL)::TEXT || ':' ||
-		       p.status || ':' || (p.paid_at IS NOT NULL)::TEXT
+		SELECT o.payment_status || ':' || p.status || ':' || (p.paid_at IS NOT NULL)::TEXT
 		FROM orders o JOIN payments p ON p.order_id=o.id WHERE o.id=$1
 	`, orderID).Scan(&state); err != nil {
 		t.Fatalf("read paid state: %v", err)
 	}
-	if state != "paid:true:paid:true" {
+	if state != "paid:paid:true" {
 		t.Fatalf("paid state is inconsistent: %s", state)
 	}
 
