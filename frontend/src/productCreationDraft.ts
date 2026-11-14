@@ -1,3 +1,4 @@
+import type { FlowwowChannel } from "./flowwowTypes";
 import type {
   MarketplaceCommon,
   SabyEditorConfig,
@@ -17,9 +18,11 @@ export type DraftMedia = {
   serverId?: number;
 };
 export type DraftVariant = {
+  flowwow?: FlowwowChannel;
   marketplace: MarketplaceCommon;
   marketplaceInitialized?: boolean;
   sabyEditor: SabyEditorConfig;
+
   // Local journal only: even clearing a field or clicking the default mode is
   // an explicit choice that a late editor-plan response must not replace.
   sabyEditorTouched?: SabyEditorTouched;

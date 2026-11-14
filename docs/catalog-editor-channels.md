@@ -66,3 +66,12 @@ Each channel now stores `article` separately. Omitting it keeps legacy shared-ar
 
 
 Exact article selection now replaces the editor's common name/description, brand and dictionary IDs, TN VED and dictionary ID, plus the selected channel's category and entire attribute set. Ozon selection also replaces model and units. Missing remote values clear old values; imported empty descriptions do not restore old site text. Site photos, packaging and calculated prices keep their existing source. A changed article response is applied to the latest draft only if its offer still matches. Returning to the original article reloads its content as well. The green check and NEW status sit outside the input on its right.
+
+## Flowwow
+
+Flowwow uses a separate site-authoritative channel in the same editor plan and
+durable publication worker. Its fields/categories are independent of shared
+WB/Ozon content. Price and stock changes are additionally handled by the
+Flowwow service. See [flowwow.md](flowwow.md) for setup, supported product types,
+full-update rules, duplicate protection, database and browser validation, and
+remaining order/reservation scope.

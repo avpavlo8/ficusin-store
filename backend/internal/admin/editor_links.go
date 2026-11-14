@@ -11,7 +11,7 @@ import (
 func editorLinkedChannels(ctx context.Context, tx pgx.Tx, variantID int64, mode string) (map[string]string, error) {
 	links := map[string]string{}
 	// Saby metadata belongs to EditorPlanView.SabyLinks, not marketplace cards.
-	rows, e := tx.Query(ctx, `SELECT channel,CASE WHEN channel='wb' THEN remote_id ELSE offer_id END FROM catalog_editor_remote_links WHERE variant_id=$1 AND execution_mode=$2 AND channel IN ('wb','ozon')`, variantID, mode)
+	rows, e := tx.Query(ctx, `SELECT channel,CASE WHEN channel='wb' THEN remote_id ELSE offer_id END FROM catalog_editor_remote_links WHERE variant_id=$1 AND execution_mode=$2 AND channel IN ('wb','ozon','flowwow')`, variantID, mode)
 	if e != nil {
 		return nil, e
 	}

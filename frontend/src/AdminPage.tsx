@@ -23,6 +23,7 @@ const AdminMarketplaces = lazy(() =>
 const AdminReturns = lazy(() =>
   import("./AdminReturns").then((module) => ({ default: module.AdminReturns })),
 );
+const AdminFlowwow = lazy(() => import("./AdminFlowwow"));
 const AdminAvito = lazy(() =>
   import("./AdminAvito").then((module) => ({ default: module.AdminAvito })),
 );
@@ -179,6 +180,11 @@ export default function AdminPage() {
                   fallback={<WorkspaceState kind="loading" title="Загружаем маркетплейсы…" />}
                 >
                   <AdminMarketplaces onError={setError} />
+                </Suspense>
+              )}
+              {section === "flowwow" && (
+                <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем Flowwow…" />}>
+                  <AdminFlowwow />
                 </Suspense>
               )}
               {section === "avito" && (

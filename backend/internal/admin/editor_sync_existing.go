@@ -67,7 +67,7 @@ func (r *PostgresRepository) SyncExistingEditorPlan(ctx context.Context, actor A
 			return out, e
 		}
 		links["saby"] = sabyID
-		for _, channel := range []string{"saby", "wb", "ozon"} {
+		for _, channel := range []string{"saby", "wb", "ozon", "flowwow"} {
 			linked := strings.TrimSpace(links[channel])
 			if linked == "" {
 				continue
@@ -164,7 +164,7 @@ func editorSyncTargetMatches(channel, linked string, request ce.Request, progres
 	if !finished {
 		return false
 	}
-	if channel == "ozon" {
+	if channel == "ozon" || channel == "flowwow" {
 		return progress.IDs.OfferID == linked
 	}
 	return progress.IDs.ProductID == linked

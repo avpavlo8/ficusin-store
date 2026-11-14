@@ -23,6 +23,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
+	"github.com/avpavlo8/ficusin-store/backend/internal/flowwow"
 	"github.com/avpavlo8/ficusin-store/backend/internal/httpapi"
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/mail"
@@ -266,6 +267,9 @@ func main() {
 	adminRepository.WithEditorPublicationMode(cfg.CatalogPublicationMode)
 	editorReferences := integration.NewMarketplaceExecutor(cfg.CatalogMarketplaces.WBToken, cfg.CatalogMarketplaces.OzonClientID, cfg.CatalogMarketplaces.OzonAPIKey).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
 	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
+	flowwowService := &flowwow.Service{Pool: pool, Client: integration.NewFlowwowClient(cfg.Marketplaces.FlowwowToken, cfg.Marketplaces.FlowwowShopID), Mode: cfg.CatalogPublicationMode}
+	go flowwowService.Run(ctx, logger)
+
 	var editorPublisher catalogeditor.Publisher
 	if cfg.CatalogPublicationMode == "mock" {
 		mockPublisher, err := integration.NewPersistentMockCatalog(ctx, pool)
@@ -273,13 +277,14 @@ func main() {
 			logger.Error("local marketplace emulator unavailable", "error", err)
 			os.Exit(1)
 		}
-		editorPublisher = mockPublisher
+		flowwowService.Client = integration.NewMockFlowwowClient()
+		editorPublisher = catalogeditor.ChannelPublishers{"wb": mockPublisher, "ozon": mockPublisher, "flowwow": flowwowService}
 		editorReferences = mockPublisher.Executor
 	}
 	if cfg.CatalogPublicationMode == "live" {
 		marketplacePublisher := &integration.CatalogPublisher{Executor: editorReferences}
 		editorPublisher = catalogeditor.ChannelPublishers{
-			"wb": marketplacePublisher, "ozon": marketplacePublisher,
+			"wb": marketplacePublisher, "ozon": marketplacePublisher, "flowwow": flowwowService,
 			"saby": &integration.SabyEditorPublisher{Client: sabyProcurementClient},
 		}
 	}
@@ -344,6 +349,7 @@ func main() {
 		SiteURL:             cfg.SiteURL,
 		Readiness:           pool,
 		Operations:          operationsProbe,
+		Flowwow:             flowwowService,
 		Avito:               avitoService,
 	}))
 	go func() {

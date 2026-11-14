@@ -24,6 +24,7 @@ export function AdminIcon({ name }: { name: IconName }) {
     chat: "M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6",
     returns: "M4 8h10a6 6 0 0 1 0 12H9M4 8l5-5M4 8l5 5",
     marketplaces: "M8 16 16 8M9 5l2-2a5 5 0 0 1 7 7l-2 2M8 12l-2 2a5 5 0 0 0 7 7l2-2",
+    flowwow: "M4 7h16v14H4ZM8 7V5a4 4 0 0 1 8 0v2M9 13l2 2 4-4",
     avito: "M5 12a7 7 0 1 0 14 0 7 7 0 1 0-14 0m3 0h8M12 8v8",
     dashboard: "M3 10 12 3l9 7v11h-6v-7H9v7H3Z",
     analytics: "M4 21V11m8 10V3m8 18V7",

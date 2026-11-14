@@ -1,3 +1,5 @@
+import { ProductFlowwow } from "./ProductFlowwow";
+import { blankFlowwow, type FlowwowChannel } from "./flowwowTypes";
 import {
   mergeMarketplaceCards,
   replaceMarketplaceCard,
@@ -132,7 +134,7 @@ export function ProductCreationPage({
     }>
   >([]);
   const [channelLinks, setChannelLinks] = useState<
-    Record<string, Partial<Record<"wb" | "ozon", string>>>
+    Record<string, Partial<Record<"wb" | "ozon" | "flowwow", string>>>
   >({});
   const [sabyLinks, setSabyLinks] = useState<Record<string, SabyReadLink>>({});
   const [marketplaceCardError, setMarketplaceCardError] = useState("");
@@ -383,6 +385,7 @@ export function ProductCreationPage({
             ozonPrice: string;
             wbPrice: string;
             saby: SabyEditorConfig;
+            flowwow?: FlowwowChannel;
             marketplace: MarketplaceCommon;
           }>;
         };
@@ -393,7 +396,7 @@ export function ProductCreationPage({
           message: string;
           externalIds?: { productId: string; offerId?: string };
         }>;
-        links: Record<string, Partial<Record<"wb" | "ozon", string>>>;
+        links: Record<string, Partial<Record<"wb" | "ozon" | "flowwow", string>>>;
         sabyLinks?: Record<string, SabyReadLink>;
         publicationMode: string;
         barcodes: Record<string, string>;
@@ -442,6 +445,8 @@ export function ProductCreationPage({
                 ? row.marketplace
                 : saved?.marketplace || row.marketplace,
               marketplaceInitialized: row.marketplaceInitialized || Boolean(saved?.marketplace),
+              flowwow: row.flowwow || saved?.flowwow,
+
               sabyEditor,
             };
             return JSON.stringify(next) === JSON.stringify(row) ? row : next;
@@ -884,7 +889,9 @@ export function ProductCreationPage({
             ? {
                 marketplacePriceMode: previous.marketplacePriceMode,
                 marketplace: previous.marketplace,
+                flowwow: previous.flowwow,
                 marketplaceInitialized: previous.marketplaceInitialized,
+
                 sabyEditor: previous.sabyEditor,
                 sabyEditorTouched: previous.sabyEditorTouched,
                 ozon: previous.ozon,
@@ -1042,6 +1049,7 @@ export function ProductCreationPage({
           marketplace: marketplaceOf(row),
           ozonPrice: row.ozon.price,
           wbPrice: row.wb.price,
+          flowwow: row.flowwow || blankFlowwow(),
         }));
       if (canManage) {
         await api(`/api/v1/admin/products/${targetProduct.id}/editor-plan`, {
@@ -1911,6 +1919,17 @@ export function ProductCreationPage({
                     wb: variant.wb.price,
                   }}
                 />
+                <ProductFlowwow
+                  key={variant.id}
+                  value={variant.flowwow || blankFlowwow()}
+                  linked={linkedMarketplaces.flowwow}
+                  sku={variant.sku}
+                  price={variant.price}
+                  stock={
+                    serverVariants.current.find((row) => row.id === variant.serverId)?.stock ?? 0
+                  }
+                  onChange={(flowwow) => changeVariant({ flowwow })}
+                />
               </fieldset>
               {typeof productId === "number" && productId > 0 && (
                 <EditorPricePublications
@@ -1922,6 +1941,7 @@ export function ProductCreationPage({
                   canManage={canManage}
                 />
               )}
+
               {channelStatuses
                 .filter((status) => status.variantId === variant.serverId)
                 .map((status) => (
@@ -1930,7 +1950,9 @@ export function ProductCreationPage({
                       ? "Wildberries"
                       : status.channel === "ozon"
                         ? "Ozon"
-                        : "СБИС"}
+                        : status.channel === "flowwow"
+                          ? "Flowwow"
+                          : "СБИС"}
                     : {status.message}
                     {status.channel === "saby"
                       ? status.externalIds?.offerId && <> · Код {status.externalIds.offerId}</>

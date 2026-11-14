@@ -43,6 +43,8 @@ type Config struct {
 // Marketplaces holds seller API credentials. Empty credentials keep the
 // corresponding channel disabled; secrets never live in the database.
 type Marketplaces struct {
+	FlowwowToken      string
+	FlowwowShopID     string
 	WBToken           string
 	OzonClientID      string
 	OzonAPIKey        string
@@ -221,6 +223,8 @@ func Load() (Config, error) {
 			WBToken:           strings.TrimSpace(os.Getenv("WB_API_TOKEN")),
 			OzonClientID:      strings.TrimSpace(os.Getenv("OZON_CLIENT_ID")),
 			OzonAPIKey:        strings.TrimSpace(os.Getenv("OZON_API_KEY")),
+			FlowwowToken:      strings.TrimSpace(os.Getenv("FLOWWOW_API_TOKEN")),
+			FlowwowShopID:     strings.TrimSpace(os.Getenv("FLOWWOW_SHOP_ID")),
 			AvitoClientID:     strings.TrimSpace(os.Getenv("AVITO_CLIENT_ID")),
 			AvitoClientSecret: strings.TrimSpace(os.Getenv("AVITO_CLIENT_SECRET")),
 			AvitoAddress:      defaultString(os.Getenv("AVITO_ADDRESS"), "Рязань, Новоселов 40а"),

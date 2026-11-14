@@ -59,6 +59,7 @@ type Dependencies struct {
 	SiteURL             string
 	Readiness           readinessChecker
 	Operations          operationsReader
+	Flowwow             flowwowService
 	Avito               avitoService
 }
 
@@ -100,6 +101,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 
 	registerOrderSaleRoutes(mux, adminAPI)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
+	if dependencies.Flowwow != nil {
+		mux.HandleFunc("GET /api/v1/admin/flowwow", flowwowHandler(adminAPI, dependencies.Flowwow, "list"))
+		mux.HandleFunc("GET /api/v1/admin/flowwow/references", flowwowHandler(adminAPI, dependencies.Flowwow, "references"))
+		mux.HandleFunc("GET /api/v1/admin/flowwow/products", flowwowHandler(adminAPI, dependencies.Flowwow, "products"))
+	}
+
 	if dependencies.Avito != nil {
 		mux.HandleFunc("GET /api/v1/admin/avito", avitoListHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("POST /api/v1/admin/avito/import", avitoImportHandler(adminAPI, dependencies.Avito))

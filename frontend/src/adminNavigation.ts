@@ -15,6 +15,7 @@ export const sections: Array<{
   { id: "procurement", label: "Закупки", permission: "procurement.read" },
   { id: "returns", label: "Возвраты", permission: "returns.read" },
   { id: "marketplaces", label: "Маркетплейсы", permission: "integrations.edit" },
+  { id: "flowwow", label: "Flowwow", permission: "integrations.edit" },
   { id: "avito", label: "Авито", permission: "integrations.edit" },
   { id: "customers", label: "Клиенты", permission: "customers.read" },
   { id: "analytics", label: "Аналитика", permission: "analytics.read" },

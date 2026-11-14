@@ -556,6 +556,44 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.AttributeDefinitionInput"
+  /admin/flowwow:
+    get:
+      operationId: get_admin_flowwow
+      x-source: backend/internal/httpapi/flowwow.go#flowwowHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [integrations.edit]
+      description: Read-only Flowwow list. Credentials stay in server environment. No seller writes.
+      responses:
+        2XX: { description: Current Flowwow data. }
+        default: { $ref: "#/components/responses/ValidationError" }
+  /admin/flowwow/references:
+    get:
+      operationId: get_admin_flowwow_references
+      x-source: backend/internal/httpapi/flowwow.go#flowwowHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [products.read]
+      description: Read-only Flowwow references. Credentials stay in server environment. No seller writes.
+      parameters:
+        - { in: query, name: kind, required: true, schema: { type: string, enum: [categories, attributes] } }
+        - { in: query, name: category, schema: { type: string } }
+      responses:
+        2XX: { description: Current Flowwow data. }
+        default: { $ref: "#/components/responses/ValidationError" }
+  /admin/flowwow/products:
+    get:
+      operationId: get_admin_flowwow_products
+      x-source: backend/internal/httpapi/flowwow.go#flowwowHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [integrations.edit]
+      description: Read-only Flowwow products. Credentials stay in server environment. No seller writes.
+      parameters:
+        - { in: query, name: page, required: true, schema: { type: integer, minimum: 0 } }
+      responses:
+        2XX: { description: Current Flowwow data. }
+        default: { $ref: "#/components/responses/ValidationError" }
   /admin/avito:
     get:
       operationId: get_admin_avito
@@ -4068,6 +4106,7 @@ paths:
                           saby: { type: object, additionalProperties: true }
                           marketplace:
                             { type: object, additionalProperties: true }
+                          flowwow: { $ref: "#/components/schemas/FlowwowChannel" }
                           ozonPrice: { type: string }
                           wbPrice: { type: string }
                           priceMode:
@@ -4146,7 +4185,7 @@ paths:
             in: path,
             name: channel,
             required: true,
-            schema: { type: string, enum: [wb, ozon, saby] },
+            schema: { type: string, enum: [wb, ozon, saby, flowwow] },
           }
       requestBody:
         required: true
@@ -7543,6 +7582,19 @@ components:
         targetProductId:
           type: integer
       type: object
+    FlowwowChannel:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        mode: { type: string, enum: [create, link] }
+        existingId: { type: string, description: Numeric Flowwow product ID for initial binding. }
+        article: { type: string, maxLength: 50 }
+        category:
+          type: object
+          properties:
+            id: { type: string }
+            name: { type: string }
+        attributes: { type: object, additionalProperties: true }
     EditorSabyLink:
       type: object
       required: [id, code, category, folder]

@@ -375,6 +375,19 @@ for (const width of [768, 1024, 1280]) {
   });
 }
 
+test('@desktop @phone Flowwow channel saves site-authoritative publication settings',async({page})=>{
+ const state=await fixture(page);
+ await page.route('**/api/v1/admin/flowwow/references?*',route=>{const q=new URL(route.request().url()).searchParams;return route.fulfill({json:q.get('kind')==='categories'?{data:[{name:'Растения',subCategories:[{subCategoryId:101,name:'Горшечные'}]}]}:{data:[{field:'height',name:'Высота Flowwow',type:'measure',required:true,measure:[{id:3}]}]}})});
+ await open(page);const editor=await edit(page);await editor.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
+ const channel=editor.getByRole('region',{name:'Flowwow',exact:true});
+ await channel.getByLabel('Отправлять в Flowwow').check();
+ await channel.getByLabel('Подкатегория Flowwow').selectOption('101');
+ await channel.getByRole('spinbutton',{name:'Высота Flowwow: значение',exact:true}).fill('35');
+ await saveEditor(editor);
+ const saved=state.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT').at(-1)?.body;
+ expect(saved.submit).toBe(true);expect(saved.config.variants[0].flowwow.enabled).toBe(true);expect(saved.config.variants[0].flowwow.category.id).toBe('101');expect(saved.config.variants[0].flowwow.attributes.height).toEqual({val:35,measure:3});
+});
+
 test('@desktop @phone administrator saves product content and queues only stored marketplace connections',async({page})=>{
  const f=await fixture(page,{role:'administrator'});await open(page);const e=await edit(page);
  await expect(e.getByLabel('Цена на сайте, ₽ *',{exact:true})).toBeDisabled();
@@ -654,4 +667,5 @@ test('@desktop legacy IndexedDB Blob is atomically backed up as exact binary byt
  await page.goto('/admin?section=products&product=1&editor=media');await expect(page.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();
  const read=()=>page.evaluate(async()=>{const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open('ficusin-product-drafts',1);r.onsuccess=()=>resolve(r.result);});try{return await Promise.all(['legacy-file','migration-backup:v1:legacy-file'].map(id=>new Promise<any>(resolve=>{const r=db.transaction('media').objectStore('media').get(id);r.onsuccess=()=>resolve({version:r.result.version,type:r.result.type,bytes:Array.from(new Uint8Array(r.result.bytes))});})));}finally{db.close();}});
  await expect.poll(async()=>(await read())[0].version).toBe(1);const [current,backup]=await read();expect(current).toEqual(backup);expect(current.type).toBe('image/png');expect(current.bytes.slice(0,8)).toEqual([137,80,78,71,13,10,26,10]);await page.reload();await expect(page.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();expect(await read()).toEqual([current,backup]);
+
 });
