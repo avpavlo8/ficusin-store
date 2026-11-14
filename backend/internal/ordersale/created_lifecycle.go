@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/jackc/pgx/v5"
+	"sort"
 )
 
 // EnqueueCreated must run inside the new-order transaction, after all items.
@@ -54,8 +55,29 @@ func EnqueueCreated(ctx context.Context, tx pgx.Tx, orderID int64) (Event, error
 	if _, err = tx.Exec(ctx, `UPDATE order_sale_intents SET origin_config=$2 WHERE id=$1`, e.IntentID, cfg); err != nil {
 		return e, err
 	}
-	for _, l := range e.Lines {
-		if _, err = tx.Exec(ctx, `INSERT INTO order_sale_intent_lines(intent_id,order_item_id,quantity,variant_id) VALUES($1,$2,$3,$4)`, e.IntentID, l.OrderItemID, l.Quantity, l.VariantID); err != nil {
+	// Discount allocation may split one live item into two native money
+	// groups. Physical ownership remains one row per original order item.
+	physical := map[int64]Line{}
+	for _, line := range e.Lines {
+		previous, exists := physical[line.OrderItemID]
+		if exists && previous.VariantID != line.VariantID {
+			return e, ErrConflict
+		}
+		quantity := int64(previous.Quantity) + int64(line.Quantity)
+		if quantity <= 0 || quantity > 1<<31-1 {
+			return e, ErrInput
+		}
+		line.Quantity = int(quantity)
+		physical[line.OrderItemID] = line
+	}
+	itemIDs := make([]int64, 0, len(physical))
+	for id := range physical {
+		itemIDs = append(itemIDs, id)
+	}
+	sort.Slice(itemIDs, func(i, j int) bool { return itemIDs[i] < itemIDs[j] })
+	for _, id := range itemIDs {
+		line := physical[id]
+		if _, err = tx.Exec(ctx, `INSERT INTO order_sale_intent_lines(intent_id,order_item_id,quantity,variant_id) VALUES($1,$2,$3,$4)`, e.IntentID, line.OrderItemID, line.Quantity, line.VariantID); err != nil {
 			return e, err
 		}
 	}

@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -84,35 +86,28 @@ func TestShippingRealizationHooksPostgres(t *testing.T) {
 	exec(`CREATE TABLE customers(id BIGINT PRIMARY KEY);CREATE TABLE warehouses(id BIGINT PRIMARY KEY,name TEXT,is_active INTEGER);
  CREATE TABLE product_external_ids(variant_id BIGINT,provider TEXT,id_type TEXT,status TEXT,external_id TEXT);
  CREATE TABLE product_variants(id BIGINT PRIMARY KEY,saby_id TEXT);INSERT INTO product_variants VALUES(1,'3980');
+ CREATE TABLE inventory(id BIGSERIAL PRIMARY KEY,warehouse_id BIGINT,variant_id BIGINT,available_qty INTEGER,reserved_qty INTEGER,synced_at TIMESTAMPTZ);
  CREATE TABLE orders(id BIGINT PRIMARY KEY,order_number TEXT,status TEXT,customer_id BIGINT,delivery_method TEXT,cdek_status TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_track_number TEXT DEFAULT '',cdek_status_reason TEXT DEFAULT '',cdek_create_state TEXT DEFAULT 'unknown',cdek_attempts INT DEFAULT 0,cdek_next_attempt_at TIMESTAMPTZ,cdek_synced_at TIMESTAMPTZ,cdek_order_number TEXT DEFAULT '');
  CREATE TABLE order_items(id BIGINT PRIMARY KEY,order_id BIGINT,variant_id BIGINT,product_name TEXT,sku TEXT,quantity INTEGER,unit_price NUMERIC(12,2));
  CREATE TABLE shipment_offers(id BIGINT PRIMARY KEY,order_id BIGINT,status TEXT,delivery_method TEXT,cdek_status TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),updated_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_track_number TEXT DEFAULT '',cdek_status_reason TEXT DEFAULT '',cdek_create_state TEXT DEFAULT 'unknown',cdek_attempts INT DEFAULT 0,cdek_next_attempt_at TIMESTAMPTZ,cdek_synced_at TIMESTAMPTZ,cdek_last_error TEXT DEFAULT '');
- ALTER TABLE orders ADD COLUMN cdek_last_error TEXT DEFAULT '';
+ ALTER TABLE orders ADD COLUMN cdek_last_error TEXT DEFAULT '',ADD COLUMN subtotal NUMERIC;
  CREATE TABLE shipment_offer_items(order_item_id BIGINT,shipment_offer_id BIGINT,variant_id BIGINT,product_name TEXT,sku TEXT,quantity INTEGER,unit_price NUMERIC(12,2));
  INSERT INTO orders(id,order_number,status,delivery_method)VALUES(1,'LOCAL-MAIN','ready','cdek'),(2,'LOCAL-PART','new','cdek'),(3,'LOCAL-DIRECT','ready','cdek');
  INSERT INTO order_items VALUES(1,1,1,'Plant','D13',2,100),(2,2,1,'Plant','D13',5,100),(3,3,1,'Plant','D13',1,100);
  INSERT INTO shipment_offers(id,order_id,status,delivery_method)VALUES(21,2,'shipping','cdek');
  INSERT INTO shipment_offer_items VALUES(2,21,1,'Exact partial','D13',2,100);`)
-	migration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_intents.sql")
+	migrations, err := filepath.Glob("../../../timeweb/migrations/*order_sale*.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
-	exec(string(migration))
-	dispatcherMigration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_publications.sql")
-	if err != nil {
-		t.Fatal(err)
+	sort.Strings(migrations)
+	for _, path := range migrations {
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		exec(string(raw))
 	}
-	exec(string(dispatcherMigration))
-	buyerMigration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_publications_buyer.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	exec(string(buyerMigration))
-	lifecycleMigration, err := os.ReadFile("../../../timeweb/migrations/20261113_order_sale_publications_lifecycle.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	exec(string(lifecycleMigration))
 	carrier := &realizationReadOnlyCarrier{status: "IN_TRANSIT"}
 	worker := &ShippingWorker{pool: pool, cdek: carrier, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	// Historical shipped rows still awaiting UUID reconciliation are manual-only.

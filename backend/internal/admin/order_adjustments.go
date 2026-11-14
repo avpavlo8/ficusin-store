@@ -284,7 +284,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 		// not have a whole-order packing workflow. Their immutable item rows
 		// cannot disappear through order_items' ON DELETE CASCADE relation.
 		var activePartial bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=$1 AND (status IN ('payment_pending','paid','shipping','shipped','ready','completed') OR cdek_create_state IN ('creating','unknown') OR (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled')))`, id).Scan(&activePartial); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=$1 AND (status IN ('payment_pending','paid','shipping','shipped','ready','completed') OR cdek_create_state IN ('creating','unknown') OR (COALESCE(cdek_uuid,'')<>'' AND UPPER(COALESCE(cdek_status,''))<>'REMOVED')))`, id).Scan(&activePartial); err != nil {
 			return Order{}, err
 		}
 		if activePartial {

@@ -164,7 +164,7 @@ func (client *SabyClient) SavePreparedOrderRealizationRow(ctx context.Context, e
 			return result, errors.New("СБИС вернул непроверенные изменения при сохранении строки")
 		}
 		if name == "upd_rs" {
-			rows, err := sabyFillRecordset(object)
+			rows, err := sabyFillSaveUpdatedRows(object, sabyRecordField(wrapper, "new_rs"))
 			if err != nil || len(rows) != 0 {
 				return result, errors.New("СБИС изменил другие строки при сохранении")
 			}
@@ -180,6 +180,28 @@ func (client *SabyClient) SavePreparedOrderRealizationRow(ctx context.Context, e
 	}
 	result.RowID, result.Outcome = rowID, "saved"
 	return result, nil
+}
+
+// Protocol 7 may omit the schema of an empty upd_rs and refer to the complete
+// sibling new_rs format instead (verified native save response 43560173398).
+// Resolve only that exact empty compact shape. Nonempty updates, an unknown
+// reference, or a malformed sibling remain unknown and must never establish IDs.
+func sabyFillSaveUpdatedRows(updated map[string]any, created any) ([]map[string]any, error) {
+	if _, hasSchema := updated["s"]; hasSchema {
+		return sabyFillRecordset(updated)
+	}
+	rows, rowsOK := updated["d"].([]any)
+	format, formatOK := updated["f"].(json.Number)
+	formatID, formatErr := format.Int64()
+	sibling, siblingOK := created.(map[string]any)
+	siblingFormat, siblingFormatOK := sibling["f"].(json.Number)
+	if updated["_type"] != "recordset" || len(updated) != 3 || !rowsOK || len(rows) != 0 || !formatOK || formatErr != nil || formatID < 0 || !siblingOK || !siblingFormatOK || siblingFormat != format {
+		return nil, errors.New("Нет подтверждённого формата пустого списка изменённых строк")
+	}
+	if _, err := sabyFillRecordset(sibling); err != nil {
+		return nil, err
+	}
+	return []map[string]any{}, nil
 }
 
 // ReadOrderRealizationPricedLines is a strictly document-bound, read-only

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"strings"
 	"testing"
@@ -351,6 +352,61 @@ func testRevisionWorker(t *testing.T, pool *pgxpool.Pool) {
 			}
 		})
 	}
+
+	t.Run("new discounted order splits native prices but owns one physical item", func(t *testing.T) {
+		exec(`INSERT INTO orders(id,order_number,status,delivery_method,cdek_status,subtotal)VALUES(12700,'NEW-NET-299','new','pickup','',299);INSERT INTO order_items VALUES(12700,12700,1,'Discounted plant','D13',3,100)`)
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		event, err := EnqueueCreated(ctx, tx, 12700)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = tx.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if len(event.Lines) != 2 {
+			t.Fatal("net plan was not split", event.Lines)
+		}
+		var count, quantity int
+		if err = pool.QueryRow(ctx, `SELECT COUNT(*),SUM(quantity)::INTEGER FROM order_sale_intent_lines WHERE intent_id=$1 AND order_item_id=12700 AND variant_id=1`, event.IntentID).Scan(&count, &quantity); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 || quantity != 3 {
+			t.Fatal("physical ownership duplicated", count, quantity)
+		}
+		drain()
+		_, status := state(event)
+		if status != "posted" {
+			t.Fatal("discounted creation did not publish in mock", status)
+		}
+		var raw []byte
+		if err = pool.QueryRow(ctx, `SELECT stock_proof FROM order_sale_publications WHERE intent_id=$1`, event.IntentID).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		var proof StockProof
+		if json.Unmarshal(raw, &proof) != nil {
+			t.Fatal("proof decode")
+		}
+		var sum, qty int64
+		for _, line := range proof.Lines {
+			price, e := money.Parse(string(line.UnitPrice))
+			if e != nil {
+				t.Fatal(e)
+			}
+			q, e := line.Quantity.Int64()
+			if e != nil {
+				t.Fatal(e)
+			}
+			sum += price * q
+			qty += q
+		}
+		if sum != 29900 || qty != 3 || len(proof.Lines) != 2 || !proof.Test {
+			t.Fatal("net proof does not match discounted order", sum, qty, proof)
+		}
+	})
 
 }
 

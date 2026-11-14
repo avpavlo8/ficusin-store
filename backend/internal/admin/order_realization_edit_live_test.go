@@ -82,7 +82,7 @@ func TestOrderRealizationEditsPostgres(t *testing.T) {
  payment_method TEXT DEFAULT 'online',payment_status TEXT DEFAULT 'pending',has_preorder INTEGER DEFAULT 0,status TEXT DEFAULT 'new',delivery_payee TEXT DEFAULT 'shop',cdek_status TEXT DEFAULT '',cdek_create_state TEXT DEFAULT '',cdek_cancel_state TEXT DEFAULT '',cdek_uuid TEXT DEFAULT '',cdek_track_number TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),stock_released_at TIMESTAMPTZ,
  manager_discount_type TEXT DEFAULT 'fixed',manager_discount_value NUMERIC DEFAULT 0,manager_discount_amount NUMERIC DEFAULT 0,shipment_revision INTEGER DEFAULT 1);
  CREATE TABLE order_items(id BIGSERIAL PRIMARY KEY,order_id BIGINT REFERENCES orders(id),product_id BIGINT,variant_id BIGINT,sku TEXT,product_name TEXT,variant_label TEXT,variant_snapshot JSONB,unit_price NUMERIC(12,2),quantity INTEGER,is_preorder INTEGER DEFAULT 0,reserved_qty INTEGER DEFAULT 0);
- CREATE TABLE shipment_offers(id BIGINT PRIMARY KEY,order_id BIGINT,status TEXT,delivery_method TEXT,cdek_status TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),checkout_locked_until TIMESTAMPTZ,updated_at TIMESTAMPTZ,cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT '',cdek_cancel_state TEXT DEFAULT '');
+ CREATE TABLE shipment_offers(id BIGINT PRIMARY KEY,order_id BIGINT,status TEXT,delivery_method TEXT,cdek_status TEXT DEFAULT '',created_at TIMESTAMPTZ DEFAULT now(),checkout_locked_until TIMESTAMPTZ,updated_at TIMESTAMPTZ,cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT '');
  CREATE TABLE shipment_offer_items(order_item_id BIGINT,shipment_offer_id BIGINT,variant_id BIGINT,product_name TEXT,sku TEXT,quantity INTEGER,unit_price NUMERIC(12,2));
  CREATE TABLE procurement_requests(kind TEXT,saby_id TEXT,requested_name TEXT,quantity INTEGER,customer_order_id BIGINT,status TEXT,notes TEXT,updated_at TIMESTAMPTZ);
  CREATE TABLE order_packing_workflows(id BIGINT,order_id BIGINT,state TEXT,order_revision INTEGER,boxes JSONB);
@@ -236,6 +236,15 @@ func TestOrderRealizationEditsPostgres(t *testing.T) {
 		if did, e := ordersale.PublicationStep(ctx, pool, ordersale.MockProvider{}, "mock"); e != nil || did {
 			t.Fatal("unchanged partial form queued a revision", did, e)
 		}
+		// Offers have no cdek_cancel_state column. A local cancelled state
+		// does not retire a registered label until carrier cdek_status=REMOVED.
+		exec(`UPDATE shipment_offers SET status='cancelled',cdek_uuid='owned-fixture-label',cdek_status='CREATED' WHERE id=$1`, id)
+		if _, e := repository.EditOrder(ctx, actor, id, OrderEdit{Items: &changed}); !errors.Is(e, ErrInvalidInput) {
+			t.Fatal("unconfirmed carrier removal allowed commercial edit", e)
+		}
+		exec(`UPDATE shipment_offers SET cdek_status='REMOVED' WHERE id=$1`, id)
+		edit(t, id, changed, nil)
+		drain(t)
 	})
 	t.Run("discount and unchanged form stay in same order", func(t *testing.T) {
 		id, itemID, intent := create(t)
