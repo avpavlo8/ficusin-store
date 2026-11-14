@@ -5,73 +5,6 @@
    этого не изменился, а на 100 КБ в одном файле больше никто не
    натыкается. Подключение и порядок — в ../styles.css. */
 
-/* Переключатели вместо галочек: у флажка не видно, включён он или нет,
-   пока не приглядишься, а у бегунка это читается с одного взгляда. */
-.sync-options {
-  margin: 18px 0;
-  display: grid;
-  gap: 8px;
-}
-.sync-options label {
-  padding: 12px 14px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: white;
-  cursor: pointer;
-}
-.sync-options label:hover {
-  border-color: var(--sage);
-}
-.sync-options span {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.sync-options strong {
-  font-weight: 500;
-}
-.sync-options small {
-  color: #778079;
-}
-.sync-options input[type="checkbox"] {
-  appearance: none;
-  margin: 0;
-  flex: none;
-  width: 42px;
-  height: 24px;
-  border-radius: 999px;
-  background: #d9ded6;
-  position: relative;
-  cursor: pointer;
-  transition: background 0.15s;
-  order: 2;
-}
-.sync-options input[type="checkbox"]::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: transform 0.15s;
-}
-.sync-options input[type="checkbox"]:checked {
-  background: var(--green);
-}
-.sync-options input[type="checkbox"]:checked::after {
-  transform: translateX(18px);
-}
-.sync-options input[type="checkbox"]:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 2px;
-}
 .admin-checkbox {
   display: flex;
   gap: 12px;
@@ -993,13 +926,6 @@
   :root {
     --header-h: 72px;
   }
-  .announcement {
-    justify-content: center;
-    font-size: 10px;
-  }
-  .announcement span:last-child {
-    display: none;
-  }
   .header {
     height: 72px;
     padding: 0 18px;
@@ -1079,10 +1005,6 @@
     gap: 16px;
   }
   .admin-alert {
-    align-items: start;
-    flex-direction: column;
-  }
-  .procurement-safety {
     align-items: start;
     flex-direction: column;
   }
@@ -1237,9 +1159,6 @@
   overflow-x: hidden;
   background: #f8f0e5;
   color: #2c241b;
-}
-.product-page > .announcement {
-  display: none;
 }
 .product-page > .header {
   width: calc(100% - 36px);

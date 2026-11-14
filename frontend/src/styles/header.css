@@ -397,51 +397,6 @@
   color: #a92e1a;
 }
 
-.floating-cart {
-  position: fixed;
-  z-index: 110;
-  right: 24px;
-  bottom: 24px;
-  width: 58px;
-  height: 58px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: linear-gradient(120deg, #c85105, #af4305);
-  color: #fff;
-  box-shadow: 0 6px 18px #84301f38;
-}
-.floating-cart svg {
-  width: 27px;
-  height: 27px;
-}
-.floating-cart b {
-  position: absolute;
-  right: -2px;
-  top: -3px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 4px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: #fffaf3;
-  color: #a92e1a;
-  font-size: 11px;
-}
-.floating-cart:focus-visible {
-  outline: 2px solid #31482c;
-  outline-offset: 4px;
-}
-body.menu-open .floating-cart {
-  display: none;
-}
-@media (max-width: 850px) {
-  .floating-cart {
-    display: none;
-  }
-}
-
 /* Opaque navigation works without backdrop-filter support. */
 .mobile-menu {
   background: #faf7ef;

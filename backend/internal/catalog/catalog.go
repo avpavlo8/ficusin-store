@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"context"
 	"errors"
 )
 
@@ -226,10 +225,4 @@ type Variant struct {
 	WholesaleMinQty int                `json:"wholesaleMinQty"`
 	Images          []string           `json:"images"`
 	Attributes      []ProductAttribute `json:"attributes"`
-}
-
-type Repository interface {
-	ListAvailable(context.Context) ([]Product, error)
-	ListCategories(context.Context) ([]Category, error)
-	DetailBySlug(context.Context, string) (ProductDetail, error)
 }

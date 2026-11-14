@@ -476,22 +476,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       slug: item.slug,
       children: order(children.get(item.id) || []).map(branch),
     });
-    const roots = order(children.get(null) || []).map(branch);
-    const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
-    if (!plantRoot) return { catalog: roots, plants: [] };
-    const collectPlantKinds = (parentId: number): Category[] =>
-      order(children.get(parentId) || []).flatMap((item): Category[] => {
-        const nested = children.get(item.id) || [];
-        return nested.length ? collectPlantKinds(item.id) : [item];
-      });
-    return {
-      catalog: roots,
-      plants: order(collectPlantKinds(plantRoot.id)).map((item) => ({
-        id: item.id,
-        label: item.name,
-        slug: item.slug,
-      })),
-    };
+    return order(children.get(null) || []).map(branch);
   }, [categories]);
 
   const inBranch = useMemo(() => {
@@ -992,8 +977,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
                 }
               : undefined
           }
-          catalogMenuItems={headerMenus.catalog}
-          plantMenuItems={headerMenus.plants}
+          catalogMenuItems={headerMenus}
         />
         <p className="storefront-empty">Загружаем каталог…</p>
       </main>
@@ -1016,8 +1000,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
               }
             : undefined
         }
-        catalogMenuItems={headerMenus.catalog}
-        plantMenuItems={headerMenus.plants}
+        catalogMenuItems={headerMenus}
       />
 
       {!searching && !landing && (

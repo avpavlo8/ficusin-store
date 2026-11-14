@@ -26,7 +26,6 @@ test("@phone toolbar uses icons and search stays at viewport top after scrolling
   await page.goto('/#catalog');
   const toolbar=page.locator('.home-catalog-toolbar');
   await expect(toolbar.locator('.catalog-tool-label')).toBeHidden();
-  await expect(page.locator('.drawer:not(.open)')).toHaveCSS('box-shadow','none');
   await expect(toolbar.locator('.home-sort summary > span')).toBeHidden();
   for (const control of [toolbar.locator('.home-filter-button'), toolbar.locator('.home-sort summary')]) {
     const box = await control.boundingBox();
@@ -72,7 +71,6 @@ test("@desktop header cart opens its page without mounting checkout", async ({pa
   await mockApi(page);const providers:string[]=[],profiles:string[]=[];
   page.on('request',request=>{const path=new URL(request.url()).pathname;if(request.method()==='GET'){if(path==='/api/v1/payments/methods'||path==='/api/v1/delivery/cdek')providers.push(path);if(path==='/api/v1/auth/me')profiles.push(path)}});
   await page.goto('/');
-  await expect(page.locator('.floating-cart')).toHaveCount(0);
   await expect(page.locator('.cart-checkout-host')).toHaveCount(0);
   await expect(page.locator('.drawer')).toHaveCount(0);
   await expect.poll(()=>profiles.length).toBe(1);
@@ -94,7 +92,6 @@ test("@phone catalogue purchase buttons contain a cart icon without visible text
   await expect(card.locator('.catalog-cart-icon')).toBeVisible();
   await card.getByRole('button',{name:'В корзину',exact:true}).click();
   await expect(card.locator('.cart-item-count')).toHaveText('1');await expect(card.locator('.catalog-cart-icon')).toBeVisible();
-  await expect(page.locator('.floating-cart')).toBeHidden();
 });
 
 

@@ -33,13 +33,7 @@ func (service *Service) PreviewUnitPrice(ctx context.Context, input UnitPriceInp
 	if err := validateUnitPriceInput(input); err != nil {
 		return UnitPricePreview{}, err
 	}
-	store, ok := service.store.(interface {
-		PreviewUnitPrice(context.Context, UnitPriceInput) (UnitPricePreview, error)
-	})
-	if !ok {
-		return UnitPricePreview{}, ErrInvalidInput
-	}
-	return store.PreviewUnitPrice(ctx, input)
+	return service.store.PreviewUnitPrice(ctx, input)
 }
 
 func (store *PostgresStore) PreviewUnitPrice(ctx context.Context, input UnitPriceInput) (UnitPricePreview, error) {
@@ -145,13 +139,7 @@ func (service *Service) PricingExample(ctx context.Context, input PricingSetting
 	if err != nil {
 		return PricingExample{}, err
 	}
-	store, ok := service.store.(interface {
-		PricingExample(context.Context, PricingSettings) (PricingExample, error)
-	})
-	if !ok {
-		return PricingExample{}, ErrInvalidInput
-	}
-	return store.PricingExample(ctx, input)
+	return service.store.PricingExample(ctx, input)
 }
 func (store *PostgresStore) PricingExample(ctx context.Context, input PricingSettings) (PricingExample, error) {
 	current, err := store.loadSettings(ctx)

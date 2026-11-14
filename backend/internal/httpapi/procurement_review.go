@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 
@@ -18,10 +17,8 @@ func (handlers procurementHandlers) previewUnitPrice(w http.ResponseWriter, r *h
 		handlers.failed(w, "unit price input", procurement.ErrInvalidInput)
 		return
 	}
-	service, ok := handlers.service.(interface {
-		PreviewUnitPrice(context.Context, procurement.UnitPriceInput) (procurement.UnitPricePreview, error)
-	})
-	if !ok {
+	service := handlers.service
+	if service == nil {
 		handlers.failed(w, "unit price unavailable", procurement.ErrInvalidInput)
 		return
 	}
@@ -42,10 +39,8 @@ func (handlers procurementHandlers) pricingExample(w http.ResponseWriter, r *htt
 		handlers.failed(w, "pricing example input", procurement.ErrInvalidInput)
 		return
 	}
-	service, ok := handlers.service.(interface {
-		PricingExample(context.Context, procurement.PricingSettings) (procurement.PricingExample, error)
-	})
-	if !ok {
+	service := handlers.service
+	if service == nil {
 		handlers.failed(w, "pricing example unavailable", procurement.ErrInvalidInput)
 		return
 	}
@@ -71,10 +66,8 @@ func (handlers procurementHandlers) updateSupplier(w http.ResponseWriter, r *htt
 		handlers.failed(w, "decode supplier", procurement.ErrInvalidInput)
 		return
 	}
-	service, ok := handlers.service.(interface {
-		UpdateSupplier(context.Context, procurement.Actor, int64, procurement.SupplierUpdate) (procurement.Supplier, error)
-	})
-	if !ok {
+	service := handlers.service
+	if service == nil {
 		handlers.failed(w, "update supplier unavailable", procurement.ErrInvalidInput)
 		return
 	}
@@ -94,10 +87,8 @@ func (handlers procurementHandlers) documentPDF(w http.ResponseWriter, r *http.R
 	if !ok {
 		return
 	}
-	service, ok := handlers.service.(interface {
-		DocumentPDF(context.Context, int64) ([]byte, error)
-	})
-	if !ok {
+	service := handlers.service
+	if service == nil {
 		handlers.failed(w, "source PDF unavailable", procurement.ErrInvalidInput)
 		return
 	}

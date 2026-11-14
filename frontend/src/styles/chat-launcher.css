@@ -36,9 +36,6 @@
 .quick-chat-open .chat-launcher {
   bottom: 24px;
 }
-.quick-chat-open .floating-cart {
-  display: none;
-}
 .quick-chat-loading {
   position: fixed;
   right: 24px;

@@ -30,18 +30,7 @@ export default function CartPage({ checkout = false }: { checkout?: boolean }) {
       slug: item.slug,
       children: order(children.get(item.id) || []).map(branch),
     });
-    const catalog = order(children.get(null) || []).map(branch);
-    const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
-    const leaves = (parentId: number): typeof categories =>
-      order(children.get(parentId) || []).flatMap((item) =>
-        children.get(item.id)?.length ? leaves(item.id) : [item],
-      );
-    return {
-      catalog,
-      plants: plantRoot
-        ? leaves(plantRoot.id).map((item) => ({ id: item.id, label: item.name, slug: item.slug }))
-        : [],
-    };
+    return order(children.get(null) || []).map(branch);
   }, [categories]);
   return (
     <main
@@ -50,8 +39,7 @@ export default function CartPage({ checkout = false }: { checkout?: boolean }) {
     >
       <StoreHeader
         cartCount={Object.values(cart).reduce((sum, value) => sum + value, 0)}
-        catalogMenuItems={headerMenus.catalog}
-        plantMenuItems={headerMenus.plants}
+        catalogMenuItems={headerMenus}
         onHomeCategoryPick={(id) => {
           window.location.assign(`/?category=${id}#catalog`);
         }}

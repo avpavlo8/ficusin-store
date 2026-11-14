@@ -19,13 +19,7 @@ type PlanPreviewLine struct {
 
 // PreviewPlan uses the same rounding and pricing implementation as PDF invoices.
 func (service *Service) PreviewPlan(ctx context.Context, input PlanCreate) (PlanPreview, error) {
-	previewer, ok := service.store.(interface {
-		PreviewPlan(context.Context, PlanCreate) (PlanPreview, error)
-	})
-	if !ok {
-		return PlanPreview{}, ErrInvalidInput
-	}
-	return previewer.PreviewPlan(ctx, input)
+	return service.store.PreviewPlan(ctx, input)
 }
 
 func (store *PostgresStore) PreviewPlan(ctx context.Context, input PlanCreate) (PlanPreview, error) {

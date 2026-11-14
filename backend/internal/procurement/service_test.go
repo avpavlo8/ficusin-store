@@ -8,6 +8,8 @@ import (
 )
 
 type storeStub struct {
+	catalogCache      map[string][]ChannelProduct
+	syncRequests      []string
 	planInput         PlanCreate
 	supplierInput     SupplierCreate
 	orderInput        OrderCreate
@@ -182,7 +184,7 @@ func TestCreateSupplierNormalizesInput(t *testing.T) {
 
 func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
 	t.Parallel()
-	store := &storeStub{}
+	store := &storeStub{catalogCache: map[string][]ChannelProduct{"ozon": {{ExternalID: "cached-offer"}}}}
 	service := NewServiceWithExecutor(store, channelCatalogStub{})
 	_, err := service.PrepareBatch(context.Background(), Actor{}, 12, "prices", []string{"saby_price", "ozon", "ozon", "unknown"})
 	if err != nil {
@@ -195,14 +197,14 @@ func TestPreparePricesKeepsOnlySelectedUniqueChannels(t *testing.T) {
 
 func TestPrepareReceiptDoesNotSynchronouslyRefreshSaby(t *testing.T) {
 	t.Parallel()
-	store := &storeStub{}
+	store := &storeStub{syncRequests: []string{}}
 	executor := &sabyRefreshExecutorStub{}
 	service := NewServiceWithExecutor(store, executor)
 	batch, err := service.PrepareBatch(context.Background(), Actor{}, 18, "receipt", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if batch.Kind != "receipt" || executor.refreshCalls != 0 {
+	if batch.Kind != "receipt" || executor.refreshCalls != 0 || len(store.syncRequests) != 1 || store.syncRequests[0] != "saby/catalog" {
 		t.Fatalf("batch=%+v refreshCalls=%d; HTTP preparation must not call Saby catalogue directly", batch, executor.refreshCalls)
 	}
 }

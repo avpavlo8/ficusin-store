@@ -6448,6 +6448,7 @@ paths:
   /payments/yookassa/webhook:
     post:
       operationId: post_payments_yookassa_webhook
+      description: Acknowledges provider notifications. Payment notifications trigger an authenticated provider recheck by object ID; status, amount and metadata from the notification are never payment evidence. Unrelated events are acknowledged without payment lookup; recheck failures return 500 for retry.
       responses:
         2XX:
           description: Successful response. Payload and business rules are implemented by the source handler.
@@ -6462,13 +6463,21 @@ paths:
         content:
           application/json:
             schema:
+              required: [type, event, object]
+              additionalProperties: false
               properties:
+                type:
+                  type: string
+                  enum: [notification]
                 event:
                   type: string
                 object:
+                  required: [id]
+                  additionalProperties: true
                   properties:
                     id:
                       type: string
+                      minLength: 1
                   type: object
               type: object
   /products/{slug}:

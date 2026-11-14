@@ -17,6 +17,10 @@ type stage13ShipmentQuoter struct {
 
 func (quoter *stage13ShipmentQuoter) Configured() bool { return true }
 
+func (*stage13ShipmentQuoter) GetOffices(context.Context, int) ([]integration.CDEKOffice, error) {
+	panic("shipment offer quote fixture must not look up packing destination")
+}
+
 func (quoter *stage13ShipmentQuoter) CalculatePVZPackages(_ context.Context, cityCode int, boxes []integration.Parcel) ([]integration.CDEKQuote, error) {
 	if cityCode != 44 {
 		return nil, fmt.Errorf("unexpected city %d", cityCode)

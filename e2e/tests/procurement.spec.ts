@@ -1182,7 +1182,7 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  const lastInput=()=>page.evaluate(()=>(window as unknown as {calculatorInputs: Record<string,unknown>[]}).calculatorInputs.at(-1));
  const calc=page.getByRole('region',{name:'Калькулятор цен'});
  await expect(calc.locator('input')).toHaveCount(3);
- await page.screenshot({path:`../../calculator-initial-${test.info().project.name}.png`,fullPage:true});
+ await page.screenshot({path:test.info().outputPath("calculator-initial.png"),fullPage:true});
  await expect(calc.getByLabel('Курс, ₽/€')).toHaveCount(0);
  await calc.getByLabel('Цена поставщика, €').fill('4,85');
  await calc.getByLabel('Диаметр горшка, см').fill('14');
@@ -1215,7 +1215,7 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await expect(calc.getByLabel('Длина коробки, см')).toHaveValue('15');
  await expect(calc.getByRole('button',{name:'Копировать расчёт'})).toBeEnabled();
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
- await page.screenshot({path:`../../calculator-${test.info().project.name}.png`,fullPage:true});
+ await page.screenshot({path:test.info().outputPath("calculator.png"),fullPage:true});
  await page.getByRole('button',{name:'Что заказать',exact:true}).click();
  await procurementTab(page, "Калькулятор цены");
  await expect(calc.getByLabel('Цена в магазине, ₽')).toHaveValue('2000,37');

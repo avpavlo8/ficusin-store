@@ -10,14 +10,13 @@ import type {
 
 import { attributeValues } from "./marketplaceAttributes";
 type Choice = { id?: number; value: string };
-function choicesOf(raw: unknown): { choices: Choice[]; cursor: string; freeText: boolean } {
+function choicesOf(raw: unknown): { choices: Choice[]; cursor: string } {
   const data = raw as {
     result?: Array<{ id: number; value: string }>;
     brands?: Array<{ id: number; name: string }>;
     data?: unknown[];
     next?: number;
     has_next?: boolean;
-    freeText?: boolean;
   };
   const values = data.result || data.brands || data.data || [];
   const choices = values
@@ -37,7 +36,6 @@ function choicesOf(raw: unknown): { choices: Choice[]; cursor: string; freeText:
       : data.has_next && choices.length
         ? String(choices.at(-1)?.id || "")
         : "",
-    freeText: !!data.freeText,
   };
 }
 export function MarketplaceDictionary({

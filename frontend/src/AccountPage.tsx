@@ -230,14 +230,7 @@ function AccountShell({
   );
 }
 
-function SectionHeading({
-  title,
-  aside,
-}: {
-  eyebrow: string;
-  title: string;
-  aside?: React.ReactNode;
-}) {
+function SectionHeading({ title, aside }: { title: string; aside?: React.ReactNode }) {
   return (
     <div className="account-title">
       <div>
@@ -306,7 +299,7 @@ function OrdersSection({ error: profileError, onRetry }: { error: string; onRetr
 
   return (
     <>
-      <SectionHeading eyebrow="" title="Мои заказы" />
+      <SectionHeading title="Мои заказы" />
       <div className="customer-order-tabs" role="tablist" aria-label="Статус заказов">
         {views.map(({ view, label }, index) => (
           <button
@@ -719,7 +712,6 @@ function ProfileSection({
   return (
     <>
       <SectionHeading
-        eyebrow="Профиль покупателя"
         title="Мои данные"
         aside={user.accountType === "wholesale" ? <span>Оптовый клиент</span> : undefined}
       />
@@ -984,7 +976,7 @@ function FavoritesSection() {
   );
   return (
     <>
-      <SectionHeading eyebrow="Сохранённые товары" title="Избранное" />
+      <SectionHeading title="Избранное" />
       <p className="customer-intro">
         Сохранённые растения на этом устройстве. Список общий с избранным в каталоге.
       </p>

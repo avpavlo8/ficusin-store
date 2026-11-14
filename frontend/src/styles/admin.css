@@ -588,39 +588,6 @@
   border-color: #ebb875;
   background: #f9f9fa;
 }
-.procurement-safety {
-  margin-bottom: 20px;
-  padding: 18px 20px;
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-  align-items: center;
-  border: 1px solid #a4e4c8;
-  border-radius: 13px;
-  background: #ecedee;
-}
-.procurement-safety strong {
-  color: var(--green);
-}
-.procurement-safety p {
-  margin: 5px 0 0;
-  color: #5c616c;
-  font-size: 13px;
-  line-height: 1.45;
-}
-.procurement-safety > span {
-  padding: 7px 10px;
-  flex: 0 0 auto;
-  border-radius: 99px;
-  background: white;
-  color: var(--green);
-  font-size: 11px;
-  font-weight: 700;
-}
-.procurement-toolbar .secondary-button {
-  padding: 10px 15px;
-  border-radius: 9px;
-}
 .procurement-block {
   padding: 22px;
 }
@@ -1018,29 +985,8 @@
   border-radius: 12px;
   background: var(--cream);
 }
-.procurement-rate-comparison {
-  margin: -6px 0 16px;
-  padding: 10px 14px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  border: 1px solid #f0c894;
-  border-radius: 10px;
-  background: #f4f5f6;
-  color: #7d4f12;
-  font-size: 13px;
-}
-.procurement-rate-comparison button {
-  flex: 0 0 auto;
-}
 .procurement-lines {
   min-width: 1120px;
-}
-.procurement-price-change {
-  color: #7d4f12;
-  font-weight: 800;
-  background: #f5f6f7;
 }
 .procurement-batch-buttons {
   margin: 18px 0;

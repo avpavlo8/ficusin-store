@@ -473,3 +473,24 @@ test('@desktop legacy saved amounts without a price mode require manual intent u
  await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
  await modes.getByRole('button',{name:'Авто',exact:true}).click();await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('2490');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('2990');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'auto',ozonPrice:'2990',wbPrice:'2490'});
 });
+
+test('@desktop @phone marketplace dictionary pagination retains canonical IDs in the local draft',async({page})=>{
+ const f=await fixture(page);
+ f.plans.set(1,{variants:[{variantId:10,saby:{mode:'link',existingCode:'fixture-code',category:{id:'fixture-category',name:'Категория'},folder:{id:'fixture-folder',name:'Раздел'}},marketplace:{name:'',article:'10',description:'',brand:'',model:'',tnved:'',units:1,ozon:{enabled:false,mode:'create',existingId:'',category:{id:'123',typeId:456,name:'Растения Ozon'}},wb:{enabled:false,mode:'create',existingId:'',category:{id:'',name:''}}}}]});
+ const reads:URLSearchParams[]=[];
+ await page.route('**/api/v1/admin/catalog-editor/references?*',route=>{
+  const params=new URL(route.request().url()).searchParams;
+  if(params.get('channel')!=='ozon')return route.fallback();
+  if(params.get('kind')==='attributes')return route.fulfill({json:{data:{result:[{id:85,name:'Бренд',dictionary_id:2}]}}});
+  reads.push(params);
+  return route.fulfill({json:{data:params.get('cursor')?{result:[{id:901,value:'Первая марка'},{id:902,value:'Вторая марка'}]}:{result:[{id:901,value:'Первая марка'}],next:901}}});
+ });
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
+ const brand=e.getByRole('combobox',{name:'Бренд *',exact:true});await brand.click();
+ const list=e.getByRole('listbox',{name:'Бренд *',exact:true});await expect(list.getByRole('option')).toHaveCount(1);
+ await list.getByRole('button',{name:'Показать ещё',exact:true}).click();await expect(list.getByRole('option')).toHaveCount(2);
+ await list.getByRole('option',{name:'Вторая марка',exact:true}).click();await expect(brand).toHaveValue('Вторая марка');
+ expect(reads.map(p=>({channel:p.get('channel'),kind:p.get('kind'),category:p.get('category'),typeId:p.get('typeId'),attribute:p.get('attribute'),cursor:p.get('cursor')}))).toEqual([{channel:'ozon',kind:'values',category:'123',typeId:'456',attribute:'85',cursor:''},{channel:'ozon',kind:'values',category:'123',typeId:'456',attribute:'85',cursor:'901'}]);
+ await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('ficusin:product-edit-draft:v1:1')||'{}').variants?.find((v:{serverId:number})=>v.serverId===10)?.marketplace?.brandId)).toBe(902);
+ await page.reload();await expect(page.locator('.editor-page').getByRole('combobox',{name:'Бренд *',exact:true})).toHaveValue('Вторая марка');
+});

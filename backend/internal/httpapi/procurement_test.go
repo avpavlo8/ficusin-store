@@ -15,6 +15,8 @@ import (
 )
 
 type procurementStub struct {
+	// Unused current capabilities stay nil so an unexpected call fails the test.
+	procurementService
 	firstPrices        []procurement.SabyFirstPrice
 	firstPriceActor    procurement.Actor
 	firstPriceOrderID  int64
@@ -167,6 +169,17 @@ func TestProcurementDashboardAvailableToOwner(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `"unresolvedAliases":11`) {
 		t.Fatalf("unexpected body: %s", response.Body.String())
+	}
+}
+
+func TestProcurementProductListsUnavailableWithoutService(t *testing.T) {
+	for _, query := range []string{"", "?limit=25&offset=0"} {
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), procurementDependencies(nil, admin.RoleOwner)).ServeHTTP(response,
+			adminRequest(http.MethodGet, "/api/v1/admin/procurement/products"+query, ""))
+		if response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("missing service list %q: %d", query, response.Code)
+		}
 	}
 }
 

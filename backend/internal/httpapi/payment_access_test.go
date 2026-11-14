@@ -3,23 +3,24 @@ package httpapi
 import (
 	"context"
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
+	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
 type accessPaymentStub struct {
+	paymentService
 	started int
 	owner   int64
 	token   string
 }
 
 func (*accessPaymentStub) Configured() bool { return true }
-func (s *accessPaymentStub) Start(context.Context, string) (string, error) {
+func (s *accessPaymentStub) StartOutstanding(context.Context, string) (string, payment.Balance, error) {
 	s.started++
-	return "https://payments.example.invalid", nil
+	return "https://payments.example.invalid", payment.Balance{Ready: true, Due: 100}, nil
 }
-func (*accessPaymentStub) Sync(context.Context, string) error { return nil }
 func (s *accessPaymentStub) AuthorizeOrderPayment(_ context.Context, number, token string, id int64) (bool, error) {
 	return number == "0000-1" && (s.owner > 0 && s.owner == id || s.owner == 0 && token != "" && token == s.token), nil
 }
@@ -53,6 +54,9 @@ func TestPaymentAccessRejectsOtherCustomerAndGuessedNumber(t *testing.T) {
 			}
 			if tc.want != 200 && provider.started != 0 {
 				t.Fatal("unauthorized request reached provider")
+			}
+			if tc.want == 200 && provider.started != 1 {
+				t.Fatal("authorized request did not start the outstanding balance payment")
 			}
 		})
 	}

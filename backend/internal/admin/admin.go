@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -371,22 +370,6 @@ type BulkPublishBlocked struct {
 type BulkPublishResult struct {
 	Published []int64              `json:"published"`
 	Blocked   []BulkPublishBlocked `json:"blocked"`
-}
-
-type Repository interface {
-	Dashboard(context.Context) (Dashboard, error)
-	ListCustomers(context.Context) ([]Customer, error)
-	UpdateCustomer(context.Context, Actor, int64, CustomerUpdate) (Customer, error)
-	ListOrders(context.Context) ([]Order, error)
-	UpdateOrderStatus(context.Context, Actor, int64, string, string) (Order, error)
-	ListProducts(context.Context) ([]Product, error)
-	UpdateProduct(context.Context, Actor, int64, ProductUpdate) (Product, error)
-	CreateProduct(context.Context, Actor, ProductCreate) (Product, error)
-	ImportProducts(context.Context, Actor, ImportRequest) (ImportResult, error)
-	ListCategories(context.Context) ([]Category, error)
-	CreateCategory(context.Context, Actor, CategoryCreate) (Category, error)
-	UpdateCategory(context.Context, Actor, int64, CategoryUpdate) (Category, error)
-	DeleteCategory(context.Context, Actor, int64) error
 }
 
 type CustomerPage struct {

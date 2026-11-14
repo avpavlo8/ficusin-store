@@ -490,7 +490,6 @@ export function StoreHeader({
   onSearchClose,
   showTabBar = true,
   catalogMenuItems = [],
-  plantMenuItems = [],
   onHomeCategoryPick,
 }: {
   cartCount?: number;
@@ -501,7 +500,6 @@ export function StoreHeader({
   onSearchClose?: () => void;
   showTabBar?: boolean;
   catalogMenuItems?: HeaderMenuItem[];
-  plantMenuItems?: HeaderMenuItem[];
   onHomeCategoryPick?: (id: number) => void;
 }) {
   const user = useStoreUser();
@@ -529,10 +527,7 @@ export function StoreHeader({
     searchTrigger.current?.focus({ preventScroll: true });
     onSearchClose?.();
   };
-  const [fallbackMenus, setFallbackMenus] = useState<{
-    catalog: HeaderMenuItem[];
-    plants: HeaderMenuItem[];
-  }>({ catalog: [], plants: [] });
+  const [fallbackMenus, setFallbackMenus] = useState<HeaderMenuItem[]>([]);
   const [menuState, setMenuState] = useState<"loading" | "ready" | "error">("loading");
   const [menuReload, setMenuReload] = useState(0);
   const headerRef = useRef<HTMLElement>(null);
@@ -581,7 +576,7 @@ export function StoreHeader({
     };
   }, []);
   useEffect(() => {
-    if (catalogMenuItems.length || plantMenuItems.length) return;
+    if (catalogMenuItems.length) return;
     sharedAPIJSON<{
       categories?: Array<{
         id: number;
@@ -605,31 +600,14 @@ export function StoreHeader({
           slug: item.slug,
           children: order(children.get(item.id) || []).map(branch),
         });
-        const catalog = order(children.get(null) || []).map(branch);
-        const plantRoot = categories.find(
-          (item) => item.parentId == null && /растен/i.test(item.name),
-        );
-        const leaves = (parentId: number): typeof categories =>
-          order(children.get(parentId) || []).flatMap((item) =>
-            children.get(item.id)?.length ? leaves(item.id) : [item],
-          );
-        setFallbackMenus({
-          catalog,
-          plants: plantRoot
-            ? order(leaves(plantRoot.id)).map((item) => ({
-                id: item.id,
-                label: item.name,
-                slug: item.slug,
-              }))
-            : [],
-        });
+        setFallbackMenus(order(children.get(null) || []).map(branch));
         setMenuState("ready");
       })
       .catch(() => {
-        setFallbackMenus({ catalog: [], plants: [] });
+        setFallbackMenus([]);
         setMenuState("error");
       });
-  }, [catalogMenuItems.length, plantMenuItems.length, menuReload]);
+  }, [catalogMenuItems.length, menuReload]);
 
   useEffect(() => {
     headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => {
@@ -637,9 +615,7 @@ export function StoreHeader({
     });
   }, [query]);
 
-  const resolvedCatalogMenuItems = catalogMenuItems.length
-    ? catalogMenuItems
-    : fallbackMenus.catalog;
+  const resolvedCatalogMenuItems = catalogMenuItems.length ? catalogMenuItems : fallbackMenus;
   const categoryPick = onHomeCategoryPick;
   const closeHeaderMenus = () =>
     headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => {
@@ -655,7 +631,6 @@ export function StoreHeader({
   const cartLabel = `Корзина, товаров: ${cart}`;
   return (
     <>
-      <div className="announcement" hidden />
       <header
         className="header store-header"
         ref={headerRef}
