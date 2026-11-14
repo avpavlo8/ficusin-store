@@ -56,6 +56,21 @@ for (const [method,path] of [["POST","/orders"],["POST","/auth/request-code"],["
   const documented=spec.paths[path][method.toLowerCase()].requestBody.content["application/json"].schema;
   assert.deepEqual(Object.keys(documented.properties).sort(),Object.keys(source.properties).sort(),`Request fields drifted: ${method} ${path}`);
 }
+// These current write DTOs intentionally reject the retired top-level aliases.
+// Compare names only: optional Go fields must not become universally required.
+function checkCurrentInputFields(name, schema) {
+  assert(inventory.schemas[name]?.properties, `Missing Go request schema: ${name}`);
+  assert.equal(schema.additionalProperties, false, `Unknown request fields must be rejected: ${name}`);
+  assert.deepEqual(Object.keys(schema.properties).sort(), Object.keys(inventory.schemas[name].properties).sort(), `Request fields drifted: ${name}`);
+}
+for (const [name, retired] of [["admin.ProductCreate", "image"], ["admin.ProductUpdate", "priceMinor"], ["admin.VariantEdit", "stock"], ["procurement.SalesLink", "sabyId"]]) {
+  const schema = spec.components.schemas[name];
+  checkCurrentInputFields(name, schema);
+  // Regression fixtures must fail when obsolete aliases reappear in the contract.
+  const obsolete = { ...schema, properties: { ...schema.properties, [retired]: { type: "string" } } };
+  assert.throws(() => checkCurrentInputFields(name, obsolete), /Request fields drifted:/);
+  assert.throws(() => checkCurrentInputFields(name, { ...schema, additionalProperties: true }), /Unknown request fields must be rejected:/);
+}
 const order = spec.paths["/orders"].post.requestBody.content["application/json"].schema;
 assert(order.required.includes("consent") && order.required.includes("offerAccepted"), "Independent checkout confirmations required");
 const refund = spec.paths["/admin/orders/{id}/refund"].post;

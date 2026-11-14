@@ -185,7 +185,7 @@ func main() {
 		os.Exit(1)
 	}
 	shopSettings := settings.NewService(pool, logger)
-	orderService := order.NewService(pool, cdekClient, telegramClient, shopSettings, logger)
+	orderService := order.NewService(pool, cdekClient, shopSettings, logger)
 	notificationWorker := order.NewNotificationWorker(pool, telegramClient, logger)
 	pushService, err := notify.NewService(
 		pool, cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Subject, logger,
@@ -362,7 +362,7 @@ func main() {
 		Password: cfg.Mail.Password,
 		From:     cfg.Mail.From,
 		FromName: cfg.Mail.FromName,
-	}, logger), logger).Run(ctx)
+	}), logger).Run(ctx)
 	if photoStorage.Configured() {
 		go photos.NewMirror(photos.NewPostgresStore(pool), photoStorage, logger).Run(ctx)
 	} else {

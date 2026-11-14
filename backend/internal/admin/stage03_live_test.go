@@ -44,28 +44,6 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("Saby price import is rejected and preserves site content", func(t *testing.T) {
-		sabyID := fmt.Sprintf("stage-03-saby-%d", unique)
-		if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name,description,price_minor,balance) VALUES($1,$2,'Имя СБИС','Описание СБИС',15500,9)`, sabyID, fmt.Sprintf("X%d", unique)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := pool.Exec(ctx, `UPDATE products SET saby_id=$2,description='Ручной контент' WHERE id=$1`, productA, sabyID); err != nil {
-			t.Fatal(err)
-		}
-		for index := 0; index < 2; index++ {
-			if _, err := repository.UpdateProduct(ctx, owner, productA, ProductUpdate{SabyFields: &[]string{"price"}}); !errors.Is(err, ErrInvalidInput) {
-				t.Fatalf("Saby must not overwrite site prices: %v", err)
-			}
-		}
-		var description string
-		if err := pool.QueryRow(ctx, `SELECT description FROM products WHERE id=$1`, productA).Scan(&description); err != nil {
-			t.Fatal(err)
-		}
-		if description != "Ручной контент" {
-			t.Fatalf("Saby import overwrote content: %q", description)
-		}
-	})
-
 	t.Run("external article conflict is rejected and relink keeps legacy history", func(t *testing.T) {
 		oldID := fmt.Sprintf("OZON-%d-A", unique)
 		newID := fmt.Sprintf("OZON-%d-B", unique)

@@ -50,9 +50,6 @@ type SalesLink struct {
 	Channel    string `json:"channel"`
 	ExternalID string `json:"externalId"`
 	VariantID  int64  `json:"variantId"`
-	// SabyID remains accepted for one compatible release. New clients send
-	// VariantID and never bind marketplace history directly to a remote ID.
-	SabyID string `json:"sabyId"`
 }
 
 // SalesLinkResult — что изменилось после связывания.
@@ -153,9 +150,8 @@ func (service *Service) SearchLinkableNomenclature(ctx context.Context, query st
 func (service *Service) LinkSalesProduct(ctx context.Context, actor Actor, input SalesLink) (SalesLinkResult, error) {
 	input.Channel = strings.TrimSpace(input.Channel)
 	input.ExternalID = strings.TrimSpace(input.ExternalID)
-	input.SabyID = strings.TrimSpace(input.SabyID)
-	if !oneOf(input.Channel, manualSalesChannels...) || input.ExternalID == "" || (input.VariantID <= 0 && input.SabyID == "") ||
-		len(input.ExternalID) > 200 || len(input.SabyID) > 200 {
+	if !oneOf(input.Channel, manualSalesChannels...) || input.ExternalID == "" || input.VariantID <= 0 ||
+		len(input.ExternalID) > 200 {
 		return SalesLinkResult{}, ErrInvalidInput
 	}
 	// У Wildberries внешний код продажи — это nmID, и хранится он числом.
@@ -398,7 +394,10 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 // вернулась бы в расчёт лишь после следующей глубокой выгрузки, а более
 // старая — никогда.
 func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, input SalesLink) (SalesLinkResult, error) {
-	result := SalesLinkResult{Channel: input.Channel, ExternalID: input.ExternalID, SabyID: input.SabyID}
+	if input.VariantID <= 0 {
+		return SalesLinkResult{}, ErrInvalidInput
+	}
+	result := SalesLinkResult{Channel: input.Channel, ExternalID: input.ExternalID}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return SalesLinkResult{}, fmt.Errorf("begin sales link: %w", err)
@@ -409,10 +408,8 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	err = tx.QueryRow(ctx, `
 		SELECT product_id, variant_id, saby_id, name
 		FROM canonical_product_directory
-		WHERE active AND (($1 > 0 AND variant_id = $1) OR ($1 <= 0 AND saby_id = $2))
-		ORDER BY ($1 > 0 AND variant_id = $1) DESC, variant_id
-		LIMIT 1
-	`, input.VariantID, input.SabyID).Scan(&productID, &variantID, &result.SabyID, &result.SabyName)
+		WHERE active AND variant_id=$1
+	`, input.VariantID).Scan(&productID, &variantID, &result.SabyID, &result.SabyName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SalesLinkResult{}, ErrNotFound
 	}

@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -353,6 +356,20 @@ func (handlers adminHandlers) updateProduct(response http.ResponseWriter, reques
 	if !ok {
 		return
 	}
+	var fields map[string]json.RawMessage
+	if decodeJSON(request, &fields) != nil || fields == nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		return
+	}
+	if !validateManagerProductFields(response, actor, fields) {
+		return
+	}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		return
+	}
+	request.Body = io.NopCloser(bytes.NewReader(raw))
 	var update admin.ProductUpdate
 	if decodeJSON(request, &update) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
@@ -360,14 +377,6 @@ func (handlers adminHandlers) updateProduct(response http.ResponseWriter, reques
 	}
 	if update.Status != nil && !slices.Contains([]string{"draft", "published", "archived"}, *update.Status) {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный статус товара"})
-		return
-	}
-	if update.PriceMinor != nil && *update.PriceMinor < 0 {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Цена не может быть отрицательной"})
-		return
-	}
-	if update.WholesaleMinQty != nil && *update.WholesaleMinQty < 1 {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Минимум для опта должен быть не меньше 1"})
 		return
 	}
 	if update.CatalogSection != nil && !slices.Contains([]string{"plants", "soil", "fertilizer", "pots", "accessories"}, *update.CatalogSection) {

@@ -233,7 +233,6 @@ export type Product = {
   packageHeightCm?: number;
   packageWeightGrams?: number;
   wholesaleMinQty: number;
-  overrideFields: string[];
   sabyFields: string[];
   sabyCode: string;
   catalogSection: string;

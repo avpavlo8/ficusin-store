@@ -37,7 +37,7 @@ func (stub *salesLinkStub) SearchLinkableNomenclature(_ context.Context, query s
 func (stub *salesLinkStub) LinkSalesProduct(_ context.Context, _ procurement.Actor, input procurement.SalesLink) (procurement.SalesLinkResult, error) {
 	stub.links = append(stub.links, input)
 	return procurement.SalesLinkResult{
-		Channel: input.Channel, ExternalID: input.ExternalID, SabyID: input.SabyID,
+		Channel: input.Channel, ExternalID: input.ExternalID, SabyID: "S-1",
 		SabyName: "Фикус Бенджамина D12", LinkedRows: 5, LinkedUnits: 7, Remaining: 12,
 	}, nil
 }
@@ -86,14 +86,14 @@ func TestSalesLinkCarriesTheDecisionToTheService(t *testing.T) {
 	service := &salesLinkStub{}
 	request := adminRequest(
 		http.MethodPost, "/api/v1/admin/procurement/sales/link",
-		`{"channel":"ozon","externalId":"fikus-benjamina-12","sabyId":"S-1"}`,
+		`{"channel":"ozon","externalId":"fikus-benjamina-12","variantId":42}`,
 	)
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusOK, response.Body.String())
 	}
-	if len(service.links) != 1 || service.links[0].SabyID != "S-1" || service.links[0].ExternalID != "fikus-benjamina-12" {
+	if len(service.links) != 1 || service.links[0].VariantID != 42 || service.links[0].ExternalID != "fikus-benjamina-12" {
 		t.Fatalf("links = %+v", service.links)
 	}
 	// Экран показывает, сколько продаж вернулось в расчёт, поэтому счётчики
@@ -104,13 +104,26 @@ func TestSalesLinkCarriesTheDecisionToTheService(t *testing.T) {
 	}
 }
 
+func TestSalesLinkRejectsRetiredRemoteIdentityInput(t *testing.T) {
+	t.Parallel()
+	for _, body := range []string{`{"channel":"ozon","externalId":"fikus-12","sabyId":"S-1"}`, `{"channel":"ozon","externalId":"fikus-12","variantId":42,"sabyId":"S-1"}`} {
+		service := &salesLinkStub{}
+		request := adminRequest(http.MethodPost, "/api/v1/admin/procurement/sales/link", body)
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), procurementDependencies(service, admin.RoleOwner)).ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest || len(service.links) != 0 {
+			t.Fatalf("retired remote-id alias reached linking: %d/%v", response.Code, service.links)
+		}
+	}
+}
+
 func TestSalesLinkAnswersHonestlyWithoutSupport(t *testing.T) {
 	t.Parallel()
 	router := NewRouter(discardLogger(), procurementDependencies(&procurementStub{}, admin.RoleOwner))
 	for _, request := range []*http.Request{
 		adminRequest(http.MethodGet, "/api/v1/admin/procurement/sales/unlinked?channel=ozon", ""),
 		adminRequest(http.MethodGet, "/api/v1/admin/procurement/sales/nomenclature?q=фикус", ""),
-		adminRequest(http.MethodPost, "/api/v1/admin/procurement/sales/link", `{"channel":"ozon","externalId":"X","sabyId":"S-1"}`),
+		adminRequest(http.MethodPost, "/api/v1/admin/procurement/sales/link", `{"channel":"ozon","externalId":"X","variantId":42}`),
 	} {
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, request)
@@ -122,7 +135,7 @@ func TestSalesLinkAnswersHonestlyWithoutSupport(t *testing.T) {
 
 func TestSalesLinkClosedForUnknownRole(t *testing.T) {
 	t.Parallel()
-	request := adminRequest(http.MethodPost, "/api/v1/admin/procurement/sales/link", `{"channel":"ozon","externalId":"X","sabyId":"S-1"}`)
+	request := adminRequest(http.MethodPost, "/api/v1/admin/procurement/sales/link", `{"channel":"ozon","externalId":"X","variantId":42}`)
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), procurementDependencies(&salesLinkStub{}, "unknown")).ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden {

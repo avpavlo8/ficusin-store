@@ -32,7 +32,6 @@ type Notifier interface {
 type Service struct {
 	pool         *pgxpool.Pool
 	cdek         CDEK
-	notifier     Notifier
 	settings     settingsReader
 	logger       *slog.Logger
 	shipmentWake func()
@@ -171,14 +170,12 @@ func mergeItems(requested []ItemInput) []ItemInput {
 func NewService(
 	pool *pgxpool.Pool,
 	cdek CDEK,
-	notifier Notifier,
 	shopSettings settingsReader,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		pool:     pool,
 		cdek:     cdek,
-		notifier: notifier,
 		settings: shopSettings,
 		logger:   logger,
 	}

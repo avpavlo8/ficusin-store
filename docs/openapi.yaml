@@ -4048,7 +4048,7 @@ paths:
           description: Successful response. Payload and business rules are implemented by the source handler.
         default:
           $ref: "#/components/responses/ValidationError"
-      x-source: backend/internal/httpapi/admin_product_update_safe.go#safeAdminProductUpdateHandler
+      x-source: backend/internal/httpapi/admin.go#updateProduct
       tags:
         - Administration
       security:
@@ -4056,7 +4056,9 @@ paths:
       x-permissions:
         - products.edit
       description: >-
-        Requires products.edit. The owner can submit variants with {id, remove: true}
+        Requires products.edit. SKU fields are updated only through variants; media use the
+        dedicated media API. Unknown fields are rejected. Managers may change only variant
+        id, label and attributes. The owner can submit variants with {id, remove: true}
         without other variant fields. Within the same transaction, unlinked variants are
         deleted; variants with stock, reservations, orders, Saby links or historical
         references are archived. Removing the last active variant makes a published
@@ -4066,20 +4068,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: true
-              properties:
-                variants:
-                  type: array
-                  items:
-                    type: object
-                    additionalProperties: true
-                    properties:
-                      id:
-                        type: integer
-                      remove:
-                        type: boolean
-                        description: Owner-only deletion or archival after checking current links.
+              $ref: "#/components/schemas/admin.ProductUpdate"
       parameters:
         - in: path
           name: id
@@ -7413,15 +7402,25 @@ components:
       properties:
         creationId:
           type: string
-          pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          description: Optional persisted draft UUID, scoped to the authenticated administrator. Replays return the same product without creating another product, SKU, price or photo. The receipt commits atomically with creation; deleting the product leaves a tombstone. Omit for legacy non-idempotent clients.
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+          description: Optional persisted draft UUID, scoped to the authenticated administrator. Replays return the same
+            product without creating another product, SKU, price or photo. The receipt commits atomically with
+            creation; deleting the product leaves a tombstone. Omit for legacy non-idempotent clients.
         variantAttributes:
           type: object
           additionalProperties: true
-          description: Initial category-scoped attributes for the first SKU, validated with the same schema as editing. Includes summer/winter packaging and weight; unknown attributes and invalid types are rejected. Decimal values are preserved.
+          description: Initial category-scoped attributes for the first SKU, validated with the same schema as editing.
+            Includes summer/winter packaging and weight; unknown attributes and invalid types are rejected.
+            Decimal values are preserved.
           properties:
-            pot_diameter_cm: { type: number, exclusiveMinimum: 0, maximum: 500 }
-            height_cm: { type: number, exclusiveMinimum: 0, maximum: 3000 }
+            pot_diameter_cm:
+              type: number
+              exclusiveMinimum: 0
+              maximum: 500
+            height_cm:
+              type: number
+              exclusiveMinimum: 0
+              maximum: 3000
         attributes:
           additionalProperties: {}
           type: object
@@ -7433,43 +7432,188 @@ components:
             - type: "null"
         description:
           type: string
-        heightCm:
-          anyOf:
-            - type: integer
-            - type: "null"
-        image:
-          type: string
         latinName:
           type: string
         name:
           type: string
-        packageHeightCm:
-          anyOf:
-            - type: integer
-            - type: "null"
-        packageLengthCm:
-          anyOf:
-            - type: integer
-            - type: "null"
-        packageWeightGrams:
-          anyOf:
-            - type: integer
-            - type: "null"
-        packageWidthCm:
-          anyOf:
-            - type: integer
-            - type: "null"
-        potDiameterCm:
-          anyOf:
-            - type: integer
-            - type: "null"
         priceMinor:
           type: integer
         shortDescription:
           type: string
-        stock:
-          type: integer
       type: object
+      additionalProperties: false
+    admin.ProductUpdate:
+      properties:
+        attributes:
+          additionalProperties: {}
+          type: object
+        careInstructions:
+          anyOf:
+            - type: string
+            - type: "null"
+        careLevel:
+          anyOf:
+            - type: string
+            - type: "null"
+        catalogSection:
+          anyOf:
+            - type: string
+            - type: "null"
+        categoryId:
+          anyOf:
+            - type: integer
+            - type: "null"
+        clearCategory:
+          type: boolean
+        description:
+          anyOf:
+            - type: string
+            - type: "null"
+        featured:
+          anyOf:
+            - type: boolean
+            - type: "null"
+        growthHabit:
+          anyOf:
+            - type: string
+            - type: "null"
+        heightClass:
+          anyOf:
+            - type: string
+            - type: "null"
+        importantWarnings:
+          anyOf:
+            - items:
+                type: string
+              type: array
+            - type: "null"
+        latinName:
+          anyOf:
+            - type: string
+            - type: "null"
+        lightLevel:
+          anyOf:
+            - type: string
+            - type: "null"
+        name:
+          anyOf:
+            - type: string
+            - type: "null"
+        passport:
+          anyOf:
+            - $ref: "#/components/schemas/catalog.PlantPassport"
+            - type: "null"
+        petSafety:
+          anyOf:
+            - type: string
+            - type: "null"
+        placement:
+          anyOf:
+            - type: string
+            - type: "null"
+        plantKind:
+          anyOf:
+            - type: string
+            - type: "null"
+        shortDescription:
+          anyOf:
+            - type: string
+            - type: "null"
+        status:
+          anyOf:
+            - type: string
+            - type: "null"
+        variants:
+          items:
+            $ref: "#/components/schemas/admin.VariantEdit"
+          type: array
+        watering:
+          anyOf:
+            - type: string
+            - type: "null"
+      type: object
+      additionalProperties: false
+    catalog.PlantPassport:
+      properties:
+        careDifficulty:
+          type: string
+        faq:
+          items:
+            $ref: "#/components/schemas/catalog.FAQItem"
+          type: array
+        fertilizer:
+          type: string
+        growthRate:
+          type: string
+        humidity:
+          type: string
+        lighting:
+          type: string
+        matureSize:
+          type: string
+        origin:
+          type: string
+        pests:
+          type: string
+        problems:
+          type: string
+        repotting:
+          type: string
+        soil:
+          type: string
+        temperature:
+          type: string
+        toxicity:
+          type: string
+        watering:
+          type: string
+      type: object
+    catalog.FAQItem:
+      properties:
+        answer:
+          type: string
+        question:
+          type: string
+      type: object
+    admin.VariantEdit:
+      properties:
+        active:
+          anyOf:
+            - type: boolean
+            - type: "null"
+        archived:
+          anyOf:
+            - type: boolean
+            - type: "null"
+        attributes:
+          additionalProperties: {}
+          type: object
+        externalIds:
+          anyOf:
+            - items:
+                $ref: "#/components/schemas/admin.ExternalID"
+              type: array
+            - type: "null"
+        id:
+          type: integer
+        label:
+          anyOf:
+            - type: string
+            - type: "null"
+        priceMinor:
+          anyOf:
+            - type: integer
+            - type: "null"
+        remove:
+          type: boolean
+          description: Owner-only deletion or archival after checking current links. Managers can edit only id, label
+            and attributes.
+        wholesaleMinQty:
+          anyOf:
+            - type: integer
+            - type: "null"
+      type: object
+      additionalProperties: false
     admin.PublishedMergeRequest:
       properties:
         expectedSkus:
@@ -8356,15 +8500,16 @@ components:
           type: string
       type: object
     procurement.SalesLink:
+      additionalProperties: false
+      required: [variantId]
       properties:
         channel:
           type: string
         externalId:
           type: string
-        sabyId:
-          type: string
         variantId:
           type: integer
+          minimum: 1
       type: object
     procurement.SupplierCreate:
       properties:

@@ -12,7 +12,7 @@ func validateManagerProductFields(response http.ResponseWriter, actor admin.Acto
 		return true
 	}
 	allowed := map[string]bool{}
-	for _, key := range []string{"variants", "name", "latinName", "shortDescription", "description", "careInstructions", "status", "featured", "catalogSection", "plantKind", "lightLevel", "watering", "heightClass", "careLevel", "placement", "petSafety", "growthHabit", "variantLabel", "heightCm", "potDiameterCm", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightGrams", "categoryId", "clearCategory", "passport", "importantWarnings", "attributes"} {
+	for _, key := range []string{"variants", "name", "latinName", "shortDescription", "description", "careInstructions", "status", "featured", "catalogSection", "plantKind", "lightLevel", "watering", "heightClass", "careLevel", "placement", "petSafety", "growthHabit", "categoryId", "clearCategory", "passport", "importantWarnings", "attributes"} {
 		allowed[key] = true
 	}
 	for key := range fields {

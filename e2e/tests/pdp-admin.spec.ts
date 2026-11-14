@@ -23,7 +23,6 @@ const adminProduct = {
   sku: "1",
   variantLabel: "D12",
   wholesaleMinQty: 1,
-  overrideFields: [],
   sabyFields: ["stock"],
   sabyCode: "X100",
   catalogSection: "plants",

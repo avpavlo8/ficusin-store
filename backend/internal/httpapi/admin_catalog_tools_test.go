@@ -52,43 +52,35 @@ func (stub *catalogToolRepositoryStub) SetPrimaryProductMedia(context.Context, a
 	return nil
 }
 
-func TestProductUpdateDoesNotReplaceGalleryWhenPrimaryImageIsUnchanged(t *testing.T) {
+func TestProductUpdateRejectsRetiredFirstVariantAliases(t *testing.T) {
 	t.Parallel()
-
-	repository := newCatalogToolRepositoryStub()
-	repository.products = []admin.Product{{ID: 7, Slug: "fikus", Image: "/existing.jpg"}}
-	request := adminRequest(http.MethodPatch, "/api/v1/admin/products/7", `{"description":"Новое описание","image":"/existing.jpg"}`)
-	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
-	}
-	if len(repository.updates) != 1 {
-		t.Fatalf("update calls = %d, want 1", len(repository.updates))
-	}
-	if repository.updates[0].Image != nil {
-		t.Fatalf("unchanged image must be removed from update, got %q", *repository.updates[0].Image)
-	}
-	if repository.updates[0].Description == nil || *repository.updates[0].Description != "Новое описание" {
-		t.Fatalf("description was lost: %+v", repository.updates[0].Description)
+	for _, key := range []string{"priceMinor", "variantLabel", "heightCm", "potDiameterCm", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightGrams", "wholesaleMinQty", "stock", "sabyFields", "externalIds", "image"} {
+		for _, role := range []string{admin.RoleOwner, admin.RoleManager} {
+			repository := newCatalogToolRepositoryStub()
+			request := adminRequest(http.MethodPatch, "/api/v1/admin/products/7", `{"description":"Do not partially save","`+key+`":null}`)
+			response := httptest.NewRecorder()
+			NewRouter(discardLogger(), adminDependencies(repository, role, "staff@example.com")).ServeHTTP(response, request)
+			want := http.StatusBadRequest
+			if role == admin.RoleManager {
+				want = http.StatusForbidden
+			}
+			if response.Code != want || len(repository.updates) != 0 {
+				t.Fatalf("%s/%s legacy field accepted: %d %v", role, key, response.Code, repository.updates)
+			}
+		}
 	}
 }
 
-func TestProductUpdateKeepsIntentionalPrimaryImageChange(t *testing.T) {
+func TestProductCreateRejectsRetiredDimensionStockAndImageAliases(t *testing.T) {
 	t.Parallel()
-
-	repository := newCatalogToolRepositoryStub()
-	repository.products = []admin.Product{{ID: 7, Slug: "fikus", Image: "/existing.jpg"}}
-	request := adminRequest(http.MethodPatch, "/api/v1/admin/products/7", `{"image":"/new.jpg"}`)
-	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
-	}
-	if len(repository.updates) != 1 || repository.updates[0].Image == nil || *repository.updates[0].Image != "/new.jpg" {
-		t.Fatalf("intentional image replacement was lost: %+v", repository.updates)
+	for _, key := range []string{"heightCm", "potDiameterCm", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightGrams", "stock", "image"} {
+		repository := newCatalogToolRepositoryStub()
+		request := adminRequest(http.MethodPost, "/api/v1/admin/products", `{"name":"New draft","priceMinor":149099,"`+key+`":null}`)
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest || len(repository.createdProducts) != 0 {
+			t.Fatalf("%s legacy field accepted: %d", key, response.Code)
+		}
 	}
 }
 

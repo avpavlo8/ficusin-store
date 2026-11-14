@@ -127,7 +127,7 @@ func PriceFormula(ctx context.Context, q PriceQuery, variant int64, channel stri
 		return 0, 0, false, err
 	}
 	var height, pack, logistics, returns, market, tax, reserve, strike float64
-	err = q.QueryRow(ctx, `SELECT COALESCE(v.height_cm,0),s.package_rub::float8,s.marketplace_logistics_per_cm::float8,s.return_loss_rate::float8,s.marketplace_cost_rate::float8,s.tax_rate::float8,s.reserve_rate::float8,s.marketplace_strike_markup::float8 FROM product_variants v CROSS JOIN procurement_pricing_settings s WHERE v.id=$1 AND s.id=1`, variant).Scan(&height, &pack, &logistics, &returns, &market, &tax, &reserve, &strike)
+	err = q.QueryRow(ctx, `SELECT COALESCE(variant_numeric_attribute(v.id,'height_cm'),0)::float8,s.package_rub::float8,s.marketplace_logistics_per_cm::float8,s.return_loss_rate::float8,s.marketplace_cost_rate::float8,s.tax_rate::float8,s.reserve_rate::float8,s.marketplace_strike_markup::float8 FROM product_variants v CROSS JOIN procurement_pricing_settings s WHERE v.id=$1 AND s.id=1`, variant).Scan(&height, &pack, &logistics, &returns, &market, &tax, &reserve, &strike)
 	if err != nil {
 		return 0, 0, false, err
 	}

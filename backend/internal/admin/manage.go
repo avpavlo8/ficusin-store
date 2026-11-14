@@ -89,7 +89,7 @@ func (repository *PostgresRepository) PublishDraftProducts(ctx context.Context, 
 			result.Blocked = append(result.Blocked, BulkPublishBlocked{ProductID: id, Name: name, Reason: reason})
 			continue
 		}
-		if _, err = tx.Exec(ctx, `UPDATE products SET status='published',override_fields=ARRAY(SELECT DISTINCT unnest(override_fields||ARRAY['status']::text[])),updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE products SET status='published',updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id); err != nil {
 			return result, fmt.Errorf("publish product %d: %w", id, err)
 		}
 		result.Published = append(result.Published, id)
@@ -509,11 +509,10 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			COALESCE(pv.base_price_minor, 0)::DOUBLE PRECISION / 100,
 			COALESCE((SELECT SUM(GREATEST(available_qty - reserved_qty, 0))
 				FROM inventory WHERE variant_id = pv.id), 0)::INTEGER,
-			COALESCE(pv.sku, ''), COALESCE(pv.label, ''), pv.height_cm,
-			pv.pot_diameter_cm, shipping_package_dimension(pv.id, 'package_length_cm')::INTEGER, shipping_package_dimension(pv.id, 'package_width_cm')::INTEGER,
+			COALESCE(pv.sku, ''), COALESCE(pv.label, ''), variant_numeric_attribute(pv.id,'height_cm')::INTEGER,
+			variant_numeric_attribute(pv.id,'pot_diameter_cm')::INTEGER, shipping_package_dimension(pv.id, 'package_length_cm')::INTEGER, shipping_package_dimension(pv.id, 'package_width_cm')::INTEGER,
 			shipping_package_dimension(pv.id, 'package_height_cm')::INTEGER, variant_numeric_attribute(pv.id,'package_weight_grams')::INTEGER,
 			COALESCE(pv.wholesale_min_qty, 1),
-			ARRAY(SELECT DISTINCT unnest(p.override_fields || COALESCE(pv.override_fields, '{}'))),
 			p.saby_fields,
 			COALESCE((SELECT source.code FROM saby_nomenclature source WHERE source.saby_id = p.saby_id), ''),
 			p.saby_updated_at, p.category_id, p.plant_passport, p.important_warnings,
@@ -597,7 +596,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.GrowthHabit, &item.Image, &item.Price, &item.Stock, &item.SKU, &item.VariantLabel, &item.HeightCM,
 			&item.PotDiameterCM, &item.PackageLengthCM, &item.PackageWidthCM,
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
-			&item.OverrideFields, &item.SabyFields, &item.SabyCode,
+			&item.SabyFields, &item.SabyCode,
 			&item.SabyUpdatedAt, &item.CategoryID, &item.Passport, &item.ImportantWarnings,
 			&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues, &item.VariantCount, &item.StockUpdatedAt, &item.UpdatedAt, &item.TotalStock, &item.MinPrice, &item.MaxPrice, &item.VariantsReady, &variantTasks); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
@@ -685,27 +684,18 @@ func (repository *PostgresRepository) UpdateProduct(
 	if err != nil {
 		return Product{}, err
 	}
-	var priceVariantID, oldPriceMinor int64
-	if update.PriceMinor != nil {
-		if err := tx.QueryRow(ctx, `SELECT id,base_price_minor FROM product_variants WHERE product_id=$1 ORDER BY is_active DESC,id LIMIT 1 FOR UPDATE`, id).Scan(&priceVariantID, &oldPriceMinor); err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return Product{}, err
-		}
-	}
 	if err := validateManagerAttributes(ctx, tx, actor, update.Attributes); err != nil {
 		return Product{}, err
 	}
-	productFields := changedProductFields(update)
-	variantFields := changedVariantFields(update)
 	_, err = tx.Exec(ctx, `
 		UPDATE products SET name = COALESCE($2, name), latin_name = COALESCE($3, latin_name),
 			short_description = COALESCE($4, short_description),
 			description = COALESCE($5, description),
 			care_instructions = COALESCE($6, care_instructions),
 			status = COALESCE($7, status), is_featured = COALESCE($8, is_featured <> 0)::int,
-			override_fields = ARRAY(SELECT DISTINCT unnest(override_fields || $9::text[])),
 			updated_at = CURRENT_TIMESTAMP WHERE id = $1
 	`, id, update.Name, update.LatinName, update.ShortDescription, update.Description,
-		update.CareInstructions, update.Status, update.Featured, productFields)
+		update.CareInstructions, update.Status, update.Featured)
 	if err != nil {
 		return Product{}, fmt.Errorf("update product: %w", err)
 	}
@@ -720,98 +710,18 @@ func (repository *PostgresRepository) UpdateProduct(
 			placement = CASE WHEN $8::text IS NULL THEN placement ELSE NULLIF($8, '') END,
 			pet_safety = CASE WHEN $9::text IS NULL THEN pet_safety ELSE NULLIF($9, '') END,
 			growth_habit = CASE WHEN $10::text IS NULL THEN growth_habit ELSE NULLIF($10, '') END,
-			category_id = CASE WHEN $13 THEN NULL ELSE COALESCE($11, category_id) END,
-			saby_fields = COALESCE($12, saby_fields),
+			category_id = CASE WHEN $12 THEN NULL ELSE COALESCE($11, category_id) END,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE id = $1
 	`, id, update.CatalogSection, update.PlantKind, update.LightLevel, update.Watering,
 		update.HeightClass, update.CareLevel, update.Placement, update.PetSafety,
-		update.GrowthHabit, update.CategoryID, update.SabyFields, update.ClearCategory)
+		update.GrowthHabit, update.CategoryID, update.ClearCategory)
 	if err != nil {
 		return Product{}, fmt.Errorf("update product attributes: %w", err)
 	}
 	_, err = tx.Exec(ctx, `UPDATE products SET plant_passport=COALESCE($2, plant_passport), important_warnings=COALESCE($3, important_warnings), updated_at=CURRENT_TIMESTAMP WHERE id=$1`, id, update.Passport, update.ImportantWarnings)
 	if err != nil {
 		return Product{}, fmt.Errorf("update plant passport: %w", err)
-	}
-	_, err = tx.Exec(ctx, `
-		UPDATE product_variants SET label = COALESCE($2, label),
-			base_price_minor = COALESCE($3, base_price_minor),
-			height_cm = COALESCE($4, height_cm), pot_diameter_cm = COALESCE($5, pot_diameter_cm),
-			package_length_cm = COALESCE($6, package_length_cm),
-			package_width_cm = COALESCE($7, package_width_cm),
-			package_height_cm = COALESCE($8, package_height_cm),
-			package_weight_grams = COALESCE($9, package_weight_grams),
-			wholesale_min_qty = COALESCE($10, wholesale_min_qty),
-			override_fields = ARRAY(SELECT DISTINCT unnest(override_fields || $11::text[])),
-			updated_at = CURRENT_TIMESTAMP
-		WHERE id = (SELECT id FROM product_variants WHERE product_id = $1 ORDER BY is_active DESC, id LIMIT 1)
-	`, id, update.VariantLabel, update.PriceMinor, update.HeightCM, update.PotDiameterCM,
-		update.PackageLengthCM, update.PackageWidthCM, update.PackageHeightCM,
-		update.PackageWeightGrams, update.WholesaleMinQty, variantFields)
-	if err != nil {
-		return Product{}, fmt.Errorf("update product variant: %w", err)
-	}
-
-	// Габариты живут в PIM. Миграция 061 сделала variant_attribute_values
-	// единственным источником, и доставка читает уже оттуда, поэтому та же
-	// правка обязана дойти до атрибутов — иначе старая форма перестала бы
-	// влиять на что-либо вообще. Колонки выше обновляются только ради
-	// отката этого релиза.
-	var legacyVariantID int64
-	if err := tx.QueryRow(ctx, `SELECT COALESCE((SELECT id FROM product_variants WHERE product_id = $1 ORDER BY is_active DESC, id LIMIT 1), 0)`, id).Scan(&legacyVariantID); err != nil {
-		return Product{}, fmt.Errorf("resolve product variant: %w", err)
-	}
-	if legacyVariantID > 0 {
-		dimensions := map[string]any{}
-		if update.HeightCM != nil {
-			dimensions["height_cm"] = *update.HeightCM
-		}
-		if update.PotDiameterCM != nil {
-			dimensions["pot_diameter_cm"] = *update.PotDiameterCM
-		}
-		if update.PackageLengthCM != nil {
-			dimensions["package_length_cm"] = *update.PackageLengthCM
-		}
-		if update.PackageWidthCM != nil {
-			dimensions["package_width_cm"] = *update.PackageWidthCM
-		}
-		if update.PackageHeightCM != nil {
-			dimensions["package_height_cm"] = *update.PackageHeightCM
-		}
-		if update.PackageWeightGrams != nil {
-			dimensions["package_weight_grams"] = *update.PackageWeightGrams
-		}
-		if len(dimensions) > 0 {
-			if err := saveVariantPIMValues(ctx, tx, id, legacyVariantID, dimensions); err != nil {
-				return Product{}, err
-			}
-		}
-	}
-	// Остаток правим руками только у товаров, которым СБИС его не приносит:
-	// иначе ближайший обмен молча вернёт прежнее число, и правка исчезнет.
-	if update.Stock != nil {
-		if *update.Stock > 0 {
-			var unlinked bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants WHERE product_id=$1 AND NULLIF(BTRIM(saby_id),'') IS NULL)`, id).Scan(&unlinked); err != nil {
-				return Product{}, err
-			}
-			if unlinked {
-				return Product{}, fmt.Errorf("%w: остаток появится после связи варианта с СБИС и синхронизации склада", ErrInvalidInput)
-			}
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO inventory (warehouse_id, variant_id, available_qty, reserved_qty, synced_at)
-			SELECT w.id, pv.id, $2, 0, TIMESTAMPTZ '1970-01-01 00:00:00+00'
-			FROM product_variants pv
-			JOIN products p ON p.id = pv.product_id
-			CROSS JOIN (SELECT id FROM warehouses WHERE saby_id = 'saby-ryazan-main') w
-			WHERE pv.product_id = $1 AND NOT ('stock' = ANY(p.saby_fields))
-			ON CONFLICT (warehouse_id, variant_id) DO UPDATE SET
-				available_qty = EXCLUDED.available_qty
-		`, id, *update.Stock); err != nil {
-			return Product{}, fmt.Errorf("update product stock: %w", err)
-		}
 	}
 	if err := saveProductAttributes(ctx, tx, id, update.Attributes); err != nil {
 		return Product{}, err
@@ -848,45 +758,9 @@ func (repository *PostgresRepository) UpdateProduct(
 			}
 		}
 	}
-	if update.ExternalIDs != nil {
-		if err := replaceEditableExternalIDs(ctx, tx, id, *update.ExternalIDs); err != nil {
-			return Product{}, err
-		}
-	}
-	if update.Image != nil {
-		if strings.TrimSpace(*update.Image) != "" {
-			if _, err := tx.Exec(ctx, `UPDATE product_media SET is_primary=0 WHERE product_id=$1`, id); err != nil {
-				return Product{}, err
-			}
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO product_media(product_id, object_key, alt_text, sort_order, is_primary)
-				SELECT id, $2, name, COALESCE((SELECT MAX(sort_order)+1 FROM product_media WHERE product_id=$1),0), 1 FROM products WHERE id = $1
-			`, id, strings.TrimSpace(*update.Image)); err != nil {
-				return Product{}, err
-			}
-		} else {
-			if _, err := tx.Exec(ctx, `DELETE FROM product_media WHERE product_id=$1 AND is_primary<>0`, id); err != nil {
-				return Product{}, err
-			}
-			if _, err := tx.Exec(ctx, `UPDATE product_media SET is_primary=1 WHERE id=(SELECT id FROM product_media WHERE product_id=$1 ORDER BY sort_order,id LIMIT 1)`, id); err != nil {
-				return Product{}, err
-			}
-		}
-	}
 	after, err := productAuditData(ctx, tx, id)
 	if err != nil {
 		return Product{}, err
-	}
-	if update.PriceMinor != nil && priceVariantID > 0 {
-		var actualPrice int64
-		if err := tx.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, priceVariantID).Scan(&actualPrice); err != nil {
-			return Product{}, err
-		}
-		if actualPrice != oldPriceMinor {
-			if err := stageEditorPriceProposals(ctx, tx, actor, priceVariantID, actualPrice); err != nil {
-				return Product{}, err
-			}
-		}
 	}
 	if err := insertAudit(ctx, tx, actor, "product.update", "product", fmt.Sprint(id), before, after); err != nil {
 		return Product{}, err
@@ -895,50 +769,6 @@ func (repository *PostgresRepository) UpdateProduct(
 		return Product{}, err
 	}
 	return repository.productByID(ctx, id)
-}
-
-// replaceEditableExternalIDs retires omitted manager-owned mappings instead
-// of deleting them. Historical marketplace articles must keep resolving old
-// sales after somebody corrects a card in the editor.
-func replaceEditableExternalIDs(ctx context.Context, tx pgx.Tx, productID int64, mappings []ExternalID) error {
-	if _, err := tx.Exec(ctx, `UPDATE product_external_ids SET status='legacy',is_primary=FALSE,updated_at=CURRENT_TIMESTAMP WHERE product_id=$1 AND provider NOT IN ('ficusin','saby') AND NOT (provider='wildberries' AND id_type IN ('sku','nm_id')) AND status='active'`, productID); err != nil {
-		return fmt.Errorf("retire external mappings: %w", err)
-	}
-	for _, mapping := range mappings {
-		provider := strings.ToLower(strings.TrimSpace(mapping.Provider))
-		kind := strings.ToLower(strings.TrimSpace(mapping.Type))
-		external := strings.TrimSpace(mapping.ExternalID)
-		if provider == "ficusin" || provider == "saby" {
-			continue
-		}
-		if !safeMappingToken(provider) || !safeMappingToken(kind) || external == "" || len(external) > 240 {
-			return fmt.Errorf("%w: неверный внешний идентификатор", ErrInvalidInput)
-		}
-		tag, err := tx.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status,is_primary,source,last_seen_at)
-			SELECT $1,pv.id,$2,$3,$4,'active',NOT EXISTS(SELECT 1 FROM product_external_ids current WHERE current.variant_id=pv.id AND current.provider=$2 AND current.id_type=$3 AND current.status='active' AND current.is_primary),'manual',CURRENT_TIMESTAMP
-			FROM product_variants pv WHERE pv.product_id=$1 ORDER BY pv.is_active DESC,pv.id LIMIT 1
-			ON CONFLICT(provider,id_type,external_id) DO UPDATE SET product_id=EXCLUDED.product_id,variant_id=EXCLUDED.variant_id,status='active',source='manual',last_seen_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
-			WHERE product_external_ids.product_id=EXCLUDED.product_id`, productID, provider, kind, external)
-		if err != nil {
-			return fmt.Errorf("save external mapping: %w", err)
-		}
-		if tag.RowsAffected() != 1 {
-			return fmt.Errorf("%w: внешний идентификатор уже связан с другим товаром", ErrInvalidInput)
-		}
-	}
-	return nil
-}
-
-func safeMappingToken(value string) bool {
-	if value == "" || len(value) > 40 {
-		return false
-	}
-	for _, char := range value {
-		if !(char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '_' || char == '-') {
-			return false
-		}
-	}
-	return true
 }
 
 func (repository *PostgresRepository) CatalogMediaHealth(ctx context.Context) (MediaHealth, error) {
@@ -1088,41 +918,6 @@ func (repository *PostgresRepository) productByID(ctx context.Context, id int64)
 		}
 	}
 	return Product{}, pgx.ErrNoRows
-}
-
-func changedProductFields(update ProductUpdate) []string {
-	result := []string{}
-	if update.Name != nil {
-		result = append(result, "name")
-	}
-	if update.Description != nil {
-		result = append(result, "description")
-	}
-	if update.Image != nil {
-		result = append(result, "photo")
-	}
-	if update.LatinName != nil {
-		result = append(result, "latinName")
-	}
-	if update.ShortDescription != nil {
-		result = append(result, "shortDescription")
-	}
-	if update.CareInstructions != nil {
-		result = append(result, "careInstructions")
-	}
-	return result
-}
-
-func changedVariantFields(update ProductUpdate) []string {
-	result := []string{}
-	if update.PriceMinor != nil {
-		result = append(result, "price")
-	}
-	if update.HeightCM != nil || update.PotDiameterCM != nil || update.PackageLengthCM != nil ||
-		update.PackageWidthCM != nil || update.PackageHeightCM != nil || update.PackageWeightGrams != nil {
-		result = append(result, "dimensions")
-	}
-	return result
 }
 
 func insertAudit(ctx context.Context, executor interface {

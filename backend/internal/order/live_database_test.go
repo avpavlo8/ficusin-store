@@ -7,14 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-type liveOrderNotifier struct{}
-
-func (liveOrderNotifier) SendOrder(context.Context, integration.TelegramOrder) error { return nil }
 
 // TestCommerceLifecycleOnLiveDatabase is the release-level proof that the
 // migrated schema and the real order service still agree. It deliberately
@@ -118,7 +113,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id=$1", sabyID)
 	}()
 
-	service := NewService(pool, nil, liveOrderNotifier{}, nil, quietLogger())
+	service := NewService(pool, nil, nil, quietLogger())
 	created, err := service.Create(ctx, CreateInput{
 		Customer: CustomerInput{
 			Name: "CI Commerce", Phone: phone, Email: email,

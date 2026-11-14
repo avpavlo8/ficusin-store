@@ -275,3 +275,135 @@ lease/claim tokens, саби-идентичность и additive fallback эк�
   desktop. Остальные browser-спецификации в этой итерации не запускались.
 
 Production-данные, ключи окружения и внешние отправки здесь не менялись.
+
+## Продолжение проверки после `61dabdf`, 14 ноября 2026
+
+### Старые modal процессы корзины и оформления
+
+Оба состояния начинались с false; все оставшиеся setters могли только закрыть
+панель. Реальные переходы уже вели на /cart и /checkout. Удалены modal UI,
+open/close состояние, overlay/body-lock и их CSS. CartDrawer заменён page-only
+CartPanel. StorefrontPage больше не монтирует скрытый CheckoutHost с неиспользуемой там
+загрузкой профиля и provider-проверками. Нужный запрос профиля StoreHeader остаётся. Действующий cart-error-toast и retry остались
+на витрине. CheckoutPageContent владеет useCheckout, профилем формы, ошибками
+и подтверждением; очистка серверной корзины не уничтожает итог заказа.
+
+Проверяются отсутствие скрытых форм/побочных provider GET на home/cart,
+наличие GET на checkout, серверная ошибка корзины с повтором, пустая корзина,
+профиль, согласия, варианты доставки, оплата и возврат после оплаты. Старые
+внешние ссылки ?cart продолжают работать через редирект.
+
+### PIM и HTTP-контракт
+
+У текущего UI не осталось потребителей обновления первого SKU через верхний
+уровень ProductUpdate. Удалены входные priceMinor, variantLabel, heightCm,
+potDiameterCm, packageLengthCm/packageWidthCm/packageHeightCm/packageWeightGrams,
+wholesaleMinQty, stock, sabyFields, externalIds и image. Варианты меняются
+явно через variants[]. У POST удалены шесть размерных полей, stock и image;
+priceMinor и variantAttributes сохранены. Исходные stock/images справочника
+СБИС остаются для явного ImportProducts. ProductUpdate редакционные поля
+и PRODUCT-typed bridge остаются текущими, а не legacy-кандидатами.
+
+Сняты first-variant SQL update, ручное изменение остатка через старую форму,
+product-level external-ID replacement, одиночный image fallback, wrapper
+safeAdminProductUpdateHandler и запись override flags. Настоящий обработчик
+сохраняет raw field/role guard; проверки менеджера теперь используют текущий
+nested payload. Каждый бывший PATCH alias возвращает owner400/manager403,
+каждый бывший POST alias — 400. Никаких молчаливых успешных no-op.
+
+SalesLink принимает channel/externalId/variantId. Старый входной sabyId и SQL
+выбор первого SKU по remote ID удалены; результаты по-прежнему содержат
+разрешённый Saby ID. HTTP-тесты отклоняют старый и смешанный формат до записи;
+текущая привязка и пересчёт истории проверены на PostgreSQL.
+
+OpenAPI содержит точные ProductUpdate/VariantEdit и необходимые passport refs,
+сохранённые ProductCreate поля и variantId-only SalesLink. PATCH больше не
+permissive stub; x-source указывает на реальный обработчик. Четыре write DTO
+сверяются по именам с Go AST и strictness. Восемь проверочных мутаций старых
+aliases/permissive схем отклонены; схема не делает все optional поля обязательными.
+Текущий итог: 236 операций / 91 достижимая схема.
+
+### Миграция 218
+
+Архивируются products.override_fields и product_variants.override_fields вместе
+с шестью variant dimensions (height_cm, pot_diameter_cm, package_length_cm,
+package_width_cm, package_height_cm, package_weight_grams). Архивы
+legacy_archive.product_retired_overrides / variant_retired_dimensions сохраняют
+PK, связь product_id, исходные массивы/NULL, все значения и даты без рабочих FK.
+
+PIM — действующий источник после 061. Остаточные три чтения старых размеров
+(список админки, подготовка и проверка цен) переведены на variant_numeric_attribute.
+Для данных, заведённых прежними инструментами только в колонку после 061,
+218 заполняет отсутствующую PIM-строку из каждого SQL NOT NULL значения.
+ON CONFLICT DO NOTHING сохраняет все ранее записанные PIM-строки, в том числе
+явный JSON null. Missing-only импорт маркируется source=import; прежняя строка
+не теряет источник и время. Отсутствующее/неподходящее определение и недопустимый
+source прерывают транзакцию. Колонки удаляются без CASCADE после архива/переноса.
+
+Шесть PostgreSQL-сценариев: canonical, missing definition, wrong type, wrong
+scope, source constraint, empty. Проверены конфликт старого числа с новой
+числовой строкой 21.5, JSON null, ноль, отрицательное значение, отсутствие
+строки, точные архивы, сохранность цены/остатка/timestamps/исторического JSON
+и полный rollback при отказе. Использован реальный SQL numeric helper.
+Существующие функции/представления и runtime SQL проверены на зависимости;
+размеры накладных и supplier aliases не относятся к этим снятым колонкам.
+
+### Другие подтверждённые остатки
+
+Семантическая проверка Go-полей учитывала присваивания, Scan и сериализацию.
+XML-поля, html/template-контекст и JSON fingerprint сохранены: их читает
+соответствующий runtime без обращения field selector в Go. Удалены:
+
+- order.Service.notifier с неиспользуемым аргументом; реальный NotificationWorker
+  остаётся единственным отправителем заказа. Ненужная заглушка из тестов удалена.
+- mail.Sender.logger с неиспользуемым аргументом. LetterWorker по-прежнему
+  протоколирует ошибки и обслуживает outbox.
+- TelegramOrder.PaymentMethod (formatter использует payment status) и лишний
+  SQL/Scan; ShipmentRequest.CityCode (PVZ CreateOrder использует OfficeCode),
+  город расчёта/выбора ПВЗ остаётся в своём текущем контракте.
+- Нечитавшиеся SQL-проекции/локальные поля shipping claim/reconcile/refresh
+  и CalculateOrder. Условия отбора, блокировки, retry и расчёт не менялись.
+- safeMappingToken и проверявший только его unit-тест: единственный прежний
+  product-level external-ID consumer снят; текущие SKU guards сохранены.
+
+Staging origin checks сведены к одному реальному helper для двух конфигураций
+и bootstrap. Проверены два разрешённых и 17 отклоняемых URL, в том числе
+production/подмена host/credentials/ports/path/query. Загружены конфигурации
+с обоими поддерживаемыми origin; запросов на staging/production не делалось.
+Дополнительных неиспользуемых CLI flags/action inputs не найдено.
+
+Обновлены инструкции PIM/редактора/закупок/витрины, фактическая архитектура
+ключей и workers, staging origin policy. Убраны устаревшие утверждения про
+резерв и автоматическое списание склада; исторические snapshots не переписаны.
+
+### Проверки продолжения
+
+- Go: полные test/vet/build. Анализ всех cmd после удаления safeMappingToken
+  не показывает дополнительных недостижимых функций. Семантический разбор полей
+  использовался только как список кандидатов, не как разрешение удалить XML,
+  template, fingerprint или историю.
+- PostgreSQL: старые archive/migration проверки и шесть сценариев 218;
+  актуальные admin/auth/catalog/order/payment/analytics live-наборы на схеме 218.
+  Isolated publisher WB/Ozon/СБИС/цен и preview isolation прошли отдельно.
+  На отдельной CRM-копии прошли закупки, сверка цен, состояния СДЭК, объединение,
+  документы/правки возвратов. Обычные live, CRM seed и publisher DB разделены
+  по требованиям существующих тестов. Реальные адаптеры проверяются с локальными
+  эмуляторами; внешние записи не запускались.
+- Новый API на пустой БД применил 218 миграций; readiness/главная/каталог — 200,
+  восемь снятых полей отсутствуют. На ещё одной отдельной seed-копии CRM
+  acceptance прошёл через настоящий HTTP API для owner/manager в 1440 и 390 px,
+  с сохранением галереи и проверкой прав. Изменения PIM не проверялись только моками.
+- Frontend после окончательного удаления обоих modal: 84/84 browser
+  (61 delivery/payment/cart-network/mobile-purchase и 23 выбранных
+  navigation/storefront/profile/cart). Ранние прогоны до последней сборки
+  не прибавлены к этому числу. Был исправлен неверный новый test assertion,
+  ожидавший modal close после перехода на /cart; действующий переход проверяется
+  как page-only, приложение ради этого утверждения не менялось.
+- Все 76 frontend unit-тестов, lint/format/strict TypeScript/build/budget,
+  48 Python-тестов и два Node staging-origin теста прошли. Контракт:
+  236 операций / 91 достижимая схема, четыре актуальных write DTO согласованы
+  с Go AST. Новая миграция и origin-check включены в CI.
+
+Проверки выполнялись локально. Production-очереди, база и секреты не менялись;
+ветка не сливалась в main. Активная совместимость внешних URL, платёжных
+неизвестных результатов, архивной идентичности и существующих файлов сохранена.

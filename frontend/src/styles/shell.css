@@ -588,8 +588,7 @@
   display: none;
 }
 
-body.menu-open,
-body.drawer-open {
+body.menu-open {
   overflow: hidden;
 }
 

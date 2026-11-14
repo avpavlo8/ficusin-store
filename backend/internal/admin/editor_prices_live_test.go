@@ -209,7 +209,7 @@ func TestEditorPricesLocalDatabase(t *testing.T) {
 			exec(`INSERT INTO variant_attribute_values(variant_id,attribute_id,value) SELECT $1,id,'20'::jsonb FROM attribute_definitions WHERE code=$2 ON CONFLICT(variant_id,attribute_id) DO UPDATE SET value=EXCLUDED.value`, v, code)
 		}
 		var height, pack, logistics, returns, market, tax, reserve, strike float64
-		must(pool.QueryRow(ctx, `SELECT COALESCE(v.height_cm,0),s.package_rub::float8,s.marketplace_logistics_per_cm::float8,s.return_loss_rate::float8,s.marketplace_cost_rate::float8,s.tax_rate::float8,s.reserve_rate::float8,s.marketplace_strike_markup::float8 FROM product_variants v CROSS JOIN procurement_pricing_settings s WHERE v.id=$1 AND s.id=1`, v).Scan(&height, &pack, &logistics, &returns, &market, &tax, &reserve, &strike))
+		must(pool.QueryRow(ctx, `SELECT COALESCE(variant_numeric_attribute(v.id,'height_cm'),0)::float8,s.package_rub::float8,s.marketplace_logistics_per_cm::float8,s.return_loss_rate::float8,s.marketplace_cost_rate::float8,s.tax_rate::float8,s.reserve_rate::float8,s.marketplace_strike_markup::float8 FROM product_variants v CROSS JOIN procurement_pricing_settings s WHERE v.id=$1 AND s.id=1`, v).Scan(&height, &pack, &logistics, &returns, &market, &tax, &reserve, &strike))
 		price, compare := procurement.LegacyMarketplacePrices(10000, pack, height, logistics, returns, market, tax, reserve, strike)
 		quotes, enabled, e := procurement.UnifiedVariantPriceQuotes(ctx, pool, v)
 		must(e)

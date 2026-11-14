@@ -433,8 +433,7 @@
   outline: 2px solid #31482c;
   outline-offset: 4px;
 }
-body.menu-open .floating-cart,
-body.drawer-open .floating-cart {
+body.menu-open .floating-cart {
   display: none;
 }
 @media (max-width: 850px) {

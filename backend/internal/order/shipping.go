@@ -243,22 +243,22 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 				cdek_attempts=cdek_attempts+1,cdek_next_attempt_at=CURRENT_TIMESTAMP+INTERVAL '15 minutes'
 			FROM candidates c WHERE so.id=c.id RETURNING so.*
 		)
-		SELECT so.id,o.id,o.order_number,o.customer_name,o.phone,COALESCE(o.cdek_office_code,''),
-			COALESCE(so.cdek_tariff_code,0),COALESCE(o.cdek_city_code,0),so.cdek_attempts
+		SELECT so.id,o.order_number,o.customer_name,o.phone,COALESCE(o.cdek_office_code,''),
+			COALESCE(so.cdek_tariff_code,0),so.cdek_attempts
 		FROM claimed so JOIN orders o ON o.id=so.order_id ORDER BY so.id`)
 	if err != nil {
 		worker.logger.Error("find shipment offers to ship failed", "error", err)
 		return
 	}
 	type pending struct {
-		offerID, orderID            int64
+		offerID                     int64
 		number, name, phone, office string
-		tariff, city, attempts      int
+		tariff, attempts            int
 	}
 	waiting := make([]pending, 0)
 	for rows.Next() {
 		var item pending
-		if err := rows.Scan(&item.offerID, &item.orderID, &item.number, &item.name, &item.phone, &item.office, &item.tariff, &item.city, &item.attempts); err != nil {
+		if err := rows.Scan(&item.offerID, &item.number, &item.name, &item.phone, &item.office, &item.tariff, &item.attempts); err != nil {
 			worker.logger.Error("scan shipment offer failed", "error", err)
 			break
 		}
@@ -289,7 +289,6 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 			OrderNumber:    fmt.Sprintf("%s-%d", item.number, item.offerID),
 			TariffCode:     item.tariff,
 			OfficeCode:     item.office,
-			CityCode:       item.city,
 			Packages:       packages,
 			SenderName:     worker.settings.Value(settings.CDEKSenderName),
 			SenderPhone:    worker.settings.Value(settings.CDEKSenderPhone),
@@ -472,20 +471,19 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 				AND COALESCE(cdek_next_attempt_at,CURRENT_TIMESTAMP)<=CURRENT_TIMESTAMP
 			ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 20
 		)
-		RETURNING id,order_id,status,cdek_attempts`)
+		RETURNING id,order_id,cdek_attempts`)
 	if err != nil {
 		worker.logger.Error("claim unknown cdek offers failed", "error", err)
 		return
 	}
 	type pendingOffer struct {
 		id, orderID int64
-		status      string
 		attempts    int
 	}
 	offers := []pendingOffer{}
 	for offerRows.Next() {
 		var item pendingOffer
-		if err := offerRows.Scan(&item.id, &item.orderID, &item.status, &item.attempts); err != nil {
+		if err := offerRows.Scan(&item.id, &item.orderID, &item.attempts); err != nil {
 			offerRows.Close()
 			return
 		}
@@ -674,8 +672,6 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 		)
 		SELECT o.id, COALESCE(NULLIF(o.cdek_order_number,''),o.order_number), o.customer_name, o.phone,
 			COALESCE(o.cdek_office_code, ''), COALESCE(o.cdek_tariff_code, 0),
-			COALESCE(o.cdek_city_code, 0), o.payment_status,
-			o.total::DOUBLE PRECISION, o.delivery_fee::DOUBLE PRECISION,
 			o.cdek_attempts
 		FROM claimed o
 		ORDER BY o.id
@@ -685,18 +681,17 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 		return
 	}
 	type pending struct {
-		id                                     int64
-		number, name, phone, office, payStatus string
-		tariff, city                           int
-		total, deliveryFee                     float64
-		attempts                               int
+		id                          int64
+		number, name, phone, office string
+		tariff                      int
+		attempts                    int
 	}
 	waiting := make([]pending, 0)
 	for rows.Next() {
 		var item pending
 		if err := rows.Scan(
 			&item.id, &item.number, &item.name, &item.phone, &item.office,
-			&item.tariff, &item.city, &item.payStatus, &item.total, &item.deliveryFee,
+			&item.tariff,
 			&item.attempts,
 		); err != nil {
 			worker.logger.Error("scan order to ship failed", "error", err)
@@ -737,7 +732,6 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			OrderNumber:       item.number,
 			TariffCode:        item.tariff,
 			OfficeCode:        item.office,
-			CityCode:          item.city,
 			Box:               box,
 			Packages:          packages,
 			Items:             items,
@@ -876,19 +870,19 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 }
 
 func (worker *ShippingWorker) refreshOfferStatuses(ctx context.Context) {
-	rows, err := worker.pool.Query(ctx, `SELECT id,cdek_uuid,cdek_track_number,cdek_status,status FROM shipment_offers WHERE cdek_uuid<>'' AND status NOT IN ('cancelled','completed','expired') ORDER BY cdek_synced_at ASC NULLS FIRST,id LIMIT 50`)
+	rows, err := worker.pool.Query(ctx, `SELECT id,cdek_uuid,status FROM shipment_offers WHERE cdek_uuid<>'' AND status NOT IN ('cancelled','completed','expired') ORDER BY cdek_synced_at ASC NULLS FIRST,id LIMIT 50`)
 	if err != nil {
 		worker.logger.Error("find shipment offers to refresh failed", "error", err)
 		return
 	}
 	type tracked struct {
-		id                              int64
-		uuid, track, cdekStatus, status string
+		id           int64
+		uuid, status string
 	}
 	items := []tracked{}
 	for rows.Next() {
 		var item tracked
-		if err := rows.Scan(&item.id, &item.uuid, &item.track, &item.cdekStatus, &item.status); err != nil {
+		if err := rows.Scan(&item.id, &item.uuid, &item.status); err != nil {
 			rows.Close()
 			return
 		}

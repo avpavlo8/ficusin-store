@@ -35,7 +35,7 @@ test("@desktop прямой URL корзины меняет количество
   await mockApi(page);
   await setStoredCounts(page, [], { "1": 1 });
   await page.goto("/cart");
-  const drawer = page.locator(".drawer.open");
+  const drawer = page.locator(".cart-page-panel");
   await expect(page).toHaveURL(/\/cart$/);
   await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
   await drawer.getByRole("button", { name: "Увеличить" }).click();
@@ -78,7 +78,7 @@ test("@desktop удалённый товар не возвращается по�
   await mockApi(page, owner);
   await setStoredCounts(page, [], { "1": 1, "2": 2 });
   await page.goto("/cart");
-  const drawer = page.locator(".drawer.open");
+  const drawer = page.locator(".cart-page-panel");
   await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
   await expect(drawer.getByText("Фикус Бенджамина")).toBeVisible();
   await expect(page.getByLabel(/Корзина, товаров: 3/)).toBeVisible();

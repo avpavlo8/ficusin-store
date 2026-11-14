@@ -28,10 +28,8 @@ type TelegramOrder struct {
 	// dimensions, CDEK unavailable, or the customer asked to pack the plants
 	// together. Total is short by the delivery until then.
 	DeliveryFeePending bool
-	// PaymentStatus and PaymentMethod are the first thing a manager needs to
-	// know: an unpaid order must not be packed and sent.
+	// PaymentStatus tells the manager whether an order has been paid.
 	PaymentStatus string
-	PaymentMethod string
 	// HasPreorder means part of the order is not on the shelf yet.
 	HasPreorder bool
 	// RepackRequested is the customer asking whether the plants fit into one

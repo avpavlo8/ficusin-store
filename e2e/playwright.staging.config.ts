@@ -1,9 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 import { stagingState } from "./staging-access";
+import { isStagingOrigin } from "./staging-target";
 
 const baseURL = process.env.FICUSIN_BASE_URL || "";
 if (
-  !/^https:\/\/[^/]+\.twc1\.net$/.test(baseURL) ||
+  !isStagingOrigin(baseURL) ||
   !process.env.STAGING_ACCESS_TOKEN
 ) {
   throw new Error(

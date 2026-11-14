@@ -34,13 +34,13 @@ func (stub *salesLinkStoreStub) ListUnlinkedSalesIncludingIgnored(ctx context.Co
 func (stub *salesLinkStoreStub) LinkSalesProduct(_ context.Context, _ Actor, input SalesLink) (SalesLinkResult, error) {
 	stub.links = append(stub.links, input)
 	return SalesLinkResult{
-		Channel: input.Channel, ExternalID: input.ExternalID, SabyID: input.SabyID, LinkedRows: 3,
+		Channel: input.Channel, ExternalID: input.ExternalID, SabyID: "S-1", LinkedRows: 3,
 	}, nil
 }
 
 func (stub *salesLinkStoreStub) SearchLinkableNomenclature(_ context.Context, query string) ([]NomenclatureCandidate, error) {
 	stub.queries = append(stub.queries, query)
-	return []NomenclatureCandidate{{SabyID: "S-1", Name: "Фикус Бенджамина D12"}}, nil
+	return []NomenclatureCandidate{{VariantID: 42, SabyID: "S-1", Name: "Фикус Бенджамина D12"}}, nil
 }
 
 func (stub *salesLinkStoreStub) RememberChannelProducts(_ context.Context, channel string, items []ChannelProduct) error {
@@ -110,11 +110,11 @@ func TestLinkSalesProductRejectsUnusableDecisions(t *testing.T) {
 	t.Parallel()
 	service := NewServiceWithExecutor(&salesLinkStoreStub{}, nil)
 	cases := map[string]SalesLink{
-		"канал без внешних кодов":  {Channel: "site", ExternalID: "X", SabyID: "S1"},
-		"пустой внешний код":       {Channel: "ozon", ExternalID: "  ", SabyID: "S1"},
-		"пустой товар":             {Channel: "ozon", ExternalID: "fikus-12", SabyID: ""},
-		"нечисловой nmID для WB":   {Channel: "wb", ExternalID: "fikus-12", SabyID: "S1"},
-		"внешний код длиннее поля": {Channel: "ozon", ExternalID: string(make([]byte, 201)), SabyID: "S1"},
+		"канал без внешних кодов":  {Channel: "site", ExternalID: "X", VariantID: 42},
+		"пустой внешний код":       {Channel: "ozon", ExternalID: "  ", VariantID: 42},
+		"пустой товар":             {Channel: "ozon", ExternalID: "fikus-12", VariantID: 0},
+		"нечисловой nmID для WB":   {Channel: "wb", ExternalID: "fikus-12", VariantID: 42},
+		"внешний код длиннее поля": {Channel: "ozon", ExternalID: string(make([]byte, 201)), VariantID: 42},
 	}
 	for name, input := range cases {
 		if _, err := service.LinkSalesProduct(context.Background(), Actor{}, input); !errors.Is(err, ErrInvalidInput) {
@@ -127,13 +127,13 @@ func TestLinkSalesProductPassesTrimmedDecisionToStore(t *testing.T) {
 	t.Parallel()
 	store := &salesLinkStoreStub{}
 	result, err := NewServiceWithExecutor(store, nil).LinkSalesProduct(context.Background(), Actor{CustomerID: 5}, SalesLink{
-		Channel: " ozon ", ExternalID: " fikus-benjamina-12 ", SabyID: " S-1 ",
+		Channel: " ozon ", ExternalID: " fikus-benjamina-12 ", VariantID: 42,
 	})
-	if err != nil || result.LinkedRows != 3 {
+	if err != nil || result.LinkedRows != 3 || result.SabyID != "S-1" {
 		t.Fatalf("result = %+v, err = %v", result, err)
 	}
 	if len(store.links) != 1 || store.links[0] != (SalesLink{
-		Channel: "ozon", ExternalID: "fikus-benjamina-12", SabyID: "S-1",
+		Channel: "ozon", ExternalID: "fikus-benjamina-12", VariantID: 42,
 	}) {
 		t.Fatalf("links = %+v", store.links)
 	}
@@ -143,7 +143,7 @@ func TestLinkSalesProductAcceptsNumericWildberriesCode(t *testing.T) {
 	t.Parallel()
 	store := &salesLinkStoreStub{}
 	if _, err := NewServiceWithExecutor(store, nil).LinkSalesProduct(context.Background(), Actor{}, SalesLink{
-		Channel: "wb", ExternalID: "1851256804", SabyID: "S-1",
+		Channel: "wb", ExternalID: "1851256804", VariantID: 42,
 	}); err != nil {
 		t.Fatalf("err = %v", err)
 	}
@@ -160,7 +160,7 @@ func TestLinkSalesProductUsesCanonicalVariantWithoutRemoteIdentity(t *testing.T)
 	}); err != nil {
 		t.Fatalf("err = %v", err)
 	}
-	if len(store.links) != 1 || store.links[0].VariantID != 42 || store.links[0].SabyID != "" {
+	if len(store.links) != 1 || store.links[0].VariantID != 42 {
 		t.Fatalf("links = %+v", store.links)
 	}
 }
@@ -216,7 +216,7 @@ func TestSalesLinkingNeedsCapableStore(t *testing.T) {
 		t.Fatalf("search err = %v, want %v", err, ErrSalesLinkUnsupported)
 	}
 	_, err := service.LinkSalesProduct(context.Background(), Actor{}, SalesLink{
-		Channel: "ozon", ExternalID: "fikus-12", SabyID: "S-1",
+		Channel: "ozon", ExternalID: "fikus-12", VariantID: 42,
 	})
 	if !errors.Is(err, ErrSalesLinkUnsupported) {
 		t.Fatalf("link err = %v, want %v", err, ErrSalesLinkUnsupported)

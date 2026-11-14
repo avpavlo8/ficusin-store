@@ -60,16 +60,11 @@ export default function CartPage({ checkout = false }: { checkout?: boolean }) {
       <CheckoutHost
         cart={cart}
         products={cartMeta.lines}
-        cartOpen={!checkout}
         cartStatus={cartMeta.status}
         cartError={cartMeta.error}
         missingCartItems={cartMeta.missingSkus.length}
         onCartRetry={cartMeta.retry}
-        cartPage={!checkout}
         checkoutPage={checkout}
-        onCartOpenChange={(open) => {
-          if (!open && !checkout) window.location.assign("/#catalog");
-        }}
         onCartChange={setCart}
       />
     </main>

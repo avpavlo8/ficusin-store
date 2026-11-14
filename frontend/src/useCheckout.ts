@@ -39,7 +39,6 @@ type UseCheckoutArgs = {
   setCart: Dispatch<SetStateAction<Cart>>;
   setNotice: Dispatch<SetStateAction<string>>;
   discountBps: number;
-  initialOpen?: boolean;
 };
 
 export function useCheckout({
@@ -48,9 +47,7 @@ export function useCheckout({
   setCart,
   setNotice,
   discountBps,
-  initialOpen = false,
 }: UseCheckoutArgs) {
-  const [checkoutOpen, setCheckoutOpen] = useState(initialOpen);
   const [delivery, setDelivery] = useState("pickup");
   const [submitting, setSubmitting] = useState(false);
   const [orderNumber, setOrderNumber] = useState("");
@@ -375,22 +372,10 @@ export function useCheckout({
     }
   }
 
-  function beginCheckout() {
-    setCheckoutOpen(true);
-    setOrderNumber("");
-    setOrderConfirmationReason(null);
-  }
-
   return {
-    checkoutOpen,
-    setCheckoutOpen,
-    beginCheckout,
     setCheckoutProfile,
-    availableDelivery,
     panelProps: {
       cartLines,
-      checkoutOpen,
-      setCheckoutOpen,
       orderNumber,
       orderConfirmationPending,
       orderConfirmationReason,

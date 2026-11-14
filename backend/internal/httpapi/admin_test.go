@@ -310,7 +310,7 @@ func TestCreateProductPasses(t *testing.T) {
 
 	repository := &adminRepositoryStub{}
 	request := adminRequest(http.MethodPost, "/api/v1/admin/products",
-		`{"name":"Фикус Бенджамина","priceMinor":149000,"stock":3}`)
+		`{"name":"Фикус Бенджамина","priceMinor":149000,"variantAttributes":{"pot_diameter_cm":12}}`)
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
 

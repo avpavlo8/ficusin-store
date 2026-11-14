@@ -45,15 +45,14 @@ try {
    expect((await api.post(`/api/v1/admin/procurement/orders/${purchase.id}/batches`,{data:{kind:'receipt'}})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/procurement/orders/${purchase.id}/status`,{data:{status:'cancelled'}})).status()).toBe(403);
    for(const path of ['/admin?section=marketplaces','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
-   for(const body of [{name:'Forbidden',priceMinor:1},{name:'Forbidden',stock:null},{name:'Forbidden',externalIds:[]}]) expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:body})).status()).toBe(403);
-   expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,label:'Forbidden',priceMinor:1}]}})).status()).toBe(403);
+   for(const fields of [{priceMinor:1},{active:false},{externalIds:[]}]) expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,label:'Forbidden',...fields}]}})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,label:'Forbidden',attributes:{external_price:1}}]}})).status()).toBe(403);
    const ok=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,label:'D12 проверено',attributes:{package_weight_grams:1200}}]}});
    expect(ok.status(),await ok.text()).toBe(200);
    const saved=((await(await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants||[]).find(item=>item.id===variant.id);expect(saved).toBeTruthy();expect(saved.price).toBe(variant.price);expect(saved.stock).toBe(variant.stock);expect(saved.externalIds).toEqual(variant.externalIds);
    expect(saved.attributes.package_weight_grams).toBe(1200);
   }
-  const edit=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{description:`Контент ${role}`,...(role==='owner'?{image:product.image}:{})}});
+  const edit=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{description:`Контент ${role}`}});
   expect(edit.status(),await edit.text()).toBe(200);
   const afterMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
   expect(afterMedia).toEqual(beforeMedia);

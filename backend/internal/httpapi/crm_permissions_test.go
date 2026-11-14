@@ -10,10 +10,12 @@ import (
 
 type crmProductRepository struct {
 	adminRepositoryStub
-	updates []admin.ProductUpdate
+	updates      []admin.ProductUpdate
+	catalogReads int
 }
 
 func (s *crmProductRepository) ListProducts(context.Context) ([]admin.Product, error) {
+	s.catalogReads++
 	return []admin.Product{{ID: 1, Image: "/one.webp"}}, nil
 }
 func (s *crmProductRepository) UpdateProduct(_ context.Context, _ admin.Actor, _ int64, u admin.ProductUpdate) (admin.Product, error) {
@@ -51,7 +53,7 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 	}
 }
 func TestCRMManagerProductPatchRejectsEntireMixedRequest(t *testing.T) {
-	for _, field := range []string{`"priceMinor":1`, `"PriceMinor":1`, `"stock":null`, `"externalIds":[]`, `"sabyFields":[]`, `"wholesaleMinQty":2`, `"image":"/replacement.webp"`, `"status":"archived"`, `"unknown":1`} {
+	for _, field := range []string{`"variants":[{"id":1,"priceMinor":1}]`, `"Variants":[{"id":1,"priceMinor":1}]`, `"variants":[{"id":1,"active":true}]`, `"variants":[{"id":1,"externalIds":[]}]`, `"variants":[{"id":1,"wholesaleMinQty":2}]`, `"status":"archived"`, `"unknown":1`} {
 		t.Run(field, func(t *testing.T) {
 			repository := &crmProductRepository{}
 			router := NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, ""))
@@ -63,17 +65,14 @@ func TestCRMManagerProductPatchRejectsEntireMixedRequest(t *testing.T) {
 		})
 	}
 }
-func TestCRMContentEditPreservesGallery(t *testing.T) {
+func TestCRMContentEditUsesOnlyAtomicProductPatch(t *testing.T) {
 	for _, role := range []string{admin.RoleOwner, admin.RoleManager} {
 		repository := &crmProductRepository{}
 		body := `{"description":"Updated content"}`
-		if role == admin.RoleOwner {
-			body = `{"description":"Updated content","image":"/one.webp"}`
-		}
 		router := NewRouter(discardLogger(), adminDependencies(repository, role, ""))
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, adminRequest("PATCH", "/api/v1/admin/products/1", body))
-		if response.Code != 200 || len(repository.updates) != 1 || repository.updates[0].Image != nil {
+		if response.Code != 200 || repository.catalogReads != 0 || len(repository.updates) != 1 || repository.updates[0].Description == nil || *repository.updates[0].Description != "Updated content" {
 			t.Fatalf("role=%s status=%d updates=%+v", role, response.Code, repository.updates)
 		}
 	}

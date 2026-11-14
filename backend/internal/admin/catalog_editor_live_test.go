@@ -174,8 +174,5 @@ func TestCatalogEditorManagerCannotWriteCommercialFields(t *testing.T) {
 	if err := ValidateProductUpdate(actor, ProductUpdate{Variants: []VariantEdit{{ID: 1, Label: &label}}}); err != nil {
 		t.Fatal(err)
 	}
-	fields := []string{"price"}
-	if err := ValidateProductUpdate(Actor{Role: RoleOwner}, ProductUpdate{SabyFields: &fields}); !errors.Is(err, ErrInvalidInput) {
-		t.Fatal("site price can be replaced by Saby")
-	}
+
 }

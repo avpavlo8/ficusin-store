@@ -376,7 +376,6 @@ type ShipmentRequest struct {
 	OrderNumber string
 	TariffCode  int
 	OfficeCode  string
-	CityCode    int
 	Box         Parcel
 	Items       []ShipmentItem
 	// Packages is the measured packing accepted by the customer. When it is

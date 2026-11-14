@@ -1,7 +1,6 @@
 import { NumericInput } from "./NumericInput";
 import { HomeBenefits } from "./HomeBenefits";
 import { useEffect, useMemo, useState } from "react";
-import CheckoutHost from "./CheckoutHost";
 import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
 import { CollectionStrip } from "./Collections";
 import NotFoundPage from "./NotFoundPage";
@@ -320,7 +319,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
   const [cart, setCart, cartMeta] = useSharedCart();
   const [favorites, setFavorites] = useFavorites();
-  const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -1404,20 +1402,14 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           )}
         </div>
       </section>
-      <CheckoutHost
-        cart={cart}
-        products={[
-          ...products,
-          ...cartMeta.lines.filter((line) => !products.some((product) => product.sku === line.sku)),
-        ]}
-        cartOpen={cartOpen}
-        onCartOpenChange={setCartOpen}
-        onCartChange={setCart}
-        cartStatus={cartMeta.status}
-        cartError={cartMeta.error}
-        missingCartItems={cartMeta.missingSkus.length}
-        onCartRetry={cartMeta.retry}
-      />
+      {cartMeta.status === "error" && (
+        <div className="toast cart-error-toast" role="alert">
+          <span>{cartMeta.error || "Изменение корзины не сохранено"}</span>
+          <button type="button" onClick={cartMeta.retry}>
+            Повторить
+          </button>
+        </div>
+      )}
     </main>
   );
 }

@@ -30,6 +30,7 @@ jobs:
       - run: npm run test:phone && npm run test:payment-result && npm run test:money
       - run: node --experimental-strip-types --test tests/plant-characteristics.test.mjs tests/plant-warning-text.test.mjs tests/product-marketplace-pricing.test.mjs tests/catalog-editor-channels.test.mjs tests/saby-editor-hydration.test.mjs tests/admin-api-error.test.mjs tests/admin-fetch.test.mjs tests/app-discovery.test.mjs tests/chat-reference.test.mjs tests/customer-order-list.test.mjs tests/gallery-upload.test.mjs tests/pull-to-refresh.test.mjs tests/variant-naming.test.mjs tests/gallery-persistence.test.mjs
       - run: node ../e2e/verify-chat-notification-worker.mjs
+      - run: node --experimental-strip-types --test ../e2e/staging-target.test.mjs
       - run: npm run build
       - run: npm run budget
       # Build tools process repository-controlled input in CI too, so high
@@ -365,7 +366,7 @@ jobs:
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/migrate ./internal/settings -run '^TestAgreedMeasurementsAtomicImport$|^TestLegacyArchivePreservesDataAndActiveWorkflows$|^TestRetiredCatalogArchivePreservesHistory$|^TestLegacySabyExporterRetirementOnDatabase$|^TestManualPricesMoveToEditorDraftsOnDatabase$|^TestRetiredTelegramSettingOnDatabase$|^TestRetiredSabyFlagsPreserveStockAndOriginalArraysOnDatabase$|^TestRetiredCustomerFieldsPreservePhoneAuthenticationOnDatabase$|^TestUnusedDomainFieldsArchiveExactValuesOnDatabase$' -v
+        run: go test ./internal/migrate ./internal/settings -run '^TestAgreedMeasurementsAtomicImport$|^TestLegacyArchivePreservesDataAndActiveWorkflows$|^TestRetiredCatalogArchivePreservesHistory$|^TestLegacySabyExporterRetirementOnDatabase$|^TestManualPricesMoveToEditorDraftsOnDatabase$|^TestRetiredTelegramSettingOnDatabase$|^TestRetiredSabyFlagsPreserveStockAndOriginalArraysOnDatabase$|^TestRetiredCustomerFieldsPreservePhoneAuthenticationOnDatabase$|^TestUnusedDomainFieldsArchiveExactValuesOnDatabase$|^TestTypedDimensionsRetirementPreservesCanonicalPIMOnDatabase$' -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest

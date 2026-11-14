@@ -68,12 +68,22 @@ test("@desktop @phone favorite counts match visible cards and hidden IDs survive
 });
 
 
-test("@desktop header cart opens the shared cart without covering content", async ({page})=>{
-  await mockApi(page);await page.goto('/');
+test("@desktop header cart opens its page without mounting checkout", async ({page})=>{
+  await mockApi(page);const providers:string[]=[],profiles:string[]=[];
+  page.on('request',request=>{const path=new URL(request.url()).pathname;if(request.method()==='GET'){if(path==='/api/v1/payments/methods'||path==='/api/v1/delivery/cdek')providers.push(path);if(path==='/api/v1/auth/me')profiles.push(path)}});
+  await page.goto('/');
   await expect(page.locator('.floating-cart')).toHaveCount(0);
+  await expect(page.locator('.cart-checkout-host')).toHaveCount(0);
+  await expect(page.locator('.drawer')).toHaveCount(0);
+  await expect.poll(()=>profiles.length).toBe(1);
   await page.locator('.storefront-card').first().getByRole('button',{name:'В корзину',exact:true}).click();
   await page.getByRole('button',{name:'Корзина, товаров: 1',exact:true}).click();
-  await expect(page.locator('.drawer.open .cart-line')).toHaveCount(1);
+  await expect(page.locator('.cart-page-panel .cart-line')).toHaveCount(1);
+  await expect(page.locator('.checkout')).toHaveCount(0);
+  expect(providers).toHaveLength(0);
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(page.locator('.drawer.cart-page-panel')).toBeVisible();
+  await expect(page.locator('body')).not.toHaveClass(/drawer-open/);
 });
 
 

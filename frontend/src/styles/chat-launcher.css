@@ -51,8 +51,7 @@
   box-shadow: 0 12px 48px #182b3a33;
   border-radius: 12px;
 }
-body.menu-open .chat-launcher,
-body.drawer-open .chat-launcher {
+body.menu-open .chat-launcher {
   display: none;
 }
 @media (max-width: 850px), (max-height: 500px) and (pointer: coarse) {

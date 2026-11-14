@@ -19,23 +19,17 @@ var ErrInvalidInput = errors.New("некорректные данные")
 // СБИС. Оба пути ведут в одну функцию, поэтому товар, заведённый руками, и
 // товар, привезённый импортом, устроены одинаково.
 type seed struct {
-	name               string
-	latinName          string
-	description        string
-	categoryID         *int64
-	catalogSection     string
-	priceMinor         int64
-	stock              int
-	images             []string
-	sabyID             string
-	sabyFields         []string
-	status             string
-	heightCM           *int
-	potDiameterCM      *int
-	packageLengthCM    *int
-	packageWidthCM     *int
-	packageHeightCM    *int
-	packageWeightGrams *int
+	name           string
+	latinName      string
+	description    string
+	categoryID     *int64
+	catalogSection string
+	priceMinor     int64
+	stock          int
+	images         []string
+	sabyID         string
+	sabyFields     []string
+	status         string
 }
 
 // CreateProduct заводит карточку в магазине.
@@ -59,22 +53,9 @@ func (repository *PostgresRepository) CreateProduct(
 	if name == "" {
 		return Product{}, fmt.Errorf("%w: название товара обязательно", ErrInvalidInput)
 	}
-	if input.PriceMinor < 0 || input.Stock < 0 {
-		return Product{}, fmt.Errorf("%w: цена и остаток не могут быть отрицательными", ErrInvalidInput)
+	if input.PriceMinor < 0 {
+		return Product{}, fmt.Errorf("%w: цена не может быть отрицательной", ErrInvalidInput)
 	}
-	if input.Stock > 0 {
-		return Product{}, fmt.Errorf("%w: остаток появится после связи товара с СБИС и синхронизации склада", ErrInvalidInput)
-	}
-	for label, value := range map[string]*int{
-		"высота": input.HeightCM, "диаметр горшка": input.PotDiameterCM,
-		"длина упаковки": input.PackageLengthCM, "ширина упаковки": input.PackageWidthCM,
-		"высота упаковки": input.PackageHeightCM, "вес упаковки": input.PackageWeightGrams,
-	} {
-		if value != nil && (*value < 0 || *value > 100000) {
-			return Product{}, fmt.Errorf("%w: неверное значение поля «%s»", ErrInvalidInput, label)
-		}
-	}
-
 	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
 		return Product{}, err
@@ -110,10 +91,6 @@ func (repository *PostgresRepository) CreateProduct(
 		}
 		input.CategoryID = &categoryID
 	}
-	images := make([]string, 0, 1)
-	if picture := strings.TrimSpace(input.Image); picture != "" {
-		images = append(images, picture)
-	}
 	id, err := createProduct(ctx, tx, seed{
 		status:         "draft",
 		name:           name,
@@ -122,12 +99,7 @@ func (repository *PostgresRepository) CreateProduct(
 		categoryID:     input.CategoryID,
 		catalogSection: strings.TrimSpace(input.CatalogSection),
 		priceMinor:     input.PriceMinor,
-		stock:          input.Stock,
-		images:         images,
 		sabyFields:     []string{},
-		heightCM:       input.HeightCM, potDiameterCM: input.PotDiameterCM,
-		packageLengthCM: input.PackageLengthCM, packageWidthCM: input.PackageWidthCM,
-		packageHeightCM: input.PackageHeightCM, packageWeightGrams: input.PackageWeightGrams,
 	})
 	if err != nil {
 		return Product{}, err
@@ -140,24 +112,6 @@ func (repository *PostgresRepository) CreateProduct(
 		return Product{}, err
 	}
 	variantAttributes := map[string]any{}
-	if input.HeightCM != nil {
-		variantAttributes["height_cm"] = *input.HeightCM
-	}
-	if input.PotDiameterCM != nil {
-		variantAttributes["pot_diameter_cm"] = *input.PotDiameterCM
-	}
-	if input.PackageLengthCM != nil {
-		variantAttributes["package_length_cm"] = *input.PackageLengthCM
-	}
-	if input.PackageWidthCM != nil {
-		variantAttributes["package_width_cm"] = *input.PackageWidthCM
-	}
-	if input.PackageHeightCM != nil {
-		variantAttributes["package_height_cm"] = *input.PackageHeightCM
-	}
-	if input.PackageWeightGrams != nil {
-		variantAttributes["package_weight_grams"] = *input.PackageWeightGrams
-	}
 	for code, value := range input.VariantAttributes {
 		if (code == "pot_diameter_cm" || code == "height_cm") && value != nil && value != "" {
 			number, ok := value.(float64)
@@ -577,19 +531,10 @@ func createProduct(ctx context.Context, tx pgx.Tx, item seed) (int64, error) {
 	}
 
 	var variantID int64
-	if err := tx.QueryRow(ctx, `
-		INSERT INTO product_variants (
-			product_id, saby_id, sku, label, base_price_minor, height_cm, pot_diameter_cm,
-			package_length_cm, package_width_cm, package_height_cm, package_weight_grams,
-			is_active, updated_at
-		)
-		VALUES ($1, $2, DEFAULT,
-			'Основной вариант', $3, $4, $5, $6, $7, $8, $9, 1, CURRENT_TIMESTAMP)
-		RETURNING id
-	`, id, sabyID, item.priceMinor, item.heightCM, item.potDiameterCM, item.packageLengthCM,
-		item.packageWidthCM, item.packageHeightCM, item.packageWeightGrams).Scan(&variantID); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,sku,label,base_price_minor,is_active,updated_at) VALUES($1,$2,DEFAULT,'Основной вариант',$3,1,CURRENT_TIMESTAMP) RETURNING id`, id, sabyID, item.priceMinor).Scan(&variantID); err != nil {
 		return 0, fmt.Errorf("create product variant: %w", err)
 	}
+
 	if item.sabyID != "" {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO product_external_ids(product_id, variant_id, provider, id_type, external_id)

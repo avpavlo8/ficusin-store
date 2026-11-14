@@ -22,7 +22,7 @@ func stageEditorPriceProposals(ctx context.Context, tx pgx.Tx, actor Actor, vari
 	var packageRUB, logisticsRate, returnRate, marketplaceRate, taxRate, reserveRate, strikeRate float64
 	err := tx.QueryRow(ctx, `SELECT v.product_id,COALESCE(v.saby_id,''),COALESCE(n.code,''),v.marketplace_scope,
 		COALESCE(directory.wb_nm_ids[1],''),COALESCE(directory.ozon_articles[1],''),
-		COALESCE(v.height_cm,0),s.package_rub::float8,s.marketplace_logistics_per_cm::float8,
+		COALESCE(variant_numeric_attribute(v.id,'height_cm'),0)::float8,s.package_rub::float8,s.marketplace_logistics_per_cm::float8,
 		s.return_loss_rate::float8,s.marketplace_cost_rate::float8,s.tax_rate::float8,s.reserve_rate::float8,s.marketplace_strike_markup::float8
 		FROM product_variants v
 		LEFT JOIN saby_nomenclature n ON n.saby_id=v.saby_id

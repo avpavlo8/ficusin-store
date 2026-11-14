@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -17,17 +16,10 @@ func ValidateProductUpdate(actor Actor, update ProductUpdate) error {
 	if err := validateVariantEdits(actor, update.Variants); err != nil {
 		return err
 	}
-	if update.SabyFields != nil {
-		for _, field := range *update.SabyFields {
-			if field != "stock" {
-				return fmt.Errorf("%w: из СБИС поступает только остаток; контент и цена хранятся на сайте", ErrInvalidInput)
-			}
-		}
-	}
 	if actor.Role == RoleOwner {
 		return nil
 	}
-	if update.PriceMinor != nil || update.Stock != nil || update.SabyFields != nil || update.ExternalIDs != nil || update.WholesaleMinQty != nil || update.Image != nil || update.Status != nil && *update.Status == "archived" {
+	if update.Status != nil && *update.Status == "archived" {
 		return ErrForbidden
 	}
 	return nil

@@ -891,28 +891,27 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		}
 	}
 	type sourceLine struct {
-		id                            int64
-		quantity, orderedQty          int
-		unitPrice, pot, height        float64
-		expectedPrice                 *float64
-		invoicedQty                   *int
-		matchStatus, loadUnit, sabyID string
-		reconciliationStatus          string
-		channelCosts                  map[string]ChannelCosts
-		channelPrices                 map[string]int64
-		dimensionsReviewed            bool
-		invoicePot, invoiceHeight     *float64
-		retailOverride                *int64
-		comparisonAccepted            bool
-		currentRetail                 float64
-		catalogueLabel                string
+		id                        int64
+		quantity                  int
+		unitPrice, pot, height    float64
+		invoicedQty               *int
+		matchStatus, loadUnit     string
+		reconciliationStatus      string
+		channelCosts              map[string]ChannelCosts
+		channelPrices             map[string]int64
+		dimensionsReviewed        bool
+		invoicePot, invoiceHeight *float64
+		retailOverride            *int64
+		comparisonAccepted        bool
+		currentRetail             float64
+		catalogueLabel            string
 	}
 	rows, err := tx.Query(ctx, `
 		SELECT id, COALESCE(invoiced_qty, ordered_qty), COALESCE(unit_price, expected_unit_price, 0)::DOUBLE PRECISION,
 			COALESCE(pot_diameter_cm, 0)::DOUBLE PRECISION,
 			COALESCE(height_cm, 0)::DOUBLE PRECISION, match_status, load_unit,
-			expected_unit_price::DOUBLE PRECISION, invoiced_qty, comparison_accepted, ordered_qty,
-			COALESCE(saby_id, ''),reconciliation_status,channel_costs,channel_prices,dimensions_reviewed,
+			invoiced_qty, comparison_accepted,
+			reconciliation_status,channel_costs,channel_prices,dimensions_reviewed,
             (SELECT pot_diameter_cm::DOUBLE PRECISION FROM procurement_supplier_aliases WHERE id=supplier_alias_id),
             (SELECT height_cm::DOUBLE PRECISION FROM procurement_supplier_aliases WHERE id=supplier_alias_id),retail_override_rub,
             COALESCE((SELECT base_price_minor::DOUBLE PRECISION/100 FROM product_variants WHERE id=canonical_variant_id),0),
@@ -930,7 +929,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 	for rows.Next() {
 		var line sourceLine
 		if err := rows.Scan(&line.id, &line.quantity, &line.unitPrice, &line.pot, &line.height, &line.matchStatus,
-			&line.loadUnit, &line.expectedPrice, &line.invoicedQty, &line.comparisonAccepted, &line.orderedQty, &line.sabyID,
+			&line.loadUnit, &line.invoicedQty, &line.comparisonAccepted,
 			&line.reconciliationStatus, &line.channelCosts, &line.channelPrices, &line.dimensionsReviewed, &line.invoicePot, &line.invoiceHeight, &line.retailOverride, &line.currentRetail, &line.catalogueLabel); err != nil {
 			rows.Close()
 			return OrderDetail{}, fmt.Errorf("scan procurement calculation line: %w", err)
