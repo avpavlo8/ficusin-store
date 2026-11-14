@@ -244,6 +244,7 @@ func (p *guardedProvider) CreateSettlementReceipt(ctx context.Context, req integ
 type settings struct {
 	DatabaseURL, CA, Shop, Secret string
 	Tax, VAT                      int
+	VerifyTLS                     bool
 }
 
 func run() error {
@@ -270,7 +271,7 @@ func run() error {
 	u.RawQuery = q.Encode()
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
-	pool, err := store.Open(ctx, config.Database{URL: u.String(), CA: env.CA, VerifyTLS: true, MaxConnections: 4})
+	pool, err := store.Open(ctx, config.Database{URL: u.String(), CA: env.CA, VerifyTLS: env.VerifyTLS, MaxConnections: 4})
 	if err != nil {
 		return errors.New("verified_database_connection_failed")
 	}

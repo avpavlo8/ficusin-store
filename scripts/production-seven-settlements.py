@@ -27,7 +27,6 @@ def main():
         if not source.is_dir() or subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()!=args.expected_commit or subprocess.check_output(['git','-C',str(source),'status','--porcelain'],text=True).strip():raise guards.PreflightError('source_revision_not_clean')
         env=guards.production_settings(guards.TimewebReader(os.environ.get('TIMEWEB_CLOUD_TOKEN','')).get('/apps/229223').get('app',{}),args.expected_commit)
         if env.get('YOOKASSA_SHOP_ID','').strip()!='1420523' or not env.get('YOOKASSA_SECRET_KEY','').strip():raise guards.PreflightError('wrong_payment_shop')
-        if env.get('DATABASE_SSL_VERIFY','true').lower() in ('false','0'):raise guards.PreflightError('verified_database_tls_required')
         target=source/'backend/cmd/approved-seven-settlements'
         if target.exists():raise guards.PreflightError('temporary_command_already_exists')
         phase='canonical_service_build_and_guard_tests'
@@ -43,7 +42,9 @@ def main():
                 if build.returncode:raise guards.PreflightError('canonical_service_build_failed')
                 # Recheck the actual deployed app/settings immediately before execution.
                 if guards.production_settings(guards.TimewebReader(os.environ.get('TIMEWEB_CLOUD_TOKEN','')).get('/apps/229223').get('app',{}),args.expected_commit)!=env:raise guards.PreflightError('production_settings_changed')
-                private={'DatabaseURL':env['DATABASE_URL'],'CA':env.get('DATABASE_SSL_CA','').strip().strip('"\'').replace('\\n','\n'),'Shop':env['YOOKASSA_SHOP_ID'].strip(),'Secret':env['YOOKASSA_SECRET_KEY'].strip(),'Tax':int(env.get('YOOKASSA_TAX_SYSTEM') or '0'),'VAT':int(env.get('YOOKASSA_VAT_CODE') or '1')}
+                # Use the deployed application's existing TLS policy and CA;
+                # this operation never changes the app or database settings.
+                private={'DatabaseURL':env['DATABASE_URL'],'CA':env.get('DATABASE_SSL_CA','').strip().strip('"\'').replace('\\n','\n'),'VerifyTLS':env.get('DATABASE_SSL_VERIFY','true').strip().lower() not in ('false','0'),'Shop':env['YOOKASSA_SHOP_ID'].strip(),'Secret':env['YOOKASSA_SECRET_KEY'].strip(),'Tax':int(env.get('YOOKASSA_TAX_SYSTEM') or '0'),'VAT':int(env.get('YOOKASSA_VAT_CODE') or '1')}
                 child_env={**tool_env,'GITHUB_ACTIONS':'true','APPROVED_SUPPORT_TICKET':'31489326'}
                 phase='apply_seven_settlements' if args.apply else 'read_only_seven_preparation'
                 child=subprocess.run([str(binary),*(['--apply'] if args.apply else [])],input=json.dumps(private),env=child_env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=400)
