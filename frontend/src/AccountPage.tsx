@@ -116,117 +116,112 @@ function AccountShell({
   const firstName = user.fullName.trim().split(/\s+/)[0] || "Друг";
   const initial = firstName.charAt(0).toUpperCase();
   return (
-    <main
-      className={`account-page customer-account ${section === "chat" ? "account-chat-page" : ""}`}
-    >
-      <StoreHeader showTabBar={section !== "chat"} />
-      <section className="account-shell">
-        <aside className="account-sidebar cozy-account-menu" aria-label="Ваш личный кабинет">
-          <div className="cozy-account-identity">
-            <div className="account-avatar">
-              {user.avatarUpdatedAt ? (
-                <img src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`} alt="" />
-              ) : (
-                <span>{initial}</span>
-              )}
-            </div>
-            <div>
-              <p className="account-person-name" title={fullNameOf(user)}>
-                {firstName},<br /> рады вам!
-              </p>
-            </div>
-          </div>
-          <nav aria-label="Разделы личного кабинета">
-            {(
-              [
-                {
-                  section: "chat",
-                  href: "/account/chat",
-                  label: "Сообщения",
-                  note: "Переписка с магазином",
-                  icon: "messages",
-                },
-                {
-                  section: "orders",
-                  href: "/account",
-                  label: "Мои заказы",
-                  note: "Ваши зелёные покупки",
-                  icon: "basket",
-                },
-                {
-                  section: "profile",
-                  href: "/account/profile",
-                  label: "Мои данные",
-                  note: "Всё о вас — под рукой",
-                  icon: "person",
-                },
-                {
-                  section: "favorites",
-                  href: "/account/favorites",
-                  label: "Избранное",
-                  note: "Приглянулись и ждут",
-                  icon: "heart",
-                },
-                {
-                  section: "reviews",
-                  href: "/account/reviews",
-                  label: "Мои отзывы",
-                  note: "Впечатления о покупках",
-                  icon: "reviews",
-                },
-              ] as const
-            ).map((item) => (
-              <a
-                key={item.section}
-                aria-current={section === item.section ? "page" : undefined}
-                className={section === item.section ? "active" : ""}
-                href={item.href}
-              >
-                <span className="cozy-nav-icon">
-                  <StoreNavIllustration kind={item.icon} />
-                </span>
-                <span className="cozy-nav-copy">
-                  <strong>
-                    {item.label}
-                    {item.section === "chat" && chatUnread > 0 && (
-                      <b className="account-chat-count" aria-label={`Непрочитанных: ${chatUnread}`}>
-                        {chatUnread}
-                      </b>
-                    )}
-                  </strong>
-                  <small>{item.note}</small>
-                </span>
-                <svg className="cozy-nav-arrow" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="m7 5 5 5-5 5" />
-                </svg>
-              </a>
-            ))}
-          </nav>
-          <a className="cozy-care-link" href="/care">
-            Подсказки по уходу <span aria-hidden="true">↗</span>
-          </a>
-          <div className="cozy-account-footer">
-            {staff && (
-              <a className="account-switch" href="/admin">
-                Управление магазином ↗
-              </a>
+    <section className="account-shell">
+      <aside className="account-sidebar cozy-account-menu" aria-label="Ваш личный кабинет">
+        <div className="cozy-account-identity">
+          <div className="account-avatar">
+            {user.avatarUpdatedAt ? (
+              <img src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`} alt="" />
+            ) : (
+              <span>{initial}</span>
             )}
-            <button
-              className="signout-link"
-              type="button"
-              aria-label="Выйти из аккаунта"
-              onClick={onSignOut}
-            >
-              <svg viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M8 3H4v14h4m3-11 4 4-4 4m-4-4h8" />
-              </svg>
-              Выйти
-            </button>
           </div>
-        </aside>
-        <div className="account-content">{children}</div>
-      </section>
-    </main>
+          <div>
+            <p className="account-person-name" title={fullNameOf(user)}>
+              {firstName},<br /> рады вам!
+            </p>
+          </div>
+        </div>
+        <nav aria-label="Разделы личного кабинета">
+          {(
+            [
+              {
+                section: "chat",
+                href: "/account/chat",
+                label: "Сообщения",
+                note: "Переписка с магазином",
+                icon: "messages",
+              },
+              {
+                section: "orders",
+                href: "/account",
+                label: "Мои заказы",
+                note: "Ваши зелёные покупки",
+                icon: "basket",
+              },
+              {
+                section: "profile",
+                href: "/account/profile",
+                label: "Мои данные",
+                note: "Всё о вас — под рукой",
+                icon: "person",
+              },
+              {
+                section: "favorites",
+                href: "/account/favorites",
+                label: "Избранное",
+                note: "Приглянулись и ждут",
+                icon: "heart",
+              },
+              {
+                section: "reviews",
+                href: "/account/reviews",
+                label: "Мои отзывы",
+                note: "Впечатления о покупках",
+                icon: "reviews",
+              },
+            ] as const
+          ).map((item) => (
+            <a
+              key={item.section}
+              aria-current={section === item.section ? "page" : undefined}
+              className={section === item.section ? "active" : ""}
+              href={item.href}
+            >
+              <span className="cozy-nav-icon">
+                <StoreNavIllustration kind={item.icon} />
+              </span>
+              <span className="cozy-nav-copy">
+                <strong>
+                  {item.label}
+                  {item.section === "chat" && chatUnread > 0 && (
+                    <b className="account-chat-count" aria-label={`Непрочитанных: ${chatUnread}`}>
+                      {chatUnread}
+                    </b>
+                  )}
+                </strong>
+                <small>{item.note}</small>
+              </span>
+              <svg className="cozy-nav-arrow" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="m7 5 5 5-5 5" />
+              </svg>
+            </a>
+          ))}
+        </nav>
+        <a className="cozy-care-link" href="/care">
+          Подсказки по уходу <span aria-hidden="true">↗</span>
+        </a>
+        <div className="cozy-account-footer">
+          {staff && (
+            <a className="account-switch" href="/admin">
+              Управление магазином ↗
+            </a>
+          )}
+          <button
+            className="signout-link"
+            type="button"
+            aria-label="Выйти из аккаунта"
+            onClick={onSignOut}
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M8 3H4v14h4m3-11 4 4-4 4m-4-4h8" />
+            </svg>
+            Выйти
+          </button>
+        </div>
+      </aside>
+      <div className="account-content">{children}</div>
+    </section>
   );
 }
 
@@ -1116,20 +1111,17 @@ export default function AccountPage({ section }: { section: Section }) {
     }
   }
 
-  if (loading)
-    return (
-      <main className="account-page customer-account">
-        <StoreHeader />
+  return (
+    <main
+      className={`account-page customer-account ${section === "chat" ? "account-chat-page" : ""}`}
+    >
+      <StoreHeader showTabBar={section !== "chat"} />
+      {loading ? (
         <section className="customer-loading" aria-busy="true">
           <h1>Личный кабинет</h1>
           <p role="status">Загружаем ваши данные…</p>
         </section>
-      </main>
-    );
-  if (!user)
-    return (
-      <main className="account-page customer-account">
-        <StoreHeader />
+      ) : !user ? (
         <section className="auth-shell">
           <p className="auth-error" role="alert">
             {error || "Не удалось загрузить профиль"}
@@ -1144,29 +1136,28 @@ export default function AccountPage({ section }: { section: Section }) {
             Войти снова
           </a>
         </section>
-      </main>
-    );
-
-  return (
-    <AccountShell user={user} section={section} onSignOut={() => void signOut()}>
-      {error && section !== "orders" && (
-        <p className="auth-error" role="alert">
-          {error}
-        </p>
-      )}
-      {section === "orders" ? (
-        <OrdersSection error={error} onRetry={() => void load()} />
-      ) : section === "profile" ? (
-        <ProfileSection user={user} onUpdated={setUser} />
-      ) : section === "chat" ? (
-        <Suspense fallback={<p role="status">Открываем сообщения…</p>}>
-          <AccountChat />
-        </Suspense>
-      ) : section === "reviews" ? (
-        <AccountReviews />
       ) : (
-        <FavoritesSection />
+        <AccountShell user={user} section={section} onSignOut={() => void signOut()}>
+          {error && section !== "orders" && (
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+          )}
+          {section === "orders" ? (
+            <OrdersSection error={error} onRetry={() => void load()} />
+          ) : section === "profile" ? (
+            <ProfileSection user={user} onUpdated={setUser} />
+          ) : section === "chat" ? (
+            <Suspense fallback={<p role="status">Открываем сообщения…</p>}>
+              <AccountChat />
+            </Suspense>
+          ) : section === "reviews" ? (
+            <AccountReviews />
+          ) : (
+            <FavoritesSection />
+          )}
+        </AccountShell>
       )}
-    </AccountShell>
+    </main>
   );
 }

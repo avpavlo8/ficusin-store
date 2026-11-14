@@ -22,6 +22,30 @@ test("@desktop autocomplete показывает товары и переход 
   await expect(page).toHaveURL(/\/\?q=%D1%84%D0%B8%D0%BA%D1%83%D1%81#catalog$/);
 });
 
+test("@desktop account profile loading preserves focused autocomplete and its query", async ({ page }) => {
+  await mockApi(page, owner);
+  let releaseProfile!: () => void;
+  const profileReady = new Promise<void>((resolve) => { releaseProfile = resolve; });
+  await page.route("**/api/v1/auth/me", async (route) => {
+    await profileReady;
+    await route.fulfill({ json: { user: owner.user } });
+  });
+  await page.goto("/account/profile");
+  await expect(page.getByText("Загружаем ваши данные…")).toBeVisible();
+  const search = page.locator(".header-search input");
+  await search.fill("фикус");
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue("фикус");
+  await expect(page.getByRole("option", { name: /Фикус Бенджамина/ })).toBeVisible();
+  releaseProfile();
+  await expect(page.locator(".account-content")).toBeVisible();
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue("фикус");
+  await expect(page.getByRole("option", { name: /Фикус Бенджамина/ })).toBeVisible();
+  await page.getByRole("option", { name: /Все результаты/ }).click();
+  await expect(page).toHaveURL(/\/\?q=%D1%84%D0%B8%D0%BA%D1%83%D1%81#catalog$/);
+});
+
 test("@desktop локальный поиск избранного не перехватывает переход ко всей выдаче", async ({ page }) => {
   await mockApi(page);
   await page.goto("/favorites");
