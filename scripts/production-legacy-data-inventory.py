@@ -100,6 +100,14 @@ def cutover_proof(cursor):
         return {'applied':False}
     report={'applied':True}
     report['migrations']=select(cursor,'SELECT COUNT(*)::BIGINT total,MAX(name) latest FROM schema_migrations')[0]
+    manifest=json.loads(Path(__file__).with_name('production-release-migrations.json').read_text())
+    if manifest.get('commit')!='b6ecc26cbbadaf725c7ebe7274008bb74510e31d' or len(manifest.get('names',[]))!=235:
+        raise guards.PreflightError('invalid_release_migration_manifest')
+    expected=set(manifest['names'])
+    actual={row['name'] for row in select(cursor,'SELECT name FROM schema_migrations ORDER BY name')}
+    if any(not re.fullmatch(r'[A-Za-z0-9_-]+\.sql',name) for name in actual):
+        raise guards.PreflightError('invalid_migration_name')
+    report['migrationSet']={'expected':len(expected),'missing':sorted(expected-actual),'retainedHistorical':sorted(actual-expected)}
     report['fileArchive']=select(cursor,"SELECT kind,COUNT(*)::BIGINT total,COUNT(*) FILTER(WHERE sha256<>encode(sha256(payload),'hex'))::BIGINT bad_hash FROM legacy_archive.file_binary_payloads GROUP BY kind ORDER BY kind")
     report['planBackups']=select(cursor,"SELECT COUNT(*)::BIGINT total,COUNT(*) FILTER(WHERE source_hash<>encode(sha256(convert_to(before_config::TEXT,'UTF8')),'hex'))::BIGINT bad_hash FROM catalog_plan_format_history")[0]
     report['historyProof']=select(cursor,"""SELECT COUNT(*)::BIGINT total,
@@ -190,7 +198,11 @@ def main():
                     if any(item['mismatch'] or item['unavailable'] for item in report['objectVerification'].values()):
                         raise guards.PreflightError('private_object_verification_failed')
                     proof=report['cutover']
-                    if proof['applied'] and (proof['migrations']['total']!=235 or proof['zeroBarriers']!={'total':10,'not_validated':0} or proof['planBackups']['bad_hash'] or proof['historyProof']['mismatched'] or any(row['bad_hash'] for row in proof['fileArchive'])):
+                    if proof['applied']:
+                        if args.expected_commit!='b6ecc26cbbadaf725c7ebe7274008bb74510e31d':
+                            raise guards.PreflightError('wrong_cutover_manifest_revision')
+                        report['operations']=select(cursor,Path(__file__).with_name('production-release-operations.sql').read_text())
+                    if proof['applied'] and (proof['migrationSet']['missing'] or proof['zeroBarriers']!={'total':10,'not_validated':0} or proof['planBackups']['bad_hash'] or proof['historyProof']['mismatched'] or any(row['bad_hash'] for row in proof['fileArchive'])):
                         raise guards.PreflightError('cutover_proof_failed')
         report.update(expectedProductionCommit=args.expected_commit,storage=storage_flags(env),readOnly=True,
                       databaseWrites=0,providerCalls=0,objectsWritten=0,checkedAt=datetime.datetime.now(datetime.timezone.utc).isoformat())
