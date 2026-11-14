@@ -52,7 +52,6 @@ export type AdminVariant = {
   attributes: Record<string, string | number | boolean | string[]>;
   externalIds: VariantMapping[];
   images: string[];
-  managedFields: string[];
 };
 export type CatalogFilter = {
   id: number;

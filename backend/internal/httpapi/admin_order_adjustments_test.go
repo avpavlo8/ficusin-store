@@ -77,7 +77,7 @@ func TestOrderContentsRetiresOldPendingLinkAndKeepsAddedProduct(t *testing.T) {
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), dependencies).ServeHTTP(
 		response,
-		adminRequest(http.MethodPatch, "/api/v1/admin/orders/7/contents", `{"items":[{"productId":"azaliya-d9","quantity":1},{"productId":"aglaonema-mariya","quantity":1}]}`),
+		adminRequest(http.MethodPatch, "/api/v1/admin/orders/7/contents", `{"items":[{"sku":"1001","quantity":1},{"sku":"1002","quantity":1}]}`),
 	)
 
 	if response.Code != http.StatusOK {
@@ -90,8 +90,21 @@ func TestOrderContentsRetiresOldPendingLinkAndKeepsAddedProduct(t *testing.T) {
 		t.Fatalf("edit did not reach repository: %+v", repository.edits)
 	}
 	items := *repository.edits[0].Items
-	if len(items) != 2 || items[1].ProductID != "aglaonema-mariya" {
+	if len(items) != 2 || items[1].SKU != "1002" {
 		t.Fatalf("added product disappeared before persistence: %+v", items)
+	}
+}
+
+func TestOrderContentsRejectsRetiredProductIDAlias(t *testing.T) {
+	repository := &adjustmentRepositoryStub{adminRepositoryStub: &adminRepositoryStub{}}
+	payments := &adjustmentPaymentsStub{}
+	dependencies := adminDependencies(repository, admin.RoleOwner, "owner@example.com")
+	dependencies.Refunds = payments
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), dependencies).ServeHTTP(response,
+		adminRequest(http.MethodPatch, "/api/v1/admin/orders/7/contents", `{"items":[{"productId":"1001","quantity":1}]}`))
+	if response.Code != http.StatusBadRequest || len(repository.edits) != 0 || len(payments.superseded) != 0 {
+		t.Fatalf("retired alias changed order/payment: status=%d edits=%v superseded=%v", response.Code, repository.edits, payments.superseded)
 	}
 }
 

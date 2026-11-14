@@ -128,6 +128,10 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		}
 		defer pool.Exec(ctx, `DELETE FROM media_mirror WHERE source_url=$1`, source)
 		repo := NewPostgresRepository(pool)
+		variants, err := repo.ListProductVariants(ctx, productID)
+		if err != nil || len(variants) != 2 || variants[0].SKU != smallSKU || variants[1].SKU != largeSKU {
+			t.Fatalf("current SKU projection failed: variants=%+v err=%v", variants, err)
+		}
 		check := func(items []OrderItem) {
 			t.Helper()
 			if len(items) != 1 || items[0].Image != card || items[0].ImageFallback != large || items[0].ProductCode == "" {
@@ -208,11 +212,35 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	})
 
 	t.Run("редактирование заказа пишет полный кортеж", func(t *testing.T) {
+		// An order made before the no-reservation policy still owns this one
+		// unit. The edit must release and journal it, then create no new reserve.
+		if _, err := pool.Exec(ctx, `UPDATE order_items SET reserved_qty=1 WHERE order_id=$1`, orderID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE inventory SET reserved_qty=1 WHERE variant_id=$1`, smallVariant); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO stock_movements(order_id,variant_id,kind,quantity) VALUES($1,$2,'reserve',1)`, orderID, smallVariant); err != nil {
+			t.Fatal(err)
+		}
 		items := []OrderEditLine{{SKU: largeSKU, Quantity: 2}}
 		if _, err := NewPostgresRepository(pool).EditOrder(
 			ctx, Actor{CustomerID: staffID, Role: RoleOwner}, orderID, OrderEdit{Items: &items},
 		); err != nil {
 			t.Fatalf("редактирование состава заказа: %v", err)
+		}
+
+		var oldReservation, newReservation, reserveMovements, releasedQuantity int
+		if err := pool.QueryRow(ctx, `SELECT
+			(SELECT reserved_qty FROM inventory WHERE variant_id=$2),
+			(SELECT SUM(reserved_qty)::INTEGER FROM order_items WHERE order_id=$1),
+			(SELECT COUNT(*) FROM stock_movements WHERE order_id=$1 AND kind='reserve'),
+			(SELECT COALESCE(SUM(quantity),0)::INTEGER FROM stock_movements WHERE order_id=$1 AND kind='release')`,
+			orderID, smallVariant).Scan(&oldReservation, &newReservation, &reserveMovements, &releasedQuantity); err != nil {
+			t.Fatal(err)
+		}
+		if oldReservation != 0 || newReservation != 0 || reserveMovements != 1 || releasedQuantity != 1 {
+			t.Fatalf("edit changed reservation policy/history: old=%d new=%d reserve_entries=%d released=%d", oldReservation, newReservation, reserveMovements, releasedQuantity)
 		}
 
 		var storedProduct, storedVariant int64
@@ -404,7 +432,7 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		var released bool
 		if err := pool.QueryRow(ctx, `
 			SELECT stock.available_qty, stock.reserved_qty, purchase.stock_released_at IS NOT NULL,
-			  (SELECT COUNT(*) FROM stock_movements movement WHERE movement.order_id=purchase.id AND movement.kind='release')
+			  (SELECT COUNT(*) FROM stock_movements movement WHERE movement.order_id=purchase.id AND movement.variant_id=$3 AND movement.kind='release')
 			FROM orders purchase JOIN inventory stock ON stock.warehouse_id=$2 AND stock.variant_id=$3
 			WHERE purchase.id=$1
 		`, orderID, warehouseID, largeVariant).Scan(&available, &reserved, &released, &releases); err != nil {

@@ -7369,13 +7369,17 @@ components:
             - type: "null"
       type: object
     admin.OrderEditLine:
+      required: [sku, quantity]
+      additionalProperties: false
       properties:
-        productId:
-          type: string
         quantity:
           type: integer
+          minimum: 1
+          maximum: 100
         sku:
           type: string
+          minLength: 1
+          description: Exact Ficusin SKU, including the selected size. Product-card identifiers are not accepted.
       type: object
     admin.OrderPackingInput:
       properties:
@@ -7438,8 +7442,6 @@ components:
           type: string
         priceMinor:
           type: integer
-        shortDescription:
-          type: string
       type: object
       additionalProperties: false
     admin.ProductUpdate:

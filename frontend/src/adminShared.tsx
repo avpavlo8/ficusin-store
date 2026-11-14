@@ -115,7 +115,6 @@ export function ConfirmDialog({
   text,
   confirmLabel,
   busy,
-  danger,
   onCancel,
   onConfirm,
 }: {
@@ -123,7 +122,6 @@ export function ConfirmDialog({
   text: ReactNode;
   confirmLabel: string;
   busy?: boolean;
-  danger?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -158,11 +156,7 @@ export function ConfirmDialog({
           <button onClick={onCancel} disabled={busy}>
             Отмена
           </button>
-          <button
-            className={danger ? "danger-primary" : "primary"}
-            onClick={onConfirm}
-            disabled={busy}
-          >
+          <button className="primary" onClick={onConfirm} disabled={busy}>
             {confirmLabel}
           </button>
         </div>

@@ -43,7 +43,6 @@ type Event struct {
 	Term        string         `json:"term"`
 	ProductCode string         `json:"productCode"`
 	SKU         string         `json:"sku"`
-	OrderNumber string         `json:"orderNumber"`
 	Value       float64        `json:"value"`
 	Quantity    int            `json:"quantity"`
 	Properties  map[string]any `json:"properties"`

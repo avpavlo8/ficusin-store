@@ -71,9 +71,9 @@ func TestProductUpdateRejectsRetiredFirstVariantAliases(t *testing.T) {
 	}
 }
 
-func TestProductCreateRejectsRetiredDimensionStockAndImageAliases(t *testing.T) {
+func TestProductCreateRejectsRetiredAliases(t *testing.T) {
 	t.Parallel()
-	for _, key := range []string{"heightCm", "potDiameterCm", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightGrams", "stock", "image"} {
+	for _, key := range []string{"heightCm", "potDiameterCm", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightGrams", "stock", "image", "shortDescription"} {
 		repository := newCatalogToolRepositoryStub()
 		request := adminRequest(http.MethodPost, "/api/v1/admin/products", `{"name":"New draft","priceMinor":149099,"`+key+`":null}`)
 		response := httptest.NewRecorder()

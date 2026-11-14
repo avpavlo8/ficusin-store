@@ -73,7 +73,6 @@ async function setup(
       { provider: "saby", type: "id", externalId: index ? "1102" : "1101" },
     ],
     images: [],
-    managedFields: [],
   }));
   const mutations: string[] = [];
   await page.route("**/api/v1/**", async (route) => {

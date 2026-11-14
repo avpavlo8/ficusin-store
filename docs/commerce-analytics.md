@@ -18,7 +18,10 @@ orders or revenue.
 ## Event contract
 
 Browser events are allow-listed and idempotent by `event_id`. The public API
-cannot submit trusted revenue events. `order_created` and
+cannot submit trusted revenue events. The unused `orderNumber` input has been
+removed: a browser event containing that key is rejected, rather than accepted
+and silently ignored. Only `RecordOrder` supplies the dedicated order identity
+together with the committed server totals. `order_created` and
 `order_item_requested` are emitted only by the Go backend after the order
 transaction has committed, using the server-calculated total and order lines.
 These events include unpaid orders and are not sales. Historical

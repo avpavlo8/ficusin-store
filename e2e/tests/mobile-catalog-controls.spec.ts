@@ -77,7 +77,7 @@ test("@desktop header cart opens its page without mounting checkout", async ({pa
   await expect(page.locator('.drawer')).toHaveCount(0);
   await expect.poll(()=>profiles.length).toBe(1);
   await page.locator('.storefront-card').first().getByRole('button',{name:'В корзину',exact:true}).click();
-  await page.getByRole('button',{name:'Корзина, товаров: 1',exact:true}).click();
+  const cartLink=page.getByRole('link',{name:'Корзина, товаров: 1',exact:true});await expect(cartLink).toHaveAttribute('href','/cart');await cartLink.click();
   await expect(page.locator('.cart-page-panel .cart-line')).toHaveCount(1);
   await expect(page.locator('.checkout')).toHaveCount(0);
   expect(providers).toHaveLength(0);

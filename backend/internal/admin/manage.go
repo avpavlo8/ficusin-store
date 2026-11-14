@@ -515,7 +515,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			COALESCE(pv.wholesale_min_qty, 1),
 			p.saby_fields,
 			COALESCE((SELECT source.code FROM saby_nomenclature source WHERE source.saby_id = p.saby_id), ''),
-			p.saby_updated_at, p.category_id, p.plant_passport, p.important_warnings,
+			p.category_id, p.plant_passport, p.important_warnings,
 			COALESCE((SELECT jsonb_agg(jsonb_build_object(
 				'provider', e.provider, 'type', e.id_type, 'externalId', e.external_id)
 				ORDER BY e.provider,e.id_type) FROM product_external_ids e
@@ -597,7 +597,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.PotDiameterCM, &item.PackageLengthCM, &item.PackageWidthCM,
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
 			&item.SabyFields, &item.SabyCode,
-			&item.SabyUpdatedAt, &item.CategoryID, &item.Passport, &item.ImportantWarnings,
+			&item.CategoryID, &item.Passport, &item.ImportantWarnings,
 			&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues, &item.VariantCount, &item.StockUpdatedAt, &item.UpdatedAt, &item.TotalStock, &item.MinPrice, &item.MaxPrice, &item.VariantsReady, &variantTasks); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
 		}

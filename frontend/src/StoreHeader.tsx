@@ -430,7 +430,6 @@ function MobileTabBar({
   user,
   favorites,
   cart,
-  onCartClick,
   onSearchClick,
   onCatalogClick,
   catalogOpen,
@@ -438,7 +437,6 @@ function MobileTabBar({
   user: StoreUser | null;
   favorites: number;
   cart: number;
-  onCartClick?: () => void;
   onSearchClick: (trigger: HTMLButtonElement) => void;
   onCatalogClick: () => void;
   catalogOpen: boolean;
@@ -489,13 +487,7 @@ function MobileTabBar({
         </span>
         <small>Поиск</small>
       </button>
-      {onCartClick ? (
-        <button type="button" onClick={onCartClick}>
-          {cartInside}
-        </button>
-      ) : (
-        <a href="/cart">{cartInside}</a>
-      )}
+      <a href="/cart">{cartInside}</a>
       <a href={user ? "/account" : "/login"}>
         <span className="tab-icon">
           <Icon path={icons.person} />
@@ -513,9 +505,7 @@ export function StoreHeader({
   onQueryChange,
   onSearch,
   onSearchClose,
-  onCartClick,
   showTabBar = true,
-  showSearch = true,
   homeNavigation = true,
   catalogMenuItems = [],
   plantMenuItems = [],
@@ -527,14 +517,7 @@ export function StoreHeader({
   onQueryChange?: (value: string) => void;
   onSearch?: (value: string) => void;
   onSearchClose?: () => void;
-  // Supplied by the storefront, which opens the cart as a drawer instead of
-  // navigating away from the catalogue.
-  onCartClick?: () => void;
   showTabBar?: boolean;
-  // The storefront carries its own search bar under the header, so it asks
-  // for the header field to step aside. Every other page keeps it: there it
-  // is the only way to search at all.
-  showSearch?: boolean;
   homeNavigation?: boolean;
   catalogMenuItems?: HeaderMenuItem[];
   plantMenuItems?: HeaderMenuItem[];
@@ -751,19 +734,15 @@ export function StoreHeader({
           )}
         </nav>
         <div className="header-actions">
-          {showSearch && (
-            <>
-              <CatalogSearch value={query} onChange={onQueryChange} onSearch={search} />
-              <button
-                className="search-toggle"
-                onClick={(event) => (searchOpen ? closeSearch() : openSearch(event.currentTarget))}
-                aria-label="Поиск по каталогу"
-                aria-expanded={searchOpen}
-              >
-                <Icon path={icons.search} />
-              </button>
-            </>
-          )}
+          <CatalogSearch value={query} onChange={onQueryChange} onSearch={search} />
+          <button
+            className="search-toggle"
+            onClick={(event) => (searchOpen ? closeSearch() : openSearch(event.currentTarget))}
+            aria-label="Поиск по каталогу"
+            aria-expanded={searchOpen}
+          >
+            <Icon path={icons.search} />
+          </button>
           <a
             className="favorites-button"
             href="/favorites"
@@ -775,24 +754,15 @@ export function StoreHeader({
             {favorites > 0 && <b>{favorites}</b>}
           </a>
           <AccountMenu user={user} iconOnly />
-          {onCartClick ? (
-            <button className="cart-button" onClick={onCartClick} aria-label={cartLabel}>
-              <span>
-                <Icon path={icons.bag} />
-              </span>
-              {cart > 0 && <b>{cart}</b>}
-            </button>
-          ) : (
-            <a className="cart-button" href="/cart" aria-label={cartLabel}>
-              <span>
-                <Icon path={icons.bag} />
-              </span>
-              {cart > 0 && <b>{cart}</b>}
-            </a>
-          )}
+          <a className="cart-button" href="/cart" aria-label={cartLabel}>
+            <span>
+              <Icon path={icons.bag} />
+            </span>
+            {cart > 0 && <b>{cart}</b>}
+          </a>
         </div>
       </header>
-      {showSearch && searchOpen && (
+      {searchOpen && (
         <MobileSearch
           query={query}
           onQueryChange={onQueryChange}
@@ -829,7 +799,6 @@ export function StoreHeader({
             user={user}
             favorites={favorites}
             cart={cart}
-            onCartClick={onCartClick}
             onSearchClick={openSearch}
             onCatalogClick={() => {
               setSearchOpen(false);

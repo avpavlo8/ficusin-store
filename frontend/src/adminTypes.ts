@@ -244,7 +244,6 @@ export type Product = {
   placement?: string;
   petSafety?: string;
   growthHabit?: string;
-  sabyUpdatedAt?: string;
   categoryId?: number;
   passport: PlantPassport;
   importantWarnings: string[];

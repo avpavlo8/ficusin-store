@@ -7,7 +7,6 @@ export function ChannelReferencePicker({
   value,
   onChange,
   channel,
-  kind = "categories",
   items,
 }: {
   label: string;
@@ -15,7 +14,6 @@ export function ChannelReferencePicker({
   value: ChannelCategory;
   onChange: (v: ChannelCategory) => void;
   channel: "ozon" | "wb" | "saby";
-  kind?: string;
   items?: ChannelCategory[];
 }) {
   const [open, setOpen] = useState(false),
@@ -38,7 +36,7 @@ export function ChannelReferencePicker({
     setBusy(true);
     setError("");
     api<{ data: unknown }>(
-      `/api/v1/admin/catalog-editor/references?channel=${channel}&kind=${kind}`,
+      `/api/v1/admin/catalog-editor/references?channel=${channel}&kind=categories`,
     )
       .then((r) => setOptions(flattenCategories(channel === "wb" ? "wb" : "ozon", r.data)))
       .catch((e) => setError(e.message))

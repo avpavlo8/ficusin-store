@@ -223,7 +223,6 @@ type Product struct {
 	// «ничего»: карточка целиком наша.
 	SabyFields           []string              `json:"sabyFields"`
 	SabyCode             string                `json:"sabyCode"`
-	SabyUpdatedAt        *time.Time            `json:"sabyUpdatedAt"`
 	CategoryID           *int64                `json:"categoryId"`
 	Passport             catalog.PlantPassport `json:"passport"`
 	ImportantWarnings    []string              `json:"importantWarnings"`
@@ -280,7 +279,6 @@ type ProductCreate struct {
 	VariantAttributes map[string]any `json:"variantAttributes"`
 	Name              string         `json:"name"`
 	LatinName         string         `json:"latinName"`
-	ShortDescription  string         `json:"shortDescription"`
 	Description       string         `json:"description"`
 	CatalogSection    string         `json:"catalogSection"`
 	CategoryID        *int64         `json:"categoryId"`

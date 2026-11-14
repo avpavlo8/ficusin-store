@@ -63,7 +63,7 @@ function checkCurrentInputFields(name, schema) {
   assert.equal(schema.additionalProperties, false, `Unknown request fields must be rejected: ${name}`);
   assert.deepEqual(Object.keys(schema.properties).sort(), Object.keys(inventory.schemas[name].properties).sort(), `Request fields drifted: ${name}`);
 }
-for (const [name, retired] of [["admin.ProductCreate", "image"], ["admin.ProductUpdate", "priceMinor"], ["admin.VariantEdit", "stock"], ["procurement.SalesLink", "sabyId"]]) {
+for (const [name, retired] of [["admin.ProductCreate", "image"], ["admin.ProductUpdate", "priceMinor"], ["admin.VariantEdit", "stock"], ["procurement.SalesLink", "sabyId"], ["admin.OrderEditLine", "productId"]]) {
   const schema = spec.components.schemas[name];
   checkCurrentInputFields(name, schema);
   // Regression fixtures must fail when obsolete aliases reappear in the contract.

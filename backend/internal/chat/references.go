@@ -19,7 +19,6 @@ type Reference struct {
 	ID        string `json:"id"`
 	Label     string `json:"label"`
 	Image     string `json:"image,omitempty"`
-	Detail    string `json:"detail,omitempty"`
 	Number    string `json:"number,omitempty"`
 	Status    string `json:"status,omitempty"`
 	Available bool   `json:"available"`

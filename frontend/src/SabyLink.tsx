@@ -13,13 +13,11 @@ type SabyCandidate = {
 };
 
 export default function SabyLinkPicker({
-  label,
   product,
   variant,
   onLinked,
   onError,
 }: {
-  label?: string;
   product: { id: number; name: string };
   variant: { id: number; sku: string; label: string; sabyId: string };
   onLinked: () => void;
@@ -69,9 +67,7 @@ export default function SabyLinkPicker({
   return (
     <div onClick={(event) => event.stopPropagation()}>
       <button type="button" className="text-button" onClick={() => setOpen(!open)}>
-        {open
-          ? "Закрыть поиск"
-          : label || `${replacing ? "Перепривязать" : "Связать"} SKU ${variant.sku}`}
+        {open ? "Закрыть поиск" : `${replacing ? "Перепривязать" : "Связать"} SKU ${variant.sku}`}
       </button>
       {open && (
         <div className="admin-pim-editor">

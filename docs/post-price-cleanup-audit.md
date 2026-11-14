@@ -407,3 +407,86 @@ production/подмена host/credentials/ports/path/query. Загружены 
 Проверки выполнялись локально. Production-очереди, база и секреты не менялись;
 ветка не сливалась в main. Активная совместимость внешних URL, платёжных
 неизвестных результатов, архивной идентичности и существующих файлов сохранена.
+
+## Продолжение удаления после `b89f1ca`
+
+### Интерфейс и маршруты
+
+JSX-аудит включал все call sites и spreads. Ни один текущий caller не передавал
+AccountPage.orderNumber: Root давно направляет /account/orders/:number в
+AccountOrderPage. Удалены OrderDetailSection, второй DTO заказа, payOrder,
+только ему нужные форматтеры/labels и 21 неиспользуемый CSS-селектор.
+Действующие список заказов, пагинация, детализация и оплата отдельной страницы
+сохранены. Не удалялись реальные orderNumber в ссылках/моделях заказов.
+
+Удалены никогда не менявшиеся optional props: CatalogSearch.inlineResults,
+StoreHeader.showSearch, ChannelReferencePicker.kind, SabyLinkPicker.label,
+ConfirmDialog.danger; вместе с AccountPage.orderNumber это шесть контрактов.
+Callback onCartClick был остатком старого modal: оба caller просто переходили
+на /cart, как и default anchor. Он и дублирующие button/link ветки сняты,
+header и TabBar сохраняют доступные подписи/счётчик на обычном /cart anchor.
+Действующие onSearch/onChange, режимы меню и справочники не вырезались.
+
+### Складской журнал и исторические резервы
+
+purchasableItem.Reserved нигде не получал значения. Старый reserveVariantForEdit
+на каждом пути возвращал reserved=0; последующий reserve INSERT всегда отсеивал
+нулевые строки. Поля/аргументы и пустой вызов удалены; DB default reserved_qty=0
+подтверждён реальным оформлением. Новый needsPreorderForEdit делает только
+проверку наличия/предзаказа.
+
+RecordMovement больше не принимает произвольный kind и не содержит будущих
+reserve/writeoff веток. RecordStockRelease записывает только реальное освобождение
+положительных исторических резервов. Два текущих caller — ReleaseStock и
+редактирование заказа — сохранены. Журнал, order_items/inventory reserved_qty,
+shipment reservations и operations parity guards не удалены: это необходимые
+потребители старых данных. При ошибке журнала редактирование откатывается атомарно.
+Это не возобновление отправки stock_movements в СБИС и не изменение закупочной приёмки.
+
+PostgreSQL-тесты проверяют оформление и конкуренцию без новых резервов,
+редактирование с освобождением старой единицы, отмену/завершение, сохранение
+физического остатка и чужих двух зарезервированных единиц, идемпотентный повтор.
+Исторические seed-состояния оставлены: они проверяют эту действующую совместимость.
+
+### Неиспользуемые поля данных
+
+- OrderEditLine.productId/identity fallback снят: текущий редактор и acceptance
+  отправляют sku, SQL выбирает SKU. Старый единственный HTTP fixture передавал
+  slug, который фактический SKU lookup всё равно не разрешал. Strict HTTP
+  отклоняет старый ключ; текущие снимки/legacy_product_ref заказов сохранены.
+- ProductCreate.shortDescription раньше принимался, но CreateProduct всегда
+  создавал пустое краткое описание и не читал поле. Текущий POST его не отправляет;
+  ключ снят и возвращает 400. ProductUpdate.shortDescription действует как прежде.
+- AdminVariant.managedFields и Product.sabyUpdatedAt были только проекциями
+  ответа/TS-объявлениями без UI consumer. Чтение/DTO удалены; рабочие saby_fields,
+  StockUpdatedAt и исторический DB saby_updated_at сохранены.
+- analytics.Event.orderNumber никогда не читался/не записывался; публичный
+  frontend EventInput не имел этого поля. Strict HTTP теперь возвращает 400
+  до Record, валидное текущее событие сохраняет свой контракт. Trusted
+  RecordOrder и DB order_number не изменены. Регрессия проверяет оба запроса.
+- chat.Reference.detail никогда не заполнялся resolver/options SQL и не имеет
+  frontend поля/рендеринга. Удалён пустой optional DTO-slot без изменения
+  сохранённого JSON или идентичности/доступности ссылок. Chat live-тесты прошли.
+
+ProductAttribute.DisplayMode сознательно оставлен: отсутствие прямого Go
+selector обманчиво — поле заполняется JSON из catalogListQuery и используется
+фильтрами витрины. Внешние parse/serialize DTO и записи истории не удалялись
+по одному счётчику Go-полей. В scripts/CI новых доказанных остатков не найдено.
+Документация 218 уточняет точные архивы и отсутствие overwrite для существующего PIM.
+
+### Проверка рабочей версии
+
+Полные Go test/vet/build и анализ cmd-достижимости прошли без дополнительных
+кандидатов. Отдельные PostgreSQL-наборы order/admin/analytics/chat и три
+целевых исторических/concurrent сценария прошли. Новый API на пустой БД
+применил все 218 миграций и отдал 200 readiness/главная/каталог.
+CRM acceptance через настоящий API прошёл для владельца и менеджера в
+1440/390 px, галерея и границы прав сохранены. OpenAPI: 236 операций / 91 схема;
+SKU-only OrderEditLine включён в проверку полей с Go AST. Новая миграция не нужна.
+
+Финальные frontend-проверки этой группы: 47/47 browser (9 текущих заказов,
+21 аккаунта/профиля/навигации, 17 поиска/header/Saby/подтверждений), все 76
+unit-тестов, strict TypeScript, lint/format/build/budget. Удалён 21 эксклюзивный
+CSS-селектор, оставшиеся 1238 классов прошли проверку. Полный набор других
+browser-спецификаций в этой итерации не перезапускался. 48 Python-тестов прошли.
+Production не изменялась; изменения сохранены только в ветке очистки.

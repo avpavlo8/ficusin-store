@@ -13,18 +13,8 @@ import (
 type OrderEditLine struct {
 	// SKU опознаёт строку заказа. Продаётся конкретный размер, поэтому одна
 	// карточка товара ещё не говорит, что именно уходит покупателю.
-	SKU string `json:"sku"`
-	// ProductID — имя поля до «Каталога v2». Оставлено, чтобы вкладка
-	// админки, открытая до релиза, доработала до перезагрузки.
-	ProductID string `json:"productId"`
-	Quantity  int    `json:"quantity"`
-}
-
-func (line OrderEditLine) identity() string {
-	if sku := strings.TrimSpace(line.SKU); sku != "" {
-		return sku
-	}
-	return strings.TrimSpace(line.ProductID)
+	SKU      string `json:"sku"`
+	Quantity int    `json:"quantity"`
 }
 
 type OrderEdit struct {
@@ -47,7 +37,6 @@ type editableOrderLine struct {
 	potDiameterCM *int
 	price         float64
 	quantity      int
-	reserved      int
 	preorder      bool
 	sabyID        string
 }
@@ -56,7 +45,7 @@ func normalizeOrderEditLines(lines []OrderEditLine) ([]OrderEditLine, error) {
 	result := make([]OrderEditLine, 0, len(lines))
 	positions := map[string]int{}
 	for _, line := range lines {
-		sku := line.identity()
+		sku := strings.TrimSpace(line.SKU)
 		if sku == "" || line.Quantity <= 0 || line.Quantity > 100 {
 			return nil, fmt.Errorf("некорректный товар или количество")
 		}
@@ -102,7 +91,7 @@ func releaseOrderReservationsForEdit(ctx context.Context, tx pgx.Tx, orderID int
 	return nil
 }
 
-func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, variantID int64, quantity int) (int, bool, error) {
+func needsPreorderForEdit(ctx context.Context, tx pgx.Tx, variantID int64, quantity int) (bool, error) {
 	// The availability snapshot decides whether manager review is needed.
 	// Use confirmed Saby stock: other warehouses and stale local values cannot
 	// turn a request into an immediately payable order. No reservation is made.
@@ -117,9 +106,9 @@ func reserveVariantForEdit(ctx context.Context, tx pgx.Tx, variantID int64, quan
 		JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
 		WHERE i.variant_id=$1 AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'
 	`, variantID).Scan(&available, &fresh); err != nil {
-		return 0, false, err
+		return false, err
 	}
-	return 0, !fresh || available < quantity, nil
+	return !fresh || available < quantity, nil
 }
 
 func currentAdminOrder(ctx context.Context, repository *PostgresRepository, id int64) (Order, error) {
@@ -252,7 +241,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 				if needed < 0 {
 					needed = 0
 				}
-				_, preorder, err = reserveVariantForEdit(ctx, tx, *line.variant, needed)
+				preorder, err = needsPreorderForEdit(ctx, tx, *line.variant, needed)
 				if err != nil {
 					return Order{}, err
 				}
@@ -316,7 +305,9 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 			return Order{}, err
 		}
 
-		_ = order.RecordMovement(ctx, tx, id, order.MovementRelease)
+		if err := order.RecordStockRelease(ctx, tx, id); err != nil {
+			return Order{}, err
+		}
 		if err := releaseOrderReservationsForEdit(ctx, tx, id); err != nil {
 			return Order{}, err
 		}
@@ -351,9 +342,9 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 				FROM product_variants pv JOIN products p ON p.id=pv.product_id
 				WHERE pv.sku=$1 AND pv.is_active=1 AND pv.archived_at IS NULL AND p.status='published'
 				LIMIT 1
-			`, requested.identity()).Scan(&line.sku, &line.variantID, &line.productID, &line.name, &line.variantLabel, &priceMinor, &line.sabyID, &line.heightCM, &line.potDiameterCM, &packageSnapshot); err != nil {
+			`, requested.SKU).Scan(&line.sku, &line.variantID, &line.productID, &line.name, &line.variantLabel, &priceMinor, &line.sabyID, &line.heightCM, &line.potDiameterCM, &packageSnapshot); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
-					return Order{}, fmt.Errorf("товар %s больше не доступен", requested.identity())
+					return Order{}, fmt.Errorf("товар %s больше не доступен", requested.SKU)
 				}
 				return Order{}, err
 			}
@@ -370,7 +361,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 				}
 				line.price = float64(minor) / 100
 			}
-			line.reserved, line.preorder, err = reserveVariantForEdit(ctx, tx, line.variantID, line.quantity)
+			line.preorder, err = needsPreorderForEdit(ctx, tx, line.variantID, line.quantity)
 			if err != nil {
 				return Order{}, err
 			}
@@ -383,9 +374,9 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 			// order_items_catalog_identity_check отвергает всё остальное, а без
 			// снимка размеров историю заказа потом нечем объяснить.
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder,reserved_qty)
-				VALUES($1,$2,$3,$4,$5,$6,jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)) || $13::JSONB,$9,$10,$11,$12)
-			`, id, line.productID, line.variantID, line.sku, line.name, line.variantLabel, line.heightCM, line.potDiameterCM, line.price, line.quantity, boolToSmallInt(line.preorder), line.reserved, packageSnapshot); err != nil {
+				INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder)
+				VALUES($1,$2,$3,$4,$5,$6,jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER)) || $12::JSONB,$9,$10,$11)
+			`, id, line.productID, line.variantID, line.sku, line.name, line.variantLabel, line.heightCM, line.potDiameterCM, line.price, line.quantity, boolToSmallInt(line.preorder), packageSnapshot); err != nil {
 				return Order{}, err
 			}
 			if line.preorder {
@@ -393,9 +384,6 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 					return Order{}, err
 				}
 			}
-		}
-		if err := order.RecordMovement(ctx, tx, id, order.MovementReserve); err != nil {
-			return Order{}, err
 		}
 
 		// Изменение состава выполняет только менеджер. Оно не должно само по

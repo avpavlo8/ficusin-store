@@ -128,8 +128,6 @@ type purchasableItem struct {
 	// Preorder means the shelf could not cover this line. The order still
 	// goes through; the manager names the date.
 	Preorder bool
-	// Checkout currently does not reserve any stock. This remains zero for new orders.
-	Reserved int
 }
 
 // shippingBox builds the single box the order travels in from the boxes of
@@ -399,15 +397,15 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		if _, err := transaction.Exec(ctx, `
 			INSERT INTO order_items (
 				order_id, product_id, variant_id, sku, product_name, variant_label, variant_snapshot,
-				unit_price, quantity, is_preorder, reserved_qty
+				unit_price, quantity, is_preorder
 			) VALUES ($1, $2, $3, $4, $5, $6,
 				jsonb_strip_nulls(jsonb_build_object('heightCm',$7::INTEGER,'potDiameterCm',$8::INTEGER,
-					'packageLengthCm',$13::INTEGER,'packageWidthCm',$14::INTEGER,
-					'packageHeightCm',$15::INTEGER,'packageWeightGrams',$16::INTEGER)),
-				$9, $10, $11, $12)
+					'packageLengthCm',$12::INTEGER,'packageWidthCm',$13::INTEGER,
+					'packageHeightCm',$14::INTEGER,'packageWeightGrams',$15::INTEGER)),
+				$9, $10, $11)
 		`, orderID, item.ProductID, item.VariantID, item.ID, item.Name, item.VariantLabel,
 			item.HeightCM, item.PotDiameterCM, money.Rubles(item.PriceMinor), item.Quantity,
-			boolToInt(item.Preorder), item.Reserved, item.Parcel.LengthCM, item.Parcel.WidthCM, item.Parcel.HeightCM, item.Parcel.WeightGrams); err != nil {
+			boolToInt(item.Preorder), item.Parcel.LengthCM, item.Parcel.WidthCM, item.Parcel.HeightCM, item.Parcel.WeightGrams); err != nil {
 			return Created{}, fmt.Errorf("insert order item: %w", err)
 		}
 	}

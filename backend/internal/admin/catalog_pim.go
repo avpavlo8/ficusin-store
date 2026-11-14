@@ -90,7 +90,6 @@ type AdminVariant struct {
 	Attributes      map[string]any `json:"attributes"`
 	ExternalIDs     []ExternalID   `json:"externalIds"`
 	Images          []string       `json:"images"`
-	ManagedFields   []string       `json:"managedFields"`
 }
 
 type VariantInput struct {
@@ -517,8 +516,8 @@ func (repository *PostgresRepository) ListProductVariants(ctx context.Context, p
 			v.wholesale_min_qty,v.is_active=1,v.archived_at IS NOT NULL,
 			COALESCE((SELECT jsonb_object_agg(d.code,av.value) FROM variant_attribute_values av JOIN attribute_definitions d ON d.id=av.attribute_id WHERE av.variant_id=v.id),'{}'::jsonb),
 			COALESCE((SELECT jsonb_agg(jsonb_build_object('provider',e.provider,'type',e.id_type,'externalId',e.external_id) ORDER BY e.provider,e.id_type) FROM product_external_ids e WHERE e.variant_id=v.id AND e.status='active' AND NOT (e.provider='wildberries' AND e.id_type IN ('sku','nm_id'))),'[]'::jsonb),
-			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,m.object_key) ORDER BY m.is_primary DESC,m.sort_order,m.id) FROM product_media m LEFT JOIN media_mirror mirror ON mirror.source_url=m.object_key WHERE m.variant_id=v.id),'[]'::jsonb),p.saby_fields
-		FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.product_id=$1 ORDER BY v.archived_at NULLS FIRST,v.id
+			COALESCE((SELECT jsonb_agg(COALESCE(mirror.large_url,m.object_key) ORDER BY m.is_primary DESC,m.sort_order,m.id) FROM product_media m LEFT JOIN media_mirror mirror ON mirror.source_url=m.object_key WHERE m.variant_id=v.id),'[]'::jsonb)
+		FROM product_variants v WHERE v.product_id=$1 ORDER BY v.archived_at NULLS FIRST,v.id
 	`, productID)
 	if err != nil {
 		return nil, fmt.Errorf("list variants: %w", err)
@@ -529,7 +528,7 @@ func (repository *PostgresRepository) ListProductVariants(ctx context.Context, p
 		var item AdminVariant
 		var priceMinor int64
 		var attributes, external, images []byte
-		if err := rows.Scan(&item.ID, &item.ProductID, &item.SKU, &item.Label, &priceMinor, &item.Stock, &item.WholesaleMinQty, &item.Active, &item.Archived, &attributes, &external, &images, &item.ManagedFields); err != nil {
+		if err := rows.Scan(&item.ID, &item.ProductID, &item.SKU, &item.Label, &priceMinor, &item.Stock, &item.WholesaleMinQty, &item.Active, &item.Archived, &attributes, &external, &images); err != nil {
 			return nil, err
 		}
 		item.Price = float64(priceMinor) / 100

@@ -984,7 +984,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           onQueryChange={updateSearch}
           onSearch={submitSearch}
           onSearchClose={cancelSearch}
-          onCartClick={() => window.location.assign("/cart")}
           homeNavigation
           onHomeCategoryPick={
             !landing
@@ -1010,7 +1009,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
         onQueryChange={updateSearch}
         onSearch={submitSearch}
         onSearchClose={cancelSearch}
-        onCartClick={() => window.location.assign("/cart")}
         homeNavigation
         onHomeCategoryPick={
           !landing
