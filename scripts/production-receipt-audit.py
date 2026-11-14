@@ -24,7 +24,7 @@ STATUSES = {'pending', 'waiting_for_capture', 'succeeded', 'canceled', 'cancelle
 QUERY = """
 WITH facts AS (
  SELECT p.id,p.order_id,o.order_number,p.shipment_offer_id,so.status shipment_status,p.provider_payment_id,ROUND(p.amount*100)::bigint amount_minor,
- p.paid_at,o.updated_at order_updated_at,ROUND(o.total*100)::bigint order_total_minor,p.request_payload->'Items' fiscal_items,
+ p.paid_at,o.created_at order_created_at,ROUND(o.total*100)::bigint order_total_minor,p.request_payload->'Items' fiscal_items,
  (SELECT MAX(a.created_at) FROM admin_audit_log a WHERE a.entity_type='order' AND a.entity_id=o.id::text AND a.action='order.status.update' AND a.after_data->>'status'='completed' AND a.before_data->>'status' IS DISTINCT FROM 'completed') completed_audit_at,
  (SELECT COUNT(*) FROM payment_refunds r WHERE r.payment_id=p.id) refunds_count,
  (SELECT COUNT(*) FROM payment_refunds r WHERE r.payment_id=p.id AND (r.status='pending' OR r.needs_review)) refunds_pending_or_review,
@@ -224,7 +224,7 @@ def reconcile(rows, reader):
                 'originalFiscalItemCount':len(items),'originalFiscalTotalMinor':int(fiscal_sum),
                 'originalFiscalTotalMatchesAmount':fiscal_sum==row['amount_minor'],
                 **info}
-            for key in ('paid_at','completed_audit_at','order_updated_at'):
+            for key in ('paid_at','completed_audit_at','order_created_at'):
                 record[key]=row[key].isoformat() if row[key] is not None else None
             record['providerCapturedAt']=payment.get('captured_at')
             real_settlement_records.append(record)
