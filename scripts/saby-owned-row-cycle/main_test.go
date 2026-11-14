@@ -184,3 +184,52 @@ func TestClosedJournalPreventsMutation(t *testing.T) {
 		t.Fatal("unsaved intent allowed a write")
 	}
 }
+
+func restoreFixture(t *testing.T) (*fakeClient, *journal) {
+	f, j := fixture(t)
+	f.id = acknowledgedRestoreRowID
+	f.rows[0].ID = acknowledgedRestoreRowID
+	f.rows[0].UnitPrice, f.rows[0].LineSum = "1.01", "1.01"
+	return f, j
+}
+
+func TestRestoreAcknowledgedRowRunsOnlyOneCycle(t *testing.T) {
+	f, j := restoreFixture(t)
+	if err := runCycle(context.Background(), f, j, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.writes) != 3 || len(f.rows) != 1 || f.rows[0].ID != acknowledgedRestoreRowID+1 || !exact(f.rows[0].UnitPrice, "1.00") {
+		t.Fatal("restoration repeated full probe or did not restore exact target", f.writes, f.rows)
+	}
+}
+
+func TestRestoreUnknownWriteStopsWithoutReplay(t *testing.T) {
+	for _, stage := range []string{"delete", "prepare", "save"} {
+		t.Run(stage, func(t *testing.T) {
+			f, j := restoreFixture(t)
+			f.unknown = stage
+			if err := runCycle(context.Background(), f, j, true); err == nil {
+				t.Fatal("restore accepted unknown response")
+			}
+			want := map[string]int{"delete": 1, "prepare": 2, "save": 3}[stage]
+			if len(f.writes) != want {
+				t.Fatal("restoration replayed unknown write", f.writes)
+			}
+		})
+	}
+}
+
+func TestRestoreRejectsForeignOrUnacknowledgedBaseline(t *testing.T) {
+	for _, mutate := range []func(*fakeClient){
+		func(f *fakeClient) { f.rows[0].ID++ },
+		func(f *fakeClient) { f.rows[0].UnitPrice, f.rows[0].LineSum = "1.00", "1.00" },
+		func(f *fakeClient) { f.rows[0].NomenclatureID++ },
+		func(f *fakeClient) { f.rows[0].Quantity = "2" },
+	} {
+		f, j := restoreFixture(t)
+		mutate(f)
+		if err := runCycle(context.Background(), f, j, true); err == nil || len(f.writes) != 0 {
+			t.Fatal("restoration wrote against unacknowledged baseline", f.writes, err)
+		}
+	}
+}

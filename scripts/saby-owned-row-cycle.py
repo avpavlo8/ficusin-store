@@ -84,9 +84,12 @@ def extract_backend(data, directory):
         archive.extractall(directory)
 
 
-def execute(source, source_sha, journal, apply=False, reader=None, run=subprocess.run):
+def execute(source, source_sha, journal, apply=False, reader=None, run=subprocess.run, restore_acknowledged_row=False):
     if not apply:
-        return {"ok": True, "applied": False, "plan": SUMMARY, "productionSHA": PRODUCTION_SHA}
+        plan = dict(SUMMARY)
+        if restore_acknowledged_row:
+            plan.update({"acknowledgedStartRowID": 175676, "startPrice": "1.01", "prices": ["1.00"], "restoreAcknowledgedRow": True})
+        return {"ok": True, "applied": False, "plan": plan, "productionSHA": PRODUCTION_SHA}
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
         fail("first_github_attempt_only")
     journal = Path(journal).absolute()
@@ -112,7 +115,10 @@ def execute(source, source_sha, journal, apply=False, reader=None, run=subproces
         for value in values.values():
             if isinstance(value, str) and value:
                 print("::add-mask::" + value, flush=True)
-        result = run([str(binary), "--journal", str(journal)], cwd=root,
+        command = [str(binary), "--journal", str(journal)]
+        if restore_acknowledged_row:
+            command.append("--restore-acknowledged-row")
+        result = run(command, cwd=root,
                      env=child_environment(values), capture_output=True, timeout=300)
         # No raw helper stderr/stdout is ever printed, including exceptions.
         if result.returncode:
@@ -123,7 +129,7 @@ def execute(source, source_sha, journal, apply=False, reader=None, run=subproces
         expected = {"ok": True, "documentID": 42807, "finalUnposted": True, "finalQuantity": "1", "finalPrice": "1.00", "postingRequested": False}
         if report != expected or not journal.is_file() or journal.stat().st_size == 0:
             fail("unverified_runner_completion")
-        return {**expected, "applied": True, "sourceSHA": source_sha, "retryPolicy": "read-only"}
+        return {**expected, "applied": True, "sourceSHA": source_sha, "restoreAcknowledgedRow": restore_acknowledged_row, "retryPolicy": "read-only"}
 
 
 def main():
@@ -132,11 +138,12 @@ def main():
     parser.add_argument("--source-sha")
     parser.add_argument("--journal", type=Path, default=Path("saby-owned-row-cycle-journal.jsonl"))
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--restore-acknowledged-row", action="store_true", help="only restore acknowledged row175676 from1.01 to1.00; use a NEW exclusive journal")
     args = parser.parse_args()
     try:
         if args.apply and (args.source_root is None or args.source_sha is None):
             fail("pinned_source_required")
-        print(json.dumps(execute(args.source_root, args.source_sha, args.journal, args.apply)), flush=True)
+        print(json.dumps(execute(args.source_root, args.source_sha, args.journal, args.apply, restore_acknowledged_row=args.restore_acknowledged_row)), flush=True)
         return 0
     except Exception as error:
         print(json.dumps(guards.safe_failure(error, {"phase": "fixed_unposted_test_row_cycle"})), flush=True)

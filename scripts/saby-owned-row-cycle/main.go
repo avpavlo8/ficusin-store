@@ -22,6 +22,7 @@ import (
 
 const nativeUUID = "8d6e3870-40b3-4c82-8d2b-ccefd310637d"
 const publicUUID = "1eacfa69-a5be-4790-8b9a-a198b3493220"
+const acknowledgedRestoreRowID int64 = 175676
 
 var identity = integration.SabyOrderRealizationIdentity{ID: 42807, UUID: nativeUUID, WarehouseID: 283, MovementWarehouseID: 284}
 
@@ -73,6 +74,7 @@ type scopedTransport struct {
 	base   http.RoundTripper
 	mu     sync.Mutex
 	writes map[string]int
+	limit  int
 }
 
 func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -107,7 +109,11 @@ func (t *scopedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if write {
 		t.mu.Lock()
 		n := t.writes[body.Method]
-		if n >= 2 {
+		limit := t.limit
+		if limit == 0 {
+			limit = 2
+		}
+		if n >= limit {
 			t.mu.Unlock()
 			return nil, errors.New("write_limit_rejected")
 		}
@@ -172,26 +178,42 @@ func recoverRead(ctx context.Context, c clientAPI, j *journal) {
 	}
 }
 func cycle(ctx context.Context, c clientAPI, j *journal) (err error) {
+	return runCycle(ctx, c, j, false)
+}
+
+func runCycle(ctx context.Context, c clientAPI, j *journal, restoreAcknowledgedRow bool) (err error) {
 	defer func() {
 		if err != nil {
 			recoverRead(ctx, c, j)
 		}
 	}()
-	rows, err := read(ctx, c, "1.00")
+	baselinePrice := "1.00"
+	prices := []string{"1.01", "1.00"}
+	if restoreAcknowledgedRow {
+		baselinePrice = "1.01"
+		prices = []string{"1.00"}
+	}
+	rows, err := read(ctx, c, baselinePrice)
 	if err != nil {
 		return err
+	}
+	if restoreAcknowledgedRow && rows[0].ID != acknowledgedRestoreRowID {
+		return errors.New("acknowledged_restore_row_mismatch")
 	}
 	if err = j.record("baseline", rows); err != nil {
 		return err
 	}
-	for index, price := range []string{"1.01", "1.00"} {
-		oldPrice := "1.00"
+	for index, price := range prices {
+		oldPrice := baselinePrice
 		if index == 1 {
 			oldPrice = "1.01"
 		}
 		rows, err = read(ctx, c, oldPrice)
 		if err != nil {
 			return err
+		}
+		if restoreAcknowledgedRow && rows[0].ID != acknowledgedRestoreRowID {
+			return errors.New("acknowledged_restore_row_changed")
 		}
 		if err = j.record("before_delete", rows); err != nil {
 			return err
@@ -246,6 +268,7 @@ func cycle(ctx context.Context, c clientAPI, j *journal) (err error) {
 }
 func main() {
 	path := flag.String("journal", "", "exclusive durable journal path")
+	restore := flag.Bool("restore-acknowledged-row", false, "restore ONLY acknowledged row 175676 from 1.01 to 1.00; never replay the full probe")
 	flag.Parse()
 	if *path == "" {
 		os.Exit(2)
@@ -257,13 +280,17 @@ func main() {
 	defer j.f.Close()
 	base := http.DefaultTransport.(*http.Transport).Clone()
 	base.Proxy = nil
-	http.DefaultTransport = &scopedTransport{base: base, writes: map[string]int{}}
+	limit := 2
+	if *restore {
+		limit = 1
+	}
+	http.DefaultTransport = &scopedTransport{base: base, writes: map[string]int{}, limit: limit}
 	// Native helpers do not access point/pricelist endpoints. Required legacy
 	// Configured() fields use existing service defaults; transport denies them.
 	c := integration.NewSabyClient(os.Getenv("SABY_APP_CLIENT_ID"), os.Getenv("SABY_APP_SECRET"), os.Getenv("SABY_SECRET_KEY"), 278, 6)
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
-	err = cycle(ctx, c, j)
+	err = runCycle(ctx, c, j, *restore)
 	if err != nil {
 		_ = j.record("stopped", map[string]any{"readOnlyRecovery": true})
 		fmt.Println(`{"ok":false,"reason":"owned_row_cycle_stopped","postingRequested":false,"retryPolicy":"read-only"}`)

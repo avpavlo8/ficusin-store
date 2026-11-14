@@ -26,6 +26,13 @@ class RunnerTests(unittest.TestCase):
             self.fail("plan touched a remote/build process")
         self.assertFalse(m.execute(None, None, None, reader=forbidden, run=forbidden)["applied"])
 
+    def test_restore_plan_is_fixed_to_acknowledged_row_and_one_price(self):
+        plan = m.execute(None, None, None, restore_acknowledged_row=True)["plan"]
+        self.assertEqual(plan["acknowledgedStartRowID"], 175676)
+        self.assertEqual(plan["startPrice"], "1.01")
+        self.assertEqual(plan["prices"], ["1.00"])
+        self.assertFalse(plan["postingRequested"])
+
     def test_prod_identity_is_fixed_and_only_saby_credentials_escape(self):
         self.assertEqual(set(m.validate_app(app())), set(m.SECRET_KEYS))
         for field, value in (("id", 280757), ("commit_sha", "a" * 40), ("status", "deploying"), ("branch_name", "staging")):
@@ -85,10 +92,11 @@ class RunnerTests(unittest.TestCase):
         capture = io.StringIO()
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"GITHUB_ACTIONS": "true", "GITHUB_RUN_ATTEMPT": "1"}), contextlib.redirect_stdout(capture):
             with self.assertRaises(m.guards.PreflightError):
-                m.execute(directory, "a" * 40, Path(directory) / "journal", True, Reader(), run)
+                m.execute(directory, "a" * 40, Path(directory) / "journal", True, Reader(), run, restore_acknowledged_row=True)
         self.assertNotIn("sensitive-native-response", capture.getvalue())
         self.assertNotIn("secret-from-error", capture.getvalue())
         self.assertEqual(len(calls), 5)  # three local git reads, one build, one execution
+        self.assertEqual(calls[-1][-1], "--restore-acknowledged-row")
 
 
 if __name__ == "__main__":
