@@ -49,7 +49,13 @@ export const blankMarketplaceChannel = (): MarketplaceChannel => ({
   category: blankCategory(),
 });
 export function marketplaceOf(v: DraftVariant): MarketplaceCommon {
-  return v.marketplace;
+  const channel = (value: MarketplaceChannel): MarketplaceChannel => {
+    const payload = { ...value };
+    // This baseline belongs to the article picker, not the editor-plan API.
+    delete payload.linkedArticle;
+    return payload;
+  };
+  return { ...v.marketplace, wb: channel(v.marketplace.wb), ozon: channel(v.marketplace.ozon) };
 }
 export function sabyOf(v: DraftVariant): SabyEditorConfig {
   return v.sabyEditor;
