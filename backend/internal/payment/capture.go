@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"sync"
 	"time"
 
@@ -71,6 +72,24 @@ func (service *Service) resolveAuthorization(ctx context.Context, payment integr
 	} else {
 		invalid = service.checkAuthorizedOrder(ctx, orderID, expected)
 	}
+	if invalid == nil {
+		// A revision temporarily changes the stock snapshot while unposting and
+		// rebuilding its rows. Do not turn that transient state into cancellation
+		// of a valid authorization. Stale amounts/retired links still fail above;
+		// already-succeeded facts bypass this entire authorization-only path.
+		pendingRevision, err := ordersale.RevisionPending(ctx, service.pool, orderID)
+		if err != nil {
+			return err
+		}
+		if pendingRevision {
+			return nil
+		}
+		if offerID != nil {
+			invalid = service.checkOfferStock(ctx, *offerID)
+		} else {
+			invalid = service.checkOrderStock(ctx, orderID)
+		}
+	}
 	if invalid != nil {
 		closable, ok := service.provider.(canceller)
 		if !ok {
@@ -113,7 +132,7 @@ func (service *Service) checkAuthorizedOrder(ctx context.Context, orderID int64,
 	if state.status == "cancelled" || state.status == "completed" || state.method != MethodOnline || !balance.Ready || cents(balance.Due) != cents(expected) {
 		return errors.New("заказ или сумма оплаты изменились")
 	}
-	return service.checkOrderStock(ctx, orderID)
+	return nil
 }
 
 func (service *Service) checkAuthorizedOffer(ctx context.Context, offerID, orderID int64, expected float64) error {
@@ -135,5 +154,5 @@ func (service *Service) checkAuthorizedOffer(ctx context.Context, offerID, order
 	if status != "payment_pending" || orderStatus == "cancelled" || orderStatus == "completed" || !expires.After(time.Now()) || address != addressSnapshot || offerRevision != revision || cents(amount) != cents(expected) {
 		return errors.New("предложение отправки или его сумма изменились")
 	}
-	return service.checkOfferStock(ctx, offerID)
+	return nil
 }

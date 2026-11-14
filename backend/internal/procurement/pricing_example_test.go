@@ -54,16 +54,13 @@ func TestUnitPriceModes(t *testing.T) {
 	if *small.Quotes["wb"].PriceRUB >= *large.Quotes["wb"].PriceRUB {
 		t.Fatal("parcel size ignored")
 	}
-	legacy, _ := previewUnitPrice(s, UnitPriceInput{CostRUB: cost, RetailRUB: 100, Package: box})
-	expected := UnifiedChannelQuotes(s, cost, box)
-	if legacy.RetailRUB != float64(*expected["site"].PriceRUB) {
-		t.Fatal("legacy pricing changed")
-	}
+
 }
 
 func TestUnitPriceValidation(t *testing.T) {
 	negative := -1.
 	for _, input := range []UnitPriceInput{
+		{CostRUB: 100, RetailRUB: 200},
 		{Mode: "unknown", CostRUB: 100, RetailRUB: 200},
 		{Mode: "cost", CostRUB: 0}, {Mode: "retail", RetailRUB: 0},
 		{Mode: "cost", CostRUB: math.Inf(1)}, {Mode: "retail", RetailRUB: math.NaN()},
@@ -73,5 +70,26 @@ func TestUnitPriceValidation(t *testing.T) {
 		if validateUnitPriceInput(input) == nil {
 			t.Fatalf("accepted %+v", input)
 		}
+	}
+}
+
+func TestExplicitFallbackPriceModesKeepDifferentEconomicMeanings(t *testing.T) {
+	direct, marketplace := zeroCosts(), zeroCosts()
+	marketplace.CommissionRate, marketplace.LogisticsRUB = amount(.2), amount(100)
+	settings := PricingSettings{RetailMarkupMultiplier: 2, Economics: PricingEconomics{Channels: map[string]ChannelCosts{"site": direct, "wb": marketplace, "ozon": marketplace}}}
+	markup := 1.
+	cost, err := previewUnitPrice(settings, UnitPriceInput{Mode: "cost", CostRUB: 1000, MarkupRate: &markup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cost.RetailRUB != 2000 || cost.Quotes["wb"].PriceRUB == nil || *cost.Quotes["wb"].PriceRUB != 2625 || cost.Quotes["wb"].ContributionRUB == nil || *cost.Quotes["wb"].ContributionRUB != 1000 {
+		t.Fatalf("cost mode lost purchase cost/contribution: %+v", cost)
+	}
+	retail, err := previewUnitPrice(settings, UnitPriceInput{Mode: "retail", RetailRUB: 2100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retail.RetailRUB != 2100 || retail.Quotes["wb"].PriceRUB == nil || *retail.Quotes["wb"].PriceRUB != 2750 || retail.Quotes["wb"].ContributionRUB != nil || retail.Quotes["wb"].BreakEvenRUB != nil {
+		t.Fatalf("retail transfer inferred unknown purchase cost/profit: %+v", retail)
 	}
 }

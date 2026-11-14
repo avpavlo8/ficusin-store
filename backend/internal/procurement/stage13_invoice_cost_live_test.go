@@ -57,8 +57,8 @@ func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 		VALUES($1,$2,900,'estimated','saby_retail_half_initial','2035-01-01')`, variantID, sabyID); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Stage 13 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage13-invoice-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Stage 13 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage13-invoice-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency)
@@ -71,9 +71,9 @@ func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 	}
 	var documentID int64
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,
-		size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,
+		size_bytes,sha256,object_key,parser_kind,parser_version,parse_status,arithmetic_status,document_number,
 		currency,line_count,unit_count,product_subtotal,document_total,calculated_total,extracted_text,created_by,revision_no)
-		VALUES($1,$2,'stage13-invoice.pdf','application/pdf',4,$3,decode('25504446','hex'),'domestic_payment_invoice',1,
+		VALUES($1,$2,'stage13-invoice.pdf','application/pdf',4,$3,'fixtures/synthetic-invoice.pdf','domestic_payment_invoice',1,
 		'parsed','ok',$4,'RUB',1,20,7000,7000,7000,'Stage 13 synthetic invoice',$5,1) RETURNING id`,
 		supplierID, orderID, fmt.Sprintf("%064x", unique), fmt.Sprintf("INV-%d", unique), actorID).Scan(&documentID); err != nil {
 		t.Fatal(err)

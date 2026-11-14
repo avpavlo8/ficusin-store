@@ -24,7 +24,7 @@ func TestCatalogEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	var actorID, categoryID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Catalog editor test',NOW()) RETURNING id`, fmt.Sprintf("editor-%d@example.invalid", unique), fmt.Sprintf("+799%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Catalog editor test',NOW()) RETURNING id`, fmt.Sprintf("editor-%d@example.invalid", unique), fmt.Sprintf("+799%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT id FROM categories WHERE slug='plants'`).Scan(&categoryID); err != nil {
@@ -37,7 +37,7 @@ func TestCatalogEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM procurement_action_batches WHERE manual_variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
+		_, _ = pool.Exec(ctx, `DELETE FROM catalog_editor_price_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, product.ID)
 		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, actorID)
 		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, product.ID)
 		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID)
@@ -161,10 +161,10 @@ func TestCatalogEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 	}
 }
 
-func TestCatalogEditorManagerCannotWriteCommercialFields(t *testing.T) {
+func TestCatalogEditorAdministratorCannotWriteCommercialFields(t *testing.T) {
 	price := int64(0)
 	active := false
-	actor := Actor{Role: RoleManager}
+	actor := Actor{Role: RoleAdministrator}
 	for _, edit := range []VariantEdit{{ID: 1, PriceMinor: &price}, {ID: 1, Active: &active}, {ID: -1}} {
 		if err := ValidateProductUpdate(actor, ProductUpdate{Variants: []VariantEdit{edit}}); !errors.Is(err, ErrForbidden) {
 			t.Fatalf("manager commercial edit allowed: %v", err)
@@ -174,8 +174,5 @@ func TestCatalogEditorManagerCannotWriteCommercialFields(t *testing.T) {
 	if err := ValidateProductUpdate(actor, ProductUpdate{Variants: []VariantEdit{{ID: 1, Label: &label}}}); err != nil {
 		t.Fatal(err)
 	}
-	fields := []string{"price"}
-	if err := ValidateProductUpdate(Actor{Role: RoleOwner}, ProductUpdate{SabyFields: &fields}); !errors.Is(err, ErrInvalidInput) {
-		t.Fatal("site price can be replaced by Saby")
-	}
+
 }

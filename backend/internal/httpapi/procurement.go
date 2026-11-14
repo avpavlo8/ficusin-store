@@ -14,6 +14,19 @@ import (
 )
 
 type procurementService interface {
+	namedDraftService
+	procurementDraftService
+	PreviewPlan(context.Context, procurement.PlanCreate) (procurement.PlanPreview, error)
+	FirstSabyPriceXLSX(context.Context, procurement.Actor, int64, []procurement.SabyFirstPrice) ([]byte, string, error)
+	ProductPage(context.Context, int64, string, string, int, int) (procurement.ProductPage, error)
+	ListSabyCatalogFolders(context.Context) ([]procurement.SabyCatalogFolder, error)
+	RecheckReceipt(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
+	PreviewUnitPrice(context.Context, procurement.UnitPriceInput) (procurement.UnitPricePreview, error)
+	PricingExample(context.Context, procurement.PricingSettings) (procurement.PricingExample, error)
+	UpdateSupplier(context.Context, procurement.Actor, int64, procurement.SupplierUpdate) (procurement.Supplier, error)
+	DocumentPDF(context.Context, int64) ([]byte, error)
+	salesLinkService
+	ignoredSalesService
 	Dashboard(context.Context) (procurement.Dashboard, error)
 	UpdateSettings(context.Context, procurement.Actor, procurement.PricingSettings) (procurement.PricingSettings, error)
 	CreateSupplier(context.Context, procurement.Actor, procurement.SupplierCreate) (procurement.Supplier, error)
@@ -76,10 +89,8 @@ func (handlers procurementHandlers) previewPlan(response http.ResponseWriter, re
 		handlers.failed(response, "decode procurement preview", procurement.ErrInvalidInput)
 		return
 	}
-	service, ok := handlers.service.(interface {
-		PreviewPlan(context.Context, procurement.PlanCreate) (procurement.PlanPreview, error)
-	})
-	if !ok {
+	service := handlers.service
+	if service == nil {
 		handlers.failed(response, "procurement preview unavailable", procurement.ErrInvalidInput)
 		return
 	}
@@ -249,10 +260,8 @@ func (handlers procurementHandlers) sabyPriceXLSX(response http.ResponseWriter, 
 			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные цены для файла СБИС"})
 			return
 		}
-		service, ok := handlers.service.(interface {
-			FirstSabyPriceXLSX(context.Context, procurement.Actor, int64, []procurement.SabyFirstPrice) ([]byte, string, error)
-		})
-		if !ok {
+		service := handlers.service
+		if service == nil {
 			handlers.failed(response, "approve first Saby prices", procurement.ErrInvalidInput)
 			return
 		}
@@ -551,6 +560,10 @@ func (handlers procurementHandlers) listProducts(response http.ResponseWriter, r
 	if _, _, ok := handlers.admin.authorize(response, request, admin.PermissionProcurementRead); !ok {
 		return
 	}
+	if handlers.service == nil {
+		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Раздел закупок пока недоступен"})
+		return
+	}
 	var supplierID int64
 	var err error
 	if raw := request.URL.Query().Get("supplierId"); raw != "" {
@@ -563,13 +576,11 @@ func (handlers procurementHandlers) listProducts(response http.ResponseWriter, r
 	items := []procurement.ProductDirectoryItem{}
 	total := 0
 	counts := map[string]int{}
-	if service, ok := handlers.service.(interface {
-		ProductPage(context.Context, int64, string, string, int, int) (procurement.ProductPage, error)
-	}); ok && request.URL.Query().Has("limit") {
+	if request.URL.Query().Has("limit") {
 		limit, _ := strconv.Atoi(request.URL.Query().Get("limit"))
 		offset, _ := strconv.Atoi(request.URL.Query().Get("offset"))
 		var page procurement.ProductPage
-		page, err = service.ProductPage(request.Context(), supplierID, request.URL.Query().Get("q"), request.URL.Query().Get("folder"), limit, offset)
+		page, err = handlers.service.ProductPage(request.Context(), supplierID, request.URL.Query().Get("q"), request.URL.Query().Get("folder"), limit, offset)
 		items = page.Items
 		total = page.Total
 		counts = page.FolderCounts
@@ -581,15 +592,10 @@ func (handlers procurementHandlers) listProducts(response http.ResponseWriter, r
 		handlers.failed(response, "list procurement products", err)
 		return
 	}
-	folders := []procurement.SabyCatalogFolder{}
-	if folderService, ok := handlers.service.(interface {
-		ListSabyCatalogFolders(context.Context) ([]procurement.SabyCatalogFolder, error)
-	}); ok {
-		folders, err = folderService.ListSabyCatalogFolders(request.Context())
-		if err != nil {
-			handlers.failed(response, "list Saby catalogue folders", err)
-			return
-		}
+	folders, err := handlers.service.ListSabyCatalogFolders(request.Context())
+	if err != nil {
+		handlers.failed(response, "list Saby catalogue folders", err)
+		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"items": items, "folders": folders, "total": total, "folderCounts": counts})
 }
@@ -747,10 +753,8 @@ func (handlers procurementHandlers) recheckReceipt(response http.ResponseWriter,
 	if !ok {
 		return
 	}
-	service, ok := handlers.service.(interface {
-		RecheckReceipt(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
-	})
-	if !ok {
+	service := handlers.service
+	if service == nil {
 		handlers.failed(response, "recheck existing Saby receipt", procurement.ErrInvalidInput)
 		return
 	}

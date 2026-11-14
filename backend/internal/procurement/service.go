@@ -10,6 +10,21 @@ import (
 )
 
 type Store interface {
+	planDraftStore
+	namedPlanDraftStore
+	IntegrationSyncCoordinator
+	ChannelCatalogCache
+	FirstSabyPriceExportLines(context.Context, Actor, int64, []SabyFirstPrice) ([]OrderLine, error)
+	ListSabyCatalogFolders(context.Context) ([]SabyCatalogFolder, error)
+	PreviewPlan(context.Context, PlanCreate) (PlanPreview, error)
+	PreviewUnitPrice(context.Context, UnitPriceInput) (UnitPricePreview, error)
+	PricingExample(context.Context, PricingSettings) (PricingExample, error)
+	UpdateSupplier(context.Context, Actor, int64, SupplierUpdate) (Supplier, error)
+	DocumentPDF(context.Context, int64) ([]byte, error)
+	ProductPage(context.Context, int64, string, string, int, int) (ProductPage, error)
+	RecheckReceipt(context.Context, Actor, int64) (ActionBatch, error)
+	SalesLinkStore
+	SalesIgnoreStore
 	Dashboard(context.Context) (Dashboard, error)
 	UpdateSettings(context.Context, Actor, PricingSettings) (PricingSettings, error)
 	CreateSupplier(context.Context, Actor, SupplierCreate) (Supplier, error)
@@ -36,8 +51,6 @@ type Store interface {
 	AssignSupplier(context.Context, Actor, string, int64) error
 	PrepareBatch(context.Context, Actor, int64, string, []string) (ActionBatch, error)
 	ApproveBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
-	ClaimAction(context.Context, string) (*ActionItem, error)
-	FinishAction(context.Context, int64, string, int64, ActionExecution, error) (bool, error)
 	RetryBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
 	ListIntegrationHealth(context.Context) ([]IntegrationHealth, error)
 	RecordIntegrationCheck(context.Context, string, bool, error) (IntegrationHealth, error)
@@ -45,13 +58,11 @@ type Store interface {
 
 type Executor interface {
 	Configured(channel string) bool
-	Execute(context.Context, ActionItem) (ActionExecution, error)
 }
 
-// ActionGroupStore and GroupExecutor are optional bulk extensions used by
-// marketplace adapters. Both Wildberries and Ozon accept up to 1000 prices in
-// one request; claiming them together avoids seller-wide rate limits while the
-// base Store/Executor interfaces stay compatible with lightweight test stubs.
+// ActionGroupStore and GroupExecutor are the production worker contracts.
+// Marketplace prices share bulk requests; other channels retain individual
+// execution inside these delegates.
 type ActionGroupStore interface {
 	ClaimActionGroup(context.Context, string) ([]ActionItem, error)
 }
@@ -122,13 +133,7 @@ func (service *Service) FirstSabyPriceXLSX(ctx context.Context, actor Actor, ord
 	if orderID <= 0 {
 		return nil, "", ErrInvalidInput
 	}
-	store, ok := service.store.(interface {
-		FirstSabyPriceExportLines(context.Context, Actor, int64, []SabyFirstPrice) ([]OrderLine, error)
-	})
-	if !ok {
-		return nil, "", ErrInvalidInput
-	}
-	lines, err := store.FirstSabyPriceExportLines(ctx, actor, orderID, prices)
+	lines, err := service.store.FirstSabyPriceExportLines(ctx, actor, orderID, prices)
 	if err != nil {
 		return nil, "", err
 	}
@@ -152,14 +157,6 @@ func (service *Service) ReceivingPDF(ctx context.Context, orderID int64) ([]byte
 		return nil, "", err
 	}
 	return content, fmt.Sprintf("receiving-%d-%d-items.pdf", orderID, count), nil
-}
-
-func NewService(store Store) *Service {
-	return &Service{store: store, parser: NewPDFParser()}
-}
-
-func NewServiceWithParser(store Store, parser Parser) *Service {
-	return &Service{store: store, parser: parser}
 }
 
 func NewServiceWithExecutor(store Store, executor Executor) *Service {
@@ -251,11 +248,7 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 		if service.executor == nil || !service.executor.Configured("saby") {
 			return ChannelLinkResult{}, errors.New("ключи СБИС не настроены")
 		}
-		coordinator, ok := service.store.(IntegrationSyncCoordinator)
-		if !ok {
-			return ChannelLinkResult{}, errors.New("очередь синхронизации не поддерживается")
-		}
-		queued, err := coordinator.RequestIntegrationSync(ctx, channel, "catalog")
+		queued, err := service.store.RequestIntegrationSync(ctx, channel, "catalog")
 		if err != nil {
 			return ChannelLinkResult{}, err
 		}
@@ -267,11 +260,7 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 	var items []ChannelProduct
 	var err error
 	if channel == "wb" {
-		cache, ok := service.store.(ChannelCatalogCache)
-		if !ok {
-			return ChannelLinkResult{}, errors.New("локальное зеркало Wildberries не поддерживается")
-		}
-		items, err = cache.CachedChannelProducts(ctx, channel)
+		items, err = service.store.CachedChannelProducts(ctx, channel)
 		if err == nil && len(items) == 0 {
 			return ChannelLinkResult{}, &UserFacingError{Message: "Wildberries: локальное зеркало ещё не загрузилось; фоновая синхронизация повторится автоматически"}
 		}
@@ -279,16 +268,9 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 		if service.executor == nil || !service.executor.Configured(channel) {
 			return ChannelLinkResult{}, errors.New("ключи канала не настроены")
 		}
-		cache, ok := service.store.(ChannelCatalogCache)
-		if !ok {
-			return ChannelLinkResult{}, errors.New("локальное зеркало канала не поддерживается")
-		}
-		items, err = cache.CachedChannelProducts(ctx, channel)
-		if coordinator, ok := service.store.(IntegrationSyncCoordinator); ok {
-			_, queueErr := coordinator.RequestIntegrationSync(ctx, channel, "catalog")
-			if queueErr != nil {
-				return ChannelLinkResult{}, queueErr
-			}
+		items, err = service.store.CachedChannelProducts(ctx, channel)
+		if _, queueErr := service.store.RequestIntegrationSync(ctx, channel, "catalog"); queueErr != nil {
+			return ChannelLinkResult{}, queueErr
 		}
 	}
 	if err != nil {
@@ -302,9 +284,7 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 	// это числовой nmID, и без подписи человек не поймёт, какое растение
 	// разбирает. Подпись вспомогательная, поэтому её неудача не отменяет
 	// уже сделанное связывание артикулов.
-	if remember, able := service.store.(SalesLinkStore); able {
-		_ = remember.RememberChannelProducts(ctx, channel, items)
-	}
+	_ = service.store.RememberChannelProducts(ctx, channel, items)
 	if channel == "ozon" {
 		result.Queued = true
 		result.QueueStatus = "queued"
@@ -326,15 +306,14 @@ func validatePricingSettings(input PricingSettings) (PricingSettings, error) {
 	}
 	if input.DefaultExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.TrolleyCostRUB < 0 || input.TrolleyVolumeCM3 <= 0 ||
 		input.TrolleyFillRatio <= 0 || input.TrolleyFillRatio > 1 || input.PackageRUB < 0 ||
-		input.PriceChangeThreshold < 0 || input.PriceChangeThreshold >= 1 || input.RetailRoundStep <= 0 ||
+		input.PriceChangeThreshold < 0 || input.PriceChangeThreshold >= 1 ||
 		input.RecommendationDays < 7 || input.RecommendationDays > 365 || input.TargetCoverDays < 1 || input.TargetCoverDays > 365 ||
 		!validRate(input.ReturnLossRate) || !validRate(input.MarketplaceCostRate) || !validRate(input.TaxRate) ||
 		!validRate(input.ReserveRate) || !validRate(input.MarketplaceStrikeMarkup) ||
-		input.DomesticRetailMultiplier <= 0 || input.InternationalCostMultiplier <= 0 || input.InternationalRetailMultiplier <= 0 ||
 		input.RetailMarkupMultiplier <= 0 {
 		return PricingSettings{}, ErrInvalidInput
 	}
-	for _, v := range []float64{input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3, input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate, input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold, input.DomesticRetailMultiplier, input.InternationalCostMultiplier, input.InternationalRetailMultiplier, input.MarketplaceStrikeMarkup, input.RetailMarkupMultiplier, input.MarketplaceLogisticsPerCM, input.Economics.MonthlyFixedCostsRUB} {
+	for _, v := range []float64{input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3, input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate, input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold, input.MarketplaceStrikeMarkup, input.RetailMarkupMultiplier, input.MarketplaceLogisticsPerCM, input.Economics.MonthlyFixedCostsRUB} {
 		if !finiteNonnegative(v) || v > 1e12 {
 			return PricingSettings{}, ErrInvalidInput
 		}
@@ -688,13 +667,7 @@ func (service *Service) ListProducts(ctx context.Context, supplierID int64, quer
 }
 
 func (service *Service) ListSabyCatalogFolders(ctx context.Context) ([]SabyCatalogFolder, error) {
-	folderStore, ok := service.store.(interface {
-		ListSabyCatalogFolders(context.Context) ([]SabyCatalogFolder, error)
-	})
-	if !ok {
-		return []SabyCatalogFolder{}, nil
-	}
-	return folderStore.ListSabyCatalogFolders(ctx)
+	return service.store.ListSabyCatalogFolders(ctx)
 }
 
 func (service *Service) UpdateProduct(ctx context.Context, actor Actor, input ProductDirectoryUpdate) (ProductDirectoryItem, error) {
@@ -778,19 +751,11 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 	// Price preview is a database snapshot. Ozon and WB catalogue workers own
 	// external reads; opening a batch must never create a competing export.
 	if kind == "prices" {
-		_, coordinated := service.store.(IntegrationSyncCoordinator)
 		for _, channel := range selected {
-			if !coordinated {
-				break
-			}
 			if channel != "ozon" && channel != "wb" {
 				continue
 			}
-			cache, ok := service.store.(ChannelCatalogCache)
-			if !ok {
-				return ActionBatch{}, errors.New("локальное зеркало цен не поддерживается")
-			}
-			items, err := cache.CachedChannelProducts(ctx, channel)
+			items, err := service.store.CachedChannelProducts(ctx, channel)
 			if err != nil {
 				return ActionBatch{}, err
 			}
@@ -805,10 +770,8 @@ func (service *Service) PrepareBatch(ctx context.Context, actor Actor, orderID i
 		// operation finishes. Queue the shared catalogue worker instead and take
 		// the receipt snapshot from the local mirror. The worker refreshes balances
 		// independently without blocking or duplicating the receipt action.
-		if coordinator, ok := service.store.(IntegrationSyncCoordinator); ok {
-			if _, err := coordinator.RequestIntegrationSync(ctx, "saby", "catalog"); err != nil {
-				return ActionBatch{}, fmt.Errorf("queue Saby catalogue refresh before receipt: %w", err)
-			}
+		if _, err := service.store.RequestIntegrationSync(ctx, "saby", "catalog"); err != nil {
+			return ActionBatch{}, fmt.Errorf("queue Saby catalogue refresh before receipt: %w", err)
 		}
 	}
 	return service.store.PrepareBatch(ctx, actor, orderID, kind, selected)

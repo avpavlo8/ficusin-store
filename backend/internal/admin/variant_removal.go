@@ -9,7 +9,7 @@ import (
 // The variant lock also blocks new FK references until the decision commits.
 // Inventory rows are locked separately because quantities can change in place.
 func removeProductVariant(ctx context.Context, tx pgx.Tx, actor Actor, productID, variantID int64) error {
-	if !Can(actor.Role, PermissionDelete) {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
 	var linked bool
@@ -34,7 +34,7 @@ func removeProductVariant(ctx context.Context, tx pgx.Tx, actor Actor, productID
 		return err
 	}
 	var external bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_external_ids WHERE variant_id=$1 AND provider='saby') OR EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1)`, variantID).Scan(&external); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_external_ids WHERE variant_id=$1 AND provider='saby') OR EXISTS(SELECT 1 FROM catalog_external_operation_history WHERE variant_id=$1) OR EXISTS(SELECT 1 FROM catalog_editor_price_publications WHERE variant_id=$1)`, variantID).Scan(&external); err != nil {
 		return err
 	}
 	linked = linked || external

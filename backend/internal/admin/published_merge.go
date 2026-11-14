@@ -83,7 +83,6 @@ type mergeProduct struct {
 	Section        string
 	CategoryID     *int64
 	SabyID         string
-	Snapshot       json.RawMessage
 	VariantIDs     []int64
 	VariantSKUs    []string
 	VariantLabels  []string
@@ -243,11 +242,15 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 		if err = moveMergedEditorPlan(ctx, tx, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move catalog editor plan: %w", err)
 		}
+		var priceBusy bool
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM catalog_editor_price_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=ANY($1::bigint[])) AND status IN('queued','processing','needs_attention'))", append(request.SourceProductIDs, target.ID)).Scan(&priceBusy); err != nil {
+			return err
+		}
+		if priceBusy {
+			return fmt.Errorf("%w: дождитесь завершения изменения цены", ErrInvalidInput)
+		}
 		if _, err = tx.Exec(ctx, `UPDATE catalog_product_creation_requests SET product_id=$1 WHERE product_id=$2`, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move creation receipts: %w", err)
-		}
-		if _, err = tx.Exec(ctx, `UPDATE product_creation_drafts SET product_id=$1 WHERE product_id=$2`, target.ID, sourceID); err != nil {
-			return fmt.Errorf("move creation history: %w", err)
 		}
 
 		if _, err = tx.Exec(ctx, `UPDATE product_media SET product_id=$1 WHERE product_id=$2`, target.ID, sourceID); err != nil {
@@ -258,18 +261,12 @@ func (repository *PostgresRepository) MergePublishedProducts(ctx context.Context
 			ON CONFLICT(product_id,object_key) DO NOTHING`, target.ID, sourceID); err != nil {
 			return fmt.Errorf("move supplementary media classification: %w", err)
 		}
-		// The job is transient, but its state is retained in the audit
-		// snapshot. A worker must not enrich a card being removed.
-		if _, err = tx.Exec(ctx, `DELETE FROM catalog_ai_enrichment_jobs WHERE product_id=$1`, sourceID); err != nil {
-			return fmt.Errorf("stop source enrichment: %w", err)
-		}
 		if _, err = tx.Exec(ctx, `DELETE FROM products WHERE id=$1`, sourceID); err != nil {
 			return fmt.Errorf("remove merged card: %w", err)
 		}
 	}
 	canonicalName := stripVariantSize(target.Name)
 	if _, err = tx.Exec(ctx, `UPDATE products SET name=$2,
-		saby_fields=array_remove(array_remove(array_remove(saby_fields,'name'),'description'),'photo'),
 		updated_at=CURRENT_TIMESTAMP WHERE id=$1`, target.ID, canonicalName); err != nil {
 		return fmt.Errorf("normalize merged title: %w", err)
 	}
@@ -292,15 +289,13 @@ func mergeAuditSnapshot(ctx context.Context, tx pgx.Tx, productID int64) (json.R
 		'attributes',COALESCE((SELECT jsonb_agg(to_jsonb(attribute) ORDER BY attribute.attribute_id) FROM product_attribute_values attribute WHERE attribute.product_id=product.id),'[]'::jsonb),
 		'media',COALESCE((SELECT jsonb_agg(to_jsonb(media) ORDER BY media.id) FROM product_media media WHERE media.product_id=product.id),'[]'::jsonb),
 		'supplementaryMedia',COALESCE((SELECT jsonb_agg(to_jsonb(media) ORDER BY media.object_key) FROM catalog_supplementary_media media WHERE media.product_id=product.id),'[]'::jsonb),
-		'creationDrafts',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',draft.id,'productId',draft.product_id) ORDER BY draft.id) FROM product_creation_drafts draft WHERE draft.product_id=product.id),'[]'::jsonb),
 		'creationRequests',COALESCE((SELECT jsonb_agg(to_jsonb(receipt) ORDER BY receipt.actor_customer_id,receipt.creation_id) FROM catalog_product_creation_requests receipt WHERE receipt.product_id=product.id),'[]'::jsonb),
 		'editorPlan',(SELECT to_jsonb(plan) FROM catalog_editor_plans plan WHERE plan.product_id=product.id),
 		'urlAliases',COALESCE((SELECT jsonb_agg(alias ORDER BY alias) FROM product_url_aliases WHERE product_id=product.id),'[]'::jsonb),
 		'collectionIds',COALESCE((SELECT jsonb_agg(collection_id ORDER BY collection_id) FROM collection_products WHERE product_id=product.id),'[]'::jsonb),
 		'orderItemIds',COALESCE((SELECT jsonb_agg(id ORDER BY id) FROM order_items WHERE product_id=product.id),'[]'::jsonb),
 		'reviewIds',COALESCE((SELECT jsonb_agg(id ORDER BY id) FROM product_reviews WHERE product_id=product.id),'[]'::jsonb),
-		'avitoListingIds',COALESCE((SELECT jsonb_agg(item_id ORDER BY item_id) FROM avito_listing_products WHERE product_id=product.id),'[]'::jsonb),
-		'aiJob',(SELECT to_jsonb(job) FROM catalog_ai_enrichment_jobs job WHERE job.product_id=product.id)
+		'avitoListingIds',COALESCE((SELECT jsonb_agg(item_id ORDER BY item_id) FROM avito_listing_products WHERE product_id=product.id),'[]'::jsonb)
 	) FROM products product WHERE product.id=$1`, productID).Scan(&snapshot)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot merged card %d: %w", productID, err)
@@ -337,7 +332,7 @@ func sourceCodes(products map[int64]*mergeProduct, sourceIDs []int64) []string {
 
 func loadMergeProducts(ctx context.Context, tx pgx.Tx, ids []int64, lock bool) (map[int64]*mergeProduct, error) {
 	productQuery := `SELECT id,product_code::TEXT,slug,name,latin_name,status,catalog_section,category_id,
-		COALESCE(saby_id,''),to_jsonb(products)
+		COALESCE(saby_id,'')
 		FROM products WHERE id=ANY($1) ORDER BY id`
 	variantQuery := `SELECT product_id,id,sku,COALESCE(saby_id,''),label
 		FROM product_variants WHERE product_id=ANY($1) ORDER BY product_id,id`
@@ -353,7 +348,7 @@ func loadMergeProducts(ctx context.Context, tx pgx.Tx, ids []int64, lock bool) (
 	for rows.Next() {
 		item := &mergeProduct{}
 		if err = rows.Scan(&item.ID, &item.Code, &item.Slug, &item.Name, &item.Latin,
-			&item.Status, &item.Section, &item.CategoryID, &item.SabyID, &item.Snapshot); err != nil {
+			&item.Status, &item.Section, &item.CategoryID, &item.SabyID); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -627,9 +622,8 @@ func checkKnownProductReferences(ctx context.Context, tx pgx.Tx) error {
 	known := map[string]bool{
 		"products": true, "product_variants": true, "product_external_ids": true,
 		"product_attribute_values": true, "collection_products": true, "product_media": true,
-		"product_reviews": true, "order_items": true, "catalog_ai_enrichment_jobs": true,
+		"product_reviews": true, "order_items": true,
 		"product_url_aliases": true, "avito_listing_products": true, "catalog_supplementary_media": true,
-		"product_creation_drafts":            true,
 		"catalog_product_creation_requests":  true,
 		"catalog_editor_plans":               true,
 		"launch_hidden_nonplant_products":    true,

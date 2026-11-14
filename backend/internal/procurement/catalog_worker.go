@@ -8,7 +8,7 @@ import (
 )
 
 type CatalogSyncStore interface {
-	IntegrationSyncCoordinator
+	IntegrationSyncRunner
 	RememberChannelProducts(context.Context, string, []ChannelProduct) error
 	LinkChannelProducts(context.Context, Actor, string, []ChannelProduct) (ChannelLinkResult, error)
 }

@@ -50,9 +50,6 @@ type SalesLink struct {
 	Channel    string `json:"channel"`
 	ExternalID string `json:"externalId"`
 	VariantID  int64  `json:"variantId"`
-	// SabyID remains accepted for one compatible release. New clients send
-	// VariantID and never bind marketplace history directly to a remote ID.
-	SabyID string `json:"sabyId"`
 }
 
 // SalesLinkResult — что изменилось после связывания.
@@ -71,13 +68,7 @@ type SalesLinkResult struct {
 	Remaining   int    `json:"remaining"`
 }
 
-// SalesLinkStore — необязательное дополнение к Store: разбор продаж, которым
-// не нашлось товара.
-//
-// Отдельным интерфейсом с приведением типа, как SalesDiagnostics у источника
-// продаж. Store реализуют ещё и заглушки тестов, поэтому каждый метод,
-// добавленный в него, стоит правки во всех сразу и связан с задачей только
-// тем, что тоже ходит в базу.
+// SalesLinkStore is the current manual sales review and catalogue cache contract.
 type SalesLinkStore interface {
 	ListUnlinkedSales(context.Context, string, int) ([]UnlinkedSale, error)
 	LinkSalesProduct(context.Context, Actor, SalesLink) (SalesLinkResult, error)
@@ -89,9 +80,6 @@ type SalesIgnoreStore interface {
 	IgnoreSalesProduct(context.Context, Actor, string, string, bool) error
 	ListUnlinkedSalesIncludingIgnored(context.Context, string, int) ([]UnlinkedSale, error)
 }
-
-// ErrSalesLinkUnsupported — хранилище не умеет разбирать продажи руками.
-var ErrSalesLinkUnsupported = errors.New("procurement store cannot link sales manually")
 
 // UnlinkedSales отдаёт коды канала, оставшиеся без товара.
 func (service *Service) UnlinkedSales(ctx context.Context, channel string) ([]UnlinkedSale, error) {
@@ -107,16 +95,10 @@ func (service *Service) unlinkedSales(ctx context.Context, channel string, showI
 	if !oneOf(channel, manualSalesChannels...) {
 		return nil, ErrInvalidInput
 	}
-	store, able := service.store.(SalesLinkStore)
-	if !able {
-		return nil, ErrSalesLinkUnsupported
-	}
 	if showIgnored {
-		if ignoredStore, ok := service.store.(SalesIgnoreStore); ok {
-			return ignoredStore.ListUnlinkedSalesIncludingIgnored(ctx, channel, unlinkedSalesLimit)
-		}
+		return service.store.ListUnlinkedSalesIncludingIgnored(ctx, channel, unlinkedSalesLimit)
 	}
-	return store.ListUnlinkedSales(ctx, channel, unlinkedSalesLimit)
+	return service.store.ListUnlinkedSales(ctx, channel, unlinkedSalesLimit)
 }
 
 func (service *Service) IgnoreSalesProduct(ctx context.Context, actor Actor, channel, externalID string, ignored bool) error {
@@ -124,11 +106,7 @@ func (service *Service) IgnoreSalesProduct(ctx context.Context, actor Actor, cha
 	if !oneOf(channel, manualSalesChannels...) || externalID == "" || len(externalID) > 200 {
 		return ErrInvalidInput
 	}
-	store, able := service.store.(SalesIgnoreStore)
-	if !able {
-		return ErrSalesLinkUnsupported
-	}
-	return store.IgnoreSalesProduct(ctx, actor, channel, externalID, ignored)
+	return service.store.IgnoreSalesProduct(ctx, actor, channel, externalID, ignored)
 }
 
 // SearchLinkableNomenclature ищет товар, за которым можно закрепить код.
@@ -142,20 +120,15 @@ func (service *Service) SearchLinkableNomenclature(ctx context.Context, query st
 	if len([]rune(query)) < 2 || len(query) > 200 {
 		return nil, ErrInvalidInput
 	}
-	store, able := service.store.(SalesLinkStore)
-	if !able {
-		return nil, ErrSalesLinkUnsupported
-	}
-	return store.SearchLinkableNomenclature(ctx, query)
+	return service.store.SearchLinkableNomenclature(ctx, query)
 }
 
 // LinkSalesProduct закрепляет внешний код за нашим каноническим SKU.
 func (service *Service) LinkSalesProduct(ctx context.Context, actor Actor, input SalesLink) (SalesLinkResult, error) {
 	input.Channel = strings.TrimSpace(input.Channel)
 	input.ExternalID = strings.TrimSpace(input.ExternalID)
-	input.SabyID = strings.TrimSpace(input.SabyID)
-	if !oneOf(input.Channel, manualSalesChannels...) || input.ExternalID == "" || (input.VariantID <= 0 && input.SabyID == "") ||
-		len(input.ExternalID) > 200 || len(input.SabyID) > 200 {
+	if !oneOf(input.Channel, manualSalesChannels...) || input.ExternalID == "" || input.VariantID <= 0 ||
+		len(input.ExternalID) > 200 {
 		return SalesLinkResult{}, ErrInvalidInput
 	}
 	// У Wildberries внешний код продажи — это nmID, и хранится он числом.
@@ -166,11 +139,7 @@ func (service *Service) LinkSalesProduct(ctx context.Context, actor Actor, input
 			return SalesLinkResult{}, ErrInvalidInput
 		}
 	}
-	store, able := service.store.(SalesLinkStore)
-	if !able {
-		return SalesLinkResult{}, ErrSalesLinkUnsupported
-	}
-	return store.LinkSalesProduct(ctx, actor, input)
+	return service.store.LinkSalesProduct(ctx, actor, input)
 }
 
 func (store *PostgresStore) ListUnlinkedSales(ctx context.Context, channel string, limit int) ([]UnlinkedSale, error) {
@@ -398,7 +367,10 @@ func (store *PostgresStore) RememberChannelProducts(ctx context.Context, channel
 // вернулась бы в расчёт лишь после следующей глубокой выгрузки, а более
 // старая — никогда.
 func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, input SalesLink) (SalesLinkResult, error) {
-	result := SalesLinkResult{Channel: input.Channel, ExternalID: input.ExternalID, SabyID: input.SabyID}
+	if input.VariantID <= 0 {
+		return SalesLinkResult{}, ErrInvalidInput
+	}
+	result := SalesLinkResult{Channel: input.Channel, ExternalID: input.ExternalID}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return SalesLinkResult{}, fmt.Errorf("begin sales link: %w", err)
@@ -409,10 +381,8 @@ func (store *PostgresStore) LinkSalesProduct(ctx context.Context, actor Actor, i
 	err = tx.QueryRow(ctx, `
 		SELECT product_id, variant_id, saby_id, name
 		FROM canonical_product_directory
-		WHERE active AND (($1 > 0 AND variant_id = $1) OR ($1 <= 0 AND saby_id = $2))
-		ORDER BY ($1 > 0 AND variant_id = $1) DESC, variant_id
-		LIMIT 1
-	`, input.VariantID, input.SabyID).Scan(&productID, &variantID, &result.SabyID, &result.SabyName)
+		WHERE active AND variant_id=$1
+	`, input.VariantID).Scan(&productID, &variantID, &result.SabyID, &result.SabyName)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SalesLinkResult{}, ErrNotFound
 	}

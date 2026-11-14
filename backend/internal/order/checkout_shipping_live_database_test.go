@@ -104,14 +104,14 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value) SELECT $1,d.id,to_jsonb(v.n) FROM attribute_definitions d JOIN (VALUES('package_length_cm',40),('package_width_cm',20),('package_height_cm',20),('package_weight_grams',1500))v(code,n) ON v.code=d.code ON CONFLICT(variant_id,attribute_id) DO UPDATE SET value=EXCLUDED.value`, variantID); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,last_name,consent_at) VALUES($1,$2,'','Александр','Павловский',CURRENT_TIMESTAMP) RETURNING id`, email, "ci-mail-"+suffix).Scan(&customerID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,last_name,consent_at) VALUES($1,$2,'Александр','Павловский',CURRENT_TIMESTAMP) RETURNING id`, email, "ci-mail-"+suffix).Scan(&customerID); err != nil {
 		t.Fatal(err)
 	}
 	shop := &checkoutShippingSettings{enabled: true}
 	client := &checkoutCDEK{stage13CDEK: &stage13CDEK{byNumber: map[string]integration.Shipment{}, byUUID: map[string]integration.Shipment{}}}
 	worker := NewShippingWorker(pool, client, shop, nil, quietLogger())
 	wakes := 0
-	service := NewService(pool, client, liveOrderNotifier{}, shop, quietLogger()).WithShipmentWake(func() { wakes++; worker.Wake() })
+	service := NewService(pool, client, shop, quietLogger()).WithShipmentWake(func() { wakes++; worker.Wake() })
 	makeOrder := func(repack bool) int64 {
 		t.Helper()
 		result, err := service.Create(ctx, CreateInput{CustomerID: &customerID, Customer: CustomerInput{Name: "Павловский Александр", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136, Repack: repack}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, OfferAccepted: true, ClientIP: "127.0.0.1"})

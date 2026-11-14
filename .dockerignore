@@ -1,5 +1,10 @@
 .git
 .github
+# Runner-only tools, evidence and browser sessions are not image build inputs.
+/docs/
+/scripts/
+/e2e/
+/frontend/tests/
 .next
 .sites-runtime
 .wrangler

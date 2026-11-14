@@ -33,7 +33,7 @@ func TestFlowwowPublicationLocalDatabase(t *testing.T) {
 	}
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var customer int64
-	if e = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Flowwow test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); e != nil {
+	if e = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Flowwow test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); e != nil {
 		t.Fatal(e)
 	}
 	actor := Actor{CustomerID: customer, Role: RoleOwner}
@@ -96,6 +96,25 @@ func TestFlowwowPublicationLocalDatabase(t *testing.T) {
 	if e != nil || len(items) != 1 || fmt.Sprint(items[0].ProductID) != remote || items[0].Price != "2345.67" {
 		t.Fatalf("linked update %+v %v", items, e)
 	}
+
+	// Content-only administrators reuse the stored Flowwow connection after the
+	// main branch's permission split, without changing channel identity or price.
+	if _, e = pool.Exec(ctx, `UPDATE products SET description='Administrator saved content' WHERE id=$1`, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	syncResult, e := repo.SyncExistingEditorPlan(ctx, Actor{CustomerID: customer, Role: RoleAdministrator}, p.ID)
+	if e != nil || syncResult.Queued != 1 {
+		t.Fatalf("stored Flowwow sync %+v %v", syncResult, e)
+	}
+	for i := 0; i < 3; i++ {
+		if e = ce.PublicationStep(ctx, pool, publisher, "mock"); e != nil {
+			t.Fatal(e)
+		}
+	}
+	items, _, e = client.Products(ctx, map[string]any{"offerIds": []string{offer}})
+	if e != nil || len(items) != 1 || items[0].Description != "Administrator saved content" || fmt.Sprint(items[0].ProductID) != remote {
+		t.Fatalf("stored content sync %+v %v", items, e)
+	}
 	var leaked int
 	if e = pool.QueryRow(ctx, `SELECT count(*) FROM product_external_ids WHERE variant_id=$1 AND provider IN ('flowwow','wildberries','ozon')`, id).Scan(&leaked); e != nil || leaked != 0 {
 		t.Fatal("mock IDs leaked", leaked, e)
@@ -114,7 +133,7 @@ func TestFlowwowPublicationLocalDatabase(t *testing.T) {
 	if _, e = pool.Exec(ctx, `UPDATE product_variants SET saby_id=$2,is_active=1 WHERE id=$1`, id, sabyID); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = pool.Exec(ctx, `INSERT INTO inventory(variant_id,warehouse_id,available_qty,reserved_qty,synced_at) SELECT $1,id,7,2,NOW() FROM warehouses WHERE saby_id='saby-ryazan-main' ON CONFLICT(warehouse_id,variant_id) DO UPDATE SET available_qty=7,reserved_qty=2,synced_at=NOW()`, id); e != nil {
+	if _, e = pool.Exec(ctx, `INSERT INTO inventory(variant_id,warehouse_id,available_qty,reserved_qty,synced_at) SELECT $1,id,5,0,NOW() FROM warehouses WHERE saby_id='saby-ryazan-main' ON CONFLICT(warehouse_id,variant_id) DO UPDATE SET available_qty=5,reserved_qty=0,synced_at=NOW()`, id); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = pool.Exec(ctx, `INSERT INTO catalog_editor_remote_links(variant_id,channel,execution_mode,remote_id,offer_id) VALUES($1,'flowwow','live',$2,$3)`, id, remote, offer); e != nil {

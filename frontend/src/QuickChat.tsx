@@ -13,7 +13,6 @@ export default function QuickChat({
   onClose: () => void;
 }) {
   const panel = useRef<HTMLElement>(null);
-  const close = useRef<HTMLButtonElement>(null);
   const [mobile, setMobile] = useState(() => window.matchMedia(chatModalMedia).matches);
   const closeCallback = useRef(onClose);
   useEffect(() => {
@@ -123,7 +122,6 @@ export default function QuickChat({
         </div>
         <ChatNotifications />
         <button
-          ref={close}
           className="chat-header-action"
           type="button"
           aria-label="Свернуть чат"

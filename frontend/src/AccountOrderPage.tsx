@@ -99,7 +99,6 @@ const deliveryPendingText = (order: OrderDetail) =>
     : "Менеджер уточнит стоимость доставки и сообщит итоговую сумму заказа до оплаты.";
 
 export default function AccountOrderPage({ orderNumber }: { orderNumber: string }) {
-  const isPreview = import.meta.env.DEV && orderNumber === "LOCAL-1024";
   const [user, setUser] = useState<StoreUser | null>(null);
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [error, setError] = useState("");
@@ -107,7 +106,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
   const [paying, setPaying] = useState(false);
 
   const payOffer = async (offer: ShipmentOffer) => {
-    if (isPreview || order?.status === "cancelled" || !offer.paymentToken) return;
+    if (order?.status === "cancelled" || !offer.paymentToken) return;
     setPaying(true);
     setError("");
     try {
@@ -129,20 +128,6 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
     setLoading(true);
     setError("");
     try {
-      if (import.meta.env.DEV && orderNumber === "LOCAL-1024") {
-        const { getPreviewOrder } = await import("./previewOrder");
-        const previewOrder = getPreviewOrder(
-          new URLSearchParams(window.location.search).get("state"),
-        );
-        setOrder(previewOrder);
-        setUser({
-          fullName: "Анна",
-          lastName: "",
-          phone: previewOrder.phone,
-          email: previewOrder.email,
-        });
-        return;
-      }
       const [meResponse, orderResponse] = await Promise.all([
         fetch("/api/v1/auth/me", { credentials: "same-origin", cache: "no-store" }),
         fetch(`/api/v1/account/orders/${encodeURIComponent(orderNumber)}`, {
@@ -197,7 +182,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
   // Active orders keep receiving both payment and fulfilment updates.
   // Focus refreshes immediately; hidden tabs wait until the buyer returns.
   useEffect(() => {
-    if (isPreview || !order || ["cancelled", "completed"].includes(order.status)) return;
+    if (!order || ["cancelled", "completed"].includes(order.status)) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshOrder();
     }, 8_000);
@@ -209,13 +194,9 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
       window.clearInterval(timer);
       window.removeEventListener("focus", refreshOnFocus);
     };
-  }, [isPreview, order, refreshOrder]);
+  }, [order, refreshOrder]);
 
   const pay = async () => {
-    if (isPreview) {
-      window.location.assign("/checkout?preview=payment-success");
-      return;
-    }
     if (
       !order ||
       order.paymentMethod === "on_delivery" ||
@@ -333,9 +314,6 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
           <a className="order-detail-back" href="/account">
             <span aria-hidden="true">←</span> Все заказы
           </a>
-          {isPreview && (
-            <p className="order-preview-note">Демонстрационный заказ · локальный просмотр</p>
-          )}
           {loading && (
             <p className="order-detail-loading" role="status">
               Загружаем заказ…
@@ -536,7 +514,7 @@ export default function AccountOrderPage({ orderNumber }: { orderNumber: string 
                                 <>
                                   <button
                                     className="primary-button"
-                                    disabled={paying || isPreview}
+                                    disabled={paying}
                                     onClick={() => void payOffer(offer)}
                                   >
                                     {paying

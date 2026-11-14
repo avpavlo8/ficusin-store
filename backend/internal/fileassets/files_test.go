@@ -35,15 +35,15 @@ func TestVerifiedSaveAndAuthoritativeObjectRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := Read(ctx, s, key, []byte("stale"))
+	got, err := Read(ctx, s, key)
 	if err != nil || string(got) != "original" {
 		t.Fatal(string(got), err)
 	}
-	if _, err = Read(ctx, nil, key, []byte("stale")); !errors.Is(err, ErrUnavailable) {
+	if _, err = Read(ctx, nil, key); !errors.Is(err, ErrUnavailable) {
 		t.Fatal("S3 outage revived legacy data", err)
 	}
-	got, err = Read(ctx, nil, "", []byte("legacy"))
-	if err != nil || string(got) != "legacy" {
+	got, err = Read(ctx, nil, "")
+	if err != nil || got != nil {
 		t.Fatal(err)
 	}
 	s.corrupt = true

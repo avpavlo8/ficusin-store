@@ -73,7 +73,7 @@ func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id=$1", sabyID)
 	}()
 
-	service := NewService(pool, nil, liveOrderNotifier{}, nil, quietLogger())
+	service := NewService(pool, nil, nil, quietLogger())
 	const buyers = 8
 	errorsFound := make(chan error, buyers)
 	var wait sync.WaitGroup

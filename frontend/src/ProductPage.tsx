@@ -6,7 +6,7 @@ import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { PurchaseReviewSummary } from "./product/PurchaseReviewSummary";
 import { PlantAbout, PlantCareGuide, PlantQuestions } from "./product/PlantCareGuide";
 import type { ProductDetail } from "./product/types";
-import { attributeValue, money } from "./product/types";
+import { attributeValue, displayAttributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
 import { orderStorefrontCategories } from "./lib/category-order";
 import { track } from "./lib/analytics";
@@ -64,7 +64,6 @@ export default function ProductPage({ slug }: { slug: string }) {
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [revision, setRevision] = useState(0);
 
   const [activeTab, setActiveTab] = useState<ProductTab>("about");
   const linkedCareTarget = useRef<string | null>(null);
@@ -154,7 +153,7 @@ export default function ProductPage({ slug }: { slug: string }) {
       .catch((reason) =>
         setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"),
       );
-  }, [slug, revision]);
+  }, [slug]);
 
   useEffect(() => {
     fetch("/api/v1/categories")
@@ -175,18 +174,7 @@ export default function ProductPage({ slug }: { slug: string }) {
       slug: item.slug,
       children: order(children.get(item.id) || []).map(branch),
     });
-    const catalog = order(children.get(null) || []).map(branch);
-    const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
-    const leaves = (parentId: number): typeof categories =>
-      order(children.get(parentId) || []).flatMap((item) =>
-        children.get(item.id)?.length ? leaves(item.id) : [item],
-      );
-    return {
-      catalog,
-      plants: plantRoot
-        ? leaves(plantRoot.id).map((item) => ({ id: item.id, label: item.name, slug: item.slug }))
-        : [],
-    };
+    return order(children.get(null) || []).map(branch);
   }, [categories]);
 
   const variant = useMemo(
@@ -457,9 +445,7 @@ export default function ProductPage({ slug }: { slug: string }) {
       <StoreHeader
         cartCount={cartCount}
         favoritesCount={favorites.size}
-        homeNavigation
-        catalogMenuItems={headerMenus.catalog}
-        plantMenuItems={headerMenus.plants}
+        catalogMenuItems={headerMenus}
       />
       <nav className="breadcrumbs" aria-label="Хлебные крошки">
         <a href="/">Главная</a>
@@ -486,11 +472,7 @@ export default function ProductPage({ slug }: { slug: string }) {
         adminUser?.adminRole === "administrator" ||
         adminUser?.adminRole === "manager") && (
         <Suspense fallback={null}>
-          <PdpAdminTools
-            slug={slug}
-            adminRole={adminUser.adminRole}
-            onChanged={() => setRevision((value) => value + 1)}
-          />
+          <PdpAdminTools slug={slug} adminRole={adminUser.adminRole} />
         </Suspense>
       )}
       <section className="pdp-main">
@@ -620,7 +602,7 @@ export default function ProductPage({ slug }: { slug: string }) {
                     customerAttributes.map((item) => (
                       <div key={`${item.code}-${variant?.sku || "product"}`}>
                         <dt>{item.name}</dt>
-                        <dd>{attributeValue(item.value, item.unit)}</dd>
+                        <dd>{displayAttributeValue(item)}</dd>
                       </div>
                     ))
                   ) : (

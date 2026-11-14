@@ -10,6 +10,7 @@ const limits = {
   css: 47 * 1024,
   // The lazy admin chunk includes procurement planning and Flowwow navigation.
   asyncJS: 39 * 1024,
+
   staticAsset: 900 * 1024,
 };
 

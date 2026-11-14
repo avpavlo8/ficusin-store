@@ -60,7 +60,7 @@ func TestReturnIntakeEditsPreserveUnitsOnLiveDatabase(t *testing.T) {
 	}
 	first, second := saved.Items[0].ID, saved.Items[1].ID
 	var photoID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO marketplace_return_photos(marketplace_return_id,content_type,image,created_by) VALUES($1,'image/png',$2,$3) RETURNING id`, first, []byte{1, 2, 3}, ownerID).Scan(&photoID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO marketplace_return_photos(marketplace_return_id,content_type,object_key,created_by) VALUES($1,'image/png',$2,$3) RETURNING id`, first, "fixtures/return-photo.png", ownerID).Scan(&photoID); err != nil {
 		t.Fatal(err)
 	}
 	request := func(doc *ReturnIntake) ReturnIntakeEdit {

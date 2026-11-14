@@ -24,7 +24,7 @@ func TestAccountPaymentAttemptOnLiveDatabase(t *testing.T) {
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	number := "CI-ATTEMPT-" + suffix
 	var customerID, orderID, pendingID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','CI payment attempt',CURRENT_TIMESTAMP) RETURNING id`, "attempt-"+suffix+"@example.invalid", "+799900"+suffix[len(suffix)-5:]).Scan(&customerID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'CI payment attempt',CURRENT_TIMESTAMP) RETURNING id`, "attempt-"+suffix+"@example.invalid", "+799900"+suffix[len(suffix)-5:]).Scan(&customerID); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {

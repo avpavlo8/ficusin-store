@@ -51,7 +51,7 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	// Аудит админки ссылается на карточку сотрудника внешним ключом, поэтому
 	// актёр обязан существовать.
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Интеграционный владелец',CURRENT_TIMESTAMP) RETURNING id`,
+		`INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Интеграционный владелец',CURRENT_TIMESTAMP) RETURNING id`,
 		fmt.Sprintf("ci-%d@example.invalid", unique), fmt.Sprintf("+7900%07d", unique%10000000),
 	).Scan(&staffID); err != nil {
 		t.Fatalf("завести сотрудника: %v", err)
@@ -128,6 +128,10 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		}
 		defer pool.Exec(ctx, `DELETE FROM media_mirror WHERE source_url=$1`, source)
 		repo := NewPostgresRepository(pool)
+		variants, err := repo.ListProductVariants(ctx, productID)
+		if err != nil || len(variants) != 2 || variants[0].SKU != smallSKU || variants[1].SKU != largeSKU {
+			t.Fatalf("current SKU projection failed: variants=%+v err=%v", variants, err)
+		}
 		check := func(items []OrderItem) {
 			t.Helper()
 			if len(items) != 1 || items[0].Image != card || items[0].ImageFallback != large || items[0].ProductCode == "" {
@@ -208,11 +212,28 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	})
 
 	t.Run("редактирование заказа пишет полный кортеж", func(t *testing.T) {
+		// Historical journal rows remain audit; edits create no legacy release.
+		if _, err := pool.Exec(ctx, `INSERT INTO stock_movements(order_id,variant_id,kind,quantity) VALUES($1,$2,'reserve',1)`, orderID, smallVariant); err != nil {
+			t.Fatal(err)
+		}
 		items := []OrderEditLine{{SKU: largeSKU, Quantity: 2}}
 		if _, err := NewPostgresRepository(pool).EditOrder(
 			ctx, Actor{CustomerID: staffID, Role: RoleOwner}, orderID, OrderEdit{Items: &items},
 		); err != nil {
 			t.Fatalf("редактирование состава заказа: %v", err)
+		}
+
+		var oldReservation, newReservation, reserveMovements, releasedQuantity int
+		if err := pool.QueryRow(ctx, `SELECT
+			(SELECT reserved_qty FROM inventory WHERE variant_id=$2),
+			(SELECT SUM(reserved_qty)::INTEGER FROM order_items WHERE order_id=$1),
+			(SELECT COUNT(*) FROM stock_movements WHERE order_id=$1 AND kind='reserve'),
+			(SELECT COALESCE(SUM(quantity),0)::INTEGER FROM stock_movements WHERE order_id=$1 AND kind='release')`,
+			orderID, smallVariant).Scan(&oldReservation, &newReservation, &reserveMovements, &releasedQuantity); err != nil {
+			t.Fatal(err)
+		}
+		if oldReservation != 0 || newReservation != 0 || reserveMovements != 1 || releasedQuantity != 0 {
+			t.Fatalf("edit changed reservation policy/history: old=%d new=%d reserve_entries=%d released=%d", oldReservation, newReservation, reserveMovements, releasedQuantity)
 		}
 
 		var storedProduct, storedVariant int64
@@ -404,13 +425,13 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		var released bool
 		if err := pool.QueryRow(ctx, `
 			SELECT stock.available_qty, stock.reserved_qty, purchase.stock_released_at IS NOT NULL,
-			  (SELECT COUNT(*) FROM stock_movements movement WHERE movement.order_id=purchase.id AND movement.kind='release')
+			  (SELECT COUNT(*) FROM stock_movements movement WHERE movement.order_id=purchase.id AND movement.variant_id=$3 AND movement.kind='release')
 			FROM orders purchase JOIN inventory stock ON stock.warehouse_id=$2 AND stock.variant_id=$3
 			WHERE purchase.id=$1
 		`, orderID, warehouseID, largeVariant).Scan(&available, &reserved, &released, &releases); err != nil {
 			t.Fatal(err)
 		}
-		if available != 10 || reserved != 0 || !released || releases != 0 {
+		if available != 10 || reserved != 0 || released || releases != 0 {
 			t.Fatalf("после завершения: СБИС=%d резерв=%d закрыт=%v записей=%d", available, reserved, released, releases)
 		}
 	})
@@ -452,6 +473,27 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer tx.Rollback(ctx) //nolint:errcheck
+		// Reconstruct the historical pre-cutover schema privately. Current
+		// production constraints intentionally reject every positive reservation.
+		schema := fmt.Sprintf("historical_reservation_%d", time.Now().UnixNano())
+		if _, err = tx.Exec(ctx, "CREATE SCHEMA "+schema+";SET LOCAL search_path="+schema); err != nil {
+			t.Fatal(err)
+		}
+		for _, table := range []string{"orders", "order_items", "inventory", "product_variants", "stock_movements"} {
+			if _, err = tx.Exec(ctx, "CREATE TABLE "+table+" (LIKE public."+table+" INCLUDING DEFAULTS INCLUDING CONSTRAINTS)"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err = tx.Exec(ctx, `ALTER TABLE inventory DROP CONSTRAINT IF EXISTS inventory_legacy_reservation_zero;ALTER TABLE order_items DROP CONSTRAINT IF EXISTS order_items_legacy_reservation_zero;`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO product_variants SELECT * FROM public.product_variants WHERE id=$1`, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO inventory SELECT * FROM public.inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, largeVariant); err != nil {
+			t.Fatal(err)
+		}
+
 		var oldOrderID int64
 		if err := tx.QueryRow(ctx, `
 			INSERT INTO orders(order_number,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,status)

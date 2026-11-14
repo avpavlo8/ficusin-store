@@ -85,3 +85,12 @@ func TestUnifiedCannotTreatMissingBoxOrInvalidRatesAsFree(t *testing.T) {
 		t.Fatal("invalid settings allowed")
 	}
 }
+
+// Independent margin check used by pricing tests, not by runtime pricing.
+func retainedRate(tax float64, c ChannelCosts) float64 {
+	other := 0.
+	if c.OtherRate != nil {
+		other = *c.OtherRate
+	}
+	return 1 - tax - *c.CommissionRate - *c.AcquiringRate - other
+}

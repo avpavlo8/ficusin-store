@@ -147,11 +147,11 @@ func TestChatDurabilityIsolationAndLogin(t *testing.T) {
 		t.Fatal("customer missing unread reply")
 	}
 	thread, _ = s.Read(ctx, id, 0)
-	kind, data, err := s.Photo(ctx, id, thread.Messages[1].ID)
-	if err != nil || kind != "image/png" || !bytes.Equal(data, imageData.Bytes()) {
+	kind, _, attachmentKind, data, err := s.Attachment(ctx, id, thread.Messages[1].ID)
+	if err != nil || kind != "image/png" || attachmentKind != "image" || !bytes.Equal(data, imageData.Bytes()) {
 		t.Fatalf("photo not durable %v", err)
 	}
-	if _, _, err = s.Photo(ctx, id+100, thread.Messages[1].ID); err == nil {
+	if _, _, _, _, err = s.Attachment(ctx, id+100, thread.Messages[1].ID); err == nil {
 		t.Fatal("cross-conversation photo accepted")
 	}
 	if err = s.SetStatus(ctx, id, "closed"); err != nil {

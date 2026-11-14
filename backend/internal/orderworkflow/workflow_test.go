@@ -154,7 +154,7 @@ func TestOrderWorkflowLocalDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Workflow test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Workflow test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer))
 	must(pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,saby_fields) VALUES('Workflow plant',$1,'published',ARRAY['stock']) RETURNING id`, sabyID).Scan(&product))
 	defer func() {
 		pool.Exec(ctx, `DELETE FROM stock_movements WHERE order_id=$1`, order)
@@ -288,5 +288,23 @@ func TestOrderWorkflowLocalDatabase(t *testing.T) {
 	must(pool.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1`, order).Scan(&status))
 	if status != "completed" {
 		t.Fatal(status)
+	}
+}
+
+func TestPendingRevisionBlocksAssemblyAndPickupHandover(t *testing.T) {
+	for _, status := range []string{"new", "assembling", "ready"} {
+		f := readyFacts()
+		f.DeliveryMethod = "pickup"
+		f.Status = status
+		f.RevisionPending = true
+		state := flow.Evaluate(f)
+		if state.ReadyForAssembly || len(state.ManualStatuses) != 0 || !has(state, "realization_sync") {
+			t.Fatal("stale realization allowed fulfilment", status, state)
+		}
+		f.RevisionPending = false
+		settled := flow.Evaluate(f)
+		if !settled.ReadyForAssembly {
+			t.Fatal("settled revision remained blocked", status, settled)
+		}
 	}
 }

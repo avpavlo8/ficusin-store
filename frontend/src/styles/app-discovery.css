@@ -16,35 +16,71 @@
   margin: 0;
 }
 .install-first-visit {
-  width: min(560px, calc(100vw - 32px));
-  max-height: calc(100dvh - 40px);
+  position: fixed;
+  z-index: 124;
+  right: 24px;
+  bottom: 160px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: calc(100dvh - 184px);
+  overflow-y: auto;
   box-sizing: border-box;
-  padding: 38px 24px 24px;
+  padding: 18px;
   border: 1px solid #d8dfd4;
-  border-radius: 16px;
+  border-radius: 14px;
   background: var(--paper);
   color: var(--ink);
 }
-.install-first-visit::backdrop {
-  background: rgb(22 37 27 / 40%);
-}
 .install-first-visit .home-install {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
 }
+.install-first-visit .home-install img {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+.install-first-visit .home-install strong {
+  margin: 0 26px 6px 0;
+  font-size: 16px;
+  line-height: 1.35;
+}
+.install-first-visit .home-install span,
+.install-first-visit .home-install ol {
+  margin-bottom: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.install-first-visit .home-install ol {
+  margin-top: 10px;
+}
+.install-first-visit .install-hint-action {
+  grid-column: 2;
+  justify-self: start;
+  padding: 9px 14px;
+  font-size: 13px;
+}
+.install-first-visit .install-hint-action:focus-visible,
+.install-offer-close:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 .install-offer-close {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 32px;
-  height: 32px;
+  top: 4px;
+  right: 4px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   background: transparent;
   color: #4c6051;
   cursor: pointer;
@@ -52,9 +88,20 @@
 .install-offer-close:hover {
   background: #e8eee4;
 }
-.install-offer-close:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 2px;
+body.menu-open .install-first-visit,
+body.quick-chat-open .install-first-visit,
+body:has(dialog[open]) .install-first-visit {
+  display: none;
+}
+@media (max-width: 850px), (max-height: 500px) and (pointer: coarse) {
+  .install-first-visit {
+    right: 16px;
+    bottom: calc(max(var(--store-tab-height, 76px), 64px + env(safe-area-inset-bottom)) + 80px);
+    max-height: calc(
+      100dvh - max(var(--store-tab-height, 76px), 64px + env(safe-area-inset-bottom)) - 96px
+    );
+    padding: 14px;
+  }
 }
 .guest-loyalty-notice {
   margin: 0 0 22px;
@@ -88,9 +135,6 @@
   text-underline-offset: 3px;
 }
 @media (max-width: 560px) {
-  .install-first-visit {
-    padding: 42px 18px 22px;
-  }
   .guest-loyalty-notice {
     padding: 16px;
   }

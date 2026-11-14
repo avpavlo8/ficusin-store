@@ -2,19 +2,6 @@ package admin
 
 import "testing"
 
-func TestSafeMappingToken(t *testing.T) {
-	for _, value := range []string{"wildberries", "offer_id", "partner-2"} {
-		if !safeMappingToken(value) {
-			t.Fatalf("valid token rejected: %s", value)
-		}
-	}
-	for _, value := range []string{"", "WB SKU", "../secret", "озон"} {
-		if safeMappingToken(value) {
-			t.Fatalf("unsafe token accepted: %s", value)
-		}
-	}
-}
-
 func TestValidateAttributeDefinition(t *testing.T) {
 	valid := AttributeDefinitionInput{Code: "light_level", Name: "Освещение", DataType: "enum", Audience: "customer", Scope: "product", Options: []AttributeOption{{Code: "bright", Label: "Яркий", Active: true}}}
 	if err := validateAttributeDefinition(valid); err != nil {

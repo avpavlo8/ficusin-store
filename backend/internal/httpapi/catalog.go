@@ -10,10 +10,6 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 )
 
-type collectionCatalogRepository interface {
-	ListForCollection(context.Context, string) ([]catalog.Product, error)
-}
-
 var publicCollectionSlug = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
 func catalogHandler(logger *slog.Logger, repository catalogRepository, cache *publicJSONCache) http.Handler {
@@ -29,11 +25,8 @@ func catalogHandler(logger *slog.Logger, repository catalogRepository, cache *pu
 		}
 		entry, hit, loadDuration, encodeDuration, err := cache.get(request.Context(), key, func(ctx context.Context) (any, error) {
 			if slug != "" {
-				if scoped, ok := repository.(collectionCatalogRepository); ok {
-					products, loadErr := scoped.ListForCollection(ctx, slug)
-					return map[string]any{"products": products}, loadErr
-				}
-				return nil, catalog.ErrNotFound
+				products, loadErr := repository.ListForCollection(ctx, slug)
+				return map[string]any{"products": products}, loadErr
 			}
 			products, loadErr := repository.ListAvailable(ctx)
 			return map[string]any{"products": products}, loadErr

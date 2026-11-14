@@ -38,7 +38,7 @@ test("real staging: route editor draft, photos, seasonal boxes and outbound isol
   await editor.getByLabel("Диаметр горшка", { exact: true }).fill("11.3");
   await editor.getByLabel("Высота", { exact: true }).fill("40");
   await editor.getByLabel("Цена на сайте, ₽ *", { exact: true }).fill("1490.99");
-  await editor.getByLabel("Вес, г", { exact: true }).fill("1250");
+  await editor.getByLabel("Вес, кг", { exact: true }).fill("1.25");
   for (const [season, width] of [["летней упаковки", "15"], ["зимней коробки", "20"]]) {
     await editor.getByLabel(`Длина ${season}, см`, { exact: true }).fill("40");
     await editor.getByLabel(`Ширина ${season}, см`, { exact: true }).fill(width);

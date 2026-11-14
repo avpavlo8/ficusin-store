@@ -32,11 +32,11 @@ func validateVariantEdits(actor Actor, edits []VariantEdit) error {
 			return fmt.Errorf("%w: размер повторяется в запросе", ErrInvalidInput)
 		}
 		seen[edit.ID] = true
-		if actor.Role != RoleOwner && (edit.ID <= 0 || edit.PriceMinor != nil || edit.WholesaleMinQty != nil || edit.Active != nil || edit.Archived != nil || edit.ExternalIDs != nil) {
+		if !Can(actor.Role, PermissionProductsManage) && (edit.ID <= 0 || edit.PriceMinor != nil || edit.WholesaleMinQty != nil || edit.Active != nil || edit.Archived != nil || edit.ExternalIDs != nil) {
 			return ErrForbidden
 		}
 		if edit.Remove {
-			if !Can(actor.Role, PermissionDelete) {
+			if !Can(actor.Role, PermissionProductsManage) {
 				return ErrForbidden
 			}
 			if edit.ID <= 0 || edit.Label != nil || edit.PriceMinor != nil || edit.WholesaleMinQty != nil || edit.Active != nil || edit.Archived != nil || edit.Attributes != nil || edit.ExternalIDs != nil {
@@ -112,7 +112,7 @@ func saveVariantEdits(ctx context.Context, tx pgx.Tx, actor Actor, productID int
 			}
 		}
 		if edit.ID > 0 && edit.PriceMinor != nil && oldPrice != *edit.PriceMinor {
-			if err := createManualPriceProposals(ctx, tx, actor, id, oldPrice, *edit.PriceMinor); err != nil {
+			if err := stageEditorPriceProposals(ctx, tx, actor, id, *edit.PriceMinor); err != nil {
 				return err
 			}
 		}

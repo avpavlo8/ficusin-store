@@ -2,9 +2,7 @@ package reviews
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
@@ -58,16 +56,14 @@ type mediaStorage interface {
 	Delete(context.Context, string) error
 }
 type Store struct {
-	pool        *pgxpool.Pool
-	media       mediaStorage
-	legacyMedia mediaStorage
+	pool  *pgxpool.Pool
+	media mediaStorage
 }
 
 func NewStore(pool *pgxpool.Pool, media ...mediaStorage) *Store {
 	store := &Store{pool: pool}
 	if len(media) > 0 && media[0] != nil && media[0].Configured() {
 		store.media = media[0]
-		store.legacyMedia = media[0]
 	}
 	return store
 }
@@ -164,7 +160,7 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 			return 0, saveErr
 		}
 		uploaded = append(uploaded, key)
-		if _, err = tx.Exec(ctx, `INSERT INTO product_review_photos(review_id,content_type,image,object_key,sort_order,storage_scope) VALUES($1,$2,NULL,$3,$4,'private')`, id, media.contentType, key, index); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO product_review_photos(review_id,content_type,object_key,sort_order,storage_scope) VALUES($1,$2,$3,$4,'private')`, id, media.contentType, key, index); err != nil {
 			return 0, err
 		}
 	}
@@ -175,15 +171,6 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 		return 0, err
 	}
 	return id, nil
-}
-
-func reviewMediaKey(reviewID int64, contentType string) (string, error) {
-	token := make([]byte, 16)
-	if _, err := rand.Read(token); err != nil {
-		return "", err
-	}
-	extension := map[string]string{"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "video/mp4": "mp4", "video/webm": "webm"}[contentType]
-	return fmt.Sprintf("reviews/%d/%s.%s", reviewID, hex.EncodeToString(token), extension), nil
 }
 
 func validMediaSignature(contentType string, data []byte) bool {
@@ -202,19 +189,12 @@ func validMediaSignature(contentType string, data []byte) bool {
 func (s *Store) mediaData(ctx context.Context, id int64, status string) (string, []byte, error) {
 	var kind string
 	var data []byte
-	var key *string
-	var scope string
-	err := s.pool.QueryRow(ctx, `SELECT p.content_type,p.image,p.object_key,p.storage_scope FROM product_review_photos p JOIN product_reviews r ON r.id=p.review_id WHERE p.id=$1 AND r.status=$2`, id, status).Scan(&kind, &data, &key, &scope)
+	var key string
+	err := s.pool.QueryRow(ctx, `SELECT p.content_type,COALESCE(p.object_key,'') FROM product_review_photos p JOIN product_reviews r ON r.id=p.review_id WHERE p.id=$1 AND r.status=$2`, id, status).Scan(&kind, &key)
 	if err != nil {
 		return "", nil, err
 	}
-	if key != nil && *key != "" {
-		storage := s.media
-		if scope == "legacy-public" {
-			storage = s.legacyMedia
-		}
-		data, err = fileassets.Read(ctx, storage, *key, nil)
-	}
+	data, err = fileassets.Read(ctx, s.media, key)
 	return kind, data, err
 }
 func (s *Store) Photo(ctx context.Context, id int64) (string, []byte, error) {
@@ -316,11 +296,4 @@ func (s *Store) UpdateMine(ctx context.Context, customerID, id int64, rating int
 		return pgx.ErrNoRows
 	}
 	return nil
-}
-
-// WithLegacyMediaStorage keeps existing review object keys readable from their
-// original public-photo bucket until an explicit copy-and-verify migration.
-func (s *Store) WithLegacyMediaStorage(storage mediaStorage) *Store {
-	s.legacyMedia = storage
-	return s
 }

@@ -129,14 +129,14 @@ func (service *Service) moneyStateByOrderNumber(ctx context.Context, orderNumber
 }
 
 // checkOrderStock verifies the current Saby-derived stock snapshot immediately
-// before issuing a payment link. Orders do not reserve plants.
+// before issuing a payment link, including the order's own early stock hold.
 func (service *Service) checkOrderStock(ctx context.Context, orderID int64) error {
 	var unavailable int
 	err := service.pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT oi.variant_id, SUM(oi.quantity) AS wanted,
-				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i
+				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($1,i.warehouse_id,i.variant_id),0))
+					FROM order_sale_inventory i
 					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 					JOIN product_variants v ON v.id=i.variant_id
 					JOIN products p ON p.id=v.product_id
@@ -162,8 +162,8 @@ func (service *Service) checkOfferStock(ctx context.Context, offerID int64) erro
 	if err := service.pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT soi.variant_id, SUM(soi.quantity) AS wanted,
-				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i
+				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity((SELECT order_id FROM shipment_offers WHERE id=$1),i.warehouse_id,i.variant_id),0))
+					FROM order_sale_inventory i
 					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 					JOIN product_variants v ON v.id=i.variant_id
 					JOIN products p ON p.id=v.product_id
@@ -472,13 +472,14 @@ func (service *Service) reserveOfferAndCreatePayment(ctx context.Context, offerI
 	if status != "offered" {
 		return 0, errors.New("предложение уже обрабатывается")
 	}
-	// Payment requires current availability, but no order or offer reserves stock.
+	// Require fresh availability including the parent order's own early hold;
+	// the offer does not create a second reservation for those same plants.
 	var unavailable int
 	err = tx.QueryRow(ctx, `
 		SELECT COUNT(*) FROM (
 			SELECT soi.variant_id, SUM(soi.quantity) AS wanted,
-				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0))
-					FROM inventory i
+				COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($2,i.warehouse_id,i.variant_id),0))
+					FROM order_sale_inventory i
 					JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 					JOIN product_variants v ON v.id=i.variant_id
 					JOIN products p ON p.id=v.product_id
@@ -487,7 +488,7 @@ func (service *Service) reserveOfferAndCreatePayment(ctx context.Context, offerI
 						AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0) AS available
 			FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 GROUP BY soi.variant_id
 		) stock WHERE stock.variant_id IS NULL OR stock.available < stock.wanted
-	`, offerID).Scan(&unavailable)
+	`, offerID, orderID).Scan(&unavailable)
 	if err != nil {
 		return 0, err
 	}
@@ -513,27 +514,6 @@ func (service *Service) reserveOfferAndCreatePayment(ctx context.Context, offerI
 	return paymentID, nil
 }
 
-func (service *Service) releaseOfferCheckoutReservation(ctx context.Context, offerID int64) error {
-	tx, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `UPDATE inventory i SET reserved_qty=GREATEST(0,i.reserved_qty-r.quantity) FROM shipment_offer_inventory_reservations r JOIN shipment_offer_items soi ON soi.id=r.shipment_offer_item_id WHERE i.id=r.inventory_id AND soi.shipment_offer_id=$1`, offerID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE order_items oi SET reserved_qty=GREATEST(0,oi.reserved_qty-soi.checkout_reserved_qty) FROM shipment_offer_items soi WHERE oi.id=soi.order_item_id AND soi.shipment_offer_id=$1`, offerID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM shipment_offer_inventory_reservations r USING shipment_offer_items soi WHERE r.shipment_offer_item_id=soi.id AND soi.shipment_offer_id=$1`, offerID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE shipment_offer_items SET checkout_reserved_qty=0 WHERE shipment_offer_id=$1`, offerID); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
-}
-
 // SyncOutstanding is the webhook path for mutable orders. One successful
 // top-up no longer means the entire order is paid: after recording the charge
 // we recompute the balance from all payments and refunds.
@@ -544,6 +524,9 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 	payment, err := service.provider.FetchPayment(ctx, providerPaymentID)
 	if err != nil {
 		return err
+	}
+	if payment.ID != providerPaymentID {
+		return errors.New("ответ ЮKassa не соответствует платежу")
 	}
 	var paymentRowID, orderID int64
 	var shipmentOfferID *int64
@@ -583,6 +566,9 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 	if err != nil {
 		return err
 	}
+	if payment.ID != providerPaymentID {
+		return errors.New("ответ ЮKassa не соответствует платежу")
+	}
 	if payment.Status == "waiting_for_capture" {
 		if err := service.resolveAuthorization(ctx, payment, paymentRowID, orderID, shipmentOfferID, expected, localStatus); err != nil {
 			return err
@@ -590,6 +576,9 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		payment, err = service.provider.FetchPayment(ctx, providerPaymentID)
 		if err != nil {
 			return err
+		}
+		if payment.ID != providerPaymentID {
+			return errors.New("ответ ЮKassa не соответствует платежу")
 		}
 		// The provider may still be processing the idempotent capture/cancel.
 		// Keep the local row pending so the worker checks it again.
@@ -603,6 +592,10 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		return nil
 	}
 	paid := payment.Paid && payment.Status == "succeeded" && cents(payment.Amount) == cents(expected)
+	verifiedTest := payment.Test
+	if cents(payment.Amount) != cents(expected) {
+		verifiedTest = nil
+	}
 	status := payment.Status
 	var paidAt any
 	if paid {
@@ -610,17 +603,17 @@ func (service *Service) SyncOutstanding(ctx context.Context, providerPaymentID s
 		paidAt = time.Now()
 	}
 	if _, err := service.pool.Exec(ctx, `
-		UPDATE payments SET status=$2,paid_at=$3,updated_at=CURRENT_TIMESTAMP WHERE id=$1
-	`, paymentRowID, status, paidAt); err != nil {
+		UPDATE payments SET status=$2,paid_at=$3,updated_at=CURRENT_TIMESTAMP,
+		 provider_test=COALESCE($4,provider_test),
+		 provider_test_source=CASE WHEN $4::boolean IS NOT NULL THEN 'yookassa' ELSE provider_test_source END
+		WHERE id=$1
+	`, paymentRowID, status, paidAt, verifiedTest); err != nil {
 		return fmt.Errorf("update payment: %w", err)
 	}
 	if shipmentOfferID != nil {
 		if paid {
 			_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status='paid',checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND status IN ('offered','payment_pending')`, *shipmentOfferID)
 		} else if status == "canceled" || status == "cancelled" {
-			if err = service.releaseOfferCheckoutReservation(ctx, *shipmentOfferID); err != nil {
-				return err
-			}
 			_, err = service.pool.Exec(ctx, `UPDATE shipment_offers SET status=CASE WHEN status='stale' THEN 'stale' WHEN expires_at<=CURRENT_TIMESTAMP THEN 'expired' ELSE 'offered' END,checkout_locked_until=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, *shipmentOfferID)
 		}
 		if err != nil {

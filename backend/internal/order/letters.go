@@ -157,15 +157,3 @@ func (worker *LetterWorker) cancelDisabled(ctx context.Context) {
 		worker.logger.Info("closed outbox while mail is disabled", "letters", command.RowsAffected())
 	}
 }
-
-// QueueLetter puts a letter in the outbox. Callers do not wait for it: the
-// letter matters, but not enough to fail an order over.
-func QueueLetter(ctx context.Context, pool *pgxpool.Pool, recipient string, letter mail.Letter) error {
-	if recipient == "" {
-		return nil
-	}
-	_, err := pool.Exec(ctx, `
-		INSERT INTO outbox (recipient, subject, body) VALUES ($1, $2, $3)
-	`, recipient, letter.Subject, letter.Body)
-	return err
-}

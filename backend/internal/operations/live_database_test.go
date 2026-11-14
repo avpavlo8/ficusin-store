@@ -13,16 +13,8 @@ import (
 )
 
 func TestProbeDetectsAndClearsReservationMismatchOnLiveDatabase(t *testing.T) {
-	databaseURL := os.Getenv("TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("TEST_DATABASE_URL is not set")
-	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
+	pool := preCutoverOperationsPool(t, ctx)
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 
 	var productID, variantID, warehouseID int64
@@ -84,16 +76,8 @@ func TestProbeDetectsAndClearsReservationMismatchOnLiveDatabase(t *testing.T) {
 }
 
 func TestPreReservationMigrationClearsPhantomReservationOnLiveDatabase(t *testing.T) {
-	databaseURL := os.Getenv("TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("TEST_DATABASE_URL is not set")
-	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, databaseURL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
+	pool := preCutoverOperationsPool(t, ctx)
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 
 	var productID, variantID, warehouseID, orderID int64
@@ -212,4 +196,45 @@ func containsCheck(checks []Check, code string) bool {
 		}
 	}
 	return false
+}
+
+// Historical repairs and their diagnostics must remain reproducible without
+// re-enabling retired reservation writers in the current public schema.
+func preCutoverOperationsPool(t *testing.T, ctx context.Context) *pgxpool.Pool {
+	t.Helper()
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not set")
+	}
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema := fmt.Sprintf("operations_pre_cutover_%d", time.Now().UnixNano())
+	config.ConnConfig.RuntimeParams["search_path"] = schema + ",public"
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		defer pool.Close()
+		if _, err := pool.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE"); err != nil {
+			t.Errorf("remove private operations fixture: %v", err)
+		}
+	})
+	if _, err := pool.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"products", "product_variants", "warehouses", "inventory", "orders", "order_items", "stock_movements"} {
+		if _, err := pool.Exec(ctx, "CREATE TABLE "+schema+"."+table+" (LIKE public."+table+" INCLUDING ALL)"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `
+	 ALTER TABLE inventory DROP CONSTRAINT inventory_legacy_reservation_zero;
+	 ALTER TABLE order_items DROP CONSTRAINT order_items_legacy_reservation_zero;
+	`); err != nil {
+		t.Fatal(err)
+	}
+	return pool
 }

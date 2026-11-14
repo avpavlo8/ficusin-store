@@ -823,8 +823,7 @@ body.account-chat-mobile .account-chat-title,
 body.account-chat-mobile .store-header,
 body.account-chat-mobile .store-footer,
 body.account-chat-mobile .chat-launcher,
-body.account-chat-mobile .tab-bar,
-body.account-chat-mobile .install-hint {
+body.account-chat-mobile .tab-bar {
   display: none;
 }
 body.account-chat-mobile .account-chat-view {
@@ -1198,8 +1197,7 @@ a.chat-reference-card:hover {
   cursor: pointer;
   padding: 6px;
 }
-.chat-attach-menu,
-.chat-reference-picker {
+.chat-attach-menu {
   position: absolute;
   z-index: 5;
   bottom: calc(100% + 8px);
@@ -1217,8 +1215,12 @@ a.chat-reference-card:hover {
   display: grid;
   gap: 4px;
   min-width: 210px;
+  max-height: var(--chat-emoji-max-height, 360px);
+  box-sizing: border-box;
+  overflow-y: auto;
 }
 .chat-attach-menu button {
+  min-height: 44px;
   padding: 11px 12px;
   border: 0;
   border-radius: 7px;
@@ -1236,7 +1238,8 @@ a.chat-reference-card:hover {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
+  flex: none;
+  margin-bottom: 8px;
 }
 .chat-reference-heading strong {
   font-size: 14px;
@@ -1244,8 +1247,9 @@ a.chat-reference-card:hover {
 .chat-reference-heading button {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
+  flex: none;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1265,14 +1269,18 @@ a.chat-reference-card:hover {
   font: inherit;
 }
 .chat-reference-options {
-  max-height: min(280px, 35dvh);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   margin-top: 8px;
 }
 .chat-reference-options > button {
   display: flex;
+  align-items: center;
   width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
   gap: 10px;
   padding: 10px 6px;
   border: 0;
@@ -1310,7 +1318,51 @@ a.chat-reference-card:hover {
 }
 
 .chat-reference-picker {
-  max-height: var(--chat-emoji-max-height, 360px);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 8px 12px;
   box-sizing: border-box;
-  overflow: auto;
+  overflow: hidden;
+  background: #fff;
+  color: var(--chat-text);
+  border-bottom: 1px solid var(--chat-line);
+}
+.chat-reference-picker > label {
+  flex: none;
+}
+.chat-thread[data-reference-open="true"] > :is(.chat-messages, .chat-new) {
+  display: none;
+}
+.chat-thread[data-reference-open="true"]
+  .chat-compose
+  > :is(.chat-preview, .chat-topic, .chat-reference-preview) {
+  display: none;
+}
+.chat-thread[data-reference-open="true"] .chat-composer-bar textarea {
+  max-height: 44px;
+}
+@media (max-width: 760px) {
+  .chat-reference-picker input,
+  .admin-page .ws-main .chat-reference-picker input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  body.admin-chat-mobile .admin-page.ws-shell[data-chat-typing] .ws-topbar {
+    display: none;
+  }
+  body.admin-chat-mobile
+    .admin-page.ws-shell:is([data-chat-typing], :has(.admin-chat-selected))
+    .ws-tabbar {
+    display: none;
+  }
+  body.admin-chat-mobile
+    .admin-page.ws-shell:is([data-chat-typing], :has(.admin-chat-selected))
+    .ws-main {
+    padding-bottom: 0;
+  }
+  body.admin-chat-mobile .admin-page.ws-shell:has(.admin-chat-selected) .ws-chat .chat-compose {
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
 }

@@ -83,7 +83,9 @@ func main() {
 		}
 	}
 
-	for _, key := range []string{"payment.Balance", "payment.RefundIssue", "payment.Issue", "order.Detail", "order.Summary", "auth.User"} {
+	// Variant creation first checks a raw field map in a helper, then decodes
+	// this public DTO. It is not a direct decodeJSON call in the route body.
+	for _, key := range []string{"payment.Balance", "payment.RefundIssue", "payment.Issue", "order.Detail", "order.Summary", "auth.User", "admin.VariantInput"} {
 		parts := strings.Split(key, ".")
 		inv.ref(parts[0], parts[1])
 	}

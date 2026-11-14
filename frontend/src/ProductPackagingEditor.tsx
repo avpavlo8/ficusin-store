@@ -1,4 +1,5 @@
 import { NumericInput } from "./NumericInput";
+import { gramsToKilograms, kilogramsToGrams, packagingWeightInput } from "./packagingWeight";
 import type { CategoryAttribute } from "./adminTypes";
 
 export function ProductPackagingEditor({
@@ -27,7 +28,20 @@ export function ProductPackagingEditor({
     ) : null;
   return (
     <div className="editor-packaging">
-      {field("package_weight_grams", "Вес, г")}
+      {schema.some((item) => item.code === "package_weight_grams") && (
+        <label>
+          Вес, кг
+          <NumericInput
+            aria-label="Вес, кг"
+            {...packagingWeightInput}
+            inputMode="decimal"
+            value={gramsToKilograms(values.package_weight_grams)}
+            onChange={(event) =>
+              onChange("package_weight_grams", kilogramsToGrams(event.target.value))
+            }
+          />
+        </label>
+      )}
       {([false, true] as const).map((winter) => (
         <div key={String(winter)}>
           <h3>{winter ? "Зимняя коробка" : "Летняя упаковка"}</h3>

@@ -55,6 +55,14 @@ func TestStage04SalesSummaryOnLiveDatabase(t *testing.T) {
 	if len(summary.Daily) != 7 || summary.Daily[5].Date != "2036-09-11" || summary.Daily[6].Date != "2036-09-12" {
 		t.Fatalf("daily boundaries=%+v", summary.Daily)
 	}
+	if summary.Daily[4].Orders != 1 || summary.Daily[4].Revenue != 2400 || summary.Daily[5].Orders != 0 || summary.Daily[5].Revenue != 0 || summary.Daily[6].Orders != 0 || summary.Daily[6].Revenue != -1200 {
+		t.Fatalf("Moscow daily sales/returns changed: %+v", summary.Daily)
+	}
+	for _, day := range summary.Daily[:4] {
+		if day.Orders != 0 || day.Revenue != 0 {
+			t.Fatalf("empty day includes traffic or uncounted sales: %+v", day)
+		}
+	}
 	if len(summary.SalesChannels) != 5 || summary.SalesChannels[4].Channel != "avito" || summary.SalesChannels[4].Availability != "no_data" {
 		t.Fatalf("channels=%+v", summary.SalesChannels)
 	}

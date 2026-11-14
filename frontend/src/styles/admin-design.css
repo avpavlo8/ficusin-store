@@ -866,30 +866,6 @@
   }
 }
 
-/* Установка приложения живёт внизу меню, а не в шапке: это разовое
-   действие, ему не место рядом с ежедневной работой. */
-.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install > summary {
-  min-height: 36px;
-  padding: 8px 10px;
-  color: var(--ws-green);
-  font-size: 13px;
-  font-weight: 600;
-  list-style: none;
-}
-.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install > summary::-webkit-details-marker {
-  display: none;
-}
-.admin-page :is(.ws-sidebar, .ws-more) .admin-app-install-panel {
-  position: static;
-  width: auto;
-  margin: 4px 0 8px;
-  padding: 14px;
-  box-shadow: none;
-  border: 1px solid var(--ws-line);
-  border-radius: var(--ws-radius);
-  background: var(--ws-panel);
-}
-
 /* Шапка: на компьютере название раздела уже есть в заголовке страницы. */
 @media (min-width: 761px) {
   .admin-page .ws-topbar-title {
@@ -1850,231 +1826,6 @@
   }
 }
 
-/* ---------- Редактор товара: страница с шагами ----------
-   Раньше — модальное окно с вертикальным меню. Теперь, как у Ozon Seller,
-   редактор занимает всю рабочую область рядом с меню: шаги сверху, поля в
-   одну колонку, справа фото и подсказка, кнопки внизу. Семантика диалога
-   сохранена: Esc и «Закрыть» по-прежнему возвращают к списку. */
-.admin-page .admin-dialog.product-editor-dialog {
-  position: fixed;
-  inset: 0 0 0 var(--ws-sidebar) !important;
-  width: auto !important;
-  max-width: none !important;
-  max-height: none !important;
-  margin: 0 !important;
-  transform: none !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  background: #fff !important;
-  /* Выше затемнения диалога (111), иначе оно перехватывает клики. */
-  z-index: 112;
-}
-.admin-page .product-editor-dialog > header {
-  width: min(100%, 1060px);
-  box-sizing: border-box;
-  padding: 28px 32px 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-.admin-page .product-editor-dialog > header h2 {
-  font-family: inherit !important;
-  font-size: 28px !important;
-  font-weight: 700 !important;
-  letter-spacing: -0.015em;
-}
-.admin-page .product-editor-dialog .catalog-editor-topline {
-  width: min(100%, 1060px);
-  box-sizing: border-box;
-  padding: 4px 32px 0;
-  border: 0;
-  background: transparent;
-  color: var(--ws-muted);
-  justify-content: flex-start;
-}
-.admin-page .product-editor-dialog .catalog-editor-topline a {
-  color: var(--ws-green);
-}
-.admin-page .product-editor-dialog .product-editor-shell {
-  width: min(100%, 1060px);
-  box-sizing: border-box;
-  padding: 0 32px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  grid-template-areas:
-    "nav nav"
-    "content cover"
-    "content note"
-    "content .";
-  grid-template-rows: auto auto auto 1fr;
-  column-gap: 40px;
-  overflow-y: auto;
-}
-.admin-page .product-editor-dialog .product-editor-aside {
-  display: contents;
-}
-.admin-page .product-editor-dialog .product-editor-nav {
-  grid-area: nav;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  margin: 18px 0 8px;
-  padding: 0 0 2px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 22px;
-  background: #fff;
-}
-.admin-page .product-editor-dialog .product-editor-nav button {
-  width: auto;
-  min-height: 40px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border-radius: 0;
-  background: transparent;
-  color: var(--ws-text);
-  font-size: 14px;
-  font-weight: 500;
-}
-.admin-page .product-editor-dialog .product-editor-step {
-  width: 24px;
-  height: 24px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 7px;
-  background: #f0f1f4;
-  color: var(--ws-text);
-  font-size: 12px;
-  font-weight: 600;
-}
-.admin-page .product-editor-dialog .product-editor-nav .active {
-  background: transparent;
-  color: var(--ws-ink);
-  font-weight: 600;
-}
-.admin-page .product-editor-dialog .product-editor-nav .active .product-editor-step {
-  background: var(--ws-ink);
-  color: #fff;
-}
-.admin-page .product-editor-dialog .product-editor-cover {
-  grid-area: cover;
-  max-width: none;
-  margin: 24px 0 12px;
-  padding: 16px;
-  border-radius: var(--ws-radius);
-  background: var(--ws-side);
-  box-shadow: inset 0 0 0 1px var(--ws-line-soft);
-}
-.admin-page .product-editor-dialog .product-editor-cover img {
-  height: 220px;
-  border-radius: 10px;
-}
-.admin-page .product-editor-dialog .catalog-source-note {
-  grid-area: note;
-  margin: 0;
-  padding: 14px 16px;
-  border-radius: var(--ws-radius);
-  background: var(--ws-warn-soft);
-  color: #5c3a00;
-  font-size: 13px;
-}
-.admin-page .product-editor-dialog .product-editor-content {
-  grid-area: content;
-  padding: 16px 0 32px;
-  overflow: visible;
-}
-.admin-page .product-editor-dialog .editor-section > header h3 {
-  font-size: 20px;
-  font-weight: 700;
-}
-.admin-page .product-editor-dialog .editor-section > header p {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 13px;
-}
-.admin-page
-  .product-editor-dialog
-  .admin-form-grid
-  :is(input:not([type="checkbox"]), select, textarea) {
-  border: 1px solid transparent;
-  border-radius: var(--ws-radius-sm);
-  background: var(--ws-field);
-  color: var(--ws-ink);
-}
-.admin-page .product-editor-dialog .admin-form-grid :is(input, select, textarea):focus {
-  border-color: var(--ws-green);
-  background: #fff;
-  outline: 3px solid rgba(17, 128, 79, 0.14);
-}
-.admin-page .product-editor-dialog .admin-form-grid label {
-  color: var(--ws-text);
-  font-size: 13px;
-  font-weight: 500;
-}
-.admin-page .product-editor-dialog .product-editor-footer {
-  width: min(100%, 1060px);
-  box-sizing: border-box;
-  margin-top: auto;
-  padding: 14px 32px;
-  border-top: 1px solid var(--ws-line);
-  background: #fff;
-}
-.admin-page .product-editor-dialog .product-editor-footer .dialog-actions button {
-  min-height: 44px;
-  padding: 0 18px;
-  border: 0;
-  border-radius: var(--ws-radius-sm);
-  background: #f0f1f4;
-  color: var(--ws-ink);
-  font-weight: 600;
-}
-.admin-page .product-editor-dialog .product-editor-footer .dialog-actions button.primary {
-  background: var(--ws-green);
-  color: #fff;
-}
-.admin-page .product-editor-dialog .product-editor-footer .dialog-actions button:disabled {
-  opacity: 0.45;
-}
-
-@media (max-width: 1100px) {
-  .admin-page .admin-dialog.product-editor-dialog {
-    left: 200px !important;
-  }
-}
-@media (max-width: 900px) {
-  .admin-page .product-editor-dialog .product-editor-shell {
-    grid-template-columns: 1fr;
-    grid-template-areas: "nav" "content" "note";
-  }
-  .admin-page .product-editor-dialog .product-editor-cover {
-    display: none;
-  }
-}
-@media (max-width: 760px) {
-  .admin-page .admin-dialog.product-editor-dialog {
-    left: 0 !important;
-  }
-  .admin-page .product-editor-dialog > header,
-  .admin-page .product-editor-dialog .catalog-editor-topline,
-  .admin-page .product-editor-dialog .product-editor-shell,
-  .admin-page .product-editor-dialog .product-editor-footer {
-    padding-left: 16px !important;
-    padding-right: 16px !important;
-  }
-  .admin-page .product-editor-dialog > header h2 {
-    font-size: 22px !important;
-  }
-  .admin-page .product-editor-dialog .product-editor-nav {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-  .admin-page .product-editor-dialog .product-editor-nav button {
-    flex: none;
-  }
-}
-
 /* Главные действия разделов — одним зелёным, как и вся админка. */
 .admin-page .ws-main :is(.returns-create, .workspace-primary) {
   border-color: var(--ws-green);
@@ -2084,18 +1835,6 @@
 .admin-page .ws-main :is(.returns-create, .workspace-primary):hover {
   background: var(--ws-green-dark);
 }
-/* Прокручивается колонка с полями, а шаги, фото и кнопки стоят на месте. */
-.admin-page .product-editor-dialog .product-editor-shell {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-.admin-page .product-editor-dialog .product-editor-content {
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-right: 4px;
-}
 
 /* На широком мониторе рабочая область по центру, как у Ozon Seller,
    а не прижата к меню с пустотой справа. */
@@ -2104,37 +1843,6 @@
   max-width: 1360px;
   margin-inline: auto;
   box-sizing: border-box;
-}
-
-/* Редактор товара: на всю высоту, содержимое по центру рабочей области,
-   меню слева остаётся видимым и доступным. */
-.admin-page .admin-dialog.product-editor-dialog {
-  height: auto !important;
-  align-items: center;
-}
-.admin-page
-  .product-editor-dialog
-  > :is(header, .catalog-editor-topline, .product-editor-shell, .product-editor-footer) {
-  margin-inline: auto;
-}
-.admin-page
-  .product-editor-dialog
-  :is(.product-editor-content, .catalog-editor-fields, .editor-section) {
-  background: transparent;
-}
-.admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
-  left: var(--ws-sidebar);
-  background: transparent;
-}
-@media (max-width: 1100px) {
-  .admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
-    left: 200px;
-  }
-}
-@media (max-width: 760px) {
-  .admin-page .admin-dialog-backdrop:has(+ .product-editor-dialog) {
-    left: 0;
-  }
 }
 
 /* Метки статуса товара: нейтральная, зелёная «опубликован», серая «архив». */
@@ -2160,9 +1868,6 @@
 .admin-page .admin-dialog:focus {
   outline: none;
 }
-.admin-page .product-editor-dialog .product-editor-cover > * {
-  border-color: var(--ws-line) !important;
-}
 /* Цифры на обзоре — тем же гротеском, что и весь интерфейс. */
 .admin-page .ws-main :is(.workspace-metrics strong, .workspace-revenue strong) {
   font-family: inherit;
@@ -2170,23 +1875,9 @@
   letter-spacing: -0.02em;
 }
 
-/* Высота полей редактора задана в пикселях, а не через шрифт: на разных
-   системах шрифт разный, и поле «плавало» относительно переключателя рядом. */
-.admin-page
-  .product-editor-dialog
-  .admin-form-grid
-  :is(input:not([type="checkbox"]):not([type="radio"]), select) {
-  min-height: 44px;
-  padding: 10px 12px;
-  line-height: 22px;
-}
 .admin-page .ws-main .procurement-inline-actions .admin-primary {
   background: var(--ws-green);
   color: #fff;
-}
-.admin-page .product-editor-dialog .product-editor-cover,
-.admin-page .product-editor-dialog .product-editor-cover * {
-  border-color: var(--ws-line) !important;
 }
 .admin-page .order-now-more small {
   display: block;

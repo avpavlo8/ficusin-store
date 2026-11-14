@@ -389,23 +389,17 @@ func (client *SabyClient) WithIntegrationRequestLimiter(limiter IntegrationReque
 	return client
 }
 
+// sabyDraftPayload reads only receipt identity and composition. The action's
+// original JSON retains procurement notes/costs for history; it is never
+// rebuilt from this read model or used to replay an unknown provider write.
 type sabyDraftPayload struct {
-	VerifyOnly  bool   `json:"verifyOnly"`
-	OrderID     int64  `json:"orderId"`
-	ReturnID    int64  `json:"returnId"`
-	OrderNumber string `json:"orderNumber"`
-	Supplier    struct {
-		Name  string `json:"name"`
-		TaxID string `json:"taxId"`
-		KPP   string `json:"kpp"`
-	} `json:"supplier"`
-	Lines []struct {
-		SabyID   string  `json:"sabyId"`
-		Code     string  `json:"code"`
-		Name     string  `json:"name"`
-		Quantity int     `json:"quantity"`
-		NewPrice float64 `json:"newPrice"`
-		UnitCost float64 `json:"unitCost"`
+	VerifyOnly bool  `json:"verifyOnly"`
+	OrderID    int64 `json:"orderId"`
+	ReturnID   int64 `json:"returnId"`
+	Lines      []struct {
+		SabyID   string `json:"sabyId"`
+		Name     string `json:"name"`
+		Quantity int    `json:"quantity"`
 	} `json:"lines"`
 }
 
@@ -1040,105 +1034,6 @@ func (client *SabyClient) rpc(ctx context.Context, method string, params any, ta
 		return fmt.Errorf("разобрать Saby RPC: %w", err)
 	}
 	return nil
-}
-
-func (client *SabyClient) receiptContext(ctx context.Context) (map[string]any, map[string]any, error) {
-	var result any
-	if err := client.rpc(ctx, "sabyWarehouse.List", map[string]any{"filter": map[string]any{"limit": 100, "page": 0}}, &result); err != nil {
-		return nil, nil, fmt.Errorf("получить склады Saby: %w", err)
-	}
-	candidates := collectMaps(result)
-	var selected map[string]any
-	for _, candidate := range candidates {
-		name := strings.ToLower(nestedString(candidate, "name") + " " + nestedString(candidate, "address"))
-		if nestedString(candidate, "code") == "" || nestedString(candidate, "name") == "" {
-			continue
-		}
-		if selected == nil {
-			selected = candidate
-		}
-		if strings.Contains(name, "новосел") && strings.Contains(name, "40") {
-			selected = candidate
-			break
-		}
-	}
-	if selected == nil {
-		return nil, nil, errors.New("Saby не вернул склад для поступления")
-	}
-	inn := nestedString(selected, "inn")
-	kpp := nestedString(selected, "kpp")
-	orgName := nestedString(selected, "organisation", "name")
-	if orgName == "" {
-		orgName = nestedString(selected, "organization", "name")
-	}
-	if inn == "" {
-		return nil, nil, errors.New("в складе Saby не указана наша организация")
-	}
-	organization := make(map[string]any)
-	if len(inn) == 12 {
-		parts := strings.Fields(strings.TrimPrefix(strings.TrimSpace(orgName), "ИП "))
-		person := map[string]any{"ИНН": inn}
-		if len(parts) > 0 {
-			person["Фамилия"] = parts[0]
-		}
-		if len(parts) > 1 {
-			person["Имя"] = parts[1]
-		}
-		if len(parts) > 2 {
-			person["Отчество"] = parts[2]
-		}
-		organization["СвФЛ"] = person
-	} else {
-		organization["СвЮЛ"] = map[string]any{"ИНН": inn, "КПП": kpp, "Название": orgName}
-	}
-	warehouse := map[string]any{"Название": nestedString(selected, "name"), "Номер": nestedString(selected, "code")}
-	return organization, warehouse, nil
-}
-
-func collectMaps(value any) []map[string]any {
-	result := make([]map[string]any, 0)
-	var walk func(any)
-	walk = func(current any) {
-		switch typed := current.(type) {
-		case map[string]any:
-			result = append(result, typed)
-			for _, child := range typed {
-				walk(child)
-			}
-		case []any:
-			for _, child := range typed {
-				walk(child)
-			}
-		}
-	}
-	walk(value)
-	return result
-}
-
-func nestedString(value any, path ...string) string {
-	if len(path) == 0 {
-		return strings.TrimSpace(fmt.Sprint(value))
-	}
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, child := range typed {
-			if strings.EqualFold(key, path[0]) {
-				return nestedString(child, path[1:]...)
-			}
-		}
-		for _, child := range typed {
-			if found := nestedString(child, path...); found != "" {
-				return found
-			}
-		}
-	case []any:
-		for _, child := range typed {
-			if found := nestedString(child, path...); found != "" {
-				return found
-			}
-		}
-	}
-	return ""
 }
 
 func (client *SabyClient) Configured() bool {

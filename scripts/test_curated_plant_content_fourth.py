@@ -2,25 +2,23 @@
 """Guard the fourth launch-content batch against identity and overwrite drift."""
 from __future__ import annotations
 
-import csv
+import json
 import unittest
 from pathlib import Path
 
 from generate_curated_plant_content_fourth import OUT, PROFILES, build
 
 ROOT = Path(__file__).resolve().parents[1]
-PDF_SITE = Path('/Users/avpavlo8/Documents/Codex/2026-10-08/gitlab/catalog-pdf-site-2026-10-12.csv')
+IDENTITY_SNAPSHOT = ROOT / 'docs/catalog-curated-content-fourth-identity-snapshot-2026-10-12.json'
 DIMENSIONS = ROOT / 'timeweb/migrations/20261012_zzzzzzz_exact_pdf_variant_dimensions.sql'
 
 
 class FourthContentTests(unittest.TestCase):
     def test_exact_names_from_independent_pdf_site_audit(self):
-        if not PDF_SITE.exists():
-            self.skipTest('Local launch PDF audit unavailable')
-        with PDF_SITE.open(newline='') as f:
-            rows = list(csv.reader(f))
-        by_code = {int(row[4]): row[5] for row in rows[1:] if row[4].isdigit()}
-        self.assertEqual(set(PROFILES) - set(by_code), set())
+        rows = json.loads(IDENTITY_SNAPSHOT.read_text())['cards']
+        by_code = {row['code']: row['name'] for row in rows}
+        self.assertEqual(len(rows), len(by_code), 'Duplicate independent identities')
+        self.assertEqual(set(PROFILES), set(by_code))
         for code, profile in PROFILES.items():
             self.assertEqual(profile[0], by_code[code], code)
 

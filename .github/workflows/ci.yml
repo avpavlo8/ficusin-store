@@ -27,16 +27,16 @@ jobs:
       - run: npm ci
       - run: npm run format:check
       - run: npm run lint
-      - run: npm run test:phone && npm run test:payment-result && npm run test:money
-      - run: node --experimental-strip-types --test tests/plant-characteristics.test.mjs tests/plant-warning-text.test.mjs tests/product-marketplace-pricing.test.mjs tests/catalog-editor-channels.test.mjs tests/saby-editor-hydration.test.mjs tests/admin-api-error.test.mjs tests/admin-fetch.test.mjs tests/app-discovery.test.mjs tests/chat-reference.test.mjs tests/customer-order-list.test.mjs tests/gallery-upload.test.mjs tests/pull-to-refresh.test.mjs tests/variant-naming.test.mjs tests/gallery-persistence.test.mjs
+      - run: npm test
       - run: node ../e2e/verify-chat-notification-worker.mjs
+      - run: node --experimental-strip-types --test ../e2e/staging-target.test.mjs
       - run: npm run build
       - run: npm run budget
       # Build tools process repository-controlled input in CI too, so high
       # severity advisories in devDependencies must not remain invisible.
       - run: npm audit --audit-level=high
       - name: Verify rich-care images in production bundle
-        run: test -s dist/assets/care/guide-v2/arrival.jpg && test -s dist/assets/care/guide-v2/objects.jpg && test -s dist/assets/care/guide-v2/fertilizer.jpg && test -s dist/assets/care/guide-v2/climate.jpg && for topic in about lighting watering climate soil repotting fertilizer; do test -s "dist/assets/care/guide-v4/$topic.jpg" || exit 1; done
+        run: test -s dist/assets/care/guide-v2/arrival.jpg && for topic in about lighting watering climate soil repotting fertilizer; do test -s "dist/assets/care/guide-v4/$topic.jpg" || exit 1; done
 
   api-contract:
     runs-on: ubuntu-latest
@@ -275,27 +275,13 @@ jobs:
           normalized_plants="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
             SELECT COUNT(DISTINCT product.id)||':'||MIN(product.name)||':'||COUNT(DISTINCT variant.id)||':'||
                    string_agg(DISTINCT variant.label,',' ORDER BY variant.label)||':'||
-                   string_agg(DISTINCT variant.pot_diameter_cm::text,',' ORDER BY variant.pot_diameter_cm::text)
+                   string_agg(DISTINCT variant_numeric_attribute(variant.id,'pot_diameter_cm')::INTEGER::text,',' ORDER BY variant_numeric_attribute(variant.id,'pot_diameter_cm')::INTEGER::text)
             FROM products product JOIN product_variants variant ON variant.product_id=product.id
             JOIN product_external_ids external ON external.variant_id=variant.id
               AND external.provider='saby' AND external.id_type='code'
               AND external.external_id IN ('X9849427','X8512629')")"
           if [[ "$normalized_plants" != "1:Алоказия:2:D23,D6:23,6" ]]; then
             echo "Imported plant normalization failed: ${normalized_plants}." >&2
-            exit 1
-          fi
-
-          enrichment_queue="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
-            "SELECT COUNT(*) FROM catalog_ai_enrichment_jobs WHERE text_status IN ('pending','processing')")"
-          if [[ "$enrichment_queue" != "0" ]]; then
-            echo "Paid text generation remains queued after removal." >&2
-            exit 1
-          fi
-
-          automatic_covers="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc \
-            "SELECT COUNT(*) FROM catalog_ai_enrichment_jobs WHERE image_status IN ('pending','processing','failed')")"
-          if [[ "$automatic_covers" != "0" ]]; then
-            echo "Automatic paid cover generation was not fully disabled: ${automatic_covers} jobs remain." >&2
             exit 1
           fi
 
@@ -350,7 +336,7 @@ jobs:
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test -p 1 ./internal/admin/ ./internal/auth/ ./internal/avito/ ./internal/catalog/ ./internal/operations/ ./internal/order/ ./internal/payment/ ./internal/analytics/ -run 'LiveDatabase' -v
+        run: go test -p 1 ./internal/admin/ ./internal/auth/ ./internal/avito/ ./internal/catalog/ ./internal/operations/ ./internal/order/ ./internal/payment/ ./internal/analytics/ ./internal/saby/ ./internal/migrate/ -run 'LiveDatabase|^TestStorefrontHiddenVariantKeepsIncludedSibling$|^TestCatalogHeightAndFilterUseTheDisplayedVariant$|^TestCancelledOutboxIsNotReportedAsStale$|^TestSupersededProcurementFailureIsNotReportedAsCurrent$|^TestDisabledMailClosesPendingOutboxWithoutPretendingItWasSent$|^TestCharacteristicsMappingMatchesMigratedSchema$' -v
       - name: Verify isolated editor publication, chat references and file storage
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_local_publisher_test?sslmode=disable
@@ -362,23 +348,64 @@ jobs:
           go -C backend test ./internal/admin -run '^TestEditorPublicationLocalDatabase$|^TestFlowwowPublicationLocalDatabase$' -count=1
           go -C backend test ./internal/admin -run '^TestEditorSabyLinksReadMirrorWithoutChangingIdentityOrSavedPlan$' -count=1
           go -C backend test ./internal/admin -run '^TestSabyEditorPublicationLocalDatabase$' -count=1
+          go -C backend test ./internal/admin -run '^TestOzonRejectedSavePreservesCreationReceiptOnLocalDatabase$|^TestPendingWBRevisionRunsAfterDefinitivePreflightFailureOnLocalDatabase$|^TestEditorMarketplaceLinksExcludeSabyReceiptsPostgres$' -count=1
+          go -C backend test ./internal/integration ./internal/catalogeditor -run '^TestSabyEditorPreparedReceiptPostgresJSONBRoundTrip$|^TestSabyPublicationDecodeKeepsExactNumbersAfterJSONB$' -count=1
+          go -C backend test ./internal/admin -run '^TestEditorPricesLocalDatabase$|^TestEditorPriceQueueLocalDatabase$' -count=1
+          go -C backend test -p 1 ./internal/catalogeditor ./internal/orderworkflow -run 'LiveDatabase|LocalDatabase' -count=1
           go -C backend test -p 1 ./internal/fileassets ./internal/chat -count=1
 
-      - name: Verify durable Saby catalogue commands and duplicate guards
+      - name: Verify editable catalogue format and immutable publication history
+        env:
+          CI: "true"
+          CATALOG_COMPATIBILITY_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_catalog_compatibility_test?sslmode=disable
+        run: |
+          createdb -h 127.0.0.1 -U postgres ficusin_catalog_compatibility_test
+          go -C backend test ./internal/admin -run '^TestCatalogCompatibilityMigrationPostgres$' -count=1 -v
+
+      - name: Verify isolated pre-cutover reservation reconciliation
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_legacy_reconcile_test?sslmode=disable
+        run: |
+          createdb -h 127.0.0.1 -U postgres -T ficusin_ci ficusin_legacy_reconcile_test
+          # The pilot checks PostgreSQL's actual listener, not just the DSN.
+          # Sharing the service network keeps both ends on real loopback;
+          # the host port mapping otherwise exposes the container bridge IP.
+          docker run --rm --network "container:${{ job.services.postgres.id }}" \
+            -v "$GITHUB_WORKSPACE:/work" -w /work/backend \
+            -v "$(go env GOMODCACHE):/go/pkg/mod" -e TEST_DATABASE_URL \
+            golang:1.26.11-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0 \
+            go test -race ./internal/reservationtransition -run Postgres -count=1
+
+      - name: Verify order realization intents without external writes
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_order_sale_test?sslmode=disable
+        run: |
+          createdb -h 127.0.0.1 -U postgres ficusin_order_sale_test
+          go -C backend test -p 1 ./internal/ordersale -count=1
+          go -C backend test ./internal/order -run '^TestShippingRealizationHooksPostgres$' -count=1
+          go -C backend test ./internal/order -run '^TestCreationRealizationHooksPostgres$' -count=1
+          go -C backend test ./internal/order -run '^TestPendingRevisionShippingPostgres$' -count=1
+          go -C backend test ./internal/admin -run '^TestCreationRealizationEditGuardPostgres$' -count=1
+          go -C backend test ./internal/admin -run '^TestOrderRealizationEditsPostgres$' -count=1
+          go -C backend test ./internal/payment -run '^TestOwnedOrderStockQueriesPostgres$' -count=1
+          go -C backend test ./internal/payment -run '^TestRevisionGuardNeverReclassifiesSucceededPayment$' -count=1
+
+      - name: Verify staging stock refresh isolation
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test -race ./internal/catalogsync -run '^TestDurableCatalogueExportOnDatabase$' -count=1 -v
-      - name: Verify procurement price recovery and variant links
+        run: go test ./internal/saby -run '^TestStagingStockFreshnessOnDatabase$' -count=1 -v
+      - name: Verify procurement price recovery, invoice trolleys and variant links
         working-directory: backend
         env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
           CRM_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/procurement -run '^TestUnified|^TestFailedReceiptPriceRefresh|^TestProcurementChannelEditTargetsExactVariant|^TestReceiptReadOnlyRecheck' -v
-      - name: Verify atomic owner-reviewed measurement import and rollback guards
+        run: go test ./internal/procurement -run '^TestUnified|^TestFailedReceiptPriceRefresh|^TestProcurementChannelEditTargetsExactVariant|^TestReceiptReadOnlyRecheck|^TestPricingSettingsRoundTripAndVersionGuardOnDatabase$|^TestSalesWorkerUsesDurableWindowsAndCooldownAcrossRestartOnDatabase$|^TestOrderDetailRepairsInvoiceLoadUnitsOnDatabase$' -v
+      - name: Verify measurement import, retired settings and legacy archive rollback guards
         working-directory: backend
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/ficusin_ci?sslmode=disable
-        run: go test ./internal/migrate -run '^TestAgreedMeasurementsAtomicImport$' -v
+        run: go test ./internal/migrate ./internal/settings -run '^TestAgreedMeasurementsAtomicImport$|^TestLegacyArchivePreservesDataAndActiveWorkflows$|^TestRetiredCatalogArchivePreservesHistory$|^TestLegacySabyExporterRetirementOnDatabase$|^TestManualPricesMoveToEditorDraftsOnDatabase$|^TestRetiredTelegramSettingOnDatabase$|^TestRetiredSabyFlagsPreserveStockAndOriginalArraysOnDatabase$|^TestRetiredCustomerFieldsPreservePhoneAuthenticationOnDatabase$|^TestUnusedDomainFieldsArchiveExactValuesOnDatabase$|^TestTypedDimensionsRetirementPreservesCanonicalPIMOnDatabase$|^TestUnusedProcurementSettingsArchivePreservesPendingHistoryOnDatabase$|^TestRetiredWorkflowTimestampsPreserveHistoryOnDatabase$|^TestRetiredOrderOrganizationLinksPreserveHistoryOnLiveDatabase$|^TestLegacyOrderPaidAtPreservesPaymentHistoryOnLiveDatabase$' -v
 
   saby-sync-tests:
     runs-on: ubuntu-latest

@@ -1197,6 +1197,12 @@
   display: grid;
   gap: 12px;
 }
+.editor-protected-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
 .editor-reference-label {
   min-width: 0;
 }

@@ -18,9 +18,17 @@ import (
 
 func main() {
 	apply := flag.Bool("apply", false, "copy verified objects and commit references (default dry-run)")
+	publicReviews := flag.Bool("public-reviews", false, "copy legacy-public review objects instead of bytea (source GETs in dry-run)")
+	verify := flag.Bool("verify", false, "verify current private references using GET only; exit nonzero if incomplete or blocked")
 	limit := flag.Int("limit", 100, "maximum rows per file kind")
-	kinds := flag.String("kinds", "", "comma-separated avatars,returns,procurement,finance,reviews (default all)")
+	kinds := flag.String("kinds", "", "comma-separated avatars,returns,procurement,reviews,chat (default all)")
 	flag.Parse()
+	if *verify && (*apply || *publicReviews) {
+		fail(fmt.Errorf("--verify cannot be combined with --apply or --public-reviews"))
+	}
+	if *publicReviews && *kinds != "" && *kinds != "reviews" {
+		fail(fmt.Errorf("--public-reviews supports reviews only"))
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		fail(err)
@@ -33,7 +41,28 @@ func main() {
 	}
 	defer pool.Close()
 	storage := photos.NewPrivateStorage(cfg.PrivatePhotos.Endpoint, cfg.PrivatePhotos.Region, cfg.PrivatePhotos.Bucket, cfg.PrivatePhotos.AccessKey, cfg.PrivatePhotos.SecretKey)
-	records, err := fileassets.MigrateLegacy(ctx, pool, storage, fileassets.MigrationOptions{Apply: *apply, Limit: *limit, Kinds: fileassets.ParseMigrationKinds(*kinds)})
+	options := fileassets.MigrationOptions{Apply: *apply, Limit: *limit, Kinds: fileassets.ParseMigrationKinds(*kinds)}
+	if *verify {
+		report, err := fileassets.VerifyPrivateReferences(ctx, pool, storage, options)
+		if err != nil {
+			fail(err)
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(report)
+		if !report.Ready {
+			os.Exit(1)
+		}
+		return
+	}
+	var records []fileassets.MigrationRecord
+	if *publicReviews {
+		if cfg.PrivatePhotos.Bucket == cfg.Photos.Bucket && cfg.PrivatePhotos.Endpoint == cfg.Photos.Endpoint {
+			fail(fmt.Errorf("source and private destination must be distinct buckets"))
+		}
+		source := photos.NewStorage(cfg.Photos.Endpoint, cfg.Photos.Region, cfg.Photos.Bucket, cfg.Photos.AccessKey, cfg.Photos.SecretKey)
+		records, err = fileassets.MigrateLegacyPublicReviews(ctx, pool, source, storage, options)
+	} else {
+		records, err = fileassets.MigrateLegacy(ctx, pool, storage, options)
+	}
 	result := map[string]any{"dryRun": !*apply, "sourceBytesDeleted": false, "files": records}
 	if err != nil {
 		result["error"] = err.Error()

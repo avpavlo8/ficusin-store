@@ -19,15 +19,12 @@ export type CartLine = {
   quantity: number;
 };
 
-type CartDrawerProps = {
+type CartPanelProps = {
   guest?: boolean;
-  open: boolean;
   lines: CartLine[];
   subtotal: number;
-  onClose: () => void;
   onQuantityChange: (id: string, quantity: number) => void;
   onCheckout: () => void;
-  page?: boolean;
   status?: "loading" | "ready" | "saving" | "error";
   error?: string;
   missingCount?: number;
@@ -36,20 +33,7 @@ type CartDrawerProps = {
 
 const money = formatMoney;
 
-function LineIcon({ name }: { name: "close" | "trash" }) {
-  const paths = {
-    close: (
-      <>
-        <path d="m7 7 10 10M17 7 7 17" />
-      </>
-    ),
-    trash: (
-      <>
-        <path d="M8 8h8l-.7 11H8.7L8 8Z" />
-        <path d="M6.5 8h11M10 5h4l1 3M11 11v5M14 11v5" />
-      </>
-    ),
-  } as const;
+function RemoveIcon() {
   return (
     <svg
       className="line-icon"
@@ -61,7 +45,8 @@ function LineIcon({ name }: { name: "close" | "trash" }) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {paths[name]}
+      <path d="M8 8h8l-.7 11H8.7L8 8Z" />
+      <path d="M6.5 8h11M10 5h4l1 3M11 11v5M14 11v5" />
     </svg>
   );
 }
@@ -152,20 +137,17 @@ function CheckoutOptionIcon({ name }: { name: CheckoutIconName }) {
   );
 }
 
-export function CartDrawer({
-  open,
+export function CartPanel({
   lines,
   subtotal,
-  onClose,
   onQuantityChange,
   onCheckout,
-  page = false,
   status = "ready",
   error = "",
   missingCount = 0,
   onRetry,
   guest = false,
-}: CartDrawerProps) {
+}: CartPanelProps) {
   const hasPreorder = lines.some((item) => item.stock !== undefined && item.stock < item.quantity);
   const cartQuantity = lines.reduce((sum, item) => sum + item.quantity, 0);
   const lineCards = lines.map((item) => (
@@ -181,14 +163,11 @@ export function CartDrawer({
               ? "Под заказ"
               : "В наличии"}
         </span>
-        {!page && <div className="cart-line-mobile-price">{money(item.price)}</div>}
       </div>
-      {page && (
-        <div className="cart-line-mobile-price">
-          {money(item.price * item.quantity)}
-          {item.quantity > 1 && <small>{money(item.price)} / шт.</small>}
-        </div>
-      )}
+      <div className="cart-line-mobile-price">
+        {money(item.price * item.quantity)}
+        {item.quantity > 1 && <small>{money(item.price)} / шт.</small>}
+      </div>
       <strong className="cart-unit-price">{money(item.price)}</strong>
       <div className="quantity">
         <button
@@ -219,29 +198,22 @@ export function CartDrawer({
         onClick={() => onQuantityChange(item.id, 0)}
         aria-label={`Удалить ${item.name}`}
       >
-        <LineIcon name="trash" />
+        <RemoveIcon />
       </button>
     </div>
   ));
   return (
-    <aside
-      className={`drawer ${page ? "cart-page-panel" : ""} ${open ? "open" : ""}`}
-      aria-hidden={!open}
-      inert={!open}
-    >
+    <aside className="drawer cart-page-panel">
       <div className="drawer-head">
         <div>
           <p className="eyebrow">Ваш выбор</p>
-          {page ? <h1>Корзина</h1> : <h2>Корзина</h2>}
+          <h1>Корзина</h1>
         </div>
-        {page && <CartSignature />}
-        <button onClick={onClose} aria-label="Закрыть корзину">
-          <LineIcon name="close" />
-        </button>
+        <CartSignature />
       </div>
       <div className="cart-content">
         <section className="cart-table">
-          {page && !!lines.length && (
+          {!!lines.length && (
             <div className="cart-table-head">
               <span>Товар</span>
               <span>Цена</span>
@@ -274,100 +246,52 @@ export function CartDrawer({
                 <p>Некоторые товары больше недоступны. Удалите их перед оформлением.</p>
               </div>
             )}
-            {!page && hasPreorder && (
-              <div className="cart-state warning">
-                <strong>Есть растения под заказ</strong>
-                <p>
-                  Сейчас платить не нужно. Менеджер проверит поставку, уточнит срок и подтвердит
-                  итог заказа до оплаты.
-                </p>
-              </div>
-            )}
-            {open && guest && !!lines.length && <GuestLoyaltyNotice />}
+            {guest && !!lines.length && <GuestLoyaltyNotice />}
             {lineCards}
             {status === "ready" && !lines.length && !missingCount && (
               <div className="empty-cart">
                 <span>⌁</span>
                 <h3>Корзина пока пуста</h3>
                 <p>Добавьте растения из каталога — они появятся здесь.</p>
-                <button onClick={onClose}>Перейти в каталог</button>
+                <button onClick={() => window.location.assign("/#catalog")}>
+                  Перейти в каталог
+                </button>
               </div>
             )}
           </div>
         </section>
         {!!lines.length && (
-          <aside
-            className={`cart-summary ${page ? "cart-summary-lamp" : ""}`}
-            aria-label="Итог корзины"
-          >
-            {page ? (
-              <>
-                <h2>Ваш заказ</h2>
-                <OrderLamp label="Стоимость товаров" amount={money(subtotal)}>
-                  <dl>
-                    <div>
-                      <dt>Стоимость товаров</dt>
-                      <dd>{money(subtotal)}</dd>
-                    </div>
-                    <div>
-                      <dt>Количество</dt>
-                      <dd>{cartQuantity}</dd>
-                    </div>
-                    <div>
-                      <dt>Доставка</dt>
-                      <dd>Рассчитаем при оформлении</dd>
-                    </div>
-                  </dl>
-                  <p>Самовывоз из магазина — бесплатно.</p>
-                  {hasPreorder && (
-                    <div className="cart-preorder-note" role="note">
-                      <strong>Есть растения под заказ</strong>
-                      <p>
-                        Сейчас платить не нужно. Менеджер проверит поставку, уточнит срок и
-                        подтвердит итог заказа до оплаты.
-                      </p>
-                    </div>
-                  )}
-                </OrderLamp>
-              </>
-            ) : (
-              <>
-                <dl>
-                  <div>
-                    <dt>Товаров</dt>
-                    <dd>{cartQuantity}</dd>
-                  </div>
-                  <div>
-                    <dt>Растения</dt>
-                    <dd>{money(subtotal)}</dd>
-                  </div>
-                  <div>
-                    <dt>Доставка</dt>
-                    <dd>рассчитаем при оформлении</dd>
-                  </div>
-                </dl>
-                <div className="cart-summary-total">
-                  <span>Сумма товаров</span>
-                  <strong>{money(subtotal)}</strong>
+          <aside className="cart-summary cart-summary-lamp" aria-label="Итог корзины">
+            <h2>Ваш заказ</h2>
+            <OrderLamp label="Стоимость товаров" amount={money(subtotal)}>
+              <dl>
+                <div>
+                  <dt>Стоимость товаров</dt>
+                  <dd>{money(subtotal)}</dd>
                 </div>
-                <p>Стоимость доставки войдёт в итог заказа.</p>
-                <div className="cart-bonus" hidden />
-                <button
-                  className="primary-button"
-                  disabled={
-                    status !== "ready" ||
-                    missingCount > 0 ||
-                    lines.some((item) => item.available === false)
-                  }
-                  onClick={onCheckout}
-                >
-                  Оформить заказ <span>→</span>
-                </button>
-              </>
-            )}
+                <div>
+                  <dt>Количество</dt>
+                  <dd>{cartQuantity}</dd>
+                </div>
+                <div>
+                  <dt>Доставка</dt>
+                  <dd>Рассчитаем при оформлении</dd>
+                </div>
+              </dl>
+              <p>Самовывоз из магазина — бесплатно.</p>
+              {hasPreorder && (
+                <div className="cart-preorder-note" role="note">
+                  <strong>Есть растения под заказ</strong>
+                  <p>
+                    Сейчас платить не нужно. Менеджер проверит поставку, уточнит срок и подтвердит
+                    итог заказа до оплаты.
+                  </p>
+                </div>
+              )}
+            </OrderLamp>
           </aside>
         )}
-        {page && !!lines.length && (
+        {!!lines.length && (
           <div className="cart-page-actions">
             <a href="/#catalog">←&nbsp;&nbsp; Продолжить покупки</a>
             <button
@@ -408,9 +332,6 @@ type CdekQuote = {
 };
 
 type CheckoutPanelProps = {
-  page?: boolean;
-  checkoutOpen: boolean;
-  setCheckoutOpen: (open: boolean) => void;
   orderNumber: string;
   orderConfirmationPending: boolean;
   orderConfirmationReason?: "preorder" | "delivery" | "manager" | null;
@@ -468,9 +389,6 @@ type CheckoutPanelProps = {
 
 export function CheckoutPanel(props: CheckoutPanelProps) {
   const {
-    page = false,
-    checkoutOpen,
-    setCheckoutOpen,
     orderNumber,
     orderConfirmationPending,
     orderConfirmationReason,
@@ -695,35 +613,18 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
 
   return (
     <aside
-      className={`checkout ${page ? "checkout-page-panel" : ""} ${orderNumber ? "checkout-order-complete" : ""} ${checkoutOpen ? "open" : ""}`}
-      aria-hidden={!checkoutOpen}
-      inert={!checkoutOpen}
+      className={`checkout checkout-page-panel ${orderNumber ? "checkout-order-complete" : ""}`}
     >
       <div className="drawer-head">
         <div>
-          {page ? (
-            <h1>
-              {confirmationPending
-                ? "Заказ ждёт подтверждения"
-                : orderNumber
-                  ? "Заказ принят"
-                  : "Оформление заказа"}
-            </h1>
-          ) : (
-            <h2>
-              {confirmationPending
-                ? "Заказ ждёт подтверждения"
-                : orderNumber
-                  ? "Заказ принят"
-                  : "Оформление заказа"}
-            </h2>
-          )}
+          <h1>
+            {confirmationPending
+              ? "Заказ ждёт подтверждения"
+              : orderNumber
+                ? "Заказ принят"
+                : "Оформление заказа"}
+          </h1>
         </div>
-        {!page && (
-          <button onClick={() => setCheckoutOpen(false)} aria-label="Закрыть оформление">
-            ×
-          </button>
-        )}
       </div>
       {orderNumber ? (
         <div className="success">
@@ -731,7 +632,7 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
             <span className="success-heart" aria-hidden="true">
               ♡
             </span>
-            <h2 aria-level={page ? 1 : 2}>
+            <h2 aria-level={1}>
               {confirmationPending ? "Заказ отправлен менеджеру" : "Заказ принят"}
             </h2>
             <p className="success-lead">

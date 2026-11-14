@@ -9,6 +9,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/migrate"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -36,7 +37,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	}
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var customer int64
-	if e = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Publisher local test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); e != nil {
+	if e = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Publisher local test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); e != nil {
 		t.Fatal(e)
 	}
 	actor := Actor{CustomerID: customer, Role: RoleOwner}
@@ -46,9 +47,9 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer func() {
+		pool.Exec(ctx, `DELETE FROM catalog_editor_price_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
 		pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
-		pool.Exec(ctx, `DELETE FROM catalog_saby_exports WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
 		pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, customer)
 		pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, p.ID)
 		pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)
@@ -75,6 +76,23 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 		t.Fatal(e)
 	}
 	mock := integration.NewMockCatalog()
+	terminal := func(status string) bool { return status == "created" || status == "synced" || status == "linked" }
+	drive := func(limit int) {
+		t.Helper()
+		for i := 0; i < limit; i++ {
+			if err := ce.PublicationStep(ctx, pool, mock, "mock"); err != nil {
+				t.Fatal(err)
+			}
+			var active int
+			if err := pool.QueryRow(ctx, `SELECT count(*) FROM catalog_editor_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1) AND channel IN('wb','ozon') AND status IN('prepared','queued','processing')`, p.ID).Scan(&active); err != nil {
+				t.Fatal(err)
+			}
+			if active == 0 {
+				return
+			}
+		}
+		t.Fatal("card publications did not reach a terminal receipt")
+	}
 	for _, ch := range []string{"ozon", "wb"} {
 		category, typ := int64(900001), int64(900002)
 		if ch == "wb" {
@@ -110,11 +128,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if len(frozen.Schema) == 0 || frozen.Packaging.Weight != 1250 || len(frozen.Images) != 2 || frozen.Images[0] != "https://images.example.test/cover.jpg" || frozen.Images[1] != "https://images.example.test/own.jpg" {
 		t.Fatalf("snapshot incomplete: %+v", frozen)
 	}
-	for i := 0; i < 20; i++ {
-		if e = ce.PublicationStep(ctx, pool, mock, "mock"); e != nil {
-			t.Fatal(e)
-		}
-	}
+	drive(20)
 	view, e := repo.ReadEditorPlan(ctx, p.ID)
 	if e != nil {
 		t.Fatal(e)
@@ -152,6 +166,13 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 			t.Fatal("repeat save reset publication")
 		}
 	}
+	var drafts, autoApproved int
+	if err := pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE status<>'draft' OR approved_at IS NOT NULL OR execution_mode<>'disabled') FROM catalog_editor_price_publications WHERE variant_id=$1`, id).Scan(&drafts, &autoApproved); err != nil {
+		t.Fatal(err)
+	}
+	if drafts != 2 || autoApproved != 0 {
+		t.Fatalf("content save must leave exactly two unapproved price drafts: %d/%d", drafts, autoApproved)
+	}
 	plan.Variants[0].Marketplace.Description = "Изменённое описание"
 	plan.Variants[0].Marketplace.WB.Enabled = false
 	plan.Variants[0].Marketplace.Ozon.Enabled = false
@@ -169,11 +190,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if _, e = repo.SaveEditorPlan(ctx, actor, p.ID, plan, true); e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 20; i++ {
-		if e = ce.PublicationStep(ctx, pool, mock, "mock"); e != nil {
-			t.Fatal(e)
-		}
-	}
+	drive(20)
 	view, e = repo.ReadEditorPlan(ctx, p.ID)
 	if e != nil {
 		t.Fatal(e)
@@ -182,8 +199,27 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 		if publication.Channel == "saby" {
 			continue
 		}
-		if publication.Status != "created" || publication.ExternalIDs.ProductID != before[publication.Channel] {
+		if !terminal(publication.Status) || publication.ExternalIDs.ProductID != before[publication.Channel] {
 			t.Fatalf("edit duplicated or lost card: %+v", publication)
+		}
+	}
+
+	for _, channel := range []string{"wb", "ozon"} {
+		card, err := mock.Executor.ReadEditorCardByArticle(ctx, channel, m.Article)
+		if err != nil || card == nil {
+			t.Fatalf("updated card missing: %v", err)
+		}
+		want := float64(4000)
+		if channel == "ozon" {
+			want = 5000
+		}
+		actual := card.Card.WBPrice
+		if channel == "ozon" {
+			actual = card.Card.OzonPrice
+		}
+		got, err := strconv.ParseFloat(actual, 64)
+		if err != nil || got != want {
+			t.Fatalf("content update changed unapproved %s price: %s want %v", channel, actual, want)
 		}
 	}
 
@@ -204,14 +240,10 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if e = pool.QueryRow(ctx, `SELECT COUNT(*) FROM catalog_editor_publications WHERE variant_id=$1 AND pending_payload IS NOT NULL`, id).Scan(&pending); e != nil || pending < 1 {
 		t.Fatalf("edit was not queued: %d %v", pending, e)
 	}
-	for i := 0; i < 45; i++ {
-		if e = ce.PublicationStep(ctx, pool, mock, "mock"); e != nil {
-			t.Fatal(e)
-		}
-	}
+	drive(45)
 	for _, channel := range []string{"wb", "ozon"} {
 		var desc, status string
-		if e = pool.QueryRow(ctx, `SELECT payload->'marketplace'->>'description',status FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2`, id, channel).Scan(&desc, &status); e != nil || desc != "Отправка B" || status != "created" {
+		if e = pool.QueryRow(ctx, `SELECT payload->'marketplace'->>'description',status FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2`, id, channel).Scan(&desc, &status); e != nil || desc != "Отправка B" || !terminal(status) {
 			var message string
 			pool.QueryRow(ctx, `SELECT message FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2`, id, channel).Scan(&message)
 			t.Fatalf("latest edit lost for %s: %s %s %v %s", channel, desc, status, e, message)
@@ -230,11 +262,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if _, e = repo.SaveEditorPlan(ctx, actor, p.ID, plan, true); e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 22; i++ {
-		if e = ce.PublicationStep(ctx, pool, mock, "mock"); e != nil {
-			t.Fatal(e)
-		}
-	}
+	drive(22)
 	view, e = repo.ReadEditorPlan(ctx, p.ID)
 	if e != nil {
 		t.Fatal(e)
@@ -243,7 +271,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 		if publication.Channel == "saby" {
 			continue
 		}
-		if publication.Status != "created" || publication.ExternalIDs.ProductID != before[publication.Channel] {
+		if !terminal(publication.Status) || publication.ExternalIDs.ProductID != before[publication.Channel] {
 			t.Fatalf("canonical link was not updated: %+v", publication)
 		}
 	}
@@ -261,11 +289,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if _, e = repo.SaveEditorPlan(ctx, actor, p.ID, EditorPlan{Variants: []EditorVariantPlan{linked}}, true); e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 4; i++ {
-		if e = ce.PublicationStep(ctx, pool, mock, "mock"); e != nil {
-			t.Fatal(e)
-		}
-	}
+	drive(4)
 	var conflictStatus string
 	if e = pool.QueryRow(ctx, `SELECT status FROM catalog_editor_publications WHERE variant_id=$1 AND channel='wb'`, otherID).Scan(&conflictStatus); e != nil || conflictStatus != "failed" {
 		t.Fatalf("duplicate remote link accepted: %s %v", conflictStatus, e)
@@ -282,11 +306,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if _, e = repo.SaveEditorPlan(ctx, actor, p.ID, plan, true); e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 32; i++ {
-		if e = ce.PublicationStep(ctx, pool, mock, "mock"); e != nil {
-			t.Fatal(e)
-		}
-	}
+	drive(32)
 	view, e = repo.ReadEditorPlan(ctx, p.ID)
 	if e != nil {
 		t.Fatal(e)
@@ -328,11 +348,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if _, e = repo.SaveEditorPlan(ctx, actor, p.ID, plan, true); e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 24; i++ {
-		if e = ce.PublicationStep(ctx, pool, mock, "mock"); e != nil {
-			t.Fatal(e)
-		}
-	}
+	drive(24)
 	view, e = repo.ReadEditorPlan(ctx, p.ID)
 	if e != nil {
 		t.Fatal(e)
@@ -341,7 +357,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 		if pub.VariantID != id {
 			continue
 		}
-		if pub.Channel == "wb" && (pub.Status != "created" || pub.ExternalIDs.ProductID != before["wb"]) {
+		if pub.Channel == "wb" && (!terminal(pub.Status) || pub.ExternalIDs.ProductID != before["wb"]) {
 			t.Fatalf("prior card was not rebound: %+v", pub)
 		}
 		if pub.Channel == "ozon" && pub.ExternalIDs.OfferID != aOzon {
@@ -386,11 +402,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	if _, e = repo.SaveEditorPlan(ctx, actor, p.ID, plan, true); e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 8; i++ {
-		if e = ce.PublicationStep(ctx, pool, mock, "mock"); e != nil {
-			t.Fatal(e)
-		}
-	}
+	drive(8)
 	view, e = repo.ReadEditorPlan(ctx, p.ID)
 	if e != nil {
 		t.Fatal(e)

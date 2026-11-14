@@ -7,6 +7,28 @@ import (
 	"testing"
 )
 
+func TestSecurityHeadersAllowLocalMediaPreviewsWithoutExecutableBlobs(t *testing.T) {
+	response := httptest.NewRecorder()
+	securityHeaders(true, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin?section=products&create=1", nil))
+	directives := map[string]string{}
+	for _, directive := range strings.Split(response.Header().Get("Content-Security-Policy"), ";") {
+		fields := strings.Fields(directive)
+		if len(fields) > 0 {
+			directives[fields[0]] = strings.Join(fields[1:], " ")
+		}
+	}
+	for _, name := range []string{"img-src", "media-src"} {
+		if !strings.Contains(" "+directives[name]+" ", " blob: ") {
+			t.Errorf("%s blocks local draft previews: %q", name, directives[name])
+		}
+	}
+	for _, name := range []string{"default-src", "script-src", "worker-src", "connect-src"} {
+		if strings.Contains(directives[name], "blob:") {
+			t.Errorf("%s must not allow executable blob URLs", name)
+		}
+	}
+}
+
 func TestSecurityHeadersAllowYandexMetrikaWebSockets(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/product/5", nil)
 	response := httptest.NewRecorder()

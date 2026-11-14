@@ -25,7 +25,7 @@ func (s *Service) Configured() bool { return s.Client.Configured() }
 // Match storefront availability, including freshness, warehouse and disabled SKUs.
 const stockSQL = `CASE WHEN p.status='published' AND v.is_active=1 AND v.archived_at IS NULL
  AND NOT EXISTS(SELECT 1 FROM launch_hidden_extra_plant_variants h WHERE h.variant_id=v.id)
- THEN COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+ THEN COALESCE((SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM order_sale_inventory i
  JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
  JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
  WHERE i.variant_id=v.id AND 'stock'=ANY(p.saby_fields) AND i.synced_at>=NOW()-INTERVAL '2 hours'),0)::int ELSE 0 END`

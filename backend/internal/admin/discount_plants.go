@@ -39,10 +39,10 @@ func (r *PostgresRepository) DiscountPlantPhoto(ctx context.Context, id int64) (
 	var mime string
 	var image []byte
 	var key string
-	err := r.pool.QueryRow(ctx, `SELECT f.content_type,f.image,COALESCE(f.object_key,'') FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE r.id=$1 AND r.condition='restoring' AND r.discount_percent>0 AND r.deleted_at IS NULL AND f.deleted_at IS NULL ORDER BY f.id LIMIT 1`, id).Scan(&mime, &image, &key)
+	err := r.pool.QueryRow(ctx, `SELECT f.content_type,COALESCE(f.object_key,'') FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE r.id=$1 AND r.condition='restoring' AND r.discount_percent>0 AND r.deleted_at IS NULL AND f.deleted_at IS NULL ORDER BY f.id LIMIT 1`, id).Scan(&mime, &key)
 	if err != nil {
 		return "", nil, err
 	}
-	image, err = fileassets.Read(ctx, r.fileStorage, key, image)
+	image, err = fileassets.Read(ctx, r.fileStorage, key)
 	return mime, image, err
 }

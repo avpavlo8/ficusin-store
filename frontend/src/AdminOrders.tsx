@@ -10,6 +10,7 @@ import "./styles/admin-orders-navigation.css";
 const AdminOrderWorkspace = lazy(() =>
   import("./AdminOrderWorkspace").then((module) => ({ default: module.AdminOrderWorkspace })),
 );
+const AdminOrderRealizations = lazy(() => import("./AdminOrderRealizations"));
 const filters = [
   { id: "new", label: "Новые", empty: "Новых заказов пока нет" },
   { id: "in_progress", label: "В работе", empty: "Заказов в работе пока нет" },
@@ -102,17 +103,23 @@ function shortWarning(warning: OrderWarning) {
   return warning.message;
 }
 
-export function Orders({
-  canRefund = false,
-  focusOrder,
-  onError,
-  registerBeforeLeave,
-}: {
+type OrdersProps = {
   canRefund?: boolean;
   focusOrder?: string;
   onError: (value: string) => void;
   registerBeforeLeave?: RegisterGuard;
-}) {
+};
+export function Orders(props: OrdersProps) {
+  if (new URLSearchParams(window.location.search).get("view") === "realizations") {
+    return (
+      <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем реализации…" />}>
+        <AdminOrderRealizations allowed={Boolean(props.canRefund)} />
+      </Suspense>
+    );
+  }
+  return <OrderList {...props} />;
+}
+function OrderList({ canRefund = false, focusOrder, onError, registerBeforeLeave }: OrdersProps) {
   const [items, setItems] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -334,6 +341,7 @@ export function Orders({
         <h1 ref={heading} tabIndex={-1}>
           Заказы
         </h1>
+        {canRefund && <a href="/admin?section=orders&view=realizations">Реализации</a>}
       </header>
       <nav className="orders-status-tabs" aria-label="Статусы заказов">
         {filters.map((filter) => {

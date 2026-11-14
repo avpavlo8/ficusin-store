@@ -58,14 +58,6 @@
 .care-story-hero > div {
   width: 60%;
 }
-.care-kicker {
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #97482f;
-  margin: 0 0 14px;
-}
 .care-story-hero h1 {
   font:
     400 clamp(36px, 4.3vw, 64px) / 1.08 Georgia,
@@ -224,12 +216,6 @@
   border-radius: 18px;
   margin-bottom: 30px;
 }
-.care-story-help .care-kicker {
-  font-size: 11px;
-  color: #97482f;
-  line-height: 1.5;
-  margin-bottom: 14px;
-}
 .care-story-help a {
   display: inline-flex;
   align-items: center;
@@ -311,11 +297,6 @@
   .care-story-deck {
     font-size: 16px;
     position: relative;
-  }
-  .care-kicker {
-    max-width: 75%;
-    position: relative;
-    font-size: 10px;
   }
   .care-first-action {
     margin: 20px 0 28px;
@@ -562,9 +543,6 @@
     background: #f3efe5;
   }
   .care-story-illustrated h1 {
-    max-width: 100%;
-  }
-  .care-story-illustrated .care-kicker {
     max-width: 100%;
   }
   .care-section-icon {

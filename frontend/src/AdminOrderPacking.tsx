@@ -96,7 +96,6 @@ export function AdminOrderPacking({
   items: Item[];
   subtotal: number;
   netPaid: number;
-  email: string;
   address: string;
   disabled: boolean;
   compositionDirty: boolean;

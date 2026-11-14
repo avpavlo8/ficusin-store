@@ -18,10 +18,7 @@ func variantMarketplaceScopeHandler(handlers adminHandlers) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		if actor.Role != admin.RoleOwner {
-			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Каналы продаж меняет владелец"})
-			return
-		}
+
 		variantID, ok := pimPathID(response, request, "variantId")
 		if !ok {
 			return

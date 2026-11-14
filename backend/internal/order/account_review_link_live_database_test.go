@@ -25,7 +25,7 @@ func TestAccountReviewLinkUsesPublishedProductCodeOnLiveDatabase(t *testing.T) {
 	var customerID, orderID, productID, variantID int64
 	var sku string
 	var code string
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','CI review link',CURRENT_TIMESTAMP) RETURNING id`, "review-link-"+suffix+"@example.invalid", "+798800"+suffix[len(suffix)-5:]).Scan(&customerID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'CI review link',CURRENT_TIMESTAMP) RETURNING id`, "review-link-"+suffix+"@example.invalid", "+798800"+suffix[len(suffix)-5:]).Scan(&customerID); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {

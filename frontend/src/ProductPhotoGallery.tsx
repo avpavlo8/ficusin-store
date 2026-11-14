@@ -6,6 +6,7 @@ import { moveGalleryPhoto } from "./galleryOrder";
 function Preview({ item }: { item: DraftMedia }) {
   const [url, setURL] = useState("");
   const [failed, setFailed] = useState(false);
+  const [failedSource, setFailedSource] = useState("");
   useEffect(() => {
     if (item.source) return;
     let active = true;
@@ -29,14 +30,23 @@ function Preview({ item }: { item: DraftMedia }) {
     };
   }, [item.id, item.source]);
   const src = item.source || url;
-  return src ? (
+  const unavailable = (!src && failed) || Boolean(src && failedSource === src);
+  return src && !unavailable ? (
     item.type.startsWith("video/") ? (
-      <video src={src} muted preload="metadata" draggable={false} />
+      <video
+        src={src}
+        muted
+        preload="metadata"
+        draggable={false}
+        onError={() => setFailedSource(src)}
+      />
     ) : (
-      <img src={src} alt={item.name} draggable={false} />
+      <img src={src} alt={item.name} draggable={false} onError={() => setFailedSource(src)} />
     )
   ) : (
-    <div className="editor-media-placeholder">{failed ? "Файл недоступен" : "Загружаем…"}</div>
+    <div className="editor-media-placeholder" role="img" aria-label={item.name}>
+      {unavailable ? "Не удалось открыть файл" : "Загружаем…"}
+    </div>
   );
 }
 function RemovePhotoIcon() {
@@ -64,6 +74,7 @@ export function ProductPhotoGallery({
   inherited,
   busy,
   disabled = false,
+  canRemove = () => true,
   error,
   onChange,
   onRemove,
@@ -75,6 +86,7 @@ export function ProductPhotoGallery({
   inherited: boolean;
   busy: boolean;
   disabled?: boolean;
+  canRemove?: (item: DraftMedia) => boolean;
   error: string;
   onChange: (items: DraftMedia[]) => void;
   onRemove: (id: string) => void;
@@ -162,7 +174,12 @@ export function ProductPhotoGallery({
     setOver(null);
   };
   return (
-    <aside className="editor-gallery" aria-label="Фото и видео товара">
+    <aside
+      id="product-media"
+      tabIndex={-1}
+      className="editor-gallery"
+      aria-label="Фото и видео товара"
+    >
       <div className="editor-gallery-heading">
         <h2>Обложка</h2>
       </div>
@@ -191,7 +208,7 @@ export function ProductPhotoGallery({
               className="editor-photo-delete"
               aria-label="Удалить обложку"
               draggable={false}
-              disabled={locked}
+              disabled={locked || !canRemove(cover)}
               onDragStart={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -270,7 +287,7 @@ export function ProductPhotoGallery({
               type="button"
               className="editor-photo-delete"
               aria-label={`Удалить фото ${i + 1}: ${item.name}`}
-              disabled={locked}
+              disabled={locked || !canRemove(item)}
               onClick={() => onRemove(item.id)}
             >
               <RemovePhotoIcon />

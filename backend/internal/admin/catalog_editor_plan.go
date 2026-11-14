@@ -6,11 +6,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
-	"github.com/jackc/pgx/v5"
+	"math"
 	urlpkg "net/url"
 	"regexp"
+	"strconv"
 	"strings"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
+	"github.com/avpavlo8/ficusin-store/backend/internal/money"
+	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
+	"github.com/jackc/pgx/v5"
 )
 
 var editorPotSuffix = regexp.MustCompile(`(?i)\s+[dд]\s*\d+(?:[.,]\d+)?(?:\s*см)?$`)
@@ -28,6 +33,7 @@ type EditorChannel = catalogeditor.Channel
 type EditorMarketplace = catalogeditor.Marketplace
 type EditorSaby = catalogeditor.Saby
 type EditorVariantPlan struct {
+	PriceMode   string            `json:"priceMode,omitempty"`
 	Flowwow     EditorChannel     `json:"flowwow"`
 	VariantID   int64             `json:"variantId"`
 	Saby        EditorSaby        `json:"saby"`
@@ -142,7 +148,11 @@ func ValidateEditorPlan(plan EditorPlan, submit bool) error {
 			return fmt.Errorf("%w: проверьте варианты товара", ErrInvalidInput)
 		}
 		seen[v.VariantID] = true
+		if v.PriceMode != "" && v.PriceMode != "auto" && v.PriceMode != "manual" {
+			return ErrInvalidInput
+		}
 		for _, mode := range []string{v.Saby.Mode, v.Marketplace.Ozon.Mode, v.Marketplace.WB.Mode, v.Flowwow.Mode} {
+
 			if mode != "" && mode != "create" && mode != "link" {
 				return ErrInvalidInput
 			}
@@ -194,6 +204,7 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 	if !Can(actor.Role, PermissionProductsManage) {
 		return EditorPlanView{}, ErrForbidden
 	}
+	plan = canonicalEditableEditorPlan(plan)
 	if err := ValidateEditorPlan(plan, false); err != nil {
 		return EditorPlanView{}, err
 	}
@@ -220,14 +231,8 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 		if !submit {
 			continue
 		}
-		if mode == "live" {
-			var legacyBusy bool
-			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND state IN ('queued','checking','verifying','unknown'))`, v.VariantID).Scan(&legacyBusy); err != nil {
-				return EditorPlanView{}, err
-			}
-			if legacyBusy {
-				return EditorPlanView{}, fmt.Errorf("%w: дождитесь проверки предыдущей отправки в СБИС", ErrInvalidInput)
-			}
+		if err = catalogeditor.GuardContentPriceConflict(ctx, tx, v.VariantID, mode); err != nil {
+			return EditorPlanView{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 		}
 		linked, err := editorLinkedChannels(ctx, tx, v.VariantID, r.editorPublicationMode)
 		if err != nil {
@@ -390,6 +395,39 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 					return EditorPlanView{}, fmt.Errorf("%w: для площадки нужны цена и фото", ErrInvalidInput)
 				}
 			}
+			if existing != "" && (channel == "wb" || channel == "ozon") {
+				text := v.WBPrice
+				if channel == "ozon" {
+					text = v.OzonPrice
+				}
+				value, e := strconv.ParseFloat(text, 64)
+				if e != nil {
+					return EditorPlanView{}, ErrInvalidInput
+				}
+				minor, e := money.Minor(value)
+				if e != nil || minor <= 0 {
+					return EditorPlanView{}, ErrInvalidInput
+				}
+				var strike float64
+				if e = tx.QueryRow(ctx, "SELECT marketplace_strike_markup::float8 FROM procurement_pricing_settings WHERE id=1").Scan(&strike); e != nil {
+					return EditorPlanView{}, e
+				}
+				compare := procurement.CompareAtPrice(int64(math.Ceil(value)), strike) * 100
+				origin := "explicit"
+				wanted, formulaCompare, available, e := catalogeditor.PriceFormula(ctx, tx, v.VariantID, channel, price)
+				if e != nil {
+					return EditorPlanView{}, e
+				}
+				if v.PriceMode == "auto" {
+					if !available || wanted != minor {
+						return EditorPlanView{}, fmt.Errorf("%w: формула цены изменилась; пересчитайте цену %s перед сохранением", ErrInvalidInput, channel)
+					}
+					origin, compare = "formula", formulaCompare
+				}
+				if e = stageEditorPrice(ctx, tx, actor, productID, v.VariantID, channel, existing, price, minor, &compare, origin); e != nil {
+					return EditorPlanView{}, e
+				}
+			}
 			channelBarcode := barcode
 			if action == "resolve" {
 				// A replacement card cannot reuse a barcode still owned by the old card.
@@ -423,49 +461,13 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 				payload["name"], payload["description"] = productName, description
 			}
 			raw, _ := json.Marshal(payload)
-			fingerprintPayload := map[string]any{}
-			_ = json.Unmarshal(raw, &fingerprintPayload)
-			if channel == "saby" {
-				for _, key := range []string{"action", "existingId", "sabyId", "sabyUUID", "actorId", "marketplace", "channel", "ozonPrice", "wbPrice", "vat", "season"} {
-					delete(fingerprintPayload, key)
-				}
-				if config, ok := fingerprintPayload["saby"].(map[string]any); ok {
-					delete(config, "mode")
-					delete(config, "existingCode")
-					for _, field := range []string{"category", "folder"} {
-						if category, ok := config[field].(map[string]any); ok {
-							delete(category, "name")
-						}
-					}
-				}
-			}
-			if channel != "saby" {
-				for _, key := range []string{"action", "existingId", "schema", "saby", "sabyId", "sabyUUID", "actorId", "barcode"} {
-					delete(fingerprintPayload, key)
-				}
-				if c, ok := fingerprintPayload["channel"].(map[string]any); ok {
-					delete(c, "enabled")
-					delete(c, "replaceLink")
-					delete(c, "existingId")
-				}
-				if m, ok := fingerprintPayload["marketplace"].(map[string]any); ok {
-					for _, key := range []string{"wb", "ozon"} {
-						if c, ok := m[key].(map[string]any); ok {
-							delete(c, "enabled")
-							delete(c, "replaceLink")
-							delete(c, "existingId")
-						}
-					}
-				}
-			}
-			fingerprintRaw, _ := json.Marshal(fingerprintPayload)
-			sum := sha256.Sum256(fingerprintRaw)
-			hash := hex.EncodeToString(sum[:])
+			hash := editorPublicationFingerprint(channel, raw)
 			// Persist the complete immutable request. Sending is separate from saving;
 			// configured providers consume this durable plan without re-reading a draft.
 			var priorStatus, priorHash, priorMode string
 			var priorProgress catalogeditor.Progress
-			priorErr := tx.QueryRow(ctx, `SELECT status,fingerprint,execution_mode,progress FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 FOR UPDATE`, v.VariantID, channel).Scan(&priorStatus, &priorHash, &priorMode, &priorProgress)
+			var priorPayload []byte
+			priorErr := tx.QueryRow(ctx, `SELECT status,fingerprint,execution_mode,progress,payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 FOR UPDATE`, v.VariantID, channel).Scan(&priorStatus, &priorHash, &priorMode, &priorProgress, &priorPayload)
 			if priorErr != nil && priorErr != pgx.ErrNoRows {
 				return EditorPlanView{}, priorErr
 			}
@@ -475,19 +477,41 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 					return EditorPlanView{}, fmt.Errorf("%w: предыдущая отправка площадки не завершена; сначала проверьте её результат", ErrInvalidInput)
 				}
 			}
-			if priorHash != "" && priorHash != hash && priorMode == mode && (priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention") {
+			uncertainWB := channel == "wb" && priorStatus == "failed" && (priorProgress.Ambiguous || priorProgress.CreateAttempted && priorProgress.IDs.ProductID == "")
+			resetProgress := []byte(`{}`)
+			sabyRevision := false
+			if channel == "saby" && priorStatus == "failed" && priorHash != hash && priorMode == mode {
+				var previous, next catalogeditor.Request
+				if json.Unmarshal(priorPayload, &previous) == nil && json.Unmarshal(raw, &next) == nil {
+					if retry, ok := catalogeditor.SabyPublicationRevision(previous, next, priorProgress); ok {
+						resetProgress, _ = json.Marshal(retry)
+						sabyRevision = true
+					}
+				}
+			}
+			uncertainSaby := channel == "saby" && priorStatus == "failed" && !sabyRevision && (priorProgress.Ambiguous || priorProgress.CreateAttempted || priorProgress.IDs.ProductID != "")
+			uncertainOzon := channel == "ozon" && priorStatus == "failed" && catalogeditor.OzonReapplyOutcomeUnknown(priorProgress)
+			if priorHash != "" && priorHash != hash && priorMode == mode && (priorStatus == "processing" || priorStatus == "queued" || priorStatus == "needs_attention" || uncertainWB || uncertainSaby || uncertainOzon) {
 				if _, err = tx.Exec(ctx, `UPDATE catalog_editor_publications SET pending_payload=$3,pending_fingerprint=$4,updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, v.VariantID, channel, raw, hash); err != nil {
 					return EditorPlanView{}, err
 				}
 				continue
 			}
-			if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,status,message,execution_mode) VALUES($1,$2,$3,$4,'prepared','Подготовлено к созданию',$5) ON CONFLICT(variant_id,channel) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,payload=EXCLUDED.payload,execution_mode=EXCLUDED.execution_mode,pending_payload=NULL,pending_fingerprint=NULL,progress=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.progress ELSE '{}'::jsonb END,next_attempt_at=NOW(),status=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode AND catalog_editor_publications.status<>'cancelled' THEN catalog_editor_publications.status ELSE 'prepared' END,message=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.message ELSE EXCLUDED.message END,updated_at=NOW()`, v.VariantID, channel, hash, raw, mode); err != nil {
+			if channel == "ozon" && priorStatus == "failed" && priorHash != hash && priorMode == mode {
+				var previous, next catalogeditor.Request
+				if json.Unmarshal(priorPayload, &previous) == nil && json.Unmarshal(raw, &next) == nil {
+					if retry, ok := catalogeditor.OzonCreationRetry(previous, next, priorProgress); ok {
+						resetProgress, _ = json.Marshal(retry)
+					}
+				}
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,status,message,execution_mode) VALUES($1,$2,$3,$4,'prepared','Подготовлено к созданию',$5) ON CONFLICT(variant_id,channel) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,payload=EXCLUDED.payload,execution_mode=EXCLUDED.execution_mode,pending_payload=NULL,pending_fingerprint=NULL,progress=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.progress ELSE $6::jsonb END,next_attempt_at=NOW(),status=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode AND catalog_editor_publications.status<>'cancelled' THEN catalog_editor_publications.status ELSE 'prepared' END,message=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.message ELSE EXCLUDED.message END,updated_at=NOW()`, v.VariantID, channel, hash, raw, mode, resetProgress); err != nil {
 				return EditorPlanView{}, err
 			}
 		}
 	}
 	raw, _ := json.Marshal(plan)
-	if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_plans(product_id,config) VALUES($1,$2) ON CONFLICT(product_id) DO UPDATE SET config=EXCLUDED.config,updated_at=NOW()`, productID, raw); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_plans(product_id,config) VALUES($1,catalog_editor_canonical_plan($2)) ON CONFLICT(product_id) DO UPDATE SET config=EXCLUDED.config,updated_at=NOW()`, productID, raw); err != nil {
 		return EditorPlanView{}, err
 	}
 	if err = insertAudit(ctx, tx, actor, "catalog.editor.plan.save", "product", fmt.Sprint(productID), nil, plan); err != nil {
@@ -500,6 +524,51 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 }
 
 func editorVideoURL(path string) bool {
+	if parsed, err := urlpkg.Parse(path); err == nil {
+		path = parsed.Path
+	}
 	p := strings.ToLower(path)
 	return strings.HasSuffix(p, ".mp4") || strings.HasSuffix(p, ".mov") || strings.HasSuffix(p, ".webm") || strings.HasSuffix(p, ".m3u8")
+}
+
+// editorPublicationFingerprint keeps content sync and owner submission idempotent.
+func editorPublicationFingerprint(channel string, raw []byte) string {
+	fingerprintPayload := map[string]any{}
+	_ = json.Unmarshal(raw, &fingerprintPayload)
+	if channel == "saby" {
+		for _, key := range []string{"action", "existingId", "sabyId", "sabyUUID", "actorId", "marketplace", "channel", "ozonPrice", "wbPrice", "vat", "season"} {
+			delete(fingerprintPayload, key)
+		}
+		if config, ok := fingerprintPayload["saby"].(map[string]any); ok {
+			delete(config, "mode")
+			delete(config, "existingCode")
+			for _, field := range []string{"category", "folder"} {
+				if category, ok := config[field].(map[string]any); ok {
+					delete(category, "name")
+				}
+			}
+		}
+	}
+	if channel != "saby" {
+		for _, key := range []string{"action", "existingId", "schema", "saby", "sabyId", "sabyUUID", "actorId", "barcode"} {
+			delete(fingerprintPayload, key)
+		}
+		if c, ok := fingerprintPayload["channel"].(map[string]any); ok {
+			delete(c, "enabled")
+			delete(c, "replaceLink")
+			delete(c, "existingId")
+		}
+		if m, ok := fingerprintPayload["marketplace"].(map[string]any); ok {
+			for _, key := range []string{"wb", "ozon"} {
+				if c, ok := m[key].(map[string]any); ok {
+					delete(c, "enabled")
+					delete(c, "replaceLink")
+					delete(c, "existingId")
+				}
+			}
+		}
+	}
+	fingerprintRaw, _ := json.Marshal(fingerprintPayload)
+	sum := sha256.Sum256(fingerprintRaw)
+	return hex.EncodeToString(sum[:])
 }

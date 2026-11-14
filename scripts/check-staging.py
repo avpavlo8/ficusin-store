@@ -56,7 +56,7 @@ for attempt in range(40):
             raise RuntimeError('No catalog products for browser verification')
         print('Verified exact staging candidate',version,'products',len(catalog['products']),flush=True)
         break
-    except (urllib.error.URLError,RuntimeError,ValueError,TimeoutError) as error:
+    except (urllib.error.URLError,RuntimeError,ValueError,TimeoutError,ConnectionError) as error:
         print('attempt',attempt+1,str(error),flush=True)
         if attempt == 39:
             raise

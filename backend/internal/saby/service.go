@@ -206,16 +206,14 @@ const syncCharacteristicsSQL = `
 	WHERE product_attribute_values.source='saby'
 `
 
-// sync складывает выгрузку в справочник и обновляет у товаров ровно то, что
-// им разрешено брать из СБИС.
-//
-// Карточками распоряжается магазин. Обмен больше не заводит товары сам, не
-// переписывает названия и не убирает с витрины то, чего не оказалось в
-// выгрузке: у пропавшей позиции обнуляется остаток, а карточка, ссылки на
-// неё и место в поиске остаются. Из СБИС по умолчанию приходит только
-// остаток; название, описание, цена и фотографии — лишь если это поле
-// отмечено у товара.
+// sync refreshes the Saby directory, identities and permitted stock. Site
+// content and prices remain untouched even when historical saby_fields still
+// contain retired name/description/photo flags.
 func (service *Service) sync(ctx context.Context, items []normalizedItem, rawItems []CatalogItem) error {
+	stockObservedAt, err := stockSnapshotObservedAt(ctx, time.Now())
+	if err != nil {
+		return err
+	}
 	tx, err := service.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("begin Saby sync: %w", err)
@@ -427,8 +425,8 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 	}
 
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO inventory (warehouse_id, variant_id, available_qty, reserved_qty, synced_at)
-		SELECT warehouse.id, pv.id, source.balance, 0, CURRENT_TIMESTAMP
+		INSERT INTO inventory (warehouse_id, variant_id, available_qty, reserved_qty, synced_at, stock_observed_at)
+		SELECT warehouse.id, pv.id, source.balance, 0, CURRENT_TIMESTAMP, $1::TIMESTAMPTZ
 		FROM product_variants pv
 		JOIN products p ON p.id = pv.product_id
 		JOIN saby_nomenclature source ON source.saby_id = pv.saby_id
@@ -436,38 +434,12 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		WHERE 'stock' = ANY(p.saby_fields)
 		ON CONFLICT (warehouse_id, variant_id) DO UPDATE SET
 			available_qty = EXCLUDED.available_qty,
-			synced_at = CURRENT_TIMESTAMP
-	`); err != nil {
+			synced_at = CURRENT_TIMESTAMP,
+			stock_observed_at = EXCLUDED.stock_observed_at
+		WHERE inventory.stock_observed_at IS NULL OR
+		 (EXCLUDED.stock_observed_at IS NOT NULL AND EXCLUDED.stock_observed_at>=inventory.stock_observed_at)
+	`, stockObservedAt); err != nil {
 		return fmt.Errorf("update Saby stock: %w", err)
-	}
-
-	// Текстовые поля у пропавшей позиции не трогаем: пустое название взамен
-	// прежнего — это потеря, а не обновление.
-	if _, err := tx.Exec(ctx, `
-		UPDATE products p
-		SET name = source.name, updated_at = CURRENT_TIMESTAMP
-		FROM saby_nomenclature source
-		WHERE source.saby_id = p.saby_id AND 'name' = ANY(p.saby_fields)
-			AND source.missing_since IS NULL AND source.name <> '' AND p.name <> source.name
-	`); err != nil {
-		return fmt.Errorf("update Saby names: %w", err)
-	}
-
-	if _, err := tx.Exec(ctx, `
-		UPDATE products p
-		SET description = source.description, updated_at = CURRENT_TIMESTAMP
-		FROM saby_nomenclature source
-		WHERE source.saby_id = p.saby_id AND 'description' = ANY(p.saby_fields)
-			AND source.missing_since IS NULL AND p.description <> source.description
-	`); err != nil {
-		return fmt.Errorf("update Saby descriptions: %w", err)
-	}
-
-	// The site owns its retail price. Saby price snapshots are retained in
-	// saby_nomenclature for comparison, but cannot overwrite a site price.
-
-	if err := syncPhotos(ctx, tx); err != nil {
-		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -492,64 +464,6 @@ func validateCatalogHealth(items []normalizedItem, knownItems, knownPositive int
 	}
 	if knownPositive >= 5 && positive == 0 {
 		return fmt.Errorf("unsafe Saby catalog: all %d item balances are zero", len(items))
-	}
-	return nil
-}
-
-// syncPhotos переносит снимки только тем товарам, которым это разрешено, и
-// только если набор действительно изменился: лишняя перезапись сбрасывала бы
-// порядок фотографий на карточке на ровном месте.
-func syncPhotos(ctx context.Context, tx pgx.Tx) error {
-	type target struct {
-		id      int64
-		name    string
-		wanted  []string
-		current []string
-	}
-	rows, err := tx.Query(ctx, `
-		SELECT p.id, p.name, source.images,
-			ARRAY(
-				SELECT pm.object_key FROM product_media pm
-				WHERE pm.product_id = p.id
-				ORDER BY pm.is_primary DESC, pm.sort_order, pm.id
-			)
-		FROM products p
-		JOIN saby_nomenclature source ON source.saby_id = p.saby_id
-		WHERE 'photo' = ANY(p.saby_fields) AND source.missing_since IS NULL
-	`)
-	if err != nil {
-		return fmt.Errorf("query Saby photo targets: %w", err)
-	}
-	targets := make([]target, 0)
-	for rows.Next() {
-		var item target
-		if err := rows.Scan(&item.id, &item.name, &item.wanted, &item.current); err != nil {
-			rows.Close()
-			return fmt.Errorf("scan Saby photo target: %w", err)
-		}
-		targets = append(targets, item)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return fmt.Errorf("read Saby photo targets: %w", err)
-	}
-	rows.Close()
-
-	for _, item := range targets {
-		if len(item.wanted) == 0 || sameStrings(item.wanted, item.current) {
-			continue
-		}
-		if _, err := tx.Exec(ctx, "DELETE FROM product_media WHERE product_id = $1", item.id); err != nil {
-			return fmt.Errorf("replace Saby media %d: %w", item.id, err)
-		}
-		for index, image := range item.wanted {
-			if _, err := tx.Exec(ctx, `
-				INSERT INTO product_media (product_id, object_key, alt_text, sort_order, is_primary)
-				VALUES ($1, $2, $3, $4, $5)
-			`, item.id, image, item.name, index, boolToInt(index == 0)); err != nil {
-				return fmt.Errorf("insert Saby media %d: %w", item.id, err)
-			}
-		}
 	}
 	return nil
 }
@@ -614,18 +528,6 @@ func syncCatalogFolders(ctx context.Context, tx pgx.Tx, items []CatalogItem) err
 		return fmt.Errorf("mark missing Saby catalogue folders: %w", err)
 	}
 	return nil
-}
-
-func sameStrings(left, right []string) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for index := range left {
-		if left[index] != right[index] {
-			return false
-		}
-	}
-	return true
 }
 
 func normalizeItems(items []CatalogItem) []normalizedItem {
@@ -922,13 +824,6 @@ func resolveImage(value string) string {
 		return ""
 	}
 	return parsed.String()
-}
-
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }
 
 // catalogBarcodes собирает все штрихкоды позиции. У растения их обычно три:

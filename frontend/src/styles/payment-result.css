@@ -7,11 +7,6 @@
   width: min(1100px, calc(100% - 80px));
   margin: 36px auto 64px;
 }
-.payment-result-preview {
-  margin: 0 0 12px;
-  color: #76664e;
-  font-size: 12px;
-}
 .payment-result-card {
   min-height: 420px;
   padding: 44px 48px;

@@ -126,32 +126,6 @@ func StatusChange(order OrderLetter, status string) (Letter, bool) {
 	}, true
 }
 
-// Invoice is for a wholesale customer who pays from a company account.
-func Invoice(order OrderLetter, requisites string) Letter {
-	lines := []string{
-		greeting(order.CustomerName),
-		"",
-		"Счёт на оплату заказа " + order.Number + ".",
-		"",
-		"Что в заказе:",
-	}
-	lines = append(lines, itemLines(order)...)
-	lines = append(lines, "")
-	lines = append(lines, totals(order)...)
-	if requisites != "" {
-		lines = append(lines, "", "Реквизиты для оплаты:", requisites)
-	}
-	lines = append(lines,
-		"",
-		"В назначении платежа укажите номер заказа "+order.Number+".",
-		"Заказ отправим после поступления оплаты.",
-	)
-	return Letter{
-		Subject: "Счёт по заказу " + order.Number,
-		Body:    strings.Join(append(lines, "", signature()), "\n"),
-	}
-}
-
 func itemLines(order OrderLetter) []string {
 	lines := make([]string, 0, len(order.Items))
 	for _, item := range order.Items {

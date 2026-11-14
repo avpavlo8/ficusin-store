@@ -138,7 +138,7 @@ func (handlers authHandlers) verifyCode(response http.ResponseWriter, request *h
 		return
 	}
 
-	registration, message := validatedRegistration(body, phone)
+	registration, message := validatedRegistration(body)
 	if message != "" {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: message})
 		return
@@ -358,7 +358,7 @@ func decodeJSONWithLimit(request *http.Request, destination any, limit int64) er
 // optional except FullName and AccountType, which the service only
 // requires the first time a phone number registers; here we just
 // validate whatever was actually provided.
-func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration, string) {
+func validatedRegistration(body verifyCodeBody) (auth.Registration, string) {
 	flow := strings.TrimSpace(body.Flow)
 	fullName := strings.TrimSpace(body.FullName)
 	lastName := strings.TrimSpace(body.LastName)
@@ -404,7 +404,6 @@ func validatedRegistration(body verifyCodeBody, phone string) (auth.Registration
 		FullName:        fullName,
 		LastName:        lastName,
 		Patronymic:      patronymic,
-		Phone:           phone,
 		Email:           email,
 		DeliveryAddress: deliveryAddress,
 		AccountType:     accountType,

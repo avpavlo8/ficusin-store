@@ -18,11 +18,6 @@ try {
   await context.addCookies([{name:'ficusin_session',value:`crm-acceptance-${role}`,url:base}]);
   const page = await context.newPage();
   const api = context.request;
-  const procurementDraft = JSON.stringify({supplierId:77,exchangeRate:"91.25",items:[{sabyId:"unsaved-ci",quantity:3}]});
-  if(role==='owner') {
-   await page.goto('/admin');
-   await page.evaluate(([key,value])=>localStorage.setItem(key,value),['ficusin:procurement-plan-draft:v1',procurementDraft]);
-  }
   const response = await api.get('/api/v1/admin/dashboard');
   expect(response.status()).toBe(200);
   const data = await response.json();expect(data.role).toBe(role);
@@ -31,8 +26,6 @@ try {
   const product = products.find(p=>p.slug==='crm-acceptance-ficus');expect(product).toBeTruthy();
   const variants=(await (await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants;
   const variant=variants[0];expect(variant).toBeTruthy();
-  const relationshipsResponse=await api.get(`/api/v1/admin/products/${product.id}/relationships`);expect(relationshipsResponse.status()).toBe(200);
-  const relationships=(await relationshipsResponse.json()).relationships;expect(Array.isArray(relationships.mappings)).toBeTruthy();expect(Array.isArray(relationships.suppliers)).toBeTruthy();
   const beforeMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
   expect(beforeMedia.length).toBe(2);
   if(role==='manager') {
@@ -47,15 +40,22 @@ try {
    expect((await api.post(`/api/v1/admin/procurement/orders/${purchase.id}/batches`,{data:{kind:'receipt'}})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/procurement/orders/${purchase.id}/status`,{data:{status:'cancelled'}})).status()).toBe(403);
    for(const path of ['/admin?section=marketplaces','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
-   for(const body of [{name:'Forbidden',priceMinor:1},{name:'Forbidden',stock:null},{name:'Forbidden',externalIds:[]}]) expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:body})).status()).toBe(403);
-   expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',priceMinor:1}})).status()).toBe(403);
-   expect((await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'Forbidden',attributes:{external_price:1}}})).status()).toBe(403);
-   const ok=await api.patch(`/api/v1/admin/variants/${variant.id}`,{data:{label:'D12 проверено',attributes:{package_weight_grams:1200}}});
+   expect(data.permissions).toContain('products.manage');
+   const changedPrice=Math.round(variant.price*100)+1;
+   const commercial=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,priceMinor:changedPrice,active:false,externalIds:[]}]}});
+   expect(commercial.status(),await commercial.text()).toBe(200);
+   const changed=((await(await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants||[]).find(item=>item.id===variant.id);
+   expect(Math.round(changed.price*100)).toBe(changedPrice);expect(changed.active).toBe(false);expect(changed.externalIds||[]).toEqual([]);expect(changed.stock).toBe(variant.stock);
+   const restored=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,priceMinor:Math.round(variant.price*100),active:variant.active,externalIds:variant.externalIds||[]}]}});
+   expect(restored.status(),await restored.text()).toBe(200);
+   // Full editor rights do not make unknown attribute definitions valid.
+   expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,attributes:{external_price:1}}]}})).status()).toBe(400);
+   const ok=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,label:'D12 проверено',attributes:{package_weight_grams:1200}}]}});
    expect(ok.status(),await ok.text()).toBe(200);
-   const saved=(await ok.json()).variant;expect(saved.price).toBe(variant.price);expect(saved.stock).toBe(variant.stock);expect(saved.externalIds).toEqual(variant.externalIds);
+   const saved=((await(await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants||[]).find(item=>item.id===variant.id);expect(saved).toBeTruthy();expect(saved.price).toBe(variant.price);expect(saved.stock).toBe(variant.stock);expect(saved.externalIds).toEqual(variant.externalIds);
    expect(saved.attributes.package_weight_grams).toBe(1200);
   }
-  const edit=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{description:`Контент ${role}`,...(role==='owner'?{image:product.image}:{})}});
+  const edit=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{description:`Контент ${role}`}});
   expect(edit.status(),await edit.text()).toBe(200);
   const afterMedia=(await (await api.get(`/api/v1/admin/products/${product.id}/media`)).json()).media;
   expect(afterMedia).toEqual(beforeMedia);
@@ -134,9 +134,14 @@ try {
     await page.goto('/admin?section=procurement');await expect(page.getByRole('heading',{name:'Закупки',exact:true})).toBeVisible();await page.getByRole('button',{name:'Что заказать',exact:false}).click();await expect(page.getByRole('heading',{name:'Рекомендации к закупке',exact:true})).toBeVisible();await expect(page.getByText('Монстера Stage 05',{exact:true})).toBeVisible();await expect(page.getByText('25 шт.',{exact:true})).toBeVisible();await page.getByLabel('Выбрать Монстера Stage 05').check();await expect(page.getByRole('button',{name:'Сформировать заказ',exact:true})).toBeEnabled();expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);await page.screenshot({path:`${out}/owner-stage05-recommendations-${width}.png`,fullPage:true});
     await page.getByRole('button',{name:'Под заказ',exact:false}).click();await expect(page.getByRole('heading',{name:'Под заказ и идеи магазина',exact:true})).toBeVisible();await expect(page.getByText('распределено 0 · осталось 2',{exact:true})).toBeVisible();await page.screenshot({path:`${out}/owner-stage05-requests-${width}.png`,fullPage:true});
     await page.getByRole('button',{name:'Проверить наличие',exact:false}).first().click();await expect(page.getByRole('heading',{name:'Проверить наличие',exact:true})).toBeVisible();await expect(page.getByText('Фикус ожидание Stage 05',{exact:true})).toBeVisible();await expect(page.getByText('Фикус будущая проверка',{exact:true})).toHaveCount(0);await page.screenshot({path:`${out}/owner-stage05-availability-${width}.png`,fullPage:true});
-    await page.locator('#workspace-content').getByRole('button',{name:'Закупки',exact:true}).click();await expect(page.locator('.procurement-orders tbody tr')).toHaveCount(5);await page.getByRole('textbox',{name:'Поиск закупки',exact:true}).fill('CRM-STAGE-06');await expect(page.locator('.procurement-orders tbody tr')).toHaveCount(1);await page.getByText('CRM-STAGE-06',{exact:true}).click();const invoiceDialog=page.getByRole('dialog',{name:'CRM-STAGE-06',exact:true});await expect(invoiceDialog).toBeVisible();await expect(invoiceDialog.getByText('Совпадает',{exact:true})).toBeVisible();await expect(invoiceDialog.getByText('Изменено',{exact:true})).toBeVisible();await expect(invoiceDialog.locator('.procurement-reconciliation-missing')).toBeVisible();await expect(invoiceDialog.getByText(/Несопоставленные строки инвойса:/)).toBeVisible();await expect(invoiceDialog.getByRole('button',{name:'Это новая позиция',exact:true})).toBeVisible();await expect(invoiceDialog.getByText('NL-V-09',{exact:false})).toBeVisible();await page.screenshot({path:`${out}/owner-stage06-reconciliation-${width}.png`,fullPage:true});await invoiceDialog.getByRole('button',{name:'Закрыть',exact:true}).click();
+    await page.locator('#workspace-content').getByRole('button',{name:'Закупки',exact:true}).click();
+    await expect(page.getByRole('combobox',{name:'Статус закупки',exact:true})).toHaveValue('active');
+    const purchaseSnapshot=await api.get('/api/v1/admin/procurement');expect(purchaseSnapshot.status()).toBe(200);
+    const activePurchases=(await purchaseSnapshot.json()).orders.filter(order=>!['received','cancelled'].includes(order.status));
+    expect(activePurchases.map(order=>order.orderNumber)).toEqual(expect.arrayContaining(['CRM-STAGE-06','CRM-STAGE-07']));
+    await expect(page.locator('.procurement-orders tbody tr')).toHaveCount(Math.min(5,activePurchases.length));
+    await expect(page.getByText(`Закупок: ${activePurchases.length}`,{exact:true})).toBeVisible();await page.getByRole('textbox',{name:'Поиск закупки',exact:true}).fill('CRM-STAGE-06');await expect(page.locator('.procurement-orders tbody tr')).toHaveCount(1);await page.getByText('CRM-STAGE-06',{exact:true}).click();const invoiceDialog=page.getByRole('dialog',{name:'CRM-STAGE-06',exact:true});await expect(invoiceDialog).toBeVisible();await expect(invoiceDialog.getByText('Совпадает',{exact:true})).toBeVisible();await expect(invoiceDialog.getByText('Изменено',{exact:true})).toBeVisible();await expect(invoiceDialog.locator('.procurement-reconciliation-missing')).toBeVisible();await expect(invoiceDialog.getByText(/Несопоставленные строки инвойса:/)).toBeVisible();await expect(invoiceDialog.getByRole('button',{name:'Это новая позиция',exact:true})).toBeVisible();await expect(invoiceDialog.getByText('NL-V-09',{exact:false})).toBeVisible();await page.screenshot({path:`${out}/owner-stage06-reconciliation-${width}.png`,fullPage:true});await invoiceDialog.getByRole('button',{name:'Закрыть',exact:true}).click();
     await page.getByRole('textbox',{name:'Поиск закупки',exact:true}).fill('CRM-STAGE-07');await page.getByText('CRM-STAGE-07',{exact:true}).click();const costDialog=page.getByRole('dialog',{name:'CRM-STAGE-07',exact:true});await expect(costDialog).toBeVisible();await expect(costDialog.getByText('В учёте (отдельно от партии): 945 ₽',{exact:true})).toBeVisible();await expect(costDialog.getByText('Черновик создан · ждёт проведения',{exact:true})).toBeVisible();await expect(costDialog.getByRole('button',{name:'Завершить приёмку',exact:true})).toHaveCount(0);await page.screenshot({path:`${out}/owner-stage07-cost-receipt-${width}.png`,fullPage:true});await costDialog.getByRole('button',{name:'Закрыть',exact:true}).click();
-    expect(await page.evaluate(key=>localStorage.getItem(key),'ficusin:procurement-plan-draft:v1')).toBe(procurementDraft);
    }
    if(role==='manager') {
     await page.goto('/admin?section=procurement');

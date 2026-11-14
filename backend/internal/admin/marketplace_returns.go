@@ -284,7 +284,7 @@ func (repository *PostgresRepository) writeReturnPhoto(ctx context.Context, acto
 			fileassets.Discard(repository.fileStorage, key)
 		}
 	}()
-	command, err := tx.Exec(ctx, `INSERT INTO marketplace_return_photos(marketplace_return_id,content_type,image,created_by,object_key) SELECT $1,$2,NULL,$3,$4 WHERE (SELECT COUNT(*) FROM marketplace_return_photos WHERE marketplace_return_id=$1 AND deleted_at IS NULL)<6`, id, contentType, actor.CustomerID, key)
+	command, err := tx.Exec(ctx, `INSERT INTO marketplace_return_photos(marketplace_return_id,content_type,created_by,object_key) SELECT $1,$2,$3,$4 WHERE (SELECT COUNT(*) FROM marketplace_return_photos WHERE marketplace_return_id=$1 AND deleted_at IS NULL)<6`, id, contentType, actor.CustomerID, key)
 	if err != nil {
 		return MarketplaceReturn{}, err
 	}
@@ -391,13 +391,13 @@ func (repository *PostgresRepository) ReturnPhoto(ctx context.Context, id int64)
 	var contentType string
 	var data []byte
 	var key string
-	err := repository.pool.QueryRow(ctx, `SELECT f.content_type,f.image,COALESCE(f.object_key,'') FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE f.id=$1 AND f.deleted_at IS NULL AND r.deleted_at IS NULL`, id).Scan(&contentType, &data, &key)
+	err := repository.pool.QueryRow(ctx, `SELECT f.content_type,COALESCE(f.object_key,'') FROM marketplace_return_photos f JOIN marketplace_returns r ON r.id=f.marketplace_return_id WHERE f.id=$1 AND f.deleted_at IS NULL AND r.deleted_at IS NULL`, id).Scan(&contentType, &key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil, err
 	}
 	if err != nil {
 		return "", nil, err
 	}
-	data, err = fileassets.Read(ctx, repository.fileStorage, key, data)
+	data, err = fileassets.Read(ctx, repository.fileStorage, key)
 	return contentType, data, err
 }

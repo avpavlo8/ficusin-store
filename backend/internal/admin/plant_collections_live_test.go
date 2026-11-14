@@ -2,8 +2,10 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"os"
 	"testing"
@@ -30,13 +32,21 @@ func TestCanonicalPlantCollectionsOnLiveDatabase(t *testing.T) {
 	unique := time.Now().UnixNano()
 	var actorID, productID, childID, plantsID, bonsaiID, variantID int64
 	var productCode string
-	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Plant rules fixture',NOW()) RETURNING id`, fmt.Sprintf("plant-%d@example.invalid", unique), fmt.Sprintf("+798%09d", unique%1000000000)).Scan(&actorID))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Plant rules fixture',NOW()) RETURNING id`, fmt.Sprintf("plant-%d@example.invalid", unique), fmt.Sprintf("+798%09d", unique%1000000000)).Scan(&actorID))
 	defer func() {
 		_, _ = pool.Exec(ctx, "DELETE FROM admin_audit_log WHERE actor_customer_id=$1", actorID)
 		_, _ = pool.Exec(ctx, "DELETE FROM customers WHERE id=$1", actorID)
 	}()
 	must(pool.QueryRow(ctx, "SELECT id FROM categories WHERE slug='plants'").Scan(&plantsID))
-	must(pool.QueryRow(ctx, "SELECT id FROM categories WHERE slug='bonsai'").Scan(&bonsaiID))
+	// The production migrations configure collection rules, but a category may
+	// be created later by the owner. The test owns its missing bonsai fixture.
+	err = pool.QueryRow(ctx, "SELECT id FROM categories WHERE slug='bonsai'").Scan(&bonsaiID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		must(pool.QueryRow(ctx, `INSERT INTO categories(parent_id,slug,name) VALUES($1,'bonsai','Bonsai fixture') RETURNING id`, plantsID).Scan(&bonsaiID))
+		defer func() { _, _ = pool.Exec(ctx, "DELETE FROM categories WHERE id=$1", bonsaiID) }()
+	} else {
+		must(err)
+	}
 	must(pool.QueryRow(ctx, `INSERT INTO categories(parent_id,slug,name) VALUES($1,$2,'Bonsai child fixture') RETURNING id`, bonsaiID, fmt.Sprintf("bonsai-child-%d", unique)).Scan(&childID))
 	defer func() { _, _ = pool.Exec(ctx, "DELETE FROM categories WHERE id=$1", childID) }()
 	must(pool.QueryRow(ctx, `INSERT INTO products(name,slug,status,catalog_section,category_id) VALUES('Plant rules fixture',$1,'published','plants',$2) RETURNING id,product_code::text`, fmt.Sprintf("plant-rules-%d", unique), childID).Scan(&productID, &productCode))

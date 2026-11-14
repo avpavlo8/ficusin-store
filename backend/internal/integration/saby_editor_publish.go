@@ -17,7 +17,7 @@ import (
 // SabyEditorPublisher is exclusively the catalogue editor's write capability.
 // It must only be invoked by the durable worker, whose committed create lease
 // distinguishes the first Stage=create call from a resumed Stage=reconcile.
-// No method of this provider is used by stock or technical-CML synchronizers.
+// No method of this provider is used by inbound stock synchronization.
 type SabyEditorPublisher struct {
 	Client      *SabyClient
 	ImageClient *http.Client
@@ -332,12 +332,18 @@ func validateSabyEditorPublishRequest(r ce.Request) error {
 }
 
 func sabyEditorPayloadHash(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	canonical, err := canonicalSabyEditorJSON(data)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(canonical)
+	// Existing byte hashes cannot prove a normalized receipt. They remain
+	// rejected until explicitly re-prepared from a fresh verified native read.
+	return "json-v1:" + hex.EncodeToString(sum[:])
 }
 func sabyEditorPreparedValid(native sabyEditorPublishState, r ce.Request, id string) bool {
 	requestData, _ := json.Marshal(r)
-	return len(native.PreparedData) > 0 && native.PreparedHash != "" && native.PreparedID == id && sabyEditorPayloadHash(native.PreparedData) == native.PreparedHash && sabyEditorPayloadHash(requestData) == native.PreparedRequestHash && len(r.Images) > 0 && len(native.ImageIDs) >= len(r.Images)
+	return len(native.PreparedData) > 0 && native.PreparedHash != "" && native.PreparedRequestHash != "" && native.PreparedID == id && sabyEditorPayloadHash(native.PreparedData) == native.PreparedHash && sabyEditorPayloadHash(requestData) == native.PreparedRequestHash && len(r.Images) > 0 && len(native.ImageIDs) >= len(r.Images)
 }
 
 // Only semantically stable owned values participate. Saby may rotate gallery
