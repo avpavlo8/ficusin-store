@@ -40,6 +40,59 @@ WITH facts AS (
  WHERE p.status='paid' AND p.provider_payment_id<>''
 ) SELECT * FROM facts WHERE income_warning OR settlement_warning ORDER BY id LIMIT 101
 """
+PENDING_QUERY = """
+SELECT p.id,p.order_id,p.provider_payment_id,ROUND(p.amount*100)::bigint amount_minor,
+ p.created_at,o.status order_status,o.payment_status order_payment_status,
+ EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP-p.created_at))/60 age_minutes
+FROM payments p JOIN orders o ON o.id=p.order_id
+WHERE p.status='pending' AND o.status<>'cancelled'
+ AND p.created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes'
+ORDER BY p.created_at LIMIT 26
+"""
+UNPAID_QUERY = """
+SELECT o.id,o.order_number,o.status,o.payment_status,o.payment_method,o.delivery_method,
+ count(p.id) FILTER(WHERE p.status='pending') pending_count,
+ count(p.id) FILTER(WHERE p.status='pending' AND p.created_at<CURRENT_TIMESTAMP-INTERVAL '30 minutes') stale_pending_count
+FROM orders o LEFT JOIN payments p ON p.order_id=o.id
+WHERE o.status NOT IN ('cancelled','completed') AND o.payment_status<>'paid'
+GROUP BY o.id ORDER BY o.created_at DESC LIMIT 26
+"""
+
+
+def pending_report(pending, orders, reader):
+    if len(pending)>25 or len(orders)>25:
+        raise guards.PreflightError('pending_audit_scope_exceeded')
+    details=[]
+    for row in pending:
+        item={'localPaymentId':int(row['id']),'orderId':int(row['order_id']),
+              'orderStatus':label(row['order_status']), 'orderPaymentStatus':label(row['order_payment_status']),
+              'ageMinutes':int(row['age_minutes']), 'createdAt':row['created_at'].isoformat(),
+              'providerReferencePresent':bool(row['provider_payment_id'])}
+        reference=row['provider_payment_id']
+        if reference:
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',reference):
+                raise guards.PreflightError('invalid_provider_payment_reference')
+            meta,payment=reader.get('/payments/'+reference)
+            item['providerRead']=meta
+            if payment is not None:
+                if payment.get('id')!=reference:
+                    raise guards.PreflightError('provider_payment_identity_mismatch')
+                item.update(providerStatus=label(payment.get('status')),
+                            providerTest=payment.get('test') if isinstance(payment.get('test'),bool) else 'not_returned',
+                            providerPaid=payment.get('paid') if isinstance(payment.get('paid'),bool) else 'not_returned',
+                            amountMatches=amount_matches(payment,row['amount_minor']))
+        details.append(item)
+    active=[]
+    for row in orders:
+        number=row['order_number']
+        if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',number):
+            raise guards.PreflightError('invalid_order_reference')
+        active.append({'orderId':int(row['id']),'orderNumber':number,
+                       'orderStatus':label(row['status']),'paymentStatus':label(row['payment_status']),
+                       'paymentMethod':label(row['payment_method'],{'online','on_delivery','invoice','manager_confirmation'}),
+                       'deliveryMethod':label(row['delivery_method'],{'pickup','cdek','courier','post'}),
+                       'pendingPayments':int(row['pending_count']),'stalePendingPayments':int(row['stale_pending_count'])})
+    return {'stalePendingCount':len(details),'stalePendingPayments':details,'activeUnpaidOrders':active}
 
 
 def label(value, allowed=STATUSES):
@@ -172,9 +225,21 @@ def main():
                 with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
                     cursor.execute(QUERY)
                     rows = cursor.fetchall()
+                    cursor.execute(PENDING_QUERY)
+                    pending = cursor.fetchall()
+                    cursor.execute(UNPAID_QUERY)
+                    unpaid = cursor.fetchall()
+                    cursor.execute("SELECT value FROM settings WHERE key='orders.auto_cancel_hours'")
+                    hours = cursor.fetchone()
+                    hours = hours['value'] if hours else '24'
+                    if not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?',hours):
+                        raise guards.PreflightError('invalid_expiry_hours')
                 if len(rows) > 100:
                     raise guards.PreflightError('fiscal_audit_scope_exceeded')
         report = reconcile(rows, reader)
+        report['pendingAudit'] = pending_report(pending,unpaid,reader)
+        report['autoCancelHours'] = hours
+        report['expectedProductionCommit'] = args.expected_commit
         report['providerGetCalls'] = reader.calls
         print(json.dumps(report, sort_keys=True))
         return 0

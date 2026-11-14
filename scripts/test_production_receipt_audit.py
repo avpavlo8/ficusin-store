@@ -24,6 +24,31 @@ class Reader:
   return {'ok':True,'httpStatus':200},{'items':[{'payment_id':ID,'type':'payment','status':'succeeded','items':[{'payment_mode':'full_payment','description':'DO_NOT_LOG_NAME'}]}]}
 
 class Tests(unittest.TestCase):
+ def test_pending_details_use_get_only_and_do_not_log_provider_identity(self):
+  class PendingReader:
+   def __init__(self):self.calls=[]
+   def get(self,path,params=None):
+    self.calls.append(path)
+    return {'ok':True,'httpStatus':200},{'id':ID,'status':'pending','paid':False,'test':False,'amount':{'value':'199.00','currency':'RUB'},'metadata':{'phone':'DO_NOT_LOG'}}
+  reader=PendingReader()
+  pending=dict(id=13,order_id=17,provider_payment_id=ID,amount_minor=19900,created_at=datetime.datetime(2026,11,14),
+               order_status='new',order_payment_status='pending',age_minutes=40)
+  order=dict(id=17,order_number='0000-17',status='new',payment_status='pending',payment_method='online',delivery_method='cdek',pending_count=1,stale_pending_count=1)
+  result=m.pending_report([pending],[order],reader)
+  self.assertEqual(reader.calls,['/payments/'+ID]);self.assertEqual(result['stalePendingCount'],1)
+  self.assertEqual(result['activeUnpaidOrders'][0]['stalePendingPayments'],1)
+  self.assertFalse(result['stalePendingPayments'][0]['providerPaid'])
+  self.assertTrue(result['stalePendingPayments'][0]['amountMatches'])
+  for secret in (ID,'DO_NOT_LOG','199.00','phone'):self.assertNotIn(secret,json.dumps(result))
+
+ def test_pending_missing_provider_reference_makes_no_request(self):
+  reader=Reader()
+  pending=dict(id=13,order_id=17,provider_payment_id='',created_at=datetime.datetime(2026,11,14),
+               order_status='new',order_payment_status='pending',age_minutes=40)
+  result=m.pending_report([pending],[],reader)
+  self.assertEqual(reader.calls,0)
+  self.assertFalse(result['stalePendingPayments'][0]['providerReferencePresent'])
+
  def test_aggregate_overlap_and_no_customer_payment_ids_or_amounts(self):
   report=m.reconcile([row()],Reader())
   self.assertEqual(report['warnings'],{'income':1,'settlement':1});self.assertEqual(report['paymentCount'],1)

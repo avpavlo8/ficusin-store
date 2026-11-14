@@ -1,179 +1,27 @@
-name: Saby probe
-
-# Только вручную. Разведка нужна раз в жизни вопроса, расписание ей ни к чему.
+name: Read-only payment warnings audit
 on:
   workflow_dispatch:
     inputs:
       expected_commit:
-        description: Exact deployed main SHA for approved post-release operations
+        description: Exact current production main commit
         type: string
-        required: false
-      activate_publishing:
-        description: Activate future explicit catalog saves in the verified production release
-        type: boolean
-        required: false
-        default: false
-      production_files:
-        description: Legacy private website file migration; source bytes are retained
-        type: choice
-        options: [none, dryrun, apply]
-        required: false
-        default: none
-      publish_static_assets:
-        description: Publish exact live static files to existing public S3 and activate verified proxy
-        type: boolean
-        required: false
-        default: false
-      marketplace_readiness:
-        description: Verify marketplace category reads using existing production credentials
-        type: boolean
-        required: false
-        default: false
-      redeploy_exact:
-        description: Redeploy the exact verified production SHA after saved environment changes
-        type: boolean
-        required: false
-        default: false
-      payment_receipt_audit:
-        description: Reconcile fiscal warning records using readonly SQL and YooKassa GETs
-        type: boolean
-        required: false
-        default: false
-      production_storage_readiness:
-        description: Inspect existing production S3 bucket privacy without writes
-        type: boolean
-        required: false
-        default: false
-      production_preflight:
-        description: Read production database and backup release prerequisites
-        type: boolean
-        required: false
-        default: false
-      production_readiness:
-        description: Read production configuration presence without secrets
-        type: boolean
-        required: false
-        default: false
-
+        required: true
 permissions:
   contents: read
-
 jobs:
-  probe:
+  audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Require one explicit operation
-        env:
-          INPUTS_JSON: ${{ toJson(inputs) }}
-        run: |
-          python3 - <<'PYONE'
-          import json,os
-          values=json.loads(os.environ['INPUTS_JSON'])
-          flags=['activate_publishing','publish_static_assets','marketplace_readiness','redeploy_exact','payment_receipt_audit','production_storage_readiness','production_preflight','production_readiness']
-          selected=sum(values.get(k) in (True,'true') for k in flags)+(values.get('production_files','none') not in ('none',''))
-          if selected != 1:
-              raise SystemExit('Select exactly one scoped operation')
-          PYONE
-      - name: Inspect production release prerequisites without exposing secrets
-        if: inputs.production_readiness && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: |
-          python3 - <<'PYREAD'
-          import os,json,urllib.request
-          req=urllib.request.Request('https://api.timeweb.cloud/api/v1/apps/229223',headers={'Authorization':'Bearer '+os.environ['TIMEWEB_CLOUD_TOKEN']})
-          with urllib.request.urlopen(req,timeout=30) as response: app=json.load(response)['app']
-          assert app['id']==229223
-          env=app['envs']
-          safe={key:app.get(key) for key in ('id','name','branch_name','commit_sha','status')}
-          safe['configuration']={key:env.get(key,'') for key in ('APP_ENV','FILE_STORAGE_MODE','CATALOG_PUBLICATION_MODE','CATALOG_PUBLICATION_LIVE_ENABLED')}
-          safe['configured']={key:bool(env.get(key,'').strip()) for key in ('SABY_APP_CLIENT_ID','SABY_APP_SECRET','SABY_SECRET_KEY','S3_BUCKET','S3_ACCESS_KEY','S3_SECRET_KEY','PRIVATE_S3_BUCKET','PRIVATE_S3_ACCESS_KEY','PRIVATE_S3_SECRET_KEY')}
-          safe['separatePrivateBucket']=bool(env.get('PRIVATE_S3_BUCKET')) and env.get('PRIVATE_S3_BUCKET')!=env.get('S3_BUCKET')
-          print(json.dumps(safe))
-          PYREAD
-      - name: Install production prerequisite clients
-        if: (inputs.production_storage_readiness || inputs.production_preflight) && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
-        run: python3 -m pip install 'boto3==1.40.18' 'psycopg[binary]==3.2.13'
-      - name: Inspect production private storage without writes
-        if: inputs.production_storage_readiness && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: python3 scripts/production-private-storage-inspect.py
-      - name: Read production database and backup prerequisites
-        if: inputs.production_preflight && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: python3 scripts/production-release-preflight.py
-      - name: Verify marketplace category reads without creating cards
-        if: inputs.marketplace_readiness && !inputs.activate_publishing && (inputs.production_files == 'none' || inputs.production_files == '') && !inputs.publish_static_assets
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-        run: python3 scripts/production-marketplace-readiness.py
-      - name: Validate post-release operation target
-        if: inputs.payment_receipt_audit || inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
-        env:
-          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: |
-          python3 - <<'PYGUARD'
-          import os,re
-          if not re.fullmatch(r"[0-9a-f]{40}", os.environ.get('EXPECTED_COMMIT','')):
-              raise SystemExit('Exact full deployed main commit required')
-          PYGUARD
-      - uses: actions/checkout@v4
-        if: (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
-        with:
-          ref: ${{ inputs.expected_commit }}
-          path: release-source
-      - uses: actions/setup-go@v5
-        if: (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
-        with:
-          go-version-file: release-source/backend/go.mod
-          cache-dependency-path: release-source/backend/go.sum
-      - uses: actions/setup-node@v4
-        if: inputs.publish_static_assets
-        with:
-          node-version: 24
-      - name: Install post-release operation clients
-        if: inputs.payment_receipt_audit || inputs.redeploy_exact || inputs.activate_publishing || (inputs.production_files != 'none' && inputs.production_files != '') || inputs.publish_static_assets
-        run: python3 -m pip install 'boto3==1.40.18' 'psycopg[binary]==3.2.13'
-      - name: Activate only future explicit production catalog saves
-        if: inputs.activate_publishing
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/production-publisher-activation.py --expected-commit "$EXPECTED_COMMIT" --apply
-      - name: Migrate approved legacy private website files
-        if: inputs.production_files != 'none' && inputs.production_files != ''
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
-          MIGRATION_MODE: ${{ inputs.production_files }}
-        run: |
-          if [ "$MIGRATION_MODE" = apply ]; then
-            python3 scripts/production-file-migration.py --expected-commit "$EXPECTED_COMMIT" --apply
-          else
-            python3 scripts/production-file-migration.py --expected-commit "$EXPECTED_COMMIT"
-          fi
-      - name: Publish and activate verified static website assets
-        if: inputs.publish_static_assets
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
-        run: python3 scripts/production-static-assets.py --expected-commit "$EXPECTED_COMMIT" --apply
-      - name: Deploy exact verified production revision after saved settings
-        if: inputs.redeploy_exact
-        env:
-          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
-          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/production-redeploy-exact.py --expected-commit "$EXPECTED_COMMIT" --apply
-      - name: Audit fiscal warning records without financial or database writes
-        if: inputs.payment_receipt_audit
+      - name: Install read-only database client
+        run: python3 -m pip install 'psycopg[binary]==3.2.13'
+      - name: Test bounded read-only audit guards
+        run: python3 -m unittest discover -s scripts -p 'test_production_receipt_audit.py'
+      - name: Read production fiscal and pending payment facts without writes
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
