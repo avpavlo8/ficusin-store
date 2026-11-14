@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -15,7 +15,7 @@ permissions:
   contents: read
 jobs:
   release:
-    if: inputs.operation != 'static-assets' && inputs.operation != 'receipts'
+    if: inputs.operation == 'inspect' || inputs.operation == 'backup'
     runs-on: ubuntu-latest
     timeout-minutes: 22
     steps:
@@ -81,3 +81,36 @@ jobs:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: python3 scripts/production-receipt-audit.py --expected-commit "$EXPECTED_COMMIT"
+  seven-receipts:
+    if: inputs.operation == 'seven-prepare' || inputs.operation == 'seven-create'
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_commit }}
+          path: release-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: release-source/backend/go.sum
+      - name: Prepare exact seven historical settlements using canonical service
+        if: inputs.operation == 'seven-prepare'
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
+          APPROVED_SUPPORT_TICKET: "31489326"
+        run: python3 scripts/production-seven-settlements.py --expected-commit "$EXPECTED_COMMIT"
+      - name: Create the seven owner-approved receipts and verify registration
+        if: inputs.operation == 'seven-create'
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
+          APPROVED_SUPPORT_TICKET: "31489326"
+        run: python3 scripts/production-seven-settlements.py --expected-commit "$EXPECTED_COMMIT" --apply
