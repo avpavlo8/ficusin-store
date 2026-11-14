@@ -40,8 +40,16 @@ try {
    expect((await api.post(`/api/v1/admin/procurement/orders/${purchase.id}/batches`,{data:{kind:'receipt'}})).status()).toBe(403);
    expect((await api.patch(`/api/v1/admin/procurement/orders/${purchase.id}/status`,{data:{status:'cancelled'}})).status()).toBe(403);
    for(const path of ['/admin?section=marketplaces','/admin/settings','/api/v1/admin/analytics','/api/v1/admin/procurement/orders/18/saby-prices.xlsx']) expect((await api.get(path)).status()).toBe(403);
-   for(const fields of [{priceMinor:1},{active:false},{externalIds:[]}]) expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,label:'Forbidden',...fields}]}})).status()).toBe(403);
-   expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,label:'Forbidden',attributes:{external_price:1}}]}})).status()).toBe(403);
+   expect(data.permissions).toContain('products.manage');
+   const changedPrice=Math.round(variant.price*100)+1;
+   const commercial=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,priceMinor:changedPrice,active:false,externalIds:[]}]}});
+   expect(commercial.status(),await commercial.text()).toBe(200);
+   const changed=((await(await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants||[]).find(item=>item.id===variant.id);
+   expect(Math.round(changed.price*100)).toBe(changedPrice);expect(changed.active).toBe(false);expect(changed.externalIds||[]).toEqual([]);expect(changed.stock).toBe(variant.stock);
+   const restored=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,priceMinor:Math.round(variant.price*100),active:variant.active,externalIds:variant.externalIds||[]}]}});
+   expect(restored.status(),await restored.text()).toBe(200);
+   // Full editor rights do not make unknown attribute definitions valid.
+   expect((await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,attributes:{external_price:1}}]}})).status()).toBe(400);
    const ok=await api.patch(`/api/v1/admin/products/${product.id}`,{data:{variants:[{id:variant.id,label:'D12 проверено',attributes:{package_weight_grams:1200}}]}});
    expect(ok.status(),await ok.text()).toBe(200);
    const saved=((await(await api.get(`/api/v1/admin/products/${product.id}/variants`)).json()).variants||[]).find(item=>item.id===variant.id);expect(saved).toBeTruthy();expect(saved.price).toBe(variant.price);expect(saved.stock).toBe(variant.stock);expect(saved.externalIds).toEqual(variant.externalIds);
