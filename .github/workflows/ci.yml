@@ -275,7 +275,7 @@ jobs:
           normalized_plants="$(psql -h 127.0.0.1 -U postgres -d ficusin_ci -Atc "
             SELECT COUNT(DISTINCT product.id)||':'||MIN(product.name)||':'||COUNT(DISTINCT variant.id)||':'||
                    string_agg(DISTINCT variant.label,',' ORDER BY variant.label)||':'||
-                   string_agg(DISTINCT variant.pot_diameter_cm::text,',' ORDER BY variant.pot_diameter_cm::text)
+                   string_agg(DISTINCT variant_numeric_attribute(variant.id,'pot_diameter_cm')::INTEGER::text,',' ORDER BY variant_numeric_attribute(variant.id,'pot_diameter_cm')::INTEGER::text)
             FROM products product JOIN product_variants variant ON variant.product_id=product.id
             JOIN product_external_ids external ON external.variant_id=variant.id
               AND external.provider='saby' AND external.id_type='code'
