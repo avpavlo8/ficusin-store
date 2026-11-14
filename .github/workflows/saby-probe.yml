@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets]
+        options: [inspect, backup, static-assets, receipts]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -15,7 +15,7 @@ permissions:
   contents: read
 jobs:
   release:
-    if: inputs.operation != 'static-assets'
+    if: inputs.operation != 'static-assets' && inputs.operation != 'receipts'
     runs-on: ubuntu-latest
     timeout-minutes: 22
     steps:
@@ -65,3 +65,19 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
         run: python3 scripts/production-static-assets.py --expected-commit "$EXPECTED_COMMIT" --apply
+  receipts:
+    if: inputs.operation == 'receipts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install 'psycopg[binary]==3.2.13'
+      - run: python3 -m unittest discover -s scripts -p 'test_production_receipt_audit.py'
+      - name: Read production fiscal evidence and YooKassa receipts without writes
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: python3 scripts/production-receipt-audit.py --expected-commit "$EXPECTED_COMMIT"
