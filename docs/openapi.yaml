@@ -8364,18 +8364,10 @@ components:
       type: object
     procurement.PricingSettings:
       properties:
-        avoidRoundHundreds:
-          type: boolean
         defaultExchangeRate:
-          type: number
-        domesticRetailMultiplier:
           type: number
         economics:
           $ref: "#/components/schemas/procurement.PricingEconomics"
-        internationalCostMultiplier:
-          type: number
-        internationalRetailMultiplier:
-          type: number
         marketplaceCostRate:
           type: number
         marketplaceLogisticsPerCm:
@@ -8392,8 +8384,6 @@ components:
           type: number
         retailMarkupMultiplier:
           type: number
-        retailRoundStep:
-          type: integer
         returnLossRate:
           type: number
         roundPrices:
@@ -8561,11 +8551,12 @@ components:
           type: number
       type: object
     procurement.UnitPriceInput:
+      required: [mode]
       properties:
         mode:
           type: string
-          enum: ["", cost, retail]
-          description: Omitted for legacy input; cost uses landed cost, retail uses the exact store price.
+          enum: [cost, retail]
+          description: Explicit calculation mode is required. cost uses landed cost; retail uses the exact store price.
         markupRate:
           anyOf:
             - type: number

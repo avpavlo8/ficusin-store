@@ -152,10 +152,8 @@ func loadPricingSettings(ctx context.Context, db pricingReader) (PricingSettings
 			trolley_fill_ratio::DOUBLE PRECISION, return_loss_rate::DOUBLE PRECISION,
 			marketplace_cost_rate::DOUBLE PRECISION, tax_rate::DOUBLE PRECISION,
 			reserve_rate::DOUBLE PRECISION, package_rub::DOUBLE PRECISION,
-			price_change_threshold::DOUBLE PRECISION, domestic_retail_multiplier::DOUBLE PRECISION,
-			international_cost_multiplier::DOUBLE PRECISION, international_retail_multiplier::DOUBLE PRECISION,
-			marketplace_strike_markup::DOUBLE PRECISION, retail_round_step,
-			avoid_round_hundreds, recommendation_days, target_cover_days,
+			price_change_threshold::DOUBLE PRECISION, marketplace_strike_markup::DOUBLE PRECISION,
+			recommendation_days, target_cover_days,
 			retail_markup_multiplier::DOUBLE PRECISION, round_prices,
 			marketplace_logistics_per_cm::DOUBLE PRECISION, economics
 		FROM procurement_pricing_settings WHERE id = 1
@@ -163,9 +161,7 @@ func loadPricingSettings(ctx context.Context, db pricingReader) (PricingSettings
 		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency, &item.TrolleyCostRUB,
 		&item.TrolleyVolumeCM3, &item.TrolleyFillRatio, &item.ReturnLossRate,
 		&item.MarketplaceCostRate, &item.TaxRate, &item.ReserveRate, &item.PackageRUB,
-		&item.PriceChangeThreshold, &item.DomesticRetailMultiplier,
-		&item.InternationalCostMultiplier, &item.InternationalRetailMultiplier,
-		&item.MarketplaceStrikeMarkup, &item.RetailRoundStep, &item.AvoidRoundHundreds,
+		&item.PriceChangeThreshold, &item.MarketplaceStrikeMarkup,
 		&item.RecommendationDays, &item.TargetCoverDays,
 		&item.RetailMarkupMultiplier, &item.RoundPrices,
 		&item.MarketplaceLogisticsPerCM, &item.Economics,
@@ -186,55 +182,35 @@ func (store *PostgresStore) UpdateSettings(ctx context.Context, actor Actor, inp
 	if err != nil {
 		return PricingSettings{}, ErrInvalidInput
 	}
-	var item PricingSettings
+	var version int
 	err = tx.QueryRow(ctx, `
 		UPDATE procurement_pricing_settings SET
 			version = version + 1, default_exchange_rate = $1, trolley_cost_currency = $2, trolley_cost_rub = $3,
 			trolley_volume_cm3 = $4, trolley_fill_ratio = $5, return_loss_rate = $6,
 			marketplace_cost_rate = $7, tax_rate = $8, reserve_rate = $9, package_rub = $10,
-			price_change_threshold = $11, domestic_retail_multiplier = $12,
-			international_cost_multiplier = $13, international_retail_multiplier = $14,
-			marketplace_strike_markup = $15, retail_round_step = $16,
-			avoid_round_hundreds = $17, recommendation_days = $18, target_cover_days = $19,
-			retail_markup_multiplier = $20, round_prices = $21,
-			marketplace_logistics_per_cm = $22, economics = $24::JSONB,
-			updated_by = $23, updated_at = CURRENT_TIMESTAMP
-		WHERE id = 1 AND version=$25
-		RETURNING version, default_exchange_rate::DOUBLE PRECISION,
-			trolley_cost_currency::DOUBLE PRECISION, trolley_cost_rub::DOUBLE PRECISION, trolley_volume_cm3::DOUBLE PRECISION,
-			trolley_fill_ratio::DOUBLE PRECISION, return_loss_rate::DOUBLE PRECISION,
-			marketplace_cost_rate::DOUBLE PRECISION, tax_rate::DOUBLE PRECISION,
-			reserve_rate::DOUBLE PRECISION, package_rub::DOUBLE PRECISION,
-			price_change_threshold::DOUBLE PRECISION, domestic_retail_multiplier::DOUBLE PRECISION,
-			international_cost_multiplier::DOUBLE PRECISION, international_retail_multiplier::DOUBLE PRECISION,
-			marketplace_strike_markup::DOUBLE PRECISION, retail_round_step,
-			avoid_round_hundreds, recommendation_days, target_cover_days,
-			retail_markup_multiplier::DOUBLE PRECISION, round_prices,
-			marketplace_logistics_per_cm::DOUBLE PRECISION, economics
+			price_change_threshold = $11, marketplace_strike_markup = $12,
+			recommendation_days = $13, target_cover_days = $14,
+			retail_markup_multiplier = $15, round_prices = $16,
+			marketplace_logistics_per_cm = $17, economics = $19::JSONB,
+			updated_by = $18, updated_at = CURRENT_TIMESTAMP
+		WHERE id = 1 AND version=$20
+		RETURNING version
 	`, input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3,
 		input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate,
 		input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold,
-		input.DomesticRetailMultiplier, input.InternationalCostMultiplier,
-		input.InternationalRetailMultiplier, input.MarketplaceStrikeMarkup,
-		input.RetailRoundStep, input.AvoidRoundHundreds, input.RecommendationDays,
+		input.MarketplaceStrikeMarkup, input.RecommendationDays,
 		input.TargetCoverDays, input.RetailMarkupMultiplier, input.RoundPrices,
 		input.MarketplaceLogisticsPerCM, actor.CustomerID, string(economics), input.Version,
-	).Scan(
-		&item.Version, &item.DefaultExchangeRate, &item.TrolleyCostCurrency, &item.TrolleyCostRUB,
-		&item.TrolleyVolumeCM3, &item.TrolleyFillRatio, &item.ReturnLossRate,
-		&item.MarketplaceCostRate, &item.TaxRate, &item.ReserveRate, &item.PackageRUB,
-		&item.PriceChangeThreshold, &item.DomesticRetailMultiplier,
-		&item.InternationalCostMultiplier, &item.InternationalRetailMultiplier,
-		&item.MarketplaceStrikeMarkup, &item.RetailRoundStep, &item.AvoidRoundHundreds,
-		&item.RecommendationDays, &item.TargetCoverDays,
-		&item.RetailMarkupMultiplier, &item.RoundPrices,
-		&item.MarketplaceLogisticsPerCM, &item.Economics,
-	)
+	).Scan(&version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return PricingSettings{}, &UserFacingError{Message: "Настройки уже изменились. Обновите страницу перед сохранением."}
 	}
 	if err != nil {
 		return PricingSettings{}, fmt.Errorf("update procurement settings: %w", err)
+	}
+	item, err := loadPricingSettings(ctx, tx)
+	if err != nil {
+		return PricingSettings{}, err
 	}
 	if err := audit(ctx, tx, actor, "procurement.settings.update", "procurement_settings", 1, item); err != nil {
 		return PricingSettings{}, err
@@ -1030,7 +1006,7 @@ func (store *PostgresStore) CalculateOrder(ctx context.Context, actor Actor, ord
 		}
 		calculated := calculateAllocatedLine(
 			settings, kind, line.unitPrice, input.ExchangeRate,
-			moscowPerUnit[line.id], ryazanPerUnit[line.id], line.height, extraPerUnit[line.id],
+			moscowPerUnit[line.id], ryazanPerUnit[line.id], extraPerUnit[line.id],
 		)
 		// A suppressed small site change must not anchor MP prices to a price
 		// that will never be published. Keep the current profitable site price.

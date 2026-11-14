@@ -135,11 +135,7 @@ func calculatePlan(settings PricingSettings, kind string, input PlanCreate) ([]c
 	ryazan := allocateMoneyPerUnit(costs.DeliveryToRyazanRUB, ryazanWeights)
 	extra := allocateMoneyPerUnit(costs.AdditionalCostsRUB, extraWeights)
 	for i, item := range input.Items {
-		height := 0.
-		if item.HeightCM != nil {
-			height = *item.HeightCM
-		}
-		line := calculateAllocatedLine(settings, kind, item.ExpectedUnitPrice, costs.ExchangeRate, moscow[int64(i)], ryazan[int64(i)], height, extra[int64(i)])
+		line := calculateAllocatedLine(settings, kind, item.ExpectedUnitPrice, costs.ExchangeRate, moscow[int64(i)], ryazan[int64(i)], extra[int64(i)])
 		lines = append(lines, line)
 		preview.Lines = append(preview.Lines, PlanPreviewLine{Purchase: line.PurchaseUnitRUB, Cost: line.UnitCostRUB, Retail: line.ProposedRetailRUB, ChannelQuotes: calculateChannelQuotes(settings, line.UnitCostRUB, line.ProposedRetailRUB, nil)})
 	}

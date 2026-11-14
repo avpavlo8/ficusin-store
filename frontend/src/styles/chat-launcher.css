@@ -78,8 +78,7 @@ body.menu-open .chat-launcher {
 }
 
 @media (max-width: 850px), (max-height: 500px) and (pointer: coarse) {
-  body.quick-chat-open .tab-bar,
-  body.quick-chat-open .install-hint {
+  body.quick-chat-open .tab-bar {
     display: none;
   }
 }

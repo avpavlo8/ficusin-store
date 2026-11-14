@@ -1,7 +1,7 @@
 # Disaster recovery and commerce reconciliation
 
 Owner: Platform
-Last reviewed: 2026-09-07
+Last reviewed: 2026-11-14 (repository procedure; provider backup state not verified)
 
 ## Approved targets
 
@@ -27,10 +27,10 @@ ages are available only to an authenticated administrator at
 
 The probe checks:
 
-- inventory reservations against active order-line reservations;
+- inventory reservations against retained order-line reservation facts;
 - negative or overcommitted inventory;
 - duplicate paid attempts and a provider-paid payment not reflected on its order;
-- recent stock-reservation journal consistency;
+- stock-journal consistency for retained historical reservation records;
 - stale payments, mail outbox entries and exhausted delivery attempts;
 - CDEK manual review/retry state;
 - failed procurement actions and expired processing leases.
@@ -45,14 +45,24 @@ provider identifiers and audit records before a corrective transaction.
 1. Choose a recent encrypted production backup and record its creation time.
 2. Create an isolated PostgreSQL database whose name starts with
    `ficusin_restore_`. Never point the drill at production or staging.
-3. Restore the backup and run:
+3. For a dump/restore check of a source database, run the verifier below against
+   the **empty** target. It creates the dump and restores it itself; do not
+   restore into that target first:
 
    ```bash
    bash scripts/verify-backup-restore.sh "$SOURCE_DATABASE_URL" "$RESTORE_DATABASE_URL"
    ```
 
-4. Start the candidate application against the restored database with every
-   outbound provider credential removed or replaced by a sandbox credential.
+   A saved provider backup is a different input: restore it using the provider's
+   procedure and continue with the application checks. This script accepts two
+   database URLs, not a backup file, and deliberately refuses a populated target.
+   Its CI result does not prove that a provider backup was restored.
+
+4. Start the candidate application against the restored database with
+   `APP_ENV=development`, `CATALOG_PUBLICATION_MODE=disabled` and every outbound
+   provider credential removed. Development disables the production Telegram
+   adapter; keep the application isolated because phone authentication is stubbed
+   without its provider key.
 5. Verify health, readiness, operations health, guest cart and one disposable
    pickup/pay-on-delivery checkout. Confirm that no email, message, charge or
    shipment left the isolated environment.
@@ -82,7 +92,7 @@ issues.
 | SMTP unavailable | order commits; outbox retries and becomes degraded after 15 minutes |
 | CDEK timeout | no duplicate shipment; durable retry, then manual review |
 | process death during procurement | expired lease is detected and safely reclaimable |
-| two buyers take last units | reservations serialize; excess demand is preorder, never oversold |
+| two buyers order the last units | no new stock reservation is created; fresh availability is checked before payment and fulfilment, and a conflict goes to manual resolution rather than an unsupported stock write |
 | PostgreSQL unavailable | readiness and monitor fail; no request runs against half-ready schema |
 
 Run at least one provider failure and one database restore scenario each quarter,

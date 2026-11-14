@@ -253,3 +253,31 @@ func TestProcurementFirstSabyFileRequiresEditAndPassesExactPrices(t *testing.T) 
 		t.Fatal("first price workbook is cacheable")
 	}
 }
+
+type pricingValidationStub struct{ *procurementStub }
+
+func (stub *pricingValidationStub) PreviewUnitPrice(ctx context.Context, input procurement.UnitPriceInput) (procurement.UnitPricePreview, error) {
+	// Invalid requests must be rejected before a store or external adapter is used.
+	return procurement.NewServiceWithExecutor(nil, nil).PreviewUnitPrice(ctx, input)
+}
+func TestProcurementPricingPreviewRequiresExplicitMode(t *testing.T) {
+	for _, body := range []string{`{"costRub":100,"retailRub":200}`, `{"mode":"","costRub":100,"retailRub":200}`, `{"mode":"unknown","costRub":100,"retailRub":200}`} {
+		deps := procurementDependencies(&procurementStub{}, admin.RoleOwner)
+		deps.Procurement = &pricingValidationStub{&procurementStub{}}
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), deps).ServeHTTP(response, adminRequest(http.MethodPost, "/api/v1/admin/procurement/pricing/preview", body))
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("implicit/invalid mode accepted: %s => %d %s", body, response.Code, response.Body.String())
+		}
+	}
+}
+func TestProcurementSettingsRejectRetiredCalculatorKnobs(t *testing.T) {
+	for _, field := range []string{"domesticRetailMultiplier", "internationalCostMultiplier", "internationalRetailMultiplier", "retailRoundStep", "avoidRoundHundreds"} {
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), procurementDependencies(&procurementStub{}, admin.RoleOwner)).ServeHTTP(response,
+			adminRequest(http.MethodPut, "/api/v1/admin/procurement/settings", `{"`+field+`":null}`))
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("retired knob accepted: %s => %d %s", field, response.Code, response.Body.String())
+		}
+	}
+}

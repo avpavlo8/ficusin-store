@@ -121,9 +121,7 @@ export function useStoreUser() {
   return user;
 }
 
-// Keeps the page behind an open panel from scrolling. It toggles a class
-// rather than an inline style because the cart drawer does the same thing:
-// two inline styles would fight over who gets to clear it.
+// Lock page scrolling behind the search or catalogue panel through the responsive body class.
 function useBodyLock(locked: boolean, name: string) {
   useEffect(() => {
     document.body.classList.toggle(name, locked);
@@ -131,28 +129,20 @@ function useBodyLock(locked: boolean, name: string) {
   }, [locked, name]);
 }
 
-export function AccountMenu({
-  user,
-  iconOnly = false,
-}: {
-  user: StoreUser | null;
-  iconOnly?: boolean;
-}) {
+export function AccountMenu({ user }: { user: StoreUser | null }) {
   const staff =
     user?.adminRole === "manager" ||
     user?.adminRole === "administrator" ||
     user?.adminRole === "owner";
-  const name = user?.fullName.trim().split(/\s+/)[0] || "Личный кабинет";
   return (
     <div className="account-access account-menu">
       <a
-        className={iconOnly ? "account-button icon-only" : "account-button"}
+        className="account-button icon-only"
         href={user ? "/account" : "/login?returnTo=%2Faccount"}
         aria-label="Личный кабинет"
         title={user ? "Личный кабинет" : "Войти в личный кабинет"}
       >
         {user?.avatarUpdatedAt ? <AccountBadge user={user} /> : <Icon path={icons.person} />}{" "}
-        {!iconOnly && <span>{name}</span>}
       </a>
       {staff && (
         <a
@@ -506,7 +496,6 @@ export function StoreHeader({
   onSearch,
   onSearchClose,
   showTabBar = true,
-  homeNavigation = true,
   catalogMenuItems = [],
   plantMenuItems = [],
   onHomeCategoryPick,
@@ -518,7 +507,6 @@ export function StoreHeader({
   onSearch?: (value: string) => void;
   onSearchClose?: () => void;
   showTabBar?: boolean;
-  homeNavigation?: boolean;
   catalogMenuItems?: HeaderMenuItem[];
   plantMenuItems?: HeaderMenuItem[];
   onHomeCategoryPick?: (id: number) => void;
@@ -600,8 +588,7 @@ export function StoreHeader({
     };
   }, []);
   useEffect(() => {
-    if ((!homeNavigation && !showTabBar) || catalogMenuItems.length || plantMenuItems.length)
-      return;
+    if (catalogMenuItems.length || plantMenuItems.length) return;
     sharedAPIJSON<{
       categories?: Array<{
         id: number;
@@ -649,7 +636,7 @@ export function StoreHeader({
         setFallbackMenus({ catalog: [], plants: [] });
         setMenuState("error");
       });
-  }, [homeNavigation, showTabBar, catalogMenuItems.length, plantMenuItems.length, menuReload]);
+  }, [catalogMenuItems.length, plantMenuItems.length, menuReload]);
 
   useEffect(() => {
     headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => {
@@ -699,39 +686,30 @@ export function StoreHeader({
           <BrandLogo decorative />
         </a>
         <nav className="desktop-nav">
-          {homeNavigation ? (
-            <>
-              <details
-                className="header-dropdown"
-                onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}
-              >
-                <summary>
-                  Каталог <span>⌄</span>
-                </summary>
-                <div>
-                  <a href="/#catalog">
-                    Весь каталог<span>→</span>
-                  </a>
-                  {resolvedCatalogMenuItems.map((item) => (
-                    <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />
-                  ))}
-                  <a href="/discounts">
-                    Растения со скидкой<span>→</span>
-                  </a>
-                </div>
-              </details>
+          <>
+            <details
+              className="header-dropdown"
+              onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}
+            >
+              <summary>
+                Каталог <span>⌄</span>
+              </summary>
+              <div>
+                <a href="/#catalog">
+                  Весь каталог<span>→</span>
+                </a>
+                {resolvedCatalogMenuItems.map((item) => (
+                  <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />
+                ))}
+                <a href="/discounts">
+                  Растения со скидкой<span>→</span>
+                </a>
+              </div>
+            </details>
 
-              <a href="/delivery-and-returns">Доставка и оплата</a>
-              <AboutMenu />
-            </>
-          ) : (
-            <>
-              <a href="/#catalog">Каталог</a>
-              <a href="/favorites">Избранное</a>
-              <a href="/delivery-and-returns">Доставка и возврат</a>
-              <AboutMenu />
-            </>
-          )}
+            <a href="/delivery-and-returns">Доставка и оплата</a>
+            <AboutMenu />
+          </>
         </nav>
         <div className="header-actions">
           <CatalogSearch value={query} onChange={onQueryChange} onSearch={search} />
@@ -753,7 +731,7 @@ export function StoreHeader({
             </span>
             {favorites > 0 && <b>{favorites}</b>}
           </a>
-          <AccountMenu user={user} iconOnly />
+          <AccountMenu user={user} />
           <a className="cart-button" href="/cart" aria-label={cartLabel}>
             <span>
               <Icon path={icons.bag} />

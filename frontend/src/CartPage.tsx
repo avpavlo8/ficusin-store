@@ -50,7 +50,6 @@ export default function CartPage({ checkout = false }: { checkout?: boolean }) {
     >
       <StoreHeader
         cartCount={Object.values(cart).reduce((sum, value) => sum + value, 0)}
-        homeNavigation
         catalogMenuItems={headerMenus.catalog}
         plantMenuItems={headerMenus.plants}
         onHomeCategoryPick={(id) => {

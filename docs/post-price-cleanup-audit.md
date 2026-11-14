@@ -490,3 +490,94 @@ unit-тестов, strict TypeScript, lint/format/build/budget. Удалён 21 
 CSS-селектор, оставшиеся 1238 классов прошли проверку. Полный набор других
 browser-спецификаций в этой итерации не перезапускался. 48 Python-тестов прошли.
 Production не изменялась; изменения сохранены только в ветке очистки.
+
+## Очистка настроек и постоянных UI-режимов после `788a885`
+
+### Пять старых настроек
+
+Проверка включала действующие unified=true и false, UI калькуляторы, workers,
+preview, охранные проверки и сохранённые snapshot/readback paths. Пять параметров
+имели только цепь DTO → validation → load/store без эффекта на расчёт:
+domesticRetailMultiplier, internationalCostMultiplier, internationalRetailMultiplier,
+retailRoundStep, avoidRoundHundreds. Удалены Go/TS поля, defaults/валидация,
+проекции/сохранение, неиспользуемые test setup поля и schema properties.
+
+Миграция 219 — `20261114_archive_unused_procurement_settings.sql`. Под lock она
+сохраняет пять точных SQL-значений, settings_id, version, updated_by, updated_at
+в detached `legacy_archive.procurement_retired_pricing_settings`, затем удаляет
+колонки без CASCADE. Нет bump версии/времени или переписывания существующих
+calculation_settings, channel_quotes, unified_price_snapshot, action payload,
+claim/receipt IDs. В этих historical JSON не применяется strict PricingSettings
+декодирование; receipts читают собственный payload. Следовательно, контракт
+возобновления уже подготовленной операции сохраняет те же входные байты/версии.
+
+PostgreSQL-тест TestUnusedProcurementSettingsArchivePreservesPendingHistoryOnDatabase
+исполняет actual SQL на клонах рабочих таблиц: existing/empty/dependent view.
+Проверены exact numeric/bool, identity/version/author/time, все остальные поля
+настроек и целые строки исторических orders/quotes/batches/unknown receipts;
+archive не имеет FK, зависимость прерывает изменение атомарно.
+TestPricingSettingsRoundTripAndVersionGuardOnDatabase исполняет текущие store/service
+в обоих unified modes: save/readback, audit, stale-version rejection и расчёт
+по сохранённым настройкам. Оба теста включены в существующие CI-шаги.
+
+Сохранены реальные retailMarkupMultiplier/roundPrices, текущие расходы/налог/
+упаковка/возвраты/logistics и Economics.Unified. TrolleyVolume/Fill/CostRUB
+читаются frontend калькуляторами и планом; отсутствие Go arithmetic reader
+не делает их мёртвыми. trolleyCostCurrency и рабочая альтернативная формула
+не удалялись. Поля старых предложенных цен OrderLine и финансовая история
+также остаются; переписывание 0 в NULL не выдавалось за удаление мёртвого кода.
+
+### Прочие удалённые остатки
+
+- У UnitPriceInput снята первая версия preview без mode, вызывавшаяся только
+  старым unit-тестом. Два текущих frontend caller передают cost/retail.
+  Отсутствие/пустой/неизвестный mode возвращают 400 до store; явные cost и retail
+  сохраняют разный смысл (наценка себестоимости против переноса вклада цены).
+  Новый unit проверяет оба смысла и fallback; Browser проверяет wire mode
+  cost/cost/retail. API описывает required enum и проверяет его в checker.
+  Старые editor draft priceMode без режима сюда не относятся и не менялись.
+- calculateAllocatedLine.heightCM не читался в теле; параметр и лишние
+  передающие locals убраны. Рабочее распределение логистики/коробки сохранено.
+- NomenclatureCandidate totalSales/sabySales/wbSales/ozonSales/siteSales
+  никогда не заполнялись ни SearchNomenclature, ни SearchLinkableNomenclature.
+  У четырёх UI consumer нет чтения этих полей, включая computed keys/spreads.
+  Удалены пять Go/TS полей и одна ложная search fixture. Соседняя строка
+  «Продано» принадлежит текущему Recommendation и оставлена вместе со всеми
+  реальными продажами/расчётом рекомендаций.
+- JSX callsite audit подтвердил InstallHint.inline=true у обоих caller,
+  AccountMenu.iconOnly=true у единственного caller и homeNavigation=true у
+  всех страниц. Убраны три режима, плавающая install подсказка, текстовая
+  ветка аккаунта и false menu/fetch ветка. Девять эксклюзивных CSS-селекторов
+  удалены; PWA callbacks, first-visit/account entry, header accessibility и
+  текущее меню каталога сохранены. Generic label/title widget props не
+  специализировались ради косметического сокращения.
+
+В операционных документах исправлены устаревшие утверждения о месте ключей
+СБИС и отсутствии Go workers, автоматических резервах и S3. Restore-скрипт
+требует пустую цель и сам выполняет dump/restore — инструкция больше не
+предлагает запускать его после ручного восстановления. Provider restore и CI
+roundtrip разделены; локальная проверка приложения описывает изолированное
+окружение. Новых доказанных удалений jobs/CLI inputs не найдено.
+
+### Проверки текущего изменения
+
+Go test/vet/build и cmd-достижимость прошли без новых кандидатов. Целевые
+PG archive/roundtrip tests и закупочные/ценовые/receipt/shipping сценарии
+на схеме 219 прошли, как и isolated WB/Ozon/СБИС editor publishers и preview.
+Новый API на новой пустой БД применил 219 миграций; readiness/главная/каталог
+вернули 200, пять старых колонок отсутствуют. На отдельной seed-копии CRM
+acceptance прошёл через настоящий API для owner/manager в 1440/390 px,
+с сохранением галереи и границ прав. OpenAPI: 236 операций / 91 схема.
+Production и внешние операции в этой итерации не запускались.
+
+Финальный frontend результат: 30/30 browser (7 PWA, 8 pricing, 15 navigation),
+76 unit-тестов, strict TypeScript, lint/format/build/budget; 1237 CSS-классов
+без подтверждённых мёртвых селекторов. 48 Python-тестов прошли. Это выбранные
+затронутые browser-сценарии, а не повторный запуск всего e2e набора.
+
+Промежуточные migration/OpenAPI/navigation запуски столкнулись с локальным
+iCloud eviction: неизменённые файлы читались как EOF. Четыре dataless-файла
+восстановлены атомарно из HEAD, хэши всех 35 изменённых/новых файлов проверены
+и сохранены. После этого весь выбранный archive/settings PG-набор, OpenAPI
+и 15 navigation-сценариев прошли. Исходники и тесты ради этого сбоя
+не ослаблялись; production не затрагивалась.

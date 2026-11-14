@@ -21,7 +21,7 @@ func TestPlanCalculationReusesInvoicePricingAndAllocatesAllDelivery(t *testing.T
 		quantity := float64(input.Items[i].Quantity)
 		moscow += line.TrolleyDeliveryUnitRUB * quantity
 		ryazan += line.RyazanDeliveryUnitRUB * quantity
-		want := calculateAllocatedLine(settings, KindInternational, input.Items[i].ExpectedUnitPrice, 100, line.TrolleyDeliveryUnitRUB, line.RyazanDeliveryUnitRUB, height, line.AdditionalPurchaseUnitRUB)
+		want := calculateAllocatedLine(settings, KindInternational, input.Items[i].ExpectedUnitPrice, 100, line.TrolleyDeliveryUnitRUB, line.RyazanDeliveryUnitRUB, line.AdditionalPurchaseUnitRUB)
 		if line != want || preview.Lines[i].Retail != want.ProposedRetailRUB {
 			t.Fatalf("pricing mismatch at %d", i)
 		}

@@ -149,7 +149,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
-    settings: { economics:{monthlyFixedCostsRub:300000,channels:{}},version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, domesticRetailMultiplier: 1, internationalCostMultiplier: 1, internationalRetailMultiplier: 1, marketplaceStrikeMarkup: 0, retailRoundStep: 1, avoidRoundHundreds: false, recommendationDays: 30, targetCoverDays: 30, retailMarkupMultiplier: 2.1, roundPrices: true },
+    settings: { economics:{monthlyFixedCostsRub:300000,channels:{}},version: 1, defaultExchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 63700, trolleyVolumeCm3: 1, trolleyFillRatio: 1, returnLossRate: 0, marketplaceCostRate: 0, taxRate: 0, reserveRate: 0, packageRub: 0, priceChangeThreshold: .1, marketplaceStrikeMarkup: 0, recommendationDays: 30, targetCoverDays: 30, retailMarkupMultiplier: 2.1, roundPrices: true },
     suppliers: [{ id: 1, name: "Тестовый поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }, { id: 2, name: "Другой поставщик", kind: "domestic", countryCode: "RU", defaultCurrency: "RUB", active: true, createdAt: "2026-08-10T12:00:00Z" }],
     orders: [{ id: 4, supplierId: 1, supplierName: "Тестовый поставщик", orderNumber: "TEST-100", documentNumber: "", sourceKind: "payment_invoice", currency: options.currency || "RUB", status: "draft", lines: 5, units: 20, total: 10000, unmatched: 2, createdAt: "2026-08-10T12:00:00Z" }],
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
@@ -372,7 +372,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       }
       if (path === "/api/v1/admin/procurement/nomenclature/balances") return json({ items: [{ sabyId: "TEST-SABY-1", balance: 2, defaults: sizeDefaults ? [{category:"Растения",article:"SIZE-SMALL",potDiameterCm:12,heightCm:35,unitPrice:5.3,unitsPerPackage:6},{category:"Растения",article:"SIZE-LARGE",potDiameterCm:17,heightCm:70,unitPrice:12.5,unitsPerPackage:8}] : [], seenAt: "2026-08-10T12:00:00Z" }, { sabyId: "TEST-SABY-3", balance: 4, seenAt: "2026-08-10T12:00:00Z" }] });
       if (path === "/api/v1/admin/procurement/nomenclature") {
-        return json({ items: [{ sabyId: "TEST-SABY-BONSAI", code: "X616872557", article: "BONSAI", name: "Bonsai Zantaxilum D15", balance: 3, price: 2190, totalSales: 7, sabySales: 1, wbSales: 3, ozonSales: 2, siteSales: 1, supplierLinked: true }] });
+        return json({ items: [{ sabyId: "TEST-SABY-BONSAI", code: "X616872557", article: "BONSAI", name: "Bonsai Zantaxilum D15", balance: 3, price: 2190, supplierLinked: true }] });
       }
       if (path === "/api/v1/admin/procurement/products") {
         return json({ items: [{ variantId: 22, sabyId: "", sabyCode: "PLANT-22", sabyArticle: "", name: "Новый товар без кода СБИС", balance: 0, currentPriceRub: 0, supplierId: 1, supplierName: "Тестовый поставщик", supplierArticle: "NL-22", availabilityStatus: "unknown", checkAfter: "", hollandArticle: "", wbVendorCode: "WB-22", ozonOfferId: "OZON-22", wbArticles: ["WB-22"], wbLegacyArticles: [], ozonArticles: ["OZON-22"], ozonLegacyArticles: [], sabySales: 0, siteSales: 0, wbSales: 1, ozonSales: 2, minimumOrderQty: 1, orderMultiple: 6, aliases: [], aliasIds: [] }] });
@@ -1191,11 +1191,13 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await calc.getByLabel('Ширина коробки, см').fill('15');
  await calc.getByLabel('Высота коробки, см').fill('50');
  await expect.poll(lastInput).toBeTruthy();
+ await expect.poll(async()=>(await lastInput())?.mode).toBe('cost');
  await expect(calc.getByRole('combobox')).toHaveCount(0);
  await calc.getByLabel('Себестоимость, ₽').fill('1000,25');
  await expect(calc.getByLabel('Диаметр горшка, см')).toHaveCount(0);
  await calc.getByLabel('Наценка, %').fill('75');
  await expect.poll(async()=>(await lastInput())?.costRub).toBe(1000.25);
+ await expect.poll(async()=>(await lastInput())?.mode).toBe('cost');
  await expect.poll(async()=>(await lastInput())?.markupRate).toBe(.75);
  await expect(calc.getByLabel('Цена в магазине, ₽')).toHaveValue('1490');
  await expect(calc.getByLabel('Цена WB, ₽')).toHaveCount(0);
@@ -1204,6 +1206,7 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await expect(calc.locator('aside')).toContainText('Ozon');
  await calc.getByLabel('Цена в магазине, ₽').fill('2000,37');
  await expect.poll(async()=>(await lastInput())?.retailRub).toBe(2000.37);
+ await expect.poll(async()=>(await lastInput())?.mode).toBe('retail');
  expect((await lastInput())?.costRub).toBeUndefined();
  await expect(calc.getByText(/остаётся .* с продажи/)).toHaveCount(0);
  await expect(calc.getByLabel('Наценка, %')).toHaveCount(0);

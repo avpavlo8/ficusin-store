@@ -823,8 +823,7 @@ body.account-chat-mobile .account-chat-title,
 body.account-chat-mobile .store-header,
 body.account-chat-mobile .store-footer,
 body.account-chat-mobile .chat-launcher,
-body.account-chat-mobile .tab-bar,
-body.account-chat-mobile .install-hint {
+body.account-chat-mobile .tab-bar {
   display: none;
 }
 body.account-chat-mobile .account-chat-view {

@@ -984,7 +984,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           onQueryChange={updateSearch}
           onSearch={submitSearch}
           onSearchClose={cancelSearch}
-          homeNavigation
           onHomeCategoryPick={
             !landing
               ? (id) => {
@@ -1009,7 +1008,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
         onQueryChange={updateSearch}
         onSearch={submitSearch}
         onSearchClose={cancelSearch}
-        homeNavigation
         onHomeCategoryPick={
           !landing
             ? (id) => {

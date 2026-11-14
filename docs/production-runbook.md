@@ -1,7 +1,7 @@
 # Production release and incident runbook
 
 Owner: Platform
-Last reviewed: 2026-11-13
+Last reviewed: 2026-11-14 (repository behavior; production configuration not inspected)
 
 ## Release gate
 
@@ -65,7 +65,8 @@ channel; GitHub notifications remain mandatory as the fallback.
 Every pull request runs two complementary paths against an ephemeral database:
 
 - package-level order and payment lifecycle tests prove idempotency, immutable
-  order lines, stock reservation/release, consent, outbox and refund state;
+  order lines, checkout without new reservations, historical stock/shipment
+  safeguards, consent, outbox and refund state;
 - the production Docker image test exercises guest cart and a safe
   pickup/pay-on-delivery order over HTTP and rejects a forged online-payment
   request. No real payment or shipment provider credentials are supplied.

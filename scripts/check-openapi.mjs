@@ -71,6 +71,9 @@ for (const [name, retired] of [["admin.ProductCreate", "image"], ["admin.Product
   assert.throws(() => checkCurrentInputFields(name, obsolete), /Request fields drifted:/);
   assert.throws(() => checkCurrentInputFields(name, { ...schema, additionalProperties: true }), /Unknown request fields must be rejected:/);
 }
+const previewInput = spec.components.schemas["procurement.UnitPriceInput"];
+assert(previewInput.required?.includes("mode"), "Price preview requires an explicit calculation mode");
+assert.deepEqual([...previewInput.properties.mode.enum].sort(), ["cost", "retail"], "Price preview must not advertise implicit legacy calculation");
 const order = spec.paths["/orders"].post.requestBody.content["application/json"].schema;
 assert(order.required.includes("consent") && order.required.includes("offerAccepted"), "Independent checkout confirmations required");
 const refund = spec.paths["/admin/orders/{id}/refund"].post;

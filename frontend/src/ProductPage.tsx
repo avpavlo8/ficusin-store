@@ -457,7 +457,6 @@ export default function ProductPage({ slug }: { slug: string }) {
       <StoreHeader
         cartCount={cartCount}
         favoritesCount={favorites.size}
-        homeNavigation
         catalogMenuItems={headerMenus.catalog}
         plantMenuItems={headerMenus.plants}
       />

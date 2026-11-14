@@ -318,15 +318,14 @@ func validatePricingSettings(input PricingSettings) (PricingSettings, error) {
 	}
 	if input.DefaultExchangeRate <= 0 || input.TrolleyCostCurrency < 0 || input.TrolleyCostRUB < 0 || input.TrolleyVolumeCM3 <= 0 ||
 		input.TrolleyFillRatio <= 0 || input.TrolleyFillRatio > 1 || input.PackageRUB < 0 ||
-		input.PriceChangeThreshold < 0 || input.PriceChangeThreshold >= 1 || input.RetailRoundStep <= 0 ||
+		input.PriceChangeThreshold < 0 || input.PriceChangeThreshold >= 1 ||
 		input.RecommendationDays < 7 || input.RecommendationDays > 365 || input.TargetCoverDays < 1 || input.TargetCoverDays > 365 ||
 		!validRate(input.ReturnLossRate) || !validRate(input.MarketplaceCostRate) || !validRate(input.TaxRate) ||
 		!validRate(input.ReserveRate) || !validRate(input.MarketplaceStrikeMarkup) ||
-		input.DomesticRetailMultiplier <= 0 || input.InternationalCostMultiplier <= 0 || input.InternationalRetailMultiplier <= 0 ||
 		input.RetailMarkupMultiplier <= 0 {
 		return PricingSettings{}, ErrInvalidInput
 	}
-	for _, v := range []float64{input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3, input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate, input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold, input.DomesticRetailMultiplier, input.InternationalCostMultiplier, input.InternationalRetailMultiplier, input.MarketplaceStrikeMarkup, input.RetailMarkupMultiplier, input.MarketplaceLogisticsPerCM, input.Economics.MonthlyFixedCostsRUB} {
+	for _, v := range []float64{input.DefaultExchangeRate, input.TrolleyCostCurrency, input.TrolleyCostRUB, input.TrolleyVolumeCM3, input.TrolleyFillRatio, input.ReturnLossRate, input.MarketplaceCostRate, input.TaxRate, input.ReserveRate, input.PackageRUB, input.PriceChangeThreshold, input.MarketplaceStrikeMarkup, input.RetailMarkupMultiplier, input.MarketplaceLogisticsPerCM, input.Economics.MonthlyFixedCostsRUB} {
 		if !finiteNonnegative(v) || v > 1e12 {
 			return PricingSettings{}, ErrInvalidInput
 		}

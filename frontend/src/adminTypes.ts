@@ -386,12 +386,7 @@ export type ProcurementSettings = {
   reserveRate: number;
   packageRub: number;
   priceChangeThreshold: number;
-  domesticRetailMultiplier: number;
-  internationalCostMultiplier: number;
-  internationalRetailMultiplier: number;
   marketplaceStrikeMarkup: number;
-  retailRoundStep: number;
-  avoidRoundHundreds: boolean;
   recommendationDays: number;
   targetCoverDays: number;
   retailMarkupMultiplier: number;
@@ -447,11 +442,6 @@ export type NomenclatureCandidate = {
   name: string;
   balance: number;
   price: number;
-  totalSales: number;
-  sabySales: number;
-  wbSales: number;
-  ozonSales: number;
-  siteSales: number;
   supplierLinked: boolean;
 };
 
