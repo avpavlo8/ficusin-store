@@ -23,7 +23,15 @@ MODES = {'full_payment', 'full_prepayment', 'partial_prepayment', 'advance', 'pa
 STATUSES = {'pending', 'waiting_for_capture', 'succeeded', 'canceled', 'cancelled', 'paid', 'failed', 'manual_review', 'unknown', 'ready', 'new', 'confirmed', 'assembling', 'shipped', 'completed', 'offered', 'expired'}
 QUERY = """
 WITH facts AS (
- SELECT p.id,p.provider_payment_id,ROUND(p.amount*100)::bigint amount_minor,
+ SELECT p.id,p.order_id,o.order_number,p.shipment_offer_id,so.status shipment_status,p.provider_payment_id,ROUND(p.amount*100)::bigint amount_minor,
+ p.paid_at,o.updated_at order_updated_at,ROUND(o.total*100)::bigint order_total_minor,p.request_payload->'Items' fiscal_items,
+ (SELECT MAX(a.created_at) FROM admin_audit_log a WHERE a.entity_type='order' AND a.entity_id=o.id::text AND a.action='order.status.update' AND a.after_data->>'status'='completed' AND a.before_data->>'status' IS DISTINCT FROM 'completed') completed_audit_at,
+ (SELECT COUNT(*) FROM payment_refunds r WHERE r.payment_id=p.id) refunds_count,
+ (SELECT COUNT(*) FROM payment_refunds r WHERE r.payment_id=p.id AND (r.status='pending' OR r.needs_review)) refunds_pending_or_review,
+ ROUND(COALESCE((SELECT SUM(r.amount) FROM payment_refunds r WHERE r.payment_id=p.id AND r.status='succeeded'),0)*100)::bigint refunded_minor,
+ (SELECT COALESCE(jsonb_agg(jsonb_build_object('status',r.status,'needsReview',r.needs_review,'amountMinor',ROUND(r.amount*100)::bigint)), '[]'::jsonb) FROM payment_refunds r WHERE r.payment_id=p.id) refunds,
+ ROUND((COALESCE((SELECT SUM(q.amount) FROM payments q WHERE q.order_id=o.id AND q.status='paid'),0)-COALESCE((SELECT SUM(r.amount) FROM payment_refunds r WHERE r.order_id=o.id AND r.status='succeeded'),0))*100)::bigint order_net_paid_minor,
+ sr.payment_id IS NOT NULL settlement_row_exists,
  p.receipt_status,p.receipt_checked_at,p.created_at,COALESCE(so.status,o.status) effective_status,
  p.request_payload->'ReceiptEnabled' receipt_enabled,
  (p.request_payload IS NULL) snapshot_absent,
@@ -177,6 +185,7 @@ def amount_matches(payment, expected):
 def reconcile(rows, reader):
     groups = collections.Counter()
     warnings = collections.Counter()
+    real_settlement_records=[]
     for row in rows:
         payment_id = row['provider_payment_id']
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', payment_id):
@@ -196,13 +205,36 @@ def reconcile(rows, reader):
                         providerReceipt=label(payment.get('receipt_registration')), amountMatches=amount_matches(payment, row['amount_minor']))
         if payment is not None or meta.get('httpStatus') == 404:
             info['providerReceipts'] = receipt_list(reader, payment_id)
+        if row['settlement_warning'] and info.get('providerTest') is False and row.get('order_id') is not None:
+            number=row['order_number']
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',number):
+                raise guards.PreflightError('invalid_order_reference')
+            items=row['fiscal_items'] or []
+            fiscal_sum=sum(Decimal(str(item.get('Price',0)))*int(item.get('Quantity',0))*100 for item in items)
+            record={'paymentId':int(row['id']),'orderId':int(row['order_id']),'orderNumber':number,
+                'amountMinor':int(row['amount_minor']),'currency':payment.get('amount',{}).get('currency'),
+                'netPaymentMinor':int(row['amount_minor'])-int(row['refunded_minor']),
+                'orderTotalMinor':int(row['order_total_minor']),'orderNetPaidMinor':int(row['order_net_paid_minor']),
+                'orderDueMinor':max(int(row['order_total_minor'])-int(row['order_net_paid_minor']),0),
+                'orderOverpaymentMinor':max(int(row['order_net_paid_minor'])-int(row['order_total_minor']),0),
+                'shipmentOfferId':row['shipment_offer_id'],'shipmentStatus':label(row['shipment_status']),
+                'refundCount':int(row['refunds_count']),'refundPendingOrReview':int(row['refunds_pending_or_review']),
+                'refundedMinor':int(row['refunded_minor']),'refunds':row['refunds'],
+                'settlementRowExists':bool(row['settlement_row_exists']),
+                'originalFiscalItemCount':len(items),'originalFiscalTotalMinor':int(fiscal_sum),
+                'originalFiscalTotalMatchesAmount':fiscal_sum==row['amount_minor'],
+                **info}
+            for key in ('paid_at','completed_audit_at','order_updated_at'):
+                record[key]=row[key].isoformat() if row[key] is not None else None
+            record['providerCapturedAt']=payment.get('captured_at')
+            real_settlement_records.append(record)
         for group, key in (('income', 'income_warning'), ('settlement', 'settlement_warning')):
             if row[key]:
                 warnings[group] += 1
                 groups[json.dumps({'warning': group, **info}, sort_keys=True)] += 1
     return {'ok': True, 'readOnly': True, 'databaseWrites': False, 'providerWrites': False, 'paymentCount': len(rows),
             'ownerConfirmedLegacyBackfillMatches': sum(1 for row in rows if row.get('snapshot_absent') is True and row['effective_status'] == 'cancelled' and row['created_at'].strftime('%Y-%m') == '2026-08' and row['receipt_status'] == '' and row['settlement_status'] == ''),
-            'warnings': dict(warnings), 'groups': [{**json.loads(key), 'count': count} for key, count in sorted(groups.items())]}
+            'realSettlementRecords': real_settlement_records, 'warnings': dict(warnings), 'groups': [{**json.loads(key), 'count': count} for key, count in sorted(groups.items())]}
 
 
 def main():
