@@ -19,7 +19,7 @@ func fixture(t *testing.T) (approved, integration.SettlementReceiptRequest) {
 	a := scope[0]
 	client := integration.NewYooKassaClient("fixture", "fixture", 0, 1)
 	original := integration.PaymentRequest{Email: "fixture@example.invalid", Items: []integration.PaymentItem{{Name: "Fixture", Price: 4620, Quantity: 1, VATCode: 1, Subject: "commodity", Mode: "full_prepayment"}}}
-	req, err := client.PrepareSettlementReceipt(a.Provider, "fixture-stable-key", original, original.Items)
+	req, err := (&guardedProvider{YooKassaClient: client}).PrepareSettlementReceipt(a.Provider, "fixture-stable-key", original, original.Items)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,6 +37,26 @@ func TestScopeIsExactlyOwnerApproved(t *testing.T) {
 	}
 	if len(scope) != 7 || total != 5704600 {
 		t.Fatal("approved scope changed")
+	}
+}
+
+func TestExactNumericAndLegacyStringQuantities(t *testing.T) {
+	for _, raw := range []string{`{"quantity":1}`, `{"quantity":"1.000"}`} {
+		var got item
+		if err := json.Unmarshal([]byte(raw), &got); err != nil || !equalDecimal(string(got.Quantity), "1") {
+			t.Fatalf("quantity decode: %v", err)
+		}
+	}
+	for _, raw := range []string{`{"quantity":null}`, `{"quantity":true}`, `{"quantity":"not-a-number"}`} {
+		var got item
+		if json.Unmarshal([]byte(raw), &got) == nil {
+			t.Fatal("invalid quantity accepted")
+		}
+	}
+	_, req := fixture(t)
+	body := jsonBody(req.Body)
+	if body["items"].([]any)[0].(map[string]any)["measure"] != "piece" {
+		t.Fatal("counted unit missing from durable request")
 	}
 }
 func TestBodyRejectsWrongPaymentAmountAndCashSettlement(t *testing.T) {

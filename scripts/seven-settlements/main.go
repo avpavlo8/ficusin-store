@@ -40,12 +40,39 @@ var scope = []approved{
 }
 
 type amount struct{ Value, Currency string }
+
+// YooKassa returns numeric quantities while older requests used strings.
+// Keep the exact decimal representation; never round fiscal quantities.
+type decimal string
+
+func (d *decimal) UnmarshalJSON(raw []byte) error {
+	var value string
+	if len(raw) > 0 && raw[0] == '"' {
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return err
+		}
+	} else {
+		var number json.Number
+		if err := json.Unmarshal(raw, &number); err != nil {
+			return err
+		}
+		value = number.String()
+	}
+	if _, ok := new(big.Rat).SetString(value); !ok {
+		return errors.New("invalid_decimal_quantity")
+	}
+	*d = decimal(value)
+	return nil
+}
+
 type item struct {
-	Description, Quantity string
-	Amount                amount
-	VAT                   int    `json:"vat_code"`
-	Mode                  string `json:"payment_mode"`
-	Subject               string `json:"payment_subject"`
+	Description string
+	Quantity    decimal
+	Amount      amount
+	VAT         int    `json:"vat_code"`
+	Mode        string `json:"payment_mode"`
+	Subject     string `json:"payment_subject"`
+	Measure     string `json:"measure"`
 }
 type receipt struct {
 	ID           string `json:"id"`
@@ -82,7 +109,7 @@ func matchingItems(a, b []item, mode string) bool {
 		return false
 	}
 	for i := range a {
-		if a[i].Description != b[i].Description || a[i].VAT != b[i].VAT || a[i].Subject != b[i].Subject || a[i].Mode != mode || b[i].Mode != "full_payment" || a[i].Amount.Currency != "RUB" || b[i].Amount.Currency != "RUB" || !equalDecimal(a[i].Amount.Value, b[i].Amount.Value) || !equalDecimal(a[i].Quantity, b[i].Quantity) {
+		if a[i].Description != b[i].Description || a[i].VAT != b[i].VAT || a[i].Subject != b[i].Subject || a[i].Mode != mode || b[i].Mode != "full_payment" || a[i].Amount.Currency != "RUB" || b[i].Amount.Currency != "RUB" || !equalDecimal(a[i].Amount.Value, b[i].Amount.Value) || !equalDecimal(string(a[i].Quantity), string(b[i].Quantity)) || (a[i].Measure != "" && a[i].Measure != b[i].Measure) {
 			return false
 		}
 	}
@@ -168,7 +195,7 @@ func checkBody(req integration.SettlementReceiptRequest, a approved) ([]item, er
 	sum := int64(0)
 	for _, it := range body.Items {
 		unit, e := money.Parse(it.Amount.Value)
-		q, ok := new(big.Rat).SetString(it.Quantity)
+		q, ok := new(big.Rat).SetString(string(it.Quantity))
 		if e != nil || unit <= 0 || !ok || !q.IsInt() || !q.Num().IsInt64() || q.Num().Int64() <= 0 || q.Num().Int64() > 10000 || it.Amount.Currency != "RUB" || it.VAT <= 0 || it.Mode != "full_payment" || it.Subject == "" {
 			return nil, errors.New("receipt_item_invalid")
 		}
@@ -178,6 +205,19 @@ func checkBody(req integration.SettlementReceiptRequest, a approved) ([]item, er
 		return nil, errors.New("receipt_items_amount_mismatch")
 	}
 	return body.Items, nil
+}
+
+func (p *guardedProvider) PrepareSettlementReceipt(id, key string, original integration.PaymentRequest, items []integration.PaymentItem) (integration.SettlementReceiptRequest, error) {
+	req, err := p.YooKassaClient.PrepareSettlementReceipt(id, key, original, items)
+	if err != nil {
+		return req, err
+	}
+	// These historical snapshots use positive integer counts for goods and
+	// delivery. Explicitly preserve that unit in the durable request (FFD 1.2).
+	for _, line := range req.Body["items"].([]map[string]any) {
+		line["measure"] = "piece"
+	}
+	return req, nil
 }
 func (p *guardedProvider) verify(ctx context.Context, req integration.SettlementReceiptRequest) (*receipt, error) {
 	a, ok := p.allowed[req.PaymentID]
