@@ -10,6 +10,33 @@ info:
 servers:
   - url: /api/v1
 paths:
+  /admin/catalog-editor/settings:
+    get:
+      operationId: get_admin_catalog_editor_settings
+      x-source: backend/internal/httpapi/settings_editor.go#editorSettingsHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [products.read]
+      description: Read only the packaging season used for automatic marketplace pricing in the product editor. Does not expose or change other runtime settings.
+      responses:
+        "200":
+          description: Current shared packaging season.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [values]
+                additionalProperties: false
+                properties:
+                  values:
+                    type: object
+                    required: [cdek.packaging_season]
+                    additionalProperties: false
+                    properties:
+                      cdek.packaging_season:
+                        type: string
+                        enum: [summer, winter]
+        default: { $ref: "#/components/responses/ValidationError" }
   /staging/media/{key}:
     get:
       operationId: get_staging_media_key
@@ -3999,6 +4026,40 @@ paths:
                             { type: object, additionalProperties: true }
                           ozonPrice: { type: string }
                           wbPrice: { type: string }
+  /admin/products/{id}/editor-plan/sync-existing:
+    post:
+      operationId: post_admin_products_id_editor_plan_sync_existing
+      x-source: backend/internal/httpapi/admin_editor_sync.go#editorSyncExistingHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [products.edit]
+      description: Refresh saved product content, photos, attributes and seasonal packaging for already linked channels using their established publication payload. Accepts no configuration. Preserves prices, seller articles, categories, links and draft plans; never creates or relinks a vendor card. Missing configuration or unresolved operations are reported as skipped warnings while site content remains saved. In-flight updates retain their receipts and coalesce the latest content snapshot.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false }
+      responses:
+        2XX:
+          description: Existing-channel synchronization outcome. Queued counts newly staged updates, not completed vendor writes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [queued, skipped, warnings]
+                properties:
+                  queued: { type: integer, minimum: 0 }
+                  skipped: { type: integer, minimum: 0 }
+                  warnings:
+                    type: array
+                    items: { type: string }
+        default:
+          $ref: "#/components/responses/ValidationError"
   /admin/products/{id}/marketplace-cards:
     get:
       operationId: get_admin_products_id_marketplace_cards
@@ -4105,7 +4166,7 @@ paths:
       x-permissions:
         - products.edit
       description: >-
-        Requires products.edit. The owner can submit variants with {id, remove: true}
+        Requires products.edit. Owners and managers with products.manage can submit commercial fields, new variants and variants with {id, remove: true}
         without other variant fields. Within the same transaction, unlinked variants are
         deleted; variants with stock, reservations, orders, Saby links or historical
         references are archived. Removing the last active variant makes a published
@@ -4128,7 +4189,7 @@ paths:
                         type: integer
                       remove:
                         type: boolean
-                        description: Owner-only deletion or archival after checking current links.
+                        description: Requires products.manage; deletion or archival after checking current links.
       parameters:
         - in: path
           name: id
@@ -4196,10 +4257,10 @@ paths:
       security:
         - Session: []
       x-permissions:
-        - catalog.delete
+        - products.manage
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: catalog.delete."
+        the operation: products.manage."
       parameters:
         - in: path
           name: id
@@ -4333,10 +4394,10 @@ paths:
       security:
         - Session: []
       x-permissions:
-        - products.manage
+        - products.sync
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage."
+        the operation: products.sync."
       requestBody:
         required: true
         content:
@@ -4375,10 +4436,10 @@ paths:
       security:
         - Session: []
       x-permissions:
-        - products.manage
+        - catalog.delete
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.manage."
+        the operation: catalog.delete."
       requestBody:
         required: true
         content:
@@ -5158,10 +5219,10 @@ paths:
       security:
         - Session: []
       x-permissions:
-        - products.read
+        - products.manage
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: products.read."
+        the operation: products.manage."
       parameters:
         - in: query
           name: q
@@ -5298,10 +5359,10 @@ paths:
       security:
         - Session: []
       x-permissions:
-        - catalog.delete
+        - products.manage
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: catalog.delete."
+        the operation: products.manage."
       parameters:
         - in: path
           name: id
@@ -5356,11 +5417,11 @@ paths:
       security:
         - Session: []
       x-permissions:
-        - catalog.delete
+        - products.manage
         - products.edit
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: catalog.delete, products.edit."
+        the operation: products.manage, products.edit."
       parameters:
         - in: path
           name: variantId
@@ -5386,11 +5447,11 @@ paths:
       security:
         - Session: []
       x-permissions:
-        - catalog.delete
+        - products.manage
         - products.edit
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: catalog.delete, products.edit."
+        the operation: products.manage, products.edit."
       parameters:
         - in: path
           name: variantId

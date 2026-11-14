@@ -9,7 +9,7 @@ import (
 // The variant lock also blocks new FK references until the decision commits.
 // Inventory rows are locked separately because quantities can change in place.
 func removeProductVariant(ctx context.Context, tx pgx.Tx, actor Actor, productID, variantID int64) error {
-	if !Can(actor.Role, PermissionDelete) {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
 	var linked bool

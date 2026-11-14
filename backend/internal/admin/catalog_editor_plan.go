@@ -411,44 +411,7 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 				payload["name"] = productName
 			}
 			raw, _ := json.Marshal(payload)
-			fingerprintPayload := map[string]any{}
-			_ = json.Unmarshal(raw, &fingerprintPayload)
-			if channel == "saby" {
-				for _, key := range []string{"action", "existingId", "sabyId", "sabyUUID", "actorId", "marketplace", "channel", "ozonPrice", "wbPrice", "vat", "season"} {
-					delete(fingerprintPayload, key)
-				}
-				if config, ok := fingerprintPayload["saby"].(map[string]any); ok {
-					delete(config, "mode")
-					delete(config, "existingCode")
-					for _, field := range []string{"category", "folder"} {
-						if category, ok := config[field].(map[string]any); ok {
-							delete(category, "name")
-						}
-					}
-				}
-			}
-			if channel != "saby" {
-				for _, key := range []string{"action", "existingId", "schema", "saby", "sabyId", "sabyUUID", "actorId", "barcode"} {
-					delete(fingerprintPayload, key)
-				}
-				if c, ok := fingerprintPayload["channel"].(map[string]any); ok {
-					delete(c, "enabled")
-					delete(c, "replaceLink")
-					delete(c, "existingId")
-				}
-				if m, ok := fingerprintPayload["marketplace"].(map[string]any); ok {
-					for _, key := range []string{"wb", "ozon"} {
-						if c, ok := m[key].(map[string]any); ok {
-							delete(c, "enabled")
-							delete(c, "replaceLink")
-							delete(c, "existingId")
-						}
-					}
-				}
-			}
-			fingerprintRaw, _ := json.Marshal(fingerprintPayload)
-			sum := sha256.Sum256(fingerprintRaw)
-			hash := hex.EncodeToString(sum[:])
+			hash := editorPublicationFingerprint(channel, raw)
 			// Persist the complete immutable request. Sending is separate from saving;
 			// configured providers consume this durable plan without re-reading a draft.
 			var priorStatus, priorHash, priorMode string
@@ -511,6 +474,51 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 }
 
 func editorVideoURL(path string) bool {
+	if parsed, err := urlpkg.Parse(path); err == nil {
+		path = parsed.Path
+	}
 	p := strings.ToLower(path)
 	return strings.HasSuffix(p, ".mp4") || strings.HasSuffix(p, ".mov") || strings.HasSuffix(p, ".webm") || strings.HasSuffix(p, ".m3u8")
+}
+
+// editorPublicationFingerprint keeps content sync and owner submission idempotent.
+func editorPublicationFingerprint(channel string, raw []byte) string {
+	fingerprintPayload := map[string]any{}
+	_ = json.Unmarshal(raw, &fingerprintPayload)
+	if channel == "saby" {
+		for _, key := range []string{"action", "existingId", "sabyId", "sabyUUID", "actorId", "marketplace", "channel", "ozonPrice", "wbPrice", "vat", "season"} {
+			delete(fingerprintPayload, key)
+		}
+		if config, ok := fingerprintPayload["saby"].(map[string]any); ok {
+			delete(config, "mode")
+			delete(config, "existingCode")
+			for _, field := range []string{"category", "folder"} {
+				if category, ok := config[field].(map[string]any); ok {
+					delete(category, "name")
+				}
+			}
+		}
+	}
+	if channel != "saby" {
+		for _, key := range []string{"action", "existingId", "schema", "saby", "sabyId", "sabyUUID", "actorId", "barcode"} {
+			delete(fingerprintPayload, key)
+		}
+		if c, ok := fingerprintPayload["channel"].(map[string]any); ok {
+			delete(c, "enabled")
+			delete(c, "replaceLink")
+			delete(c, "existingId")
+		}
+		if m, ok := fingerprintPayload["marketplace"].(map[string]any); ok {
+			for _, key := range []string{"wb", "ozon"} {
+				if c, ok := m[key].(map[string]any); ok {
+					delete(c, "enabled")
+					delete(c, "replaceLink")
+					delete(c, "existingId")
+				}
+			}
+		}
+	}
+	fingerprintRaw, _ := json.Marshal(fingerprintPayload)
+	sum := sha256.Sum256(fingerprintRaw)
+	return hex.EncodeToString(sum[:])
 }

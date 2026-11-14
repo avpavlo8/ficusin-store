@@ -161,7 +161,7 @@ async function setup(
         },
       });
     }
-    if (path === "/api/v1/admin/settings")
+    if (path === "/api/v1/admin/catalog-editor/settings")
       return send({ values: { "cdek.packaging_season": "summer" } });
     if (path.endsWith("/pricing/preview"))
       return send({

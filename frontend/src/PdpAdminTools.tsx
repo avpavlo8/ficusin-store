@@ -62,7 +62,7 @@ export function PdpAdminTools({
           }
         >
           <ProductMediaDialog
-            owner={adminRole === "owner"}
+            canDelete={adminRole === "owner" || adminRole === "manager"}
             product={product}
             onClose={() => setMode("")}
             onChanged={onChanged}

@@ -1,15 +1,25 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 )
 
 func validateManagerProductFields(response http.ResponseWriter, actor admin.Actor, fields map[string]json.RawMessage) bool {
-	if actor.Role == admin.RoleOwner {
+	if admin.Can(actor.Role, admin.PermissionProductsManage) {
+		if actor.Role != admin.RoleOwner {
+			for key := range fields {
+				if strings.EqualFold(key, "stock") || strings.EqualFold(key, "sabyFields") {
+					writeJSON(response, http.StatusForbidden, errorResponse{Error: "Остатки обновляются из СБИС"})
+					return false
+				}
+			}
+		}
 		return true
 	}
 	allowed := map[string]bool{}
@@ -77,4 +87,31 @@ func managerVariantContent(handlers adminHandlers, response http.ResponseWriter,
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"variant": item})
+}
+
+// decodeEditorVariantInput keeps manual inventory edits out of the product
+// editor even when a legacy client explicitly sends a null or zero stock.
+func decodeEditorVariantInput(w http.ResponseWriter, r *http.Request, actor admin.Actor) (admin.VariantInput, bool) {
+	var fields map[string]json.RawMessage
+	if decodeJSON(r, &fields) != nil || fields == nil {
+		writeJSON(w, 400, errorResponse{Error: "Некорректные данные"})
+		return admin.VariantInput{}, false
+	}
+	if actor.Role != admin.RoleOwner {
+		for key := range fields {
+			if strings.EqualFold(key, "stock") {
+				writeJSON(w, 403, errorResponse{Error: "Остатки обновляются из СБИС"})
+				return admin.VariantInput{}, false
+			}
+		}
+	}
+	raw, _ := json.Marshal(fields)
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	var input admin.VariantInput
+	if decoder.Decode(&input) != nil {
+		writeJSON(w, 400, errorResponse{Error: "Некорректные данные"})
+		return input, false
+	}
+	return input, true
 }

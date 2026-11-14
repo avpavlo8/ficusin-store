@@ -24,7 +24,10 @@ func ValidateProductUpdate(actor Actor, update ProductUpdate) error {
 			}
 		}
 	}
-	if actor.Role == RoleOwner {
+	if actor.Role != RoleOwner && (update.Stock != nil || update.SabyFields != nil) {
+		return ErrForbidden
+	}
+	if Can(actor.Role, PermissionProductsManage) {
 		return nil
 	}
 	if update.PriceMinor != nil || update.Stock != nil || update.SabyFields != nil || update.ExternalIDs != nil || update.WholesaleMinQty != nil || update.Image != nil || update.Status != nil && *update.Status == "archived" {
@@ -36,7 +39,7 @@ func ValidateProductUpdate(actor Actor, update ProductUpdate) error {
 // Technical integration attributes are not content. Packaging remains editable.
 // Checking even null values prevents clearing a protected attribute through PATCH.
 func validateManagerAttributes(ctx context.Context, tx pgx.Tx, actor Actor, values map[string]any) error {
-	if actor.Role == RoleOwner {
+	if Can(actor.Role, PermissionProductsManage) {
 		return nil
 	}
 	for code := range values {

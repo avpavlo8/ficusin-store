@@ -726,6 +726,8 @@ export function Products({
   const appliedFilters =
     (["root", "category", "sort"] as const).filter((k) => filters[k] !== defaultFilters[k]).length +
     (filters.quality !== "all" && filters.quality !== "attention" ? 1 : 0);
+  if ((editingId && !can("products.edit")) || (creating && !can("products.manage")))
+    return <p role="alert">Нет доступа к редактору товара.</p>;
   if (editing)
     return (
       <Suspense fallback={<p role="status">Загружаем редактор товара…</p>}>
@@ -745,6 +747,7 @@ export function Products({
     return (
       <Suspense fallback={<p role="status">Загружаем редактор товара…</p>}>
         <ProductCreationPage
+          canManage={can("products.manage")}
           onSaved={(product) => {
             setItems((current) =>
               current.some((item) => item.id === product.id)
@@ -791,9 +794,11 @@ export function Products({
           )}
           {view === "catalog" && can("products.manage") && (
             <>
-              <button type="button" className="admin-action" onClick={() => setImporting(true)}>
-                Импорт из СБИС
-              </button>
+              {can("products.sync") && (
+                <button type="button" className="admin-action" onClick={() => setImporting(true)}>
+                  Импорт из СБИС
+                </button>
+              )}
               <button
                 type="button"
                 className="admin-primary"
@@ -1011,10 +1016,10 @@ export function Products({
                 {selectedAreDrafts && can("catalog.delete") && (
                   <button onClick={() => setConfirmation("delete")}>Удалить черновики</button>
                 )}
-                {selectedAreDrafts && selectedProducts.length >= 2 && can("products.manage") && (
+                {selectedAreDrafts && selectedProducts.length >= 2 && can("catalog.delete") && (
                   <button onClick={() => setMerging(selectedProducts)}>Объединить размеры</button>
                 )}
-                {selectedArePublishedPlants && can("products.manage") && (
+                {selectedArePublishedPlants && can("catalog.delete") && (
                   <button onClick={() => setPublishedMerge(selectedProducts)}>
                     Проверить объединение
                   </button>

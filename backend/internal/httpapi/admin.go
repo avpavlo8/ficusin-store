@@ -483,7 +483,7 @@ func (handlers adminHandlers) publishDraftProducts(response http.ResponseWriter,
 // dryRun панель показывает, что получится, ничего не создавая: список из
 // сотни кодов стоит сначала увидеть глазами.
 func (handlers adminHandlers) importProducts(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsSync)
 	if !ok {
 		return
 	}
@@ -570,7 +570,7 @@ func (handlers adminHandlers) mergePublishedProducts(response http.ResponseWrite
 }
 
 func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionDelete)
 	if !ok {
 		return
 	}

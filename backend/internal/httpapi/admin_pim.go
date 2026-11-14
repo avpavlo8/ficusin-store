@@ -218,9 +218,8 @@ func productVariantsHandler(adminAPI adminHandlers) http.HandlerFunc {
 			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Недостаточно прав"})
 			return
 		}
-		var input admin.VariantInput
-		if decodeJSON(request, &input) != nil {
-			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		input, decoded := decodeEditorVariantInput(response, request, actor)
+		if !decoded {
 			return
 		}
 		item, err := repository.CreateProductVariant(request.Context(), actor, productID, input)
@@ -247,8 +246,8 @@ func productVariantHandler(adminAPI adminHandlers) http.HandlerFunc {
 			return
 		}
 		if request.Method == http.MethodDelete {
-			if !admin.Can(actor.Role, admin.PermissionDelete) {
-				writeJSON(response, http.StatusForbidden, errorResponse{Error: "Удаление доступно владельцу"})
+			if !admin.Can(actor.Role, admin.PermissionProductsManage) {
+				writeJSON(response, http.StatusForbidden, errorResponse{Error: "Недостаточно прав для удаления варианта"})
 				return
 			}
 			if err := repository.DeleteProductVariant(request.Context(), actor, variantID); err != nil {
@@ -258,13 +257,12 @@ func productVariantHandler(adminAPI adminHandlers) http.HandlerFunc {
 			writeJSON(response, http.StatusOK, map[string]bool{"deleted": true})
 			return
 		}
-		if actor.Role == admin.RoleManager {
+		if !admin.Can(actor.Role, admin.PermissionProductsManage) {
 			managerVariantContent(adminAPI, response, request, actor, variantID)
 			return
 		}
-		var input admin.VariantInput
-		if decodeJSON(request, &input) != nil {
-			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		input, decoded := decodeEditorVariantInput(response, request, actor)
+		if !decoded {
 			return
 		}
 		item, err := repository.UpdateProductVariant(request.Context(), actor, variantID, input)

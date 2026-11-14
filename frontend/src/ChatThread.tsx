@@ -288,7 +288,14 @@ export default function ChatThread({
 
   const send = async (event: FormEvent) => {
     event.preventDefault();
-    if (sending || preparing || loading || (!text.trim() && !attachment && !reference)) return;
+    if (
+      sending ||
+      preparing ||
+      loading ||
+      (!text.trim() && !attachment && !reference) ||
+      (!staff && !thread.id && thread.consentRequired && !consent)
+    )
+      return;
     setSending(true);
     setError("");
     const signature = JSON.stringify([text.trim(), topic, reference?.kind, reference?.id]);
@@ -749,11 +756,12 @@ export default function ChatThread({
             onKeyDown={(event) => {
               if (
                 event.key === "Enter" &&
-                (event.ctrlKey || event.metaKey) &&
-                !event.nativeEvent.isComposing
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing &&
+                event.nativeEvent.keyCode !== 229
               ) {
                 event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
+                if (!event.repeat) event.currentTarget.form?.requestSubmit();
               }
             }}
           />

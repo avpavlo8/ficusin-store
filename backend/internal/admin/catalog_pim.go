@@ -702,6 +702,9 @@ func (repository *PostgresRepository) CreateProductVariant(ctx context.Context, 
 	if !Can(actor.Role, PermissionProductsManage) {
 		return AdminVariant{}, ErrForbidden
 	}
+	if actor.Role != RoleOwner && input.Stock != 0 {
+		return AdminVariant{}, ErrForbidden
+	}
 	if err := validateVariantInput(input); err != nil {
 		return AdminVariant{}, err
 	}
@@ -715,8 +718,10 @@ func (repository *PostgresRepository) CreateProductVariant(ctx context.Context, 
 	if err != nil {
 		return AdminVariant{}, err
 	}
-	if err := setVariantStock(ctx, tx, id, input.Stock); err != nil {
-		return AdminVariant{}, err
+	if actor.Role == RoleOwner {
+		if err := setVariantStock(ctx, tx, id, input.Stock); err != nil {
+			return AdminVariant{}, err
+		}
 	}
 	if err := saveVariantPIMValues(ctx, tx, productID, id, input.Attributes); err != nil {
 		return AdminVariant{}, err
@@ -748,6 +753,9 @@ func (repository *PostgresRepository) UpdateProductVariant(ctx context.Context, 
 	if !Can(actor.Role, PermissionProductsManage) {
 		return AdminVariant{}, ErrForbidden
 	}
+	if actor.Role != RoleOwner && input.Stock != 0 {
+		return AdminVariant{}, ErrForbidden
+	}
 	if err := validateVariantInput(input); err != nil {
 		return AdminVariant{}, err
 	}
@@ -765,7 +773,7 @@ func (repository *PostgresRepository) UpdateProductVariant(ctx context.Context, 
 	if err != nil {
 		return AdminVariant{}, err
 	}
-	if !sabyStock {
+	if actor.Role == RoleOwner && !sabyStock {
 		if err := setVariantStock(ctx, tx, variantID, input.Stock); err != nil {
 			return AdminVariant{}, err
 		}
@@ -853,31 +861,29 @@ func (repository *PostgresRepository) ArchiveProductVariant(ctx context.Context,
 	return nil
 }
 func (repository *PostgresRepository) DeleteProductVariant(ctx context.Context, actor Actor, variantID int64) error {
-	if !Can(actor.Role, PermissionDelete) {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
-	var exported bool
-	if err := repository.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND (state IN ('queued','checking','verifying','unknown') OR attempted_at IS NOT NULL OR remote_id<>''))`, variantID).Scan(&exported); err != nil {
-		return err
-	}
-	if exported {
-		return fmt.Errorf("%w: размер отправлен в СБИС; вместо удаления архивируйте его", ErrInvalidInput)
-	}
-	var sold bool
-	if err := repository.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_items WHERE variant_id=$1)`, variantID).Scan(&sold); err != nil {
-		return err
-	}
-	if sold {
-		return fmt.Errorf("%w: проданный SKU можно только архивировать", ErrInvalidInput)
-	}
-	tag, err := repository.pool.Exec(ctx, `DELETE FROM product_variants WHERE id=$1`, variantID)
+	tx, err := repository.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() != 1 {
-		return pgx.ErrNoRows
+	defer tx.Rollback(ctx)
+	var productID int64
+	if err = tx.QueryRow(ctx, `SELECT product_id FROM product_variants WHERE id=$1 FOR UPDATE`, variantID).Scan(&productID); err != nil {
+		return err
 	}
-	return nil
+	if err = removeProductVariant(ctx, tx, actor, productID, variantID); err != nil {
+		return err
+	}
+	var retained bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_variants WHERE id=$1)`, variantID).Scan(&retained); err != nil {
+		return err
+	}
+	if retained {
+		return fmt.Errorf("%w: связанный размер можно только архивировать", ErrInvalidInput)
+	}
+	return tx.Commit(ctx)
 }
 
 func (repository *PostgresRepository) ListCatalogFilters(ctx context.Context) ([]CatalogFilter, error) {

@@ -31,15 +31,10 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 		{"POST", "/api/v1/admin/procurement/batches/1/retry", "{}"},
 		{"POST", "/api/v1/admin/products/sync", `{"productIds":[1],"fields":["price"]}`},
 		{"POST", "/api/v1/admin/products/import", `{"codes":["a"]}`},
-		{"POST", "/api/v1/admin/products", "{}"}, {"POST", "/api/v1/admin/products/merge", "{}"},
+		{"POST", "/api/v1/admin/products/merge", "{}"},
 		{"DELETE", "/api/v1/admin/products", `{"productIds":[1]}`},
 		{"DELETE", "/api/v1/admin/categories/1", ""},
-		{"DELETE", "/api/v1/admin/products/1/media/2", ""},
-		{"DELETE", "/api/v1/admin/variants/1/media/2", ""},
-		{"POST", "/api/v1/admin/variants/1/copy", "{}"},
-		{"POST", "/api/v1/admin/variants/1/archive", "{}"},
-		{"DELETE", "/api/v1/admin/variants/1", ""},
-		{"POST", "/api/v1/admin/products/1/variants", "{}"},
+
 		{"DELETE", "/api/v1/admin/collection-definitions/1", ""},
 		{"PATCH", "/api/v1/admin/customers/1", `{"fullName":"Changed","retailDiscountBps":9000}`},
 	}
@@ -54,11 +49,11 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 		})
 	}
 }
-func TestCRMManagerProductPatchRejectsEntireMixedRequest(t *testing.T) {
+func TestCRMAdministratorProductPatchRejectsEntireMixedRequest(t *testing.T) {
 	for _, field := range []string{`"priceMinor":1`, `"PriceMinor":1`, `"stock":null`, `"externalIds":[]`, `"sabyFields":[]`, `"wholesaleMinQty":2`, `"image":"/replacement.webp"`, `"status":"archived"`, `"unknown":1`} {
 		t.Run(field, func(t *testing.T) {
 			repository := &crmProductRepository{}
-			router := NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, ""))
+			router := NewRouter(discardLogger(), adminDependencies(repository, admin.RoleAdministrator, ""))
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, adminRequest("PATCH", "/api/v1/admin/products/1", `{"name":"Must not persist",`+field+`}`))
 			if response.Code != 403 || len(repository.updates) != 0 {
@@ -67,9 +62,9 @@ func TestCRMManagerProductPatchRejectsEntireMixedRequest(t *testing.T) {
 		})
 	}
 }
-func TestCRMManagerVariantMixedPatchRejected(t *testing.T) {
+func TestCRMAdministratorVariantMixedPatchRejected(t *testing.T) {
 	for _, field := range []string{`"priceMinor":null`, `"stock":0`, `"externalIds":[]`, `"active":false`, `"PriceMinor":10`} {
-		router := NewRouter(discardLogger(), adminDependencies(admin.NewPostgresRepository(nil), admin.RoleManager, ""))
+		router := NewRouter(discardLogger(), adminDependencies(admin.NewPostgresRepository(nil), admin.RoleAdministrator, ""))
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, adminRequest("PATCH", "/api/v1/admin/variants/1", `{"label":"Must not persist",`+field+`}`))
 		if response.Code != 403 {
@@ -95,9 +90,53 @@ func TestCRMContentEditPreservesGallery(t *testing.T) {
 func TestCRMManagerPermissionResponse(t *testing.T) {
 	response := httptest.NewRecorder()
 	NewRouter(discardLogger(), adminDependencies(&adminRepositoryStub{}, admin.RoleManager, "")).ServeHTTP(response, adminRequest("GET", "/api/v1/admin/dashboard", ""))
-	for _, forbidden := range []string{"analytics.read", "procurement.edit", "products.sync", "products.manage", "catalog.delete"} {
+	for _, forbidden := range []string{"analytics.read", "procurement.edit", "products.sync", "catalog.delete"} {
 		if strings.Contains(response.Body.String(), forbidden) {
 			t.Fatalf("leaked permission %s", forbidden)
+		}
+	}
+	if !strings.Contains(response.Body.String(), "products.manage") {
+		t.Fatal("full editor permission missing")
+	}
+}
+
+func TestManagerProductCommercialPatchAndMediaDelete(t *testing.T) {
+	repository := &crmProductRepository{}
+	response := httptest.NewRecorder()
+	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleManager, "")).ServeHTTP(response, adminRequest("PATCH", "/api/v1/admin/products/1", `{"name":"Updated","priceMinor":12345,"wholesaleMinQty":3,"variants":[{"id":1,"priceMinor":12345},{"id":-1,"label":"D17","priceMinor":23456},{"id":2,"remove":true}]}`))
+	if response.Code != 200 || len(repository.updates) != 1 || repository.updates[0].PriceMinor == nil || *repository.updates[0].PriceMinor != 12345 {
+		t.Fatalf("manager full editor denied: %d %s", response.Code, response.Body.String())
+	}
+	for _, role := range []string{admin.RoleManager, admin.RoleAdministrator} {
+		media := newCatalogToolRepositoryStub()
+		response = httptest.NewRecorder()
+		NewRouter(discardLogger(), adminDependencies(media, role, "")).ServeHTTP(response, adminRequest("DELETE", "/api/v1/admin/products/1/media/2", ""))
+		want := 200
+		if role == admin.RoleAdministrator {
+			want = 403
+		}
+		if response.Code != want {
+			t.Fatalf("role=%s media delete=%d", role, response.Code)
+		}
+	}
+}
+
+func TestManagerFullEditorStillRejectsManualStock(t *testing.T) {
+	for _, field := range []string{`"stock":null`, `"Stock":0`, `"sabyFields":[]`, `"SabyFields":null`} {
+		repo := &crmProductRepository{}
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), adminDependencies(repo, admin.RoleManager, "")).ServeHTTP(response, adminRequest("PATCH", "/api/v1/admin/products/1", `{"name":"Must not save",`+field+`}`))
+		if response.Code != 403 || len(repo.updates) != 0 {
+			t.Fatalf("manual stock/source bypass %s: %d", field, response.Code)
+		}
+	}
+	for _, field := range []string{`"stock":null`, `"Stock":0`} {
+		for _, target := range []struct{ method, path string }{{"PATCH", "/api/v1/admin/variants/1"}, {"POST", "/api/v1/admin/products/1/variants"}} {
+			response := httptest.NewRecorder()
+			NewRouter(discardLogger(), adminDependencies(admin.NewPostgresRepository(nil), admin.RoleManager, "")).ServeHTTP(response, adminRequest(target.method, target.path, `{"label":"D13",`+field+`}`))
+			if response.Code != 403 {
+				t.Fatalf("manual variant stock %s %s: %d", target.method, field, response.Code)
+			}
 		}
 	}
 }

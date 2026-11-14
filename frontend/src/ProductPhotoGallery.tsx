@@ -74,6 +74,7 @@ export function ProductPhotoGallery({
   inherited,
   busy,
   disabled = false,
+  canRemove = () => true,
   error,
   onChange,
   onRemove,
@@ -85,6 +86,7 @@ export function ProductPhotoGallery({
   inherited: boolean;
   busy: boolean;
   disabled?: boolean;
+  canRemove?: (item: DraftMedia) => boolean;
   error: string;
   onChange: (items: DraftMedia[]) => void;
   onRemove: (id: string) => void;
@@ -201,7 +203,7 @@ export function ProductPhotoGallery({
               className="editor-photo-delete"
               aria-label="Удалить обложку"
               draggable={false}
-              disabled={locked}
+              disabled={locked || !canRemove(cover)}
               onDragStart={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -280,7 +282,7 @@ export function ProductPhotoGallery({
               type="button"
               className="editor-photo-delete"
               aria-label={`Удалить фото ${i + 1}: ${item.name}`}
-              disabled={locked}
+              disabled={locked || !canRemove(item)}
               onClick={() => onRemove(item.id)}
             >
               <RemovePhotoIcon />

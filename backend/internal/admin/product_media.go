@@ -108,7 +108,7 @@ func (repository *PostgresRepository) AddUploadedProductMedia(
 }
 
 func (repository *PostgresRepository) DeleteProductMedia(ctx context.Context, actor Actor, productID, mediaID int64) error {
-	if !Can(actor.Role, PermissionDelete) {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
 	tx, err := repository.pool.Begin(ctx)

@@ -348,7 +348,7 @@ func (repository *PostgresRepository) ImportProducts(
 	actor Actor,
 	request ImportRequest,
 ) (ImportResult, error) {
-	if !Can(actor.Role, PermissionProductsManage) {
+	if !Can(actor.Role, PermissionProductsSync) {
 		return ImportResult{}, ErrForbidden
 	}
 	codes := normalizeCodes(request.Codes)
@@ -498,7 +498,7 @@ func (repository *PostgresRepository) ImportProducts(
 // PRODUCT. It refuses published/history-bearing sources: merging those would
 // silently rewrite links, reviews and order history.
 func (repository *PostgresRepository) MergeDraftProducts(ctx context.Context, actor Actor, request MergeProductsRequest) error {
-	if !Can(actor.Role, PermissionProductsManage) {
+	if !Can(actor.Role, PermissionDelete) {
 		return ErrForbidden
 	}
 	if request.TargetProductID <= 0 || len(request.SourceProductIDs) == 0 {

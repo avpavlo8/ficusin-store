@@ -10,8 +10,8 @@ import (
 // SetVariantMarketplaceScope records which channels the owner permits for a
 // site SKU. Listing and price changes remain separate, explicit operations.
 func (repository *PostgresRepository) SetVariantMarketplaceScope(ctx context.Context, actor Actor, variantID int64, scope string) error {
-	if err := ownerOnly(actor); err != nil {
-		return err
+	if !Can(actor.Role, PermissionProductsManage) {
+		return ErrForbidden
 	}
 	if variantID <= 0 || (scope != "unknown" && scope != "site_only" && scope != "marketplaces") {
 		return ErrInvalidInput

@@ -62,12 +62,12 @@ export function ProductCreationPage({
   onClose,
   product,
   onSaved,
-  canManage = true,
+  canManage,
 }: {
   onClose: () => void;
   product?: Product;
   onSaved?: (product: Product) => void;
-  canManage?: boolean;
+  canManage: boolean;
 }) {
   const productId = product?.id;
   const storageKey = product ? `ficusin:product-edit-draft:v1:${product.id}` : draftStorageKey;
@@ -649,6 +649,7 @@ export function ProductCreationPage({
     const currentGallery = variantGallery(latest.current, variant.id);
     const item = currentGallery.find((photo) => photo.id === id);
     if (!item) return;
+    if (!canManage && item.serverId) return;
     const media = currentGallery.filter((photo) => photo.id !== id);
     const saved = update(replaceVariantGallery(latest.current, variant.id, media));
     if (!saved) return;
@@ -689,6 +690,28 @@ export function ProductCreationPage({
     const variant =
       variants.find((row) => row.id === latest.current.selectedVariantId) || variants[0];
     if (!targetProduct || saving || loading || !remoteLoaded || mediaBusy) return;
+    if (!canManage) {
+      const removesSavedPhoto = (wanted: DraftMedia[], known: ProductMedia[]) =>
+        known.some((photo) => !wanted.some((item) => item.serverId === photo.id));
+      if (
+        variants.some((item) => item.removePending) ||
+        removesSavedPhoto(latest.current.media, serverMedia.current) ||
+        variants.some(
+          (item) =>
+            item.serverId &&
+            item.mediaInitialized &&
+            removesSavedPhoto(
+              variantMediaToPersist(latest.current, item.id),
+              serverVariantMedia.current.get(item.serverId) || [],
+            ),
+        )
+      ) {
+        setRemoteError(
+          "Удаление сохранённых вариантов и фотографий доступно владельцу. Восстановите их в черновике перед сохранением.",
+        );
+        return;
+      }
+    }
     if (!draft.name.trim() || !draft.categoryId) {
       setRemoteError("Укажите название и категорию товара.");
       return;
@@ -986,10 +1009,24 @@ export function ProductCreationPage({
           ozonPrice: (row.ozon || latest.current.ozon).price,
           wbPrice: (row.wb || latest.current.wb).price,
         }));
-      await api(`/api/v1/admin/products/${targetProduct.id}/editor-plan`, {
-        method: "PUT",
-        body: JSON.stringify({ config: { variants: planVariants }, submit: true }),
-      });
+      if (canManage) {
+        await api(`/api/v1/admin/products/${targetProduct.id}/editor-plan`, {
+          method: "PUT",
+          body: JSON.stringify({ config: { variants: planVariants }, submit: true }),
+        });
+      } else {
+        try {
+          const sync = await api<{ warnings?: string[] }>(
+            `/api/v1/admin/products/${targetProduct.id}/editor-plan/sync-existing`,
+            { method: "POST", body: "{}" },
+          );
+          if (sync.warnings?.length) setRemoteError(sync.warnings.join(" "));
+        } catch (cause) {
+          throw new Error(
+            `Изменения товара сохранены. Не удалось поставить обновление площадок в очередь: ${(cause as Error).message}. Повторите сохранение.`,
+          );
+        }
+      }
       setCollectionsRevision((value) => value + 1);
       const removed = variants.filter((item) => item.removePending && item.serverId);
       const archived = removed.filter((item) =>
@@ -1013,7 +1050,7 @@ export function ProductCreationPage({
         onSaved?.(original.current || targetProduct);
       }
       setRemoteNotice(
-        `Изменения товара сохранены.${deleted.length ? ` Удалено вариантов: ${deleted.length}.` : ""}${archived.length ? ` В архиве из-за связей: ${archived.map((item) => item.label || item.sku).join(", ")}.` : ""} Запущена подготовка выбранных площадок.`,
+        `Изменения товара сохранены.${deleted.length ? ` Удалено вариантов: ${deleted.length}.` : ""}${archived.length ? ` В архиве из-за связей: ${archived.map((item) => item.label || item.sku).join(", ")}.` : ""}${canManage ? " Запущена подготовка выбранных площадок." : ""}`,
       );
     } catch (cause) {
       setRemoteError((cause as Error).message);
@@ -1409,6 +1446,7 @@ export function ProductCreationPage({
           inherited={!ownGallery && gallery.length > 0}
           busy={mediaBusy || saving}
           disabled={loading || (Boolean(product) && !remoteLoaded)}
+          canRemove={(item) => canManage || !item.serverId}
           error={mediaError}
           onChange={changeGallery}
           onRemove={removeMedia}
@@ -1476,15 +1514,21 @@ export function ProductCreationPage({
                       </p>
                     </div>
                   ) : (
-                    <SabyEditorFields
-                      value={sabyEditor}
-                      onChange={changeSaby}
-                      linked={
-                        sabyLinks[String(variant.serverId)] ||
-                        (variant.sabyId ? { id: variant.sabyId, code: "" } : undefined)
-                      }
-                      barcode={channelBarcodes[String(variant.serverId)]}
-                    />
+                    <fieldset
+                      className="editor-protected-fields wide"
+                      disabled={!canManage}
+                      aria-label="Связь с СБИС"
+                    >
+                      <SabyEditorFields
+                        value={sabyEditor}
+                        onChange={changeSaby}
+                        linked={
+                          sabyLinks[String(variant.serverId)] ||
+                          (variant.sabyId ? { id: variant.sabyId, code: "" } : undefined)
+                        }
+                        barcode={channelBarcodes[String(variant.serverId)]}
+                      />
+                    </fieldset>
                   )}
                   <label className="wide">
                     {plant ? "О растении" : "Описание"}
@@ -1522,6 +1566,7 @@ export function ProductCreationPage({
                   <label>
                     Оптовый минимум, шт.
                     <NumericInput
+                      disabled={!canManage}
                       min="1"
                       step="1"
                       value={variant.wholesaleMinQty}
@@ -1779,33 +1824,42 @@ export function ProductCreationPage({
                   </button>
                 </div>
               )}
-              <MarketplaceEditor
-                productId={productId || undefined}
-                variantId={variant.serverId}
-                linked={linkedMarketplaces}
-                value={marketplace}
-                onChange={changeMarketplace}
-                onCardResolved={(channel, remote) => {
-                  const current = latest.current;
-                  const rows = current.variants || [];
-                  const row = rows.find((item) => item.id === variant.id);
-                  if (!row) return;
-                  const value = marketplaceOf(row, current);
-                  const replacement = replaceMarketplaceCard(value, channel, remote);
-                  if (replacement === value) return;
-                  update({
-                    variants: rows.map((item) =>
-                      item.id === row.id ? { ...item, marketplace: replacement } : item,
-                    ),
-                  });
-                }}
-                name={draft.name}
-                description={draft.description}
-                prices={{
-                  ozon: variant.ozon?.price || draft.ozon.price,
-                  wb: variant.wb?.price || draft.wb.price,
-                }}
-              />
+              {!canManage && (
+                <p className="editor-secondary">Цены и связи площадок изменяет владелец.</p>
+              )}
+              <fieldset
+                className="editor-protected-fields"
+                disabled={!canManage}
+                aria-label="Настройки маркетплейсов"
+              >
+                <MarketplaceEditor
+                  productId={productId || undefined}
+                  variantId={variant.serverId}
+                  linked={linkedMarketplaces}
+                  value={marketplace}
+                  onChange={changeMarketplace}
+                  onCardResolved={(channel, remote) => {
+                    const current = latest.current;
+                    const rows = current.variants || [];
+                    const row = rows.find((item) => item.id === variant.id);
+                    if (!row) return;
+                    const value = marketplaceOf(row, current);
+                    const replacement = replaceMarketplaceCard(value, channel, remote);
+                    if (replacement === value) return;
+                    update({
+                      variants: rows.map((item) =>
+                        item.id === row.id ? { ...item, marketplace: replacement } : item,
+                      ),
+                    });
+                  }}
+                  name={draft.name}
+                  description={draft.description}
+                  prices={{
+                    ozon: variant.ozon?.price || draft.ozon.price,
+                    wb: variant.wb?.price || draft.wb.price,
+                  }}
+                />
+              </fieldset>
               {channelStatuses
                 .filter((status) => status.variantId === variant.serverId)
                 .map((status) => (
@@ -1819,40 +1873,41 @@ export function ProductCreationPage({
                     {status.channel === "saby"
                       ? status.externalIds?.offerId && <> · Код {status.externalIds.offerId}</>
                       : status.externalIds?.productId && <> · ID {status.externalIds.productId}</>}
-                    {(status.status === "failed" ||
-                      (status.status === "needs_attention" &&
-                        (status.channel !== "saby" || status.externalIds?.productId))) && (
-                      <button
-                        className="admin-action"
-                        type="button"
-                        disabled={saving}
-                        onClick={async () => {
-                          if (!variant.serverId) return;
-                          setSaving(true);
-                          setRemoteError("");
-                          try {
-                            await api(
-                              `/api/v1/admin/products/${product?.id || draft.remoteCreatedProductId}/editor-publications/${status.channel}/retry`,
-                              {
-                                method: "POST",
-                                body: JSON.stringify({ variantId: variant.serverId }),
-                              },
-                            );
-                            setCollectionsRevision((v) => v + 1);
-                          } catch (e) {
-                            setRemoteError((e as Error).message);
-                          } finally {
-                            setSaving(false);
-                          }
-                        }}
-                      >
-                        {status.channel === "saby"
-                          ? status.status === "failed"
-                            ? "Повторить обмен"
-                            : "Проверить состояние"
-                          : "Повторить проверку"}
-                      </button>
-                    )}
+                    {canManage &&
+                      (status.status === "failed" ||
+                        (status.status === "needs_attention" &&
+                          (status.channel !== "saby" || status.externalIds?.productId))) && (
+                        <button
+                          className="admin-action"
+                          type="button"
+                          disabled={saving}
+                          onClick={async () => {
+                            if (!variant.serverId) return;
+                            setSaving(true);
+                            setRemoteError("");
+                            try {
+                              await api(
+                                `/api/v1/admin/products/${product?.id || draft.remoteCreatedProductId}/editor-publications/${status.channel}/retry`,
+                                {
+                                  method: "POST",
+                                  body: JSON.stringify({ variantId: variant.serverId }),
+                                },
+                              );
+                              setCollectionsRevision((v) => v + 1);
+                            } catch (e) {
+                              setRemoteError((e as Error).message);
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        >
+                          {status.channel === "saby"
+                            ? status.status === "failed"
+                              ? "Повторить обмен"
+                              : "Проверить состояние"
+                            : "Повторить проверку"}
+                        </button>
+                      )}
                   </p>
                 ))}
             </>
@@ -1865,7 +1920,7 @@ export function ProductCreationPage({
             Готовим поля выбранной категории…
           </span>
         )}
-        {(!product || creationChannels.length > 0) && (
+        {canManage && (!product || creationChannels.length > 0) && (
           <div className="editor-destinations" role="group" aria-label="Где создать товар">
             {!product && (
               <>
@@ -1901,13 +1956,15 @@ export function ProductCreationPage({
           className="admin-primary"
           disabled={loading || !remoteLoaded || saving || mediaBusy || !metadataReady}
           onClick={() => {
-            const missing = variants
-              .filter((row) => !row.removePending && !row.archived)
-              .flatMap((row) => {
-                const m = marketplaceOf(row, draft),
-                  links = channelLinks[String(row.serverId)] || {};
-                return marketplaceMissing(m, links);
-              });
+            const missing = canManage
+              ? variants
+                  .filter((row) => !row.removePending && !row.archived)
+                  .flatMap((row) => {
+                    const m = marketplaceOf(row, draft),
+                      links = channelLinks[String(row.serverId)] || {};
+                    return marketplaceMissing(m, links);
+                  })
+              : [];
             if (missing.length) {
               setRemoteError(`Заполните: ${[...new Set(missing)].join(", ")}.`);
               return;

@@ -51,7 +51,7 @@ func (repository *PostgresRepository) SearchSabyLinkCandidates(ctx context.Conte
 // LinkVariantToSaby attaches only a previously unlinked site SKU to an
 // existing, current Saby entry. Stock becomes usable only after a real sync.
 func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, actor Actor, variantID int64, sabyID string) error {
-	if actor.Role != RoleOwner {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
 	sabyID = strings.TrimSpace(sabyID)
@@ -131,7 +131,7 @@ func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, act
 // the site's product, SKU, content and historical external identifiers.
 // Stock stays unavailable until the next confirmed Saby snapshot.
 func (repository *PostgresRepository) RebindVariantToSaby(ctx context.Context, actor Actor, variantID int64, oldID, newID string) error {
-	if actor.Role != RoleOwner {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
 	oldID, newID = strings.TrimSpace(oldID), strings.TrimSpace(newID)

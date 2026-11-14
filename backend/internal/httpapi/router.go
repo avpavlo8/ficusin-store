@@ -94,6 +94,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/products/{id}/editor-plan", editorPlanHandler(adminAPI))
 	mux.HandleFunc("GET /api/v1/admin/products/{id}/marketplace-cards", editorMarketplaceCardsHandler(adminAPI, dependencies.EditorReferences))
 	mux.HandleFunc("PUT /api/v1/admin/products/{id}/editor-plan", editorPlanHandler(adminAPI))
+	mux.HandleFunc("POST /api/v1/admin/products/{id}/editor-plan/sync-existing", editorSyncExistingHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/products/{id}/editor-publications/{channel}/retry", editorPublicationRetryHandler(adminAPI))
 	mux.HandleFunc("GET /api/v1/admin/catalog-editor/references", editorReferencesHandler(adminAPI, dependencies.EditorReferences))
 
@@ -246,6 +247,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	}
 	mux.HandleFunc("GET /api/v1/admin/settings", settingsAPI.get)
 	mux.HandleFunc("PUT /api/v1/admin/settings", settingsAPI.update)
+	mux.HandleFunc("GET /api/v1/admin/catalog-editor/settings", editorSettingsHandler(adminAPI, dependencies.Settings))
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
 	mux.HandleFunc("GET /api/v1/admin/operations", adminOperationsHandler(adminAPI, dependencies.Operations))
 	mux.HandleFunc("GET /api/v1/admin/analytics/metrika", analyticsMetrikaStatusHandler(logger, adminAPI, dependencies.Analytics))

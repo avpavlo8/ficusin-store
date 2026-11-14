@@ -82,10 +82,10 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	if !found {
 		t.Fatalf("Saby candidate %q absent", sabyID)
 	}
-	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleManager}, variantID, sabyID); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("manager link: %v", err)
+	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleAdministrator}, variantID, sabyID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("administrator link: %v", err)
 	}
-	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleOwner, CustomerID: ownerID}, variantID, sabyID); err != nil {
+	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleManager, CustomerID: ownerID}, variantID, sabyID); err != nil {
 		t.Fatal(err)
 	}
 	var variantSabyID, productSabyID string
@@ -136,7 +136,7 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	if _, err = pool.Exec(ctx, `UPDATE products SET saby_fields=ARRAY['description']::TEXT[] WHERE id=$1`, productID); err != nil {
 		t.Fatal(err)
 	}
-	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleOwner, CustomerID: ownerID}, secondVariantID, secondSabyID); err != nil {
+	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleManager, CustomerID: ownerID}, secondVariantID, secondSabyID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `SELECT saby_id,saby_fields FROM products WHERE id=$1`, productID).Scan(&productSabyID, &fields); err != nil {
@@ -148,15 +148,15 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$2,'Тестовый фикус замена')`, replacementSabyID, code+"-replacement"); err != nil {
 		t.Fatal(err)
 	}
-	owner := Actor{Role: RoleOwner, CustomerID: ownerID}
+	owner := Actor{Role: RoleManager, CustomerID: ownerID}
 	if err = repository.RebindVariantToSaby(ctx, owner, variantID, sabyID, replacementSabyID); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("current Saby record must block rebind: %v", err)
 	}
 	if _, err = pool.Exec(ctx, `UPDATE saby_nomenclature SET missing_since=CURRENT_TIMESTAMP WHERE saby_id=$1`, sabyID); err != nil {
 		t.Fatal(err)
 	}
-	if err = repository.RebindVariantToSaby(ctx, Actor{Role: RoleManager}, variantID, sabyID, replacementSabyID); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("manager rebind: %v", err)
+	if err = repository.RebindVariantToSaby(ctx, Actor{Role: RoleAdministrator}, variantID, sabyID, replacementSabyID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("administrator rebind: %v", err)
 	}
 	if err = repository.RebindVariantToSaby(ctx, owner, variantID, sabyID, replacementSabyID); err != nil {
 		t.Fatal(err)

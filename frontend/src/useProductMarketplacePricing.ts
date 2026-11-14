@@ -39,9 +39,10 @@ export function useProductMarketplacePricing(
       const next: Result = { revision, key, wb: "", ozon: "", notes: [] };
       try {
         const { price, attributes } = JSON.parse(key);
-        const settings = await api<{ values: Record<string, string> }>("/api/v1/admin/settings", {
-          signal,
-        });
+        const settings = await api<{ values: Record<string, string> }>(
+          "/api/v1/admin/catalog-editor/settings",
+          { signal },
+        );
         const season = settings.values["cdek.packaging_season"];
         if (season !== "summer" && season !== "winter")
           throw new Error("Не удалось определить сезон упаковки в настройках сайта");

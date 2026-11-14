@@ -4,12 +4,12 @@ import { ProductMediaManager } from "./ProductMediaManager";
 import type { Product } from "./adminTypes";
 
 export default function PdpProductMediaDialog({
-  owner,
+  canDelete,
   product,
   onClose,
   onChanged,
 }: {
-  owner: boolean;
+  canDelete: boolean;
   product: Product;
   onClose: () => void;
   onChanged: () => void;
@@ -19,7 +19,7 @@ export default function PdpProductMediaDialog({
     <Dialog title={`Фотографии · ${product.name}`} onClose={onClose}>
       {error && <p className="admin-error">{error}</p>}
       <ProductMediaManager
-        canDelete={owner}
+        canDelete={canDelete}
         productId={product.id}
         onError={setError}
         onChanged={onChanged}
