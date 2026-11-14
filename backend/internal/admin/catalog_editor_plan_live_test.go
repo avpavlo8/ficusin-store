@@ -40,7 +40,7 @@ func TestEditorPlanOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var customer int64
-	if e = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Channel plan test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); e != nil {
+	if e = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Channel plan test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); e != nil {
 		t.Fatal(e)
 	}
 	actor := Actor{CustomerID: customer, Role: RoleOwner}
@@ -51,7 +51,6 @@ func TestEditorPlanOnLiveDatabase(t *testing.T) {
 	}
 	defer func() {
 		pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
-		pool.Exec(ctx, `DELETE FROM catalog_saby_exports WHERE variant_id IN(SELECT id FROM product_variants WHERE product_id=$1)`, p.ID)
 		pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, customer)
 		pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, p.ID)
 		pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)

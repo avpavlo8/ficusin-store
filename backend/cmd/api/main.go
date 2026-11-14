@@ -20,7 +20,6 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
-	"github.com/avpavlo8/ficusin-store/backend/internal/catalogsync"
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
 	"github.com/avpavlo8/ficusin-store/backend/internal/config"
 	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
@@ -31,6 +30,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/notify"
 	"github.com/avpavlo8/ficusin-store/backend/internal/operations"
 	"github.com/avpavlo8/ficusin-store/backend/internal/order"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 	"github.com/avpavlo8/ficusin-store/backend/internal/payment"
 	"github.com/avpavlo8/ficusin-store/backend/internal/photos"
@@ -186,7 +186,7 @@ func main() {
 		os.Exit(1)
 	}
 	shopSettings := settings.NewService(pool, logger)
-	orderService := order.NewService(pool, cdekClient, telegramClient, shopSettings, logger)
+	orderService := order.NewService(pool, cdekClient, shopSettings, logger)
 	notificationWorker := order.NewNotificationWorker(pool, telegramClient, logger)
 	pushService, err := notify.NewService(
 		pool, cfg.Push.PublicKey, cfg.Push.PrivateKey, cfg.Push.Subject, logger,
@@ -207,8 +207,9 @@ func main() {
 	shippingWorker := order.NewShippingWorker(pool, cdekClient, shopSettings, pushService, logger)
 	orderService.WithShipmentWake(shippingWorker.Wake)
 	adminRepository := admin.NewPostgresRepository(pool).WithFileStorage(privateStorage).WithNotifier(pushService).WithShipmentQuotes(cdekClient).WithPriceChannelsConfigured(map[string]bool{
-		"wb":    cfg.Marketplaces.WBToken != "",
-		"ozon":  cfg.Marketplaces.OzonClientID != "" && cfg.Marketplaces.OzonAPIKey != "",
+		"wb":    cfg.CatalogMarketplaces.WBToken != "",
+		"ozon":  cfg.CatalogMarketplaces.OzonClientID != "" && cfg.CatalogMarketplaces.OzonAPIKey != "",
+		"saby":  cfg.Saby.AppClientID != "" && cfg.Saby.AppSecret != "" && cfg.Saby.SecretKey != "",
 		"avito": cfg.Marketplaces.AvitoClientID != "" && cfg.Marketplaces.AvitoClientSecret != "",
 	})
 	paymentService := payment.NewService(
@@ -232,21 +233,39 @@ func main() {
 		cfg.Saby.AppClientID, cfg.Saby.AppSecret, cfg.Saby.SecretKey, cfg.Saby.PointID, cfg.Saby.PriceListID,
 	).WithIntegrationRequestLimiter(procurementStore)
 	adminRepository.WithEditorSabyMetadata(&integration.SabyEditorMetadataSource{Client: sabyProcurementClient, Hierarchy: &integration.SabyEditorHierarchySource{Client: sabyProcurementClient}}, cfg.Environment)
-	var catalogProvider catalogsync.Provider = sabyProcurementClient
+	var realizationProvider ordersale.Provider
+	if cfg.OrderRealization.Mode == "mock" {
+		realizationProvider = ordersale.MockProvider{}
+	}
+	if cfg.OrderRealization.Mode == "live" {
+		realizationProvider = &integration.SabyOrderRealizationProvider{
+			Client: sabyProcurementClient,
+			// Ordinary realization, verified independently from retail shift totals.
+			PublicRegulationUUID: "8861254e-4354-11e1-9d64-005056a63fed",
+		}
+	}
+	realizationControl := ordersale.DispatchControl{BuyerID: cfg.OrderRealization.BuyerID, Mode: cfg.OrderRealization.Mode, Enabled: realizationProvider != nil, SiteWarehouseID: cfg.OrderRealization.SiteWarehouseID, NativeWarehouseID: cfg.OrderRealization.NativeWarehouseID, MovementWarehouseID: cfg.OrderRealization.MovementWarehouseID, OrganizationID: cfg.OrderRealization.OrganizationID, RegulationID: cfg.OrderRealization.RegulationID}
+	if err := ordersale.RefreshDispatchControl(ctx, pool, realizationControl); err != nil {
+		logger.Error("order realization configuration failed", "error", err)
+		os.Exit(1)
+	}
+	if realizationProvider != nil {
+		go ordersale.RunPublisher(ctx, pool, realizationProvider, cfg.OrderRealization.Mode, logger)
+	}
 	if cfg.Environment == "staging" {
-		stagingProvider, err := catalogsync.NewStagingProvider(ctx, pool)
+		stock, err := saby.NewStagingStockRefresher(ctx, pool)
 		if err != nil {
-			logger.Error("staging catalogue configuration failed", "error", err)
+			logger.Error("staging stock configuration failed", "error", err)
 			os.Exit(1)
 		}
-		catalogProvider = stagingProvider
-		go stagingProvider.RunStagingStock(ctx, logger)
+		go stock.Run(ctx, logger)
 	}
-	catalogExportService := catalogsync.New(catalogsync.NewStore(pool), catalogProvider, logger)
-	go catalogExportService.Run(ctx)
-	go catalogeditor.RunPreview(ctx, pool, cfg.Environment, logger)
+	if cfg.CatalogPublicationMode == "mock" {
+		go catalogeditor.RunPreview(ctx, pool, cfg.Environment, logger)
+	}
 	adminRepository.WithEditorPublicationMode(cfg.CatalogPublicationMode)
 	editorReferences := integration.NewMarketplaceExecutor(cfg.CatalogMarketplaces.WBToken, cfg.CatalogMarketplaces.OzonClientID, cfg.CatalogMarketplaces.OzonAPIKey).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
+	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	var editorPublisher catalogeditor.Publisher
 	if cfg.CatalogPublicationMode == "mock" {
 		mockPublisher, err := integration.NewPersistentMockCatalog(ctx, pool)
@@ -265,10 +284,10 @@ func main() {
 		}
 	}
 	if editorPublisher != nil {
+		editorPublisher = &integration.EditorPublisher{Cards: editorPublisher, Prices: &integration.EditorPricePublisher{Marketplaces: editorReferences, Saby: sabyProcurementClient, Avito: avitoService, Mock: cfg.CatalogPublicationMode == "mock"}}
 		go catalogeditor.RunPublisher(ctx, pool, editorPublisher, cfg.CatalogPublicationMode, logger)
 	}
 
-	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	procurementExecutor := integration.NewProcurementExecutor(marketplaceExecutor, sabyProcurementClient, avitoService).
 		WithSabyCatalogSync(sabyService)
 	salesExecutor := integration.NewSalesExecutor(marketplaceExecutor, sabyProcurementClient)
@@ -306,7 +325,6 @@ func main() {
 		CDEK:                cdekClient,
 		Admin:               adminRepository,
 		Saby:                sabyService,
-		CatalogExport:       catalogExportService,
 		Push:                pushService,
 		Chat:                chatStore,
 		Cart:                cart.NewStore(pool),
@@ -315,7 +333,7 @@ func main() {
 		Payments:            paymentService,
 		Settings:            shopSettings,
 		Procurement:         procurementService,
-		Reviews:             reviews.NewStore(pool, privateStorage).WithLegacyMediaStorage(photoStorage),
+		Reviews:             reviews.NewStore(pool, privateStorage),
 		Refunds:             paymentService,
 		ProductPhotos:       productPhotoStorage,
 		CookieSecure:        cfg.Auth.CookieSecure,
@@ -364,7 +382,7 @@ func main() {
 		Password: cfg.Mail.Password,
 		From:     cfg.Mail.From,
 		FromName: cfg.Mail.FromName,
-	}, logger), logger).Run(ctx)
+	}), logger).Run(ctx)
 	if photoStorage.Configured() {
 		go photos.NewMirror(photos.NewPostgresStore(pool), photoStorage, logger).Run(ctx)
 	} else {

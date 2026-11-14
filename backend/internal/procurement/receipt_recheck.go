@@ -21,13 +21,7 @@ func (service *Service) RecheckReceipt(ctx context.Context, actor Actor, batchID
 	if service.executor == nil || !service.executor.Configured("saby_receipt") {
 		return ActionBatch{}, &UserFacingError{Message: "СБИС не подключён"}
 	}
-	store, ok := service.store.(interface {
-		RecheckReceipt(context.Context, Actor, int64) (ActionBatch, error)
-	})
-	if !ok {
-		return ActionBatch{}, ErrInvalidInput
-	}
-	return store.RecheckReceipt(ctx, actor, batchID)
+	return service.store.RecheckReceipt(ctx, actor, batchID)
 }
 
 func (store *PostgresStore) RecheckReceipt(ctx context.Context, actor Actor, sourceBatchID int64) (ActionBatch, error) {

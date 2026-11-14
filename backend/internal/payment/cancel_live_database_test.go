@@ -14,6 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Optional cancellation must remain supported by the real provider adapter.
+var _ canceller = (*integration.YooKassaClient)(nil)
+
 // Exercise the real durable request writer, not a handcrafted JSON fixture:
 // encoding/json stores PaymentRequest.Metadata with a capital M.
 func TestCancelPendingMetadataOnLiveDatabase(t *testing.T) {

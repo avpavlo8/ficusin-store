@@ -105,7 +105,7 @@ func TestSupplierPackagingSeparatesExpenseFromRefundableDeposit(t *testing.T) {
 	if _, _, err = supplierPackageCharges(text, 250); err == nil {
 		t.Fatal("silently dropped unexplained invoice packaging")
 	}
-	line := calculateAllocatedLine(PricingSettings{RetailMarkupMultiplier: 2}, KindInternational, 10, 100, 200, 50, 30, 31.60)
+	line := calculateAllocatedLine(PricingSettings{RetailMarkupMultiplier: 2}, KindInternational, 10, 100, 200, 50, 31.60)
 	if math.Abs(line.UnitCostRUB-1281.60) > 1e-9 || line.AdditionalPurchaseUnitRUB != 31.60 || line.PurchaseUnitRUB != 1000 {
 		t.Fatalf("supplier charge missing or mixed into purchase: %+v", line)
 	}

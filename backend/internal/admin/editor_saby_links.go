@@ -12,11 +12,10 @@ import (
 // from the editable saved plan: reading a card must never replace draft choices
 // or turn a display code into the identifier used by stock/integrations.
 type EditorSabyLink struct {
-	ID          string         `json:"id"`
-	Code        string         `json:"code"`
-	Category    EditorCategory `json:"category"`
-	Folder      EditorCategory `json:"folder"`
-	MirrorFound bool           `json:"mirrorFound"`
+	ID       string         `json:"id"`
+	Code     string         `json:"code"`
+	Category EditorCategory `json:"category"`
+	Folder   EditorCategory `json:"folder"`
 }
 
 func (r *PostgresRepository) WithEditorSabyMetadata(reader catalogeditor.SabyMetadataReader, environment string) *PostgresRepository {
@@ -41,7 +40,7 @@ func (r *PostgresRepository) readEditorSabyLinks(ctx context.Context, productID 
 	  ) e ON TRUE WHERE v.product_id=$1
 	 )
 	 SELECT v.id,v.saby_id,COALESCE(NULLIF(n.code,''),CASE WHEN cardinality(v.codes)=1 THEN v.codes[1] ELSE '' END),
-	  n.saby_id IS NOT NULL,COALESCE(n.folder_saby_id,''),
+	  COALESCE(n.folder_saby_id,''),
 	  COALESCE(NULLIF(array_to_string(f.path,' / '),''),f.name,''),v.aliases
 	 FROM variants v LEFT JOIN LATERAL (
 	  SELECT candidate.* FROM (
@@ -63,7 +62,7 @@ func (r *PostgresRepository) readEditorSabyLinks(ctx context.Context, productID 
 		var variantID int64
 		var link EditorSabyLink
 		var aliases []string
-		if err = rows.Scan(&variantID, &link.ID, &link.Code, &link.MirrorFound, &link.Folder.ID, &link.Folder.Name, &aliases); err != nil {
+		if err = rows.Scan(&variantID, &link.ID, &link.Code, &link.Folder.ID, &link.Folder.Name, &aliases); err != nil {
 			return nil, err
 		}
 		// section_path is a folder ancestry, not a nomenclature category. The

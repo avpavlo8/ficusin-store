@@ -15,23 +15,6 @@ export type ReadinessCode =
 export type ProductReadiness = {
   tasks: Array<{ label: string; section: "main" | "attributes" | "variants" | "care" | "photos" }>;
   codes: ReadinessCode[];
-  blockers: ReadinessCode[];
-  missingStage1: string[];
-  unknownEnums: string[];
-};
-
-export const readinessLabels: Record<ReadinessCode, string> = {
-  variants_missing: "Проверьте размеры и цены",
-  no_photo: "Нет основного фото",
-  no_description: "Нет описания",
-  invalid_category: "Некорректная категория",
-  stage1_missing: "Не заполнены характеристики",
-  latin_name_missing: "Нет латинского названия",
-  care_missing: "Не заполнен уход",
-  unknown_enum: "Есть неизвестные значения",
-  draft: "Черновик",
-  ready: "Черновики без замечаний",
-  published: "Опубликовано",
 };
 
 export function rootCategory(categories: Category[], categoryId?: number) {
@@ -102,10 +85,10 @@ export function readinessFor(
   )
     codes.push("care_missing");
   if (unknownEnums.length || product.unknownEnumValues) codes.push("unknown_enum");
-  const blockers = [...codes];
+  const ready = codes.length === 0;
   if (product.status === "published") codes.push("published");
   else if (product.status === "draft") codes.push("draft");
-  if (product.status === "draft" && blockers.length === 0) codes.push("ready");
+  if (product.status === "draft" && ready) codes.push("ready");
   const tasks: ProductReadiness["tasks"] = [];
   if (codes.includes("variants_missing"))
     tasks.push({ label: "Добавьте активный размер и проверьте цены", section: "variants" });
@@ -129,13 +112,7 @@ export function readinessFor(
   );
   if (product.unknownEnumValues && !unknownEnums.length)
     tasks.push({ label: "Проверьте значения размеров", section: "variants" });
-  return { tasks, codes, blockers, missingStage1, unknownEnums };
-}
-
-export function displayValue(value: unknown, attribute?: CategoryAttribute) {
-  if (valueMissing(value)) return "Не заполнено";
-  const values = Array.isArray(value) ? value.map(String) : [String(value)];
-  return values.map((item) => attribute?.optionLabels?.[item] || item).join(", ");
+  return { tasks, codes };
 }
 
 export function normalizeCatalogQuery(value: string) {
@@ -204,13 +181,4 @@ export const channelLabels: Record<string, string> = {
   avito: "Авито",
   site: "Сайт",
   ficusin: "Фикусин",
-};
-export const mappingLabels: Record<string, string> = {
-  code: "Код СБИС",
-  id: "Идентификатор",
-  uuid: "Идентификатор СБИС",
-  vendor_code: "Артикул продавца",
-  offer_id: "Артикул продавца",
-  nm_id: "Код карточки",
-  legacy_sku: "Прежний артикул",
 };

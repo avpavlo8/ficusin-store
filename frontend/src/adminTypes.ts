@@ -1,5 +1,7 @@
 export type Role = "owner" | "administrator" | "manager" | "";
 
+export type ProductMedia = { id: number; url: string; primary: boolean; sortOrder: number };
+
 export type Section =
   | "chat"
   | "dashboard"
@@ -21,9 +23,7 @@ export type Category = {
   name: string;
   slug: string;
   sortOrder: number;
-  icon: string;
   productsCount: number;
-  childrenCount: number;
 };
 
 export type CategoryAttribute = {
@@ -211,7 +211,6 @@ export type Product = {
   maxPrice?: number;
   variantsReady?: boolean;
   id: number;
-  sabyId: string;
   slug: string;
   productCode?: string;
   name: string;
@@ -233,8 +232,6 @@ export type Product = {
   packageHeightCm?: number;
   packageWeightGrams?: number;
   wholesaleMinQty: number;
-  overrideFields: string[];
-  sabyFields: string[];
   sabyCode: string;
   catalogSection: string;
   plantKind?: string;
@@ -245,7 +242,6 @@ export type Product = {
   placement?: string;
   petSafety?: string;
   growthHabit?: string;
-  sabyUpdatedAt?: string;
   categoryId?: number;
   passport: PlantPassport;
   importantWarnings: string[];
@@ -388,12 +384,7 @@ export type ProcurementSettings = {
   reserveRate: number;
   packageRub: number;
   priceChangeThreshold: number;
-  domesticRetailMultiplier: number;
-  internationalCostMultiplier: number;
-  internationalRetailMultiplier: number;
   marketplaceStrikeMarkup: number;
-  retailRoundStep: number;
-  avoidRoundHundreds: boolean;
   recommendationDays: number;
   targetCoverDays: number;
   retailMarkupMultiplier: number;
@@ -449,11 +440,6 @@ export type NomenclatureCandidate = {
   name: string;
   balance: number;
   price: number;
-  totalSales: number;
-  sabySales: number;
-  wbSales: number;
-  ozonSales: number;
-  siteSales: number;
   supplierLinked: boolean;
 };
 
@@ -847,15 +833,6 @@ export type ProcurementData = {
   salesSync: SalesSyncStatus[];
   integrationHealth: IntegrationHealth[];
   integrationSync: IntegrationSyncStatus[];
-};
-
-export type AdminCollection = {
-  id: number;
-  slug: string;
-  title: string;
-  note: string;
-  active: boolean;
-  products: number[];
 };
 
 export type SettingDefinition = {

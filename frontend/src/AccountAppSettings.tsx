@@ -5,7 +5,7 @@ export function AccountAppSettings() {
   return (
     <section className="account-app-settings" aria-labelledby="account-app-title">
       <h2 id="account-app-title">Приложение</h2>
-      <InstallHint inline />
+      <InstallHint />
       <h3>Уведомления</h3>
       <PushToggle />
     </section>

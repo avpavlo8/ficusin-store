@@ -10,8 +10,8 @@ import (
 // SetVariantMarketplaceScope records which channels the owner permits for a
 // site SKU. Listing and price changes remain separate, explicit operations.
 func (repository *PostgresRepository) SetVariantMarketplaceScope(ctx context.Context, actor Actor, variantID int64, scope string) error {
-	if err := ownerOnly(actor); err != nil {
-		return err
+	if !Can(actor.Role, PermissionProductsManage) {
+		return ErrForbidden
 	}
 	if variantID <= 0 || (scope != "unknown" && scope != "site_only" && scope != "marketplaces") {
 		return ErrInvalidInput
@@ -36,9 +36,7 @@ func (repository *PostgresRepository) SetVariantMarketplaceScope(ctx context.Con
 		return err
 	}
 	if scope == "site_only" {
-		if _, err = tx.Exec(ctx, `UPDATE procurement_action_items item SET status='skipped',error_message='Маркетплейсы отключены для SKU на сайте',updated_at=CURRENT_TIMESTAMP
-			FROM procurement_action_batches batch WHERE batch.id=item.batch_id AND batch.source='manual' AND batch.manual_variant_id=$1
-			AND item.channel IN ('wb','ozon') AND item.status IN ('draft','approved','queued','failed','not_configured')`, variantID); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE catalog_editor_price_publications SET status='superseded',message='Маркетплейсы отключены для SKU на сайте',updated_at=NOW() WHERE variant_id=$1 AND channel IN('wb','ozon') AND (status='draft' OR(status='failed' AND COALESCE(progress->>'ambiguous','false')<>'true' AND COALESCE(progress->>'stage','') IN('','price-rejected')))`, variantID); err != nil {
 			return err
 		}
 	}

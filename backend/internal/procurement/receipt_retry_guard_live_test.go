@@ -25,8 +25,8 @@ func TestFailedSabyReceiptCannotBeRetriedWithoutReconciliation(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	var actorID, supplierID, orderID, lineID, receiptBatchID, priceBatchID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Receipt retry guard',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("receipt-guard-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Receipt retry guard',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("receipt-guard-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	defer pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID) //nolint:errcheck

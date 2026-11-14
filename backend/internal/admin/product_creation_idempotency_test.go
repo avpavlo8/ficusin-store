@@ -67,7 +67,7 @@ func TestProductCreationReceiptSurvivesLostResponseOnLiveDatabase(t *testing.T) 
 	actors := []Actor{}
 	for i := 0; i < 2; i++ {
 		var id int64
-		if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Creation retry test',NOW()) RETURNING id`, fmt.Sprintf("creation-%s-%d@example.invalid", tag, i), fmt.Sprintf("+7%s%d", tag[len(tag)-9:], i)).Scan(&id); err != nil {
+		if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Creation retry test',NOW()) RETURNING id`, fmt.Sprintf("creation-%s-%d@example.invalid", tag, i), fmt.Sprintf("+7%s%d", tag[len(tag)-9:], i)).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		actors = append(actors, Actor{CustomerID: id, Role: RoleOwner})

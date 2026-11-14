@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/procurement"
@@ -116,6 +117,7 @@ func (executor *ProcurementExecutor) RefreshSabyCatalog(ctx context.Context) (pr
 	if executor == nil || executor.saby == nil || executor.sabySink == nil {
 		return procurement.ChannelLinkResult{}, fmt.Errorf("обновление справочника СБИС не настроено")
 	}
+	ctx = saby.WithStockSnapshotObservedAt(ctx, time.Now())
 	items, err := executor.saby.FetchCatalog(ctx)
 	if err != nil {
 		return procurement.ChannelLinkResult{}, err

@@ -1,3 +1,4 @@
+import { normalizeDraftVariant } from "./productDraftMigration.ts";
 import type { Product, CategoryAttribute } from "./adminTypes";
 import type { AdminVariant } from "./AdminPim";
 import {
@@ -9,13 +10,12 @@ import {
 export function productToDraft(product: Product): ProductCreationDraft {
   return {
     ...emptyProductDraft(),
+    variants: [],
     name: product.name,
     description: product.description,
     latinName: product.latinName || "",
     categoryId: product.categoryId,
     price: String(product.price),
-    pot: product.potDiameterCm == null ? "" : String(product.potDiameterCm),
-    height: product.heightCm == null ? "" : String(product.heightCm),
     attributes: { ...product.attributes },
     care: product.careInstructions || "",
     passport: { ...product.passport },
@@ -28,20 +28,18 @@ export function productToDraft(product: Product): ProductCreationDraft {
             source: product.image,
             name: "Основное фото",
             type: "image/jpeg",
-            size: 0,
           },
         ]
       : [],
   };
 }
 export function variantToDraft(variant: AdminVariant): DraftVariant {
-  return {
+  return normalizeDraftVariant({
     id: `variant-${variant.id}`,
     serverId: variant.id,
     label: variant.label,
     sku: variant.sku,
     price: String(variant.price),
-    stock: variant.stock,
     wholesaleMinQty: String(variant.wholesaleMinQty),
     active: variant.active,
     archived: variant.archived,
@@ -53,28 +51,13 @@ export function variantToDraft(variant: AdminVariant): DraftVariant {
     })),
     sabyId: variant.externalIds.find((item) => item.provider === "saby" && item.type === "id")
       ?.externalId,
-  };
+  });
 }
 export function seedVariant(draft: ProductCreationDraft): DraftVariant {
-  return {
-    id: "first",
-    label: "Основной вариант",
-    sku: "",
-    price: draft.price,
-    stock: 0,
-    wholesaleMinQty: "1",
-    active: true,
-    archived: false,
-    externalIds: [],
-    saby: { ...draft.saby },
-    ozon: { ...draft.ozon },
-    wb: { ...draft.wb },
-    attributes: {
-      ...draft.attributes,
-      pot_diameter_cm: draft.attributes.pot_diameter_cm ?? (draft.pot ? Number(draft.pot) : null),
-      height_cm: draft.attributes.height_cm ?? (draft.height ? Number(draft.height) : null),
-    },
-  };
+  return normalizeDraftVariant(
+    { id: "first", label: "Основной вариант", price: draft.price, attributes: draft.attributes },
+    draft,
+  );
 }
 export function attributeDelta(
   schema: CategoryAttribute[],

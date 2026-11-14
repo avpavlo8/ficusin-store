@@ -11,10 +11,9 @@ import (
 
 type catalogToolRepositoryStub struct {
 	*adminRepositoryStub
-	products   []admin.Product
-	updates    []admin.ProductUpdate
-	media      []admin.ProductMedia
-	categories []admin.Category
+	products []admin.Product
+	updates  []admin.ProductUpdate
+	media    []admin.ProductMedia
 }
 
 func newCatalogToolRepositoryStub() *catalogToolRepositoryStub {
@@ -23,10 +22,6 @@ func newCatalogToolRepositoryStub() *catalogToolRepositoryStub {
 
 func (stub *catalogToolRepositoryStub) ListProducts(context.Context) ([]admin.Product, error) {
 	return stub.products, nil
-}
-
-func (stub *catalogToolRepositoryStub) ListCategories(context.Context) ([]admin.Category, error) {
-	return stub.categories, nil
 }
 
 func (stub *catalogToolRepositoryStub) UpdateProduct(_ context.Context, _ admin.Actor, _ int64, update admin.ProductUpdate) (admin.Product, error) {
@@ -57,43 +52,35 @@ func (stub *catalogToolRepositoryStub) SetPrimaryProductMedia(context.Context, a
 	return nil
 }
 
-func TestProductUpdateDoesNotReplaceGalleryWhenPrimaryImageIsUnchanged(t *testing.T) {
+func TestProductUpdateRejectsRetiredFirstVariantAliases(t *testing.T) {
 	t.Parallel()
-
-	repository := newCatalogToolRepositoryStub()
-	repository.products = []admin.Product{{ID: 7, Slug: "fikus", Image: "/existing.jpg"}}
-	request := adminRequest(http.MethodPatch, "/api/v1/admin/products/7", `{"description":"Новое описание","image":"/existing.jpg"}`)
-	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
-	}
-	if len(repository.updates) != 1 {
-		t.Fatalf("update calls = %d, want 1", len(repository.updates))
-	}
-	if repository.updates[0].Image != nil {
-		t.Fatalf("unchanged image must be removed from update, got %q", *repository.updates[0].Image)
-	}
-	if repository.updates[0].Description == nil || *repository.updates[0].Description != "Новое описание" {
-		t.Fatalf("description was lost: %+v", repository.updates[0].Description)
+	for _, key := range []string{"priceMinor", "variantLabel", "heightCm", "potDiameterCm", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightGrams", "wholesaleMinQty", "stock", "sabyFields", "externalIds", "image"} {
+		for _, role := range []string{admin.RoleOwner, admin.RoleManager} {
+			repository := newCatalogToolRepositoryStub()
+			request := adminRequest(http.MethodPatch, "/api/v1/admin/products/7", `{"description":"Do not partially save","`+key+`":null}`)
+			response := httptest.NewRecorder()
+			NewRouter(discardLogger(), adminDependencies(repository, role, "staff@example.com")).ServeHTTP(response, request)
+			want := http.StatusBadRequest
+			if role == admin.RoleManager && (key == "stock" || key == "sabyFields") {
+				want = http.StatusForbidden
+			}
+			if response.Code != want || len(repository.updates) != 0 {
+				t.Fatalf("%s/%s legacy field accepted: %d %v", role, key, response.Code, repository.updates)
+			}
+		}
 	}
 }
 
-func TestProductUpdateKeepsIntentionalPrimaryImageChange(t *testing.T) {
+func TestProductCreateRejectsRetiredAliases(t *testing.T) {
 	t.Parallel()
-
-	repository := newCatalogToolRepositoryStub()
-	repository.products = []admin.Product{{ID: 7, Slug: "fikus", Image: "/existing.jpg"}}
-	request := adminRequest(http.MethodPatch, "/api/v1/admin/products/7", `{"image":"/new.jpg"}`)
-	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
-
-	if response.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
-	}
-	if len(repository.updates) != 1 || repository.updates[0].Image == nil || *repository.updates[0].Image != "/new.jpg" {
-		t.Fatalf("intentional image replacement was lost: %+v", repository.updates)
+	for _, key := range []string{"heightCm", "potDiameterCm", "packageLengthCm", "packageWidthCm", "packageHeightCm", "packageWeightGrams", "stock", "image", "shortDescription"} {
+		repository := newCatalogToolRepositoryStub()
+		request := adminRequest(http.MethodPost, "/api/v1/admin/products", `{"name":"New draft","priceMinor":149099,"`+key+`":null}`)
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), adminDependencies(repository, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest || len(repository.createdProducts) != 0 {
+			t.Fatalf("%s legacy field accepted: %d", key, response.Code)
+		}
 	}
 }
 
@@ -111,28 +98,5 @@ func TestProductMediaListRequiresAdminReadPermission(t *testing.T) {
 	}
 	if body := response.Body.String(); body == "" || body == "{}" {
 		t.Fatalf("media response is empty: %s", body)
-	}
-}
-
-func TestPlantToolsUseCategoryRootInsteadOfLegacySection(t *testing.T) {
-	repository := newCatalogToolRepositoryStub()
-	rootID := int64(1)
-	leafID := int64(2)
-	repository.categories = []admin.Category{{ID: rootID, Slug: "plants"}, {ID: leafID, ParentID: &rootID, Slug: "ficus"}}
-	plant, err := adminProductIsPlant(context.Background(), repository, admin.Product{CategoryID: &leafID, CatalogSection: "pots"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !plant {
-		t.Fatal("plant category must win over stale catalog_section")
-	}
-	potID := int64(3)
-	repository.categories = append(repository.categories, admin.Category{ID: potID, Slug: "pots"})
-	plant, err = adminProductIsPlant(context.Background(), repository, admin.Product{CategoryID: &potID, CatalogSection: "plants"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plant {
-		t.Fatal("non-plant category must not receive plant AI")
 	}
 }

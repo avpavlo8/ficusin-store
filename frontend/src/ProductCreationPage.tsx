@@ -6,12 +6,13 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, money } from "./adminShared";
 import { useProductMarketplacePricing } from "./useProductMarketplacePricing";
+import { EditorPricePublications } from "./EditorPricePublications";
 import { NumericInput } from "./NumericInput";
 import { AutoTextarea } from "./AutoTextarea";
 import { categoryVariantName } from "./variantNaming";
 import { CategoryPicker } from "./CategoryPicker";
 import { rootCategory } from "./adminCatalogLogic";
-import { normalizePlantAttributes, plantEditorSchema } from "./plantCharacteristicSchema";
+import { plantEditorSchema } from "./plantCharacteristicSchema";
 import { PlantCharacteristicsEditor } from "./PlantCharacteristicsEditor";
 import { ProductPackagingEditor } from "./ProductPackagingEditor";
 import { PlantWarningsEditor } from "./PlantWarningsEditor";
@@ -42,7 +43,7 @@ import {
 } from "./catalogEditorChannels";
 import type { Category, CategoryAttribute, Product } from "./adminTypes";
 import type { AdminVariant } from "./AdminPim";
-import type { ProductMedia } from "./ProductMediaManager";
+import type { ProductMedia } from "./adminTypes";
 import {
   draftStorageKey,
   loadProductDraft,
@@ -62,12 +63,12 @@ export function ProductCreationPage({
   onClose,
   product,
   onSaved,
-  canManage = true,
+  canManage,
 }: {
   onClose: () => void;
   product?: Product;
   onSaved?: (product: Product) => void;
-  canManage?: boolean;
+  canManage: boolean;
 }) {
   const productId = product?.id;
   const storageKey = product ? `ficusin:product-edit-draft:v1:${product.id}` : draftStorageKey;
@@ -78,27 +79,29 @@ export function ProductCreationPage({
     const recovered = initial.draft;
     return {
       ...recovered,
-      attributes: normalizePlantAttributes(recovered.attributes, !recovered.plantAttributesVersion),
-      plantAttributesVersion: 1,
       passport: { ...product?.passport, ...recovered.passport },
       variants: recovered.variants?.length ? recovered.variants : [seedVariant(recovered)],
     };
   });
   const [tab, setTab] = useState<"product" | "channels" | "faq">(() =>
-    new URLSearchParams(location.search).get("editor") === "faq" ||
-    initial.draft.editorTab === "faq"
-      ? "faq"
-      : new URLSearchParams(location.search).get("editor") === "channels" ||
-          initial.draft.editorTab === "channels" ||
-          ["ozon", "wb", "saby", "relationships"].includes(
-            new URLSearchParams(location.search).get("step") ||
-              new URLSearchParams(location.search).get("tab") ||
-              "",
-          )
-        ? "channels"
-        : "product",
+    new URLSearchParams(location.search).get("editor") === "media"
+      ? "product"
+      : new URLSearchParams(location.search).get("editor") === "faq" ||
+          initial.draft.editorTab === "faq"
+        ? "faq"
+        : new URLSearchParams(location.search).get("editor") === "channels" ||
+            initial.draft.editorTab === "channels" ||
+            ["ozon", "wb", "saby", "relationships"].includes(
+              new URLSearchParams(location.search).get("step") ||
+                new URLSearchParams(location.search).get("tab") ||
+                "",
+            )
+          ? "channels"
+          : "product",
   );
   const [saveError, setSaveError] = useState(initial.error);
+  const [migrationBlocked, setMigrationBlocked] = useState(Boolean(initial.blocked));
+  const writeBlocked = useRef(Boolean(initial.blocked));
   const [categories, setCategories] = useState<Category[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogRevision, setCatalogRevision] = useState(0);
@@ -111,6 +114,12 @@ export function ProductCreationPage({
   const [remoteNotice, setRemoteNotice] = useState("");
   const [loading, setLoading] = useState(Boolean(product));
   const [remoteLoaded, setRemoteLoaded] = useState(!product);
+  useEffect(() => {
+    if (!remoteLoaded || new URLSearchParams(location.search).get("editor") !== "media") return;
+    const gallery = document.getElementById("product-media");
+    gallery?.focus({ preventScroll: true });
+    gallery?.scrollIntoView({ block: "start" });
+  }, [remoteLoaded]);
   const [remoteRevision, setRemoteRevision] = useState(0);
   const [collectionsRevision, setCollectionsRevision] = useState(0);
   const [channelStatuses, setChannelStatuses] = useState<
@@ -142,6 +151,7 @@ export function ProductCreationPage({
   const serverVariantMedia = useRef(new Map<number, ProductMedia[]>());
   const update = useCallback(
     (patch: Partial<ProductCreationDraft>) => {
+      if (writeBlocked.current) return false;
       const next = { ...latest.current, ...patch, updatedAt: new Date().toISOString() };
       latest.current = next;
       setDraft(next);
@@ -161,6 +171,8 @@ export function ProductCreationPage({
       if (event.key !== storageKey || !event.newValue) return;
       const data = loadProductDraft(storageKey);
       if (data.error) {
+        writeBlocked.current = true;
+        setMigrationBlocked(true);
         setSaveError(data.error);
         return;
       }
@@ -233,7 +245,6 @@ export function ProductCreationPage({
               source: item.url,
               name: "Фото варианта",
               type: "image/jpeg",
-              size: 0,
             }));
         if (!latest.current.remoteInitialized) {
           const placeholder = latest.current.variants?.find((item) => item.id === "first");
@@ -246,8 +257,17 @@ export function ProductCreationPage({
                 ? { price: placeholder.price }
                 : {}),
               ...(placeholder.label !== "Основной вариант" ? { label: placeholder.label } : {}),
-              saby: placeholder.saby,
-              sabyEditor: placeholder.sabyEditor,
+              sabyEditor:
+                placeholder.sabyEditorTouched ||
+                placeholder.sabyEditor.category.id ||
+                placeholder.sabyEditor.folder.id ||
+                placeholder.sabyEditor.existingCode
+                  ? placeholder.sabyEditor
+                  : next.sabyEditor,
+              marketplace: placeholder.marketplaceInitialized
+                ? placeholder.marketplace
+                : next.marketplace,
+              marketplaceInitialized: placeholder.marketplaceInitialized,
               sabyEditorTouched: placeholder.sabyEditorTouched,
               ozon: placeholder.ozon,
               wb: placeholder.wb,
@@ -276,7 +296,6 @@ export function ProductCreationPage({
                         source: item.url,
                         name: "Фото товара",
                         type: "image/jpeg",
-                        size: 0,
                       })),
                     ...localMedia,
                   ],
@@ -360,6 +379,9 @@ export function ProductCreationPage({
         config: {
           variants: Array<{
             variantId: number;
+            priceMode?: "auto" | "manual";
+            ozonPrice: string;
+            wbPrice: string;
             saby: SabyEditorConfig;
             marketplace: MarketplaceCommon;
           }>;
@@ -394,20 +416,34 @@ export function ProductCreationPage({
                     code: "",
                     category: blankCategory(),
                     folder: blankCategory(),
-                    mirrorFound: false,
                   }
                 : undefined);
-            const sabyEditor =
-              row.sabyEditor || saved?.saby || linked
-                ? mergeSabyEditor({
-                    local: row.sabyEditor,
-                    saved: saved?.saby,
-                    linked,
-                    touched: row.sabyEditorTouched,
-                    defaults: { category: current.sabyCategory, folder: current.sabyFolder },
-                  })
-                : undefined;
-            const next = { ...row, marketplace: row.marketplace || saved?.marketplace, sabyEditor };
+            const sabyEditor = mergeSabyEditor({
+              local: row.sabyEditor,
+              saved: saved?.saby,
+              linked,
+              touched: row.sabyEditorTouched,
+            });
+            const savedPriceMode = saved?.priceMode;
+            // Formula previews may have filled a fresh draft before the plan
+            // arrives. Later polls must preserve local edits, including zero.
+            const restoreManualPrices =
+              row.marketplacePriceMode === undefined && savedPriceMode === "manual";
+            const next = {
+              ...row,
+              ...(restoreManualPrices && typeof saved?.ozonPrice === "string"
+                ? { ozon: { ...row.ozon, price: saved.ozonPrice } }
+                : {}),
+              ...(restoreManualPrices && typeof saved?.wbPrice === "string"
+                ? { wb: { ...row.wb, price: saved.wbPrice } }
+                : {}),
+              marketplacePriceMode: row.marketplacePriceMode ?? savedPriceMode,
+              marketplace: row.marketplaceInitialized
+                ? row.marketplace
+                : saved?.marketplace || row.marketplace,
+              marketplaceInitialized: row.marketplaceInitialized || Boolean(saved?.marketplace),
+              sabyEditor,
+            };
             return JSON.stringify(next) === JSON.stringify(row) ? row : next;
           });
           if (hydrated?.some((row, index) => row !== current.variants?.[index]))
@@ -498,7 +534,7 @@ export function ProductCreationPage({
           const rows = current.variants || [];
           const row = rows.find((item) => item.serverId === variantId);
           if (!row) return;
-          const value = marketplaceOf(row, current);
+          const value = marketplaceOf(row);
           const merged = mergeMarketplaceCards(value, data.cards, {
             name: current.name,
             description: current.description,
@@ -509,7 +545,9 @@ export function ProductCreationPage({
           if (JSON.stringify(merged) !== JSON.stringify(value))
             update({
               variants: rows.map((item) =>
-                item.serverId === variantId ? { ...item, marketplace: merged } : item,
+                item.serverId === variantId
+                  ? { ...item, marketplace: merged, marketplaceInitialized: true }
+                  : item,
               ),
             });
           if (Object.keys(data.errors).length === 0) loadedMarketplaceCards.current.add(key);
@@ -568,18 +606,14 @@ export function ProductCreationPage({
         )
       )
         return;
-      if (
-        (row.wb || current.wb).price === prices.wb &&
-        (row.ozon || current.ozon).price === prices.ozon
-      )
-        return;
+      if (row.wb.price === prices.wb && row.ozon.price === prices.ozon) return;
       update({
         variants: current.variants?.map((item) =>
           item.id === row.id
             ? {
                 ...item,
-                wb: { ...(item.wb || current.wb), price: prices.wb },
-                ozon: { ...(item.ozon || current.ozon), price: prices.ozon },
+                wb: { ...item.wb, price: prices.wb },
+                ozon: { ...item.ozon, price: prices.ozon },
               }
             : item,
         ),
@@ -636,7 +670,7 @@ export function ProductCreationPage({
         }
         const id = crypto.randomUUID();
         await saveDraftMedia(id, file);
-        const photo: DraftMedia = { id, name: file.name, type: file.type, size: file.size };
+        const photo: DraftMedia = { id, name: file.name, type: file.type };
         update(appendGalleryMedia(latest.current, variant.id, photo));
       }
     } catch {
@@ -649,6 +683,7 @@ export function ProductCreationPage({
     const currentGallery = variantGallery(latest.current, variant.id);
     const item = currentGallery.find((photo) => photo.id === id);
     if (!item) return;
+    if (!canManage && item.serverId) return;
     const media = currentGallery.filter((photo) => photo.id !== id);
     const saved = update(replaceVariantGallery(latest.current, variant.id, media));
     if (!saved) return;
@@ -671,7 +706,6 @@ export function ProductCreationPage({
       mediaCustomized: true,
       price: variant.price,
       active: false,
-      saby: emptyProductDraft().saby,
       ozon: emptyProductDraft().ozon,
       wb: emptyProductDraft().wb,
     };
@@ -689,6 +723,28 @@ export function ProductCreationPage({
     const variant =
       variants.find((row) => row.id === latest.current.selectedVariantId) || variants[0];
     if (!targetProduct || saving || loading || !remoteLoaded || mediaBusy) return;
+    if (!canManage) {
+      const removesSavedPhoto = (wanted: DraftMedia[], known: ProductMedia[]) =>
+        known.some((photo) => !wanted.some((item) => item.serverId === photo.id));
+      if (
+        variants.some((item) => item.removePending) ||
+        removesSavedPhoto(latest.current.media, serverMedia.current) ||
+        variants.some(
+          (item) =>
+            item.serverId &&
+            item.mediaInitialized &&
+            removesSavedPhoto(
+              variantMediaToPersist(latest.current, item.id),
+              serverVariantMedia.current.get(item.serverId) || [],
+            ),
+        )
+      ) {
+        setRemoteError(
+          "Удаление сохранённых вариантов и фотографий доступно владельцу. Восстановите их в черновике перед сохранением.",
+        );
+        return;
+      }
+    }
     if (!draft.name.trim() || !draft.categoryId) {
       setRemoteError("Укажите название и категорию товара.");
       return;
@@ -826,9 +882,9 @@ export function ProductCreationPage({
           ...variantToDraft(row),
           ...(previous
             ? {
-                saby: previous.saby,
                 marketplacePriceMode: previous.marketplacePriceMode,
                 marketplace: previous.marketplace,
+                marketplaceInitialized: previous.marketplaceInitialized,
                 sabyEditor: previous.sabyEditor,
                 sabyEditorTouched: previous.sabyEditorTouched,
                 ozon: previous.ozon,
@@ -981,15 +1037,30 @@ export function ProductCreationPage({
         .filter((row) => row.serverId && !row.archived && !row.removePending)
         .map((row) => ({
           variantId: row.serverId,
-          saby: sabyOf(row, latest.current),
-          marketplace: marketplaceOf(row, latest.current),
-          ozonPrice: (row.ozon || latest.current.ozon).price,
-          wbPrice: (row.wb || latest.current.wb).price,
+          priceMode: row.marketplacePriceMode || "auto",
+          saby: sabyOf(row),
+          marketplace: marketplaceOf(row),
+          ozonPrice: row.ozon.price,
+          wbPrice: row.wb.price,
         }));
-      await api(`/api/v1/admin/products/${targetProduct.id}/editor-plan`, {
-        method: "PUT",
-        body: JSON.stringify({ config: { variants: planVariants }, submit: true }),
-      });
+      if (canManage) {
+        await api(`/api/v1/admin/products/${targetProduct.id}/editor-plan`, {
+          method: "PUT",
+          body: JSON.stringify({ config: { variants: planVariants }, submit: true }),
+        });
+      } else {
+        try {
+          const sync = await api<{ warnings?: string[] }>(
+            `/api/v1/admin/products/${targetProduct.id}/editor-plan/sync-existing`,
+            { method: "POST", body: "{}" },
+          );
+          if (sync.warnings?.length) setRemoteError(sync.warnings.join(" "));
+        } catch (cause) {
+          throw new Error(
+            `Изменения товара сохранены. Не удалось поставить обновление площадок в очередь: ${(cause as Error).message}. Повторите сохранение.`,
+          );
+        }
+      }
       setCollectionsRevision((value) => value + 1);
       const removed = variants.filter((item) => item.removePending && item.serverId);
       const archived = removed.filter((item) =>
@@ -1013,7 +1084,7 @@ export function ProductCreationPage({
         onSaved?.(original.current || targetProduct);
       }
       setRemoteNotice(
-        `Изменения товара сохранены.${deleted.length ? ` Удалено вариантов: ${deleted.length}.` : ""}${archived.length ? ` В архиве из-за связей: ${archived.map((item) => item.label || item.sku).join(", ")}.` : ""} Запущена подготовка выбранных площадок.`,
+        `Изменения товара сохранены.${deleted.length ? ` Удалено вариантов: ${deleted.length}.` : ""}${archived.length ? ` В архиве из-за связей: ${archived.map((item) => item.label || item.sku).join(", ")}.` : ""}${canManage ? " Запущена подготовка выбранных площадок." : ""}`,
       );
     } catch (cause) {
       setRemoteError((cause as Error).message);
@@ -1034,7 +1105,7 @@ export function ProductCreationPage({
       (row) => !row.removePending && !row.archived,
     );
     for (const row of currentVariants) {
-      const saby = sabyOf(row, current);
+      const saby = sabyOf(row);
       if (saby.mode === "link" ? !saby.existingCode.trim() : !saby.category.id || !saby.folder.id) {
         setRemoteError("Выберите категорию и раздел СБИС или укажите код уже созданного товара.");
         return;
@@ -1117,7 +1188,7 @@ export function ProductCreationPage({
       setSaving(false);
     }
   };
-  const marketplace = marketplaceOf(variant, draft);
+  const marketplace = marketplaceOf(variant);
   const linkedMarketplaces = channelLinks[String(variant.serverId)] || {};
   const creationChannels = (
     [
@@ -1125,21 +1196,24 @@ export function ProductCreationPage({
       ["wb", "Wildberries"],
     ] as const
   ).filter(([channel]) => !linkedMarketplaces[channel] && marketplace[channel].mode === "create");
-  const sabyEditor = sabyOf(variant, draft);
+  const sabyEditor = sabyOf(variant);
   const changeMarketplace = (value: MarketplaceCommon) => {
-    changeVariant({ marketplace: value });
+    changeVariant({ marketplace: value, marketplaceInitialized: true });
     setRemoteError((message) => (message.startsWith("Заполните:") ? "" : message));
   };
   const changeSaby = (value: SabyEditorConfig, field: SabyEditorField) => {
     const current = latest.current;
     update({
-      ...(field === "category" ? { sabyCategory: value.category } : {}),
-      ...(field === "folder" ? { sabyFolder: value.folder } : {}),
+      sabyDefaults: {
+        ...current.sabyDefaults,
+        ...(field === "category" ? { category: value.category } : {}),
+        ...(field === "folder" ? { folder: value.folder } : {}),
+      },
       variants: (current.variants || variants).map((row) =>
         row.id === variant.id
           ? {
               ...row,
-              sabyEditor: { ...sabyOf(row, current), [field]: value[field] },
+              sabyEditor: { ...sabyOf(row), [field]: value[field] },
               sabyEditorTouched: { ...row.sabyEditorTouched, [field]: true },
             }
           : row,
@@ -1200,6 +1274,15 @@ export function ProductCreationPage({
       />
     </label>
   );
+  if (migrationBlocked)
+    return (
+      <div className="product-creation-page editor-page">
+        <p role="alert">{saveError || initial.error}</p>
+        <button type="button" className="admin-action" onClick={onClose}>
+          Закрыть редактор
+        </button>
+      </div>
+    );
   return (
     <div
       className="product-creation-page editor-page"
@@ -1409,6 +1492,7 @@ export function ProductCreationPage({
           inherited={!ownGallery && gallery.length > 0}
           busy={mediaBusy || saving}
           disabled={loading || (Boolean(product) && !remoteLoaded)}
+          canRemove={(item) => canManage || !item.serverId}
           error={mediaError}
           onChange={changeGallery}
           onRemove={removeMedia}
@@ -1476,15 +1560,21 @@ export function ProductCreationPage({
                       </p>
                     </div>
                   ) : (
-                    <SabyEditorFields
-                      value={sabyEditor}
-                      onChange={changeSaby}
-                      linked={
-                        sabyLinks[String(variant.serverId)] ||
-                        (variant.sabyId ? { id: variant.sabyId, code: "" } : undefined)
-                      }
-                      barcode={channelBarcodes[String(variant.serverId)]}
-                    />
+                    <fieldset
+                      className="editor-protected-fields wide"
+                      disabled={!canManage}
+                      aria-label="Связь с СБИС"
+                    >
+                      <SabyEditorFields
+                        value={sabyEditor}
+                        onChange={changeSaby}
+                        linked={
+                          sabyLinks[String(variant.serverId)] ||
+                          (variant.sabyId ? { id: variant.sabyId, code: "" } : undefined)
+                        }
+                        barcode={channelBarcodes[String(variant.serverId)]}
+                      />
+                    </fieldset>
                   )}
                   <label className="wide">
                     {plant ? "О растении" : "Описание"}
@@ -1519,9 +1609,14 @@ export function ProductCreationPage({
                     </label>
                   )}
                   {priceField}
+                  <p className="editor-secondary">
+                    Цены площадок подтверждаются отдельно во вкладке «Маркетплейсы» после
+                    сохранения.
+                  </p>
                   <label>
                     Оптовый минимум, шт.
                     <NumericInput
+                      disabled={!canManage}
                       min="1"
                       step="1"
                       value={variant.wholesaleMinQty}
@@ -1779,33 +1874,54 @@ export function ProductCreationPage({
                   </button>
                 </div>
               )}
-              <MarketplaceEditor
-                productId={productId || undefined}
-                variantId={variant.serverId}
-                linked={linkedMarketplaces}
-                value={marketplace}
-                onChange={changeMarketplace}
-                onCardResolved={(channel, remote) => {
-                  const current = latest.current;
-                  const rows = current.variants || [];
-                  const row = rows.find((item) => item.id === variant.id);
-                  if (!row) return;
-                  const value = marketplaceOf(row, current);
-                  const replacement = replaceMarketplaceCard(value, channel, remote);
-                  if (replacement === value) return;
-                  update({
-                    variants: rows.map((item) =>
-                      item.id === row.id ? { ...item, marketplace: replacement } : item,
-                    ),
-                  });
-                }}
-                name={draft.name}
-                description={draft.description}
-                prices={{
-                  ozon: variant.ozon?.price || draft.ozon.price,
-                  wb: variant.wb?.price || draft.wb.price,
-                }}
-              />
+              {!canManage && (
+                <p className="editor-secondary">Цены и связи площадок изменяет владелец.</p>
+              )}
+              <fieldset
+                className="editor-protected-fields"
+                disabled={!canManage}
+                aria-label="Настройки маркетплейсов"
+              >
+                <MarketplaceEditor
+                  productId={productId || undefined}
+                  variantId={variant.serverId}
+                  linked={linkedMarketplaces}
+                  value={marketplace}
+                  onChange={changeMarketplace}
+                  onCardResolved={(channel, remote) => {
+                    const current = latest.current;
+                    const rows = current.variants || [];
+                    const row = rows.find((item) => item.id === variant.id);
+                    if (!row) return;
+                    const value = marketplaceOf(row);
+                    const replacement = replaceMarketplaceCard(value, channel, remote);
+                    if (replacement === value) return;
+                    update({
+                      variants: rows.map((item) =>
+                        item.id === row.id
+                          ? { ...item, marketplace: replacement, marketplaceInitialized: true }
+                          : item,
+                      ),
+                    });
+                  }}
+                  name={draft.name}
+                  description={draft.description}
+                  prices={{
+                    ozon: variant.ozon.price,
+                    wb: variant.wb.price,
+                  }}
+                />
+              </fieldset>
+              {typeof productId === "number" && productId > 0 && (
+                <EditorPricePublications
+                  productId={productId}
+                  variantId={variant.serverId}
+                  draftPriceMinor={Math.round(Number(variant.price) * 100)}
+                  saving={saving}
+                  revision={collectionsRevision}
+                  canManage={canManage}
+                />
+              )}
               {channelStatuses
                 .filter((status) => status.variantId === variant.serverId)
                 .map((status) => (
@@ -1819,40 +1935,41 @@ export function ProductCreationPage({
                     {status.channel === "saby"
                       ? status.externalIds?.offerId && <> · Код {status.externalIds.offerId}</>
                       : status.externalIds?.productId && <> · ID {status.externalIds.productId}</>}
-                    {(status.status === "failed" ||
-                      (status.status === "needs_attention" &&
-                        (status.channel !== "saby" || status.externalIds?.productId))) && (
-                      <button
-                        className="admin-action"
-                        type="button"
-                        disabled={saving}
-                        onClick={async () => {
-                          if (!variant.serverId) return;
-                          setSaving(true);
-                          setRemoteError("");
-                          try {
-                            await api(
-                              `/api/v1/admin/products/${product?.id || draft.remoteCreatedProductId}/editor-publications/${status.channel}/retry`,
-                              {
-                                method: "POST",
-                                body: JSON.stringify({ variantId: variant.serverId }),
-                              },
-                            );
-                            setCollectionsRevision((v) => v + 1);
-                          } catch (e) {
-                            setRemoteError((e as Error).message);
-                          } finally {
-                            setSaving(false);
-                          }
-                        }}
-                      >
-                        {status.channel === "saby"
-                          ? status.status === "failed"
-                            ? "Повторить обмен"
-                            : "Проверить состояние"
-                          : "Повторить проверку"}
-                      </button>
-                    )}
+                    {canManage &&
+                      (status.status === "failed" ||
+                        (status.status === "needs_attention" &&
+                          (status.channel !== "saby" || status.externalIds?.productId))) && (
+                        <button
+                          className="admin-action"
+                          type="button"
+                          disabled={saving}
+                          onClick={async () => {
+                            if (!variant.serverId) return;
+                            setSaving(true);
+                            setRemoteError("");
+                            try {
+                              await api(
+                                `/api/v1/admin/products/${product?.id || draft.remoteCreatedProductId}/editor-publications/${status.channel}/retry`,
+                                {
+                                  method: "POST",
+                                  body: JSON.stringify({ variantId: variant.serverId }),
+                                },
+                              );
+                              setCollectionsRevision((v) => v + 1);
+                            } catch (e) {
+                              setRemoteError((e as Error).message);
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        >
+                          {status.channel === "saby"
+                            ? status.status === "failed"
+                              ? "Повторить обмен"
+                              : "Проверить состояние"
+                            : "Повторить проверку"}
+                        </button>
+                      )}
                   </p>
                 ))}
             </>
@@ -1865,7 +1982,7 @@ export function ProductCreationPage({
             Готовим поля выбранной категории…
           </span>
         )}
-        {(!product || creationChannels.length > 0) && (
+        {canManage && (!product || creationChannels.length > 0) && (
           <div className="editor-destinations" role="group" aria-label="Где создать товар">
             {!product && (
               <>
@@ -1901,13 +2018,15 @@ export function ProductCreationPage({
           className="admin-primary"
           disabled={loading || !remoteLoaded || saving || mediaBusy || !metadataReady}
           onClick={() => {
-            const missing = variants
-              .filter((row) => !row.removePending && !row.archived)
-              .flatMap((row) => {
-                const m = marketplaceOf(row, draft),
-                  links = channelLinks[String(row.serverId)] || {};
-                return marketplaceMissing(m, links);
-              });
+            const missing = canManage
+              ? variants
+                  .filter((row) => !row.removePending && !row.archived)
+                  .flatMap((row) => {
+                    const m = marketplaceOf(row),
+                      links = channelLinks[String(row.serverId)] || {};
+                    return marketplaceMissing(m, links);
+                  })
+              : [];
             if (missing.length) {
               setRemoteError(`Заполните: ${[...new Set(missing)].join(", ")}.`);
               return;

@@ -26,10 +26,14 @@ func NewMockCatalog() *CatalogPublisher {
 }
 
 type mockCard struct {
+	IsCreated      *bool
 	Document       map[string]any `json:"document,omitempty"`
 	ID             int64
 	Offer, Barcode string
 	Price          float64
+	BasePrice      float64
+	Discount       int64
+	OldPrice       float64
 	Images         []string
 }
 type catalogMockTransport struct {
@@ -91,11 +95,12 @@ func (m *catalogMockTransport) RoundTrip(r *http.Request) (*http.Response, error
 	case "/v3/product/import":
 		var body struct {
 			Items []struct {
-				Article string   `json:"offer_id"`
-				Barcode string   `json:"barcode"`
-				Price   string   `json:"price"`
-				Images  []string `json:"images"`
-				Primary string   `json:"primary_image"`
+				Article  string   `json:"offer_id"`
+				Barcode  string   `json:"barcode"`
+				Price    string   `json:"price"`
+				OldPrice string   `json:"old_price"`
+				Images   []string `json:"images"`
+				Primary  string   `json:"primary_image"`
 			} `json:"items"`
 		}
 		json.Unmarshal(raw, &body)
@@ -110,6 +115,7 @@ func (m *catalogMockTransport) RoundTrip(r *http.Request) (*http.Response, error
 		}
 		card := mockCard{ID: id, Offer: v.Article, Barcode: v.Barcode, Images: append([]string{v.Primary}, v.Images...)}
 		fmt.Sscan(v.Price, &card.Price)
+		fmt.Sscan(v.OldPrice, &card.OldPrice)
 		var request map[string]any
 		json.Unmarshal(raw, &request)
 		if items, ok := request["items"].([]any); ok && len(items) > 0 {
@@ -149,10 +155,31 @@ func (m *catalogMockTransport) RoundTrip(r *http.Request) (*http.Response, error
 		items := []any{}
 		for _, offer := range body.Filter.Offers {
 			if c, ok := m.cards["ozon:"+offer]; ok {
-				items = append(items, map[string]any{"offer_id": offer, "price": map[string]any{"price": fmt.Sprintf("%.2f", c.Price)}})
+				items = append(items, map[string]any{"offer_id": offer, "price": map[string]any{"price": fmt.Sprintf("%.2f", c.Price), "old_price": fmt.Sprintf("%.2f", c.OldPrice)}})
 			}
 		}
 		out = map[string]any{"items": items}
+	case "/v1/product/import/prices":
+		var body struct {
+			Prices []struct {
+				Offer string `json:"offer_id"`
+				Price string `json:"price"`
+				Old   string `json:"old_price"`
+			} `json:"prices"`
+		}
+		json.Unmarshal(raw, &body)
+		results := []any{}
+		for _, item := range body.Prices {
+			c, ok := m.cards["ozon:"+item.Offer]
+			if !ok {
+				continue
+			}
+			fmt.Sscan(item.Price, &c.Price)
+			fmt.Sscan(item.Old, &c.OldPrice)
+			m.cards["ozon:"+item.Offer] = c
+			results = append(results, map[string]any{"offer_id": item.Offer, "updated": true, "errors": []any{}})
+		}
+		out = map[string]any{"result": results}
 	case "/v1/product/import/info":
 		var task int64
 		json.Unmarshal(in["task_id"], &task)
@@ -169,7 +196,11 @@ func (m *catalogMockTransport) RoundTrip(r *http.Request) (*http.Response, error
 		items := []any{}
 		for _, offer := range offers {
 			if c, ok := m.cards["ozon:"+offer]; ok {
-				items = append(items, map[string]any{"id": c.ID, "offer_id": c.Offer, "barcodes": []string{c.Barcode}, "images": c.Images, "sources": []any{map[string]any{"sku": c.ID + 100000000}}, "statuses": map[string]any{"status_name": "Локальный тест", "is_created": true}})
+				created := true
+				if c.IsCreated != nil {
+					created = *c.IsCreated
+				}
+				items = append(items, map[string]any{"id": c.ID, "offer_id": c.Offer, "barcodes": []string{c.Barcode}, "images": c.Images, "sources": []any{map[string]any{"sku": c.ID + 100000000}}, "statuses": map[string]any{"status_name": "Локальный тест", "is_created": created}})
 			}
 		}
 		out = map[string]any{"items": items}
@@ -265,15 +296,18 @@ func (m *catalogMockTransport) RoundTrip(r *http.Request) (*http.Response, error
 	case "/api/v2/upload/task":
 		var body struct {
 			Data []struct {
-				ID    int64   `json:"nmID"`
-				Price float64 `json:"price"`
+				ID       int64   `json:"nmID"`
+				Price    float64 `json:"price"`
+				Discount int64   `json:"discount"`
 			} `json:"data"`
 		}
 		json.Unmarshal(raw, &body)
 		for _, v := range body.Data {
 			for key, c := range m.cards {
 				if c.ID == v.ID {
-					c.Price = v.Price
+					c.BasePrice = v.Price
+					c.Discount = v.Discount
+					c.Price = v.Price * (100 - float64(v.Discount)) / 100
 					m.cards[key] = c
 				}
 			}
@@ -283,7 +317,11 @@ func (m *catalogMockTransport) RoundTrip(r *http.Request) (*http.Response, error
 		cards := []any{}
 		for key, c := range m.cards {
 			if strings.HasPrefix(key, "wb:") && fmt.Sprint(c.ID) == r.URL.Query().Get("filterNmID") {
-				cards = append(cards, map[string]any{"nmID": c.ID, "sizes": []any{map[string]any{"discountedPrice": c.Price}}})
+				base := c.BasePrice
+				if base <= 0 {
+					base = c.Price
+				}
+				cards = append(cards, map[string]any{"nmID": c.ID, "discount": c.Discount, "sizes": []any{map[string]any{"price": base, "discountedPrice": c.Price}}})
 			}
 		}
 		out = map[string]any{"data": map[string]any{"listGoods": cards}}
@@ -291,7 +329,7 @@ func (m *catalogMockTransport) RoundTrip(r *http.Request) (*http.Response, error
 		status = 404
 		out = map[string]any{"error": "Локальный API не поддерживает этот метод"}
 	}
-	if m.pool != nil && (path == "/v3/product/import" || path == "/content/v2/cards/upload" || path == "/content/v2/cards/update" || path == "/content/v3/media/save" || path == "/api/v2/upload/task") {
+	if m.pool != nil && (path == "/v3/product/import" || path == "/content/v2/cards/upload" || path == "/content/v2/cards/update" || path == "/content/v3/media/save" || path == "/api/v2/upload/task" || path == "/v1/product/import/prices") {
 		snapshot, _ := json.Marshal(struct {
 			Cards  map[string]mockCard `json:"cards"`
 			Serial int64               `json:"serial"`

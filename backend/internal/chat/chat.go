@@ -254,10 +254,10 @@ func (s *Store) read(ctx context.Context, id, before, after int64) (Thread, erro
 	if err != nil {
 		return out, err
 	}
-	query := `SELECT id,sender,body,context_url,context_label,image_type IN ('image/jpeg','image/png') AND (image_data IS NOT NULL OR object_key<>''),created_at,attachment_name,attachment_kind,GREATEST(attachment_size,COALESCE(octet_length(image_data),0)),` + referenceReadSQL + ` FROM support_messages WHERE conversation_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 51`
+	query := `SELECT id,sender,body,context_url,context_label,image_type IN ('image/jpeg','image/png') AND object_key<>'',created_at,attachment_name,attachment_kind,attachment_size,` + referenceReadSQL + ` FROM support_messages WHERE conversation_id=$1 AND ($2::bigint=0 OR id<$2) ORDER BY id DESC LIMIT 51`
 	cursor := before
 	if after > 0 {
-		query = `SELECT id,sender,body,context_url,context_label,image_type IN ('image/jpeg','image/png') AND (image_data IS NOT NULL OR object_key<>''),created_at,attachment_name,attachment_kind,GREATEST(attachment_size,COALESCE(octet_length(image_data),0)),` + referenceReadSQL + ` FROM support_messages WHERE conversation_id=$1 AND id>$2 ORDER BY id ASC LIMIT 51`
+		query = `SELECT id,sender,body,context_url,context_label,image_type IN ('image/jpeg','image/png') AND object_key<>'',created_at,attachment_name,attachment_kind,attachment_size,` + referenceReadSQL + ` FROM support_messages WHERE conversation_id=$1 AND id>$2 ORDER BY id ASC LIMIT 51`
 		cursor = after
 	}
 	rows, err := s.pool.Query(ctx, query, id, cursor)
@@ -370,7 +370,7 @@ func (s *Store) Send(ctx context.Context, who Identity, staffID, threadID int64,
 		}
 	}
 	var messageID int64
-	err = tx.QueryRow(ctx, `INSERT INTO support_messages(conversation_id,sender,staff_id,client_id,body,context_url,context_label,image_type,image_data,attachment_name,attachment_kind,reference,object_key,attachment_size) VALUES($1,$2,NULLIF($3,0),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT(conversation_id,sender,client_id) DO NOTHING RETURNING id`, threadID, sender, staffID, input.ClientID, input.Text, input.ContextURL, input.ContextLabel, kind, []byte(nil), attachmentName, attachmentKind, reference, objectKey, len(data)).Scan(&messageID)
+	err = tx.QueryRow(ctx, `INSERT INTO support_messages(conversation_id,sender,staff_id,client_id,body,context_url,context_label,image_type,attachment_name,attachment_kind,reference,object_key,attachment_size) VALUES($1,$2,NULLIF($3,0),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT(conversation_id,sender,client_id) DO NOTHING RETURNING id`, threadID, sender, staffID, input.ClientID, input.Text, input.ContextURL, input.ContextLabel, kind, attachmentName, attachmentKind, reference, objectKey, len(data)).Scan(&messageID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return threadID, tx.Commit(ctx)
 	}
@@ -398,13 +398,6 @@ func (s *Store) MarkRead(ctx context.Context, id, through int64, staff bool) err
 	}
 	_, err := s.pool.Exec(ctx, `UPDATE support_conversations SET `+column+`=GREATEST(`+column+`,COALESCE((SELECT MAX(id) FROM support_messages WHERE conversation_id=$1 AND id<=$2),0)) WHERE id=$1`, id, through)
 	return err
-}
-func (s *Store) Photo(ctx context.Context, threadID, messageID int64) (string, []byte, error) {
-	kind, _, attachmentKind, data, err := s.Attachment(ctx, threadID, messageID)
-	if err == nil && attachmentKind != "image" {
-		return "", nil, pgx.ErrNoRows
-	}
-	return kind, data, err
 }
 func (s *Store) List(ctx context.Context, status, query string, offset int) ([]Summary, error) {
 	rows, err := s.pool.Query(ctx, `SELECT c.id,COALESCE(NULLIF(u.full_name,''),'Посетитель №'||c.id),c.status,COALESCE(NULLIF(LEFT(m.body,160),''),NULLIF(m.attachment_name,''),NULLIF(m.reference->>'label',''),'Фотография'),(SELECT COUNT(*) FROM support_messages WHERE conversation_id=c.id AND sender='customer' AND id>c.staff_read_id),c.updated_at,o.id,o.order_number,o.status FROM support_conversations c LEFT JOIN customers u ON u.id=c.customer_id LEFT JOIN LATERAL(SELECT body,attachment_name,reference FROM support_messages WHERE conversation_id=c.id ORDER BY id DESC LIMIT 1)m ON true LEFT JOIN LATERAL(SELECT id,order_number,status FROM orders WHERE c.customer_id IS NOT NULL AND customer_id=c.customer_id ORDER BY id DESC LIMIT 1)o ON true WHERE ($1='' OR c.status=$1) AND ($2='' OR COALESCE(u.full_name,'') ILIKE '%'||$2||'%' OR EXISTS(SELECT 1 FROM support_messages WHERE conversation_id=c.id AND body ILIKE '%'||$2||'%') OR c.id::text=$2) ORDER BY c.updated_at DESC,c.id DESC LIMIT 51 OFFSET $3`, status, query, offset)
@@ -450,7 +443,7 @@ func (s *Store) Unread(ctx context.Context, id int64, staff bool) (int, error) {
 func (s *Store) Attachment(ctx context.Context, threadID, messageID int64) (string, string, string, []byte, error) {
 	var mimeType, name, kind, key string
 	var data []byte
-	err := s.pool.QueryRow(ctx, `SELECT image_type,attachment_name,attachment_kind,image_data,object_key FROM support_messages WHERE conversation_id=$1 AND id=$2 AND (image_data IS NOT NULL OR object_key<>'')`, threadID, messageID).Scan(&mimeType, &name, &kind, &data, &key)
+	err := s.pool.QueryRow(ctx, `SELECT image_type,attachment_name,attachment_kind,object_key FROM support_messages WHERE conversation_id=$1 AND id=$2 AND object_key<>''`, threadID, messageID).Scan(&mimeType, &name, &kind, &key)
 	if kind == "" && strings.HasPrefix(mimeType, "image/") {
 		kind = "image"
 	}
@@ -458,7 +451,7 @@ func (s *Store) Attachment(ctx context.Context, threadID, messageID int64) (stri
 		name = "photo.jpg"
 	}
 	if err == nil {
-		data, err = fileassets.Read(ctx, s.files, key, data)
+		data, err = fileassets.Read(ctx, s.files, key)
 	}
 	return mimeType, name, kind, data, err
 }

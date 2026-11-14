@@ -24,7 +24,7 @@ func TestReviewLegacyPriceRepairRequiresExactAuditAndIsIdempotent(t *testing.T) 
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	var customer, supplier int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Legacy repair test',now()) RETURNING id`, fmt.Sprintf("legacy-review-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&customer); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Legacy repair test',now()) RETURNING id`, fmt.Sprintf("legacy-review-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&customer); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, fmt.Sprintf("Legacy review %d", unique)).Scan(&supplier); err != nil {
@@ -58,7 +58,7 @@ func TestReviewLegacyPriceRepairRequiresExactAuditAndIsIdempotent(t *testing.T) 
 		case "closed":
 			_, err = pool.Exec(ctx, `UPDATE procurement_orders SET status='received' WHERE id=$1`, order.ID)
 		case "invoice":
-			_, err = pool.Exec(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'legacy.pdf','application/pdf',8,$3,'12345678','holland_packing_list',1,'review','ok','LEGACY-TEST','EUR',1,1,$4)`, supplier, order.ID, fmt.Sprintf("%064x", unique), customer)
+			_, err = pool.Exec(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'legacy.pdf','application/pdf',8,$3,'fixtures/synthetic-invoice.pdf','holland_packing_list',1,'review','ok','LEGACY-TEST','EUR',1,1,$4)`, supplier, order.ID, fmt.Sprintf("%064x", unique), customer)
 		case "identity-changed":
 			_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET raw_name='Edited after creation' WHERE id=$1`, v.line)
 		case "cost-changed":
@@ -114,7 +114,7 @@ func TestReviewFractionalPlanPricesSurviveDatabaseRoundTrip(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	var customer, supplier int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Review regression',now()) RETURNING id`, fmt.Sprintf("review-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&customer); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Review regression',now()) RETURNING id`, fmt.Sprintf("review-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&customer); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, fmt.Sprintf("Review %d", unique)).Scan(&supplier); err != nil {

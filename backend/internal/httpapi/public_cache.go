@@ -126,10 +126,7 @@ func (repository *cachedCatalogRepository) ListAvailable(ctx context.Context) ([
 }
 
 func (repository *cachedCatalogRepository) ListForCollection(ctx context.Context, slug string) ([]catalog.Product, error) {
-	if source, ok := repository.source.(collectionCatalogRepository); ok {
-		return source.ListForCollection(ctx, slug)
-	}
-	return nil, catalog.ErrNotFound
+	return repository.source.ListForCollection(ctx, slug)
 }
 
 func (repository *cachedCatalogRepository) ListCategories(ctx context.Context) ([]catalog.Category, error) {

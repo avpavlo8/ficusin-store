@@ -172,6 +172,7 @@ try:
             query["noStopList"] = "true"
         return load_section(query, None, set(), 0)
 
+    stock_observed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
     full_catalog = load(False)
     price_catalog = load(True)
     catalog_items, balance_conflicts = merge_catalog_items(
@@ -390,7 +391,7 @@ try:
     sync_request = urllib.request.Request(
         os.environ["FICUSIN_SYNC_URL"],
         data=json.dumps(
-            {"items": public_catalog}, ensure_ascii=False
+            {"items": public_catalog, "stockObservedAt": stock_observed_at}, ensure_ascii=False
         ).encode("utf-8"),
         headers={
             "X-Ficusin-GitHub-OIDC": oidc_token,

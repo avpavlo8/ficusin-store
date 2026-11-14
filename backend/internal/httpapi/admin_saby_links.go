@@ -17,12 +17,8 @@ type sabyLinkRepository interface {
 
 func sabyLinkCandidatesHandler(handlers adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
-		_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsRead)
+		_, _, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
 		if !ok {
-			return
-		}
-		if actor.Role != admin.RoleOwner {
-			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может связывать товары со СБИС"})
 			return
 		}
 		repository, ok := handlers.repository.(sabyLinkRepository)
@@ -47,10 +43,6 @@ func linkVariantToSabyHandler(handlers adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
 		if !ok {
-			return
-		}
-		if actor.Role != admin.RoleOwner {
-			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может связывать товары со СБИС"})
 			return
 		}
 		variantID, ok := pimPathID(response, request, "variantId")
@@ -85,10 +77,6 @@ func rebindVariantToSabyHandler(handlers adminHandlers) http.HandlerFunc {
 	return func(response http.ResponseWriter, request *http.Request) {
 		_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
 		if !ok {
-			return
-		}
-		if actor.Role != admin.RoleOwner {
-			writeJSON(response, http.StatusForbidden, errorResponse{Error: "Только владелец может менять связь со СБИС"})
 			return
 		}
 		variantID, ok := pimPathID(response, request, "variantId")

@@ -1,7 +1,7 @@
 -- Only an ephemeral CI database. No customer or supplier production data.
-INSERT INTO customers(email,phone,password_hash,full_name,consent_at,retail_discount_bps)
-VALUES ('crm-owner@example.invalid','+70000000901','','Владелец проверки',CURRENT_TIMESTAMP,500),
-       ('crm-manager@example.invalid','+70000000902','','Менеджер проверки',CURRENT_TIMESTAMP,0);
+INSERT INTO customers(email,phone,full_name,consent_at,retail_discount_bps)
+VALUES ('crm-owner@example.invalid','+70000000901','Владелец проверки',CURRENT_TIMESTAMP,500),
+       ('crm-manager@example.invalid','+70000000902','Менеджер проверки',CURRENT_TIMESTAMP,0);
 INSERT INTO admin_users(customer_id,role)
 SELECT id,CASE WHEN email='crm-owner@example.invalid' THEN 'owner' ELSE 'manager' END
 FROM customers WHERE email IN ('crm-owner@example.invalid','crm-manager@example.invalid');
@@ -95,8 +95,8 @@ INSERT INTO procurement_orders(supplier_id,order_number,document_number,document
 SELECT supplier.id,'CRM-STAGE-06','INV-STAGE-06',CURRENT_DATE,'invoice','EUR','review',customer.id
 FROM procurement_suppliers supplier,customers customer
 WHERE supplier.name='CRM Stage 06 Supplier' AND customer.email='crm-owner@example.invalid';
-INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,document_date,currency,line_count,unit_count,product_subtotal,document_total,calculated_total,extracted_text,created_by,revision_no)
-SELECT supplier.id,orders.id,'crm-stage06.pdf','application/pdf',9,repeat('6',64),decode('255044462d5330360a','hex'),'holland_packing_list',2,'review','ok','INV-STAGE-06',CURRENT_DATE,'EUR',3,19,90.80,90.80,90.80,'Synthetic Stage 06 acceptance document',customer.id,1
+INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,parser_kind,parser_version,parse_status,arithmetic_status,document_number,document_date,currency,line_count,unit_count,product_subtotal,document_total,calculated_total,extracted_text,created_by,revision_no)
+SELECT supplier.id,orders.id,'crm-stage06.pdf','application/pdf',9,repeat('6',64),'crm-fixtures/stage06.pdf','holland_packing_list',2,'review','ok','INV-STAGE-06',CURRENT_DATE,'EUR',3,19,90.80,90.80,90.80,'Synthetic Stage 06 acceptance document',customer.id,1
 FROM procurement_suppliers supplier,procurement_orders orders,customers customer
 WHERE supplier.name='CRM Stage 06 Supplier' AND orders.order_number='CRM-STAGE-06' AND customer.email='crm-owner@example.invalid';
 INSERT INTO procurement_order_lines(procurement_order_id,procurement_document_id,saby_id,raw_name,supplier_article,supplier_category,ordered_qty,invoiced_qty,expected_unit_price,unit_price,line_total,load_unit,pot_diameter_cm,height_cm,match_status,package_count,units_per_package,invoice_raw_name,invoice_supplier_article,reconciliation_status)
@@ -125,8 +125,8 @@ INSERT INTO procurement_orders(supplier_id,order_number,document_number,document
   exchange_rate,delivery_to_moscow_rub,delivery_to_ryazan_rub,trolley_cost_rub,calculation_version,calculation_settings,calculated_at,created_by)
 SELECT supplier.id,'CRM-STAGE-07','INV-STAGE-07',CURRENT_DATE,'invoice','EUR','ready_to_receive',115,12000,1700,12000,1,'{}',CURRENT_TIMESTAMP,customer.id
 FROM procurement_suppliers supplier,customers customer WHERE supplier.name='CRM Stage 07 Supplier' AND customer.email='crm-owner@example.invalid';
-INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,document_date,currency,line_count,unit_count,product_subtotal,document_total,calculated_total,extracted_text,created_by,revision_no)
-SELECT supplier.id,orders.id,'crm-stage07.pdf','application/pdf',9,repeat('7',64),decode('255044462d5330370a','hex'),'holland_packing_list',2,'parsed','ok','INV-STAGE-07',CURRENT_DATE,'EUR',2,18,91.80,91.80,91.80,'Synthetic Stage 07 acceptance document',customer.id,1
+INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,parser_kind,parser_version,parse_status,arithmetic_status,document_number,document_date,currency,line_count,unit_count,product_subtotal,document_total,calculated_total,extracted_text,created_by,revision_no)
+SELECT supplier.id,orders.id,'crm-stage07.pdf','application/pdf',9,repeat('7',64),'crm-fixtures/stage07.pdf','holland_packing_list',2,'parsed','ok','INV-STAGE-07',CURRENT_DATE,'EUR',2,18,91.80,91.80,91.80,'Synthetic Stage 07 acceptance document',customer.id,1
 FROM procurement_suppliers supplier,procurement_orders orders,customers customer WHERE supplier.name='CRM Stage 07 Supplier' AND orders.order_number='CRM-STAGE-07' AND customer.email='crm-owner@example.invalid';
 INSERT INTO procurement_order_lines(procurement_order_id,procurement_document_id,saby_id,canonical_variant_id,raw_name,supplier_article,supplier_category,ordered_qty,invoiced_qty,expected_unit_price,unit_price,line_total,load_unit,pot_diameter_cm,height_cm,match_status,package_count,units_per_package,invoice_raw_name,invoice_supplier_article,reconciliation_status,purchase_unit_rub,trolley_delivery_unit_rub,ryazan_delivery_unit_rub,unit_cost_rub,proposed_retail_rub,proposed_marketplace_rub,proposed_marketplace_strike_rub)
 SELECT orders.id,documents.id,'crm-stage07-a',variant.id,'Anthurium','S07-A','Anthurium',6,6,5.30,5.30,31.80,'1',17,60,'confirmed',1,6,'Anthurium','S07-A','matched',609.5,600,100,1309.5,2790,4890,6357
@@ -147,7 +147,7 @@ WHERE orders.order_number='CRM-STAGE-07' AND batch.kind='receipt' GROUP BY batch
 INSERT INTO orders(order_number,customer_id,customer_name,phone,email,address,delivery_method,delivery_fee,subtotal,total,payment_method,payment_status,status,has_preorder,cdek_city_code,cdek_city_name,cdek_office_code,cdek_tariff_code)
 SELECT 'CRM-STAGE-08',id,'Владелец проверки','+70000000901','crm-owner@example.invalid','Рязань, пункт выдачи CRM','cdek',680,5870,6550,'online','pending','confirmed',1,44,'Рязань','CRM-PVZ',136 FROM customers WHERE email='crm-owner@example.invalid';
 INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder,reserved_qty)
-SELECT orders.id,product.id,variant.id,variant.sku,'Антуриум Stage 07',variant.label,'{}'::jsonb,2290,1,0,1 FROM orders,products product JOIN product_variants variant ON variant.product_id=product.id WHERE orders.order_number='CRM-STAGE-08' AND product.slug='crm-stage07-a'
+SELECT orders.id,product.id,variant.id,variant.sku,'Антуриум Stage 07',variant.label,'{}'::jsonb,2290,1,0,0 FROM orders,products product JOIN product_variants variant ON variant.product_id=product.id WHERE orders.order_number='CRM-STAGE-08' AND product.slug='crm-stage07-a'
 UNION ALL SELECT orders.id,product.id,variant.id,variant.sku,'Фикус Stage 07',variant.label,'{}'::jsonb,1790,2,1,0 FROM orders,products product JOIN product_variants variant ON variant.product_id=product.id WHERE orders.order_number='CRM-STAGE-08' AND product.slug='crm-stage07-b';
 INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,address_snapshot,delivery_fee,subtotal,total,cdek_tariff_code,cdek_tariff_name,quote_fingerprint,manager_note,notified_at,expires_at,created_by)
 SELECT orders.id,'crm-stage08-payment-token','1','offered','cdek',orders.address,680,4080,4760,136,'СДЭК до пункта выдачи','crm-stage08-fingerprint','Две отдельные измеренные коробки',CURRENT_TIMESTAMP-INTERVAL '1 hour',CURRENT_TIMESTAMP+INTERVAL '47 hours',customer.id FROM orders,customers customer WHERE orders.order_number='CRM-STAGE-08' AND customer.email='crm-owner@example.invalid';

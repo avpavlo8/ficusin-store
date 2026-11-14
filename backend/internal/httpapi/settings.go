@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -49,6 +50,10 @@ func (handlers settingsHandlers) update(response http.ResponseWriter, request *h
 		return
 	}
 	if err := handlers.settings.Save(request.Context(), body.Values); err != nil {
+		if errors.Is(err, settings.ErrUnknownSetting) {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Неизвестная или удалённая настройка. Обновите страницу."})
+			return
+		}
 		handlers.logger.Error("save settings failed", "error", err)
 		writeJSON(response, http.StatusInternalServerError, errorResponse{
 			Error: "Не удалось сохранить настройки",

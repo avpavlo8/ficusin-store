@@ -1,11 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 import { stagingState } from "./staging-access";
+import { isStagingOrigin } from "./staging-target";
 
 const baseURL = process.env.FICUSIN_BASE_URL || "https://www.ficusin.ru";
 const stagingToken = process.env.STAGING_ACCESS_TOKEN;
 if (
   stagingToken &&
-  !/^(https:\/\/[^/]+\.twc1\.net|https:\/\/staging\.ficusin\.ru)$/.test(baseURL)
+  !isStagingOrigin(baseURL)
 ) {
   throw new Error(
     "Staging credentials must only be sent to the staging origin",

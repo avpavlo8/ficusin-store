@@ -49,30 +49,6 @@ type AccountOrder = {
   itemsCount: number;
 };
 
-type OrderDetail = {
-  orderNumber: string;
-  deliveryMethod: string;
-  address: string;
-  comment: string;
-  customerName: string;
-  phone: string;
-  email: string;
-  status: string;
-  paymentStatus: string;
-  deliveryFee: number;
-  deliveryPayee?: "shop" | "carrier";
-  trackNumber?: string;
-  hasPreorder?: boolean;
-  deliveryFeePending?: boolean;
-  paymentReady?: boolean;
-  repackRequested?: boolean;
-  subtotal: number;
-  discountAmount?: number;
-  total: number;
-  createdAt: string;
-  items: Array<{ productName: string; unitPrice: number; quantity: number }>;
-};
-
 type FavoriteProduct = CatalogCardProduct;
 
 type Section = "chat" | "orders" | "profile" | "favorites" | "reviews";
@@ -86,24 +62,6 @@ const orderStatusLabels: Record<string, string> = {
   shipped: "В доставке",
   completed: "Выполнен",
   cancelled: "Отменён",
-};
-
-const deliveryLabels: Record<string, string> = {
-  pickup: "Самовывоз в Рязани",
-  courier: "Курьер по Рязани",
-  cdek: "СДЭК по России",
-  post: "Почта России",
-};
-
-const paymentLabels: Record<string, string> = {
-  payment_provider_pending: "Ожидает подключения оплаты",
-  pending: "Ожидает оплаты",
-  paid: "Оплачен",
-  on_delivery: "Оплата при получении",
-  invoice: "Счёт от менеджера",
-  manager_confirmation: "После подтверждения менеджером",
-  cancelled: "Оплата отменена",
-  refunded: "Возвращён",
 };
 
 // Ступени скидки повторяют backend/internal/order/loyalty.go: каждые
@@ -129,9 +87,6 @@ function discountLadder(spendMinor: number, currentBps: number) {
   };
 }
 
-const formatDate = (value: string) =>
-  new Date(value).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric" });
-
 function fullNameOf(user: StoreUser) {
   return [user.lastName, user.fullName, user.patronymic].filter(Boolean).join(" ") || user.fullName;
 }
@@ -140,8 +95,7 @@ function fullNameOf(user: StoreUser) {
 
 /**
  * AccountShell is the frame every account screen shares: the same sidebar,
- * the same heading area, only the panel on the right changes. Order detail
- * reuses it too, so opening an order never feels like leaving the account.
+ * the same heading area, only the panel on the right changes.
  */
 function AccountShell({
   user,
@@ -162,128 +116,116 @@ function AccountShell({
   const firstName = user.fullName.trim().split(/\s+/)[0] || "Друг";
   const initial = firstName.charAt(0).toUpperCase();
   return (
-    <main
-      className={`account-page customer-account ${section === "chat" ? "account-chat-page" : ""}`}
-    >
-      <StoreHeader showTabBar={section !== "chat"} />
-      <section className="account-shell">
-        <aside className="account-sidebar cozy-account-menu" aria-label="Ваш личный кабинет">
-          <div className="cozy-account-identity">
-            <div className="account-avatar">
-              {user.avatarUpdatedAt ? (
-                <img src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`} alt="" />
-              ) : (
-                <span>{initial}</span>
-              )}
-            </div>
-            <div>
-              <p className="account-person-name" title={fullNameOf(user)}>
-                {firstName},<br /> рады вам!
-              </p>
-            </div>
-          </div>
-          <nav aria-label="Разделы личного кабинета">
-            {(
-              [
-                {
-                  section: "chat",
-                  href: "/account/chat",
-                  label: "Сообщения",
-                  note: "Переписка с магазином",
-                  icon: "messages",
-                },
-                {
-                  section: "orders",
-                  href: "/account",
-                  label: "Мои заказы",
-                  note: "Ваши зелёные покупки",
-                  icon: "basket",
-                },
-                {
-                  section: "profile",
-                  href: "/account/profile",
-                  label: "Мои данные",
-                  note: "Всё о вас — под рукой",
-                  icon: "person",
-                },
-                {
-                  section: "favorites",
-                  href: "/account/favorites",
-                  label: "Избранное",
-                  note: "Приглянулись и ждут",
-                  icon: "heart",
-                },
-                {
-                  section: "reviews",
-                  href: "/account/reviews",
-                  label: "Мои отзывы",
-                  note: "Впечатления о покупках",
-                  icon: "reviews",
-                },
-              ] as const
-            ).map((item) => (
-              <a
-                key={item.section}
-                aria-current={section === item.section ? "page" : undefined}
-                className={section === item.section ? "active" : ""}
-                href={item.href}
-              >
-                <span className="cozy-nav-icon">
-                  <StoreNavIllustration kind={item.icon} />
-                </span>
-                <span className="cozy-nav-copy">
-                  <strong>
-                    {item.label}
-                    {item.section === "chat" && chatUnread > 0 && (
-                      <b className="account-chat-count" aria-label={`Непрочитанных: ${chatUnread}`}>
-                        {chatUnread}
-                      </b>
-                    )}
-                  </strong>
-                  <small>{item.note}</small>
-                </span>
-                <svg className="cozy-nav-arrow" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="m7 5 5 5-5 5" />
-                </svg>
-              </a>
-            ))}
-          </nav>
-          <a className="cozy-care-link" href="/care">
-            Подсказки по уходу <span aria-hidden="true">↗</span>
-          </a>
-          <div className="cozy-account-footer">
-            {staff && (
-              <a className="account-switch" href="/admin">
-                Управление магазином ↗
-              </a>
+    <section className="account-shell">
+      <aside className="account-sidebar cozy-account-menu" aria-label="Ваш личный кабинет">
+        <div className="cozy-account-identity">
+          <div className="account-avatar">
+            {user.avatarUpdatedAt ? (
+              <img src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`} alt="" />
+            ) : (
+              <span>{initial}</span>
             )}
-            <button
-              className="signout-link"
-              type="button"
-              aria-label="Выйти из аккаунта"
-              onClick={onSignOut}
-            >
-              <svg viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M8 3H4v14h4m3-11 4 4-4 4m-4-4h8" />
-              </svg>
-              Выйти
-            </button>
           </div>
-        </aside>
-        <div className="account-content">{children}</div>
-      </section>
-    </main>
+          <div>
+            <p className="account-person-name" title={fullNameOf(user)}>
+              {firstName},<br /> рады вам!
+            </p>
+          </div>
+        </div>
+        <nav aria-label="Разделы личного кабинета">
+          {(
+            [
+              {
+                section: "chat",
+                href: "/account/chat",
+                label: "Сообщения",
+                note: "Переписка с магазином",
+                icon: "messages",
+              },
+              {
+                section: "orders",
+                href: "/account",
+                label: "Мои заказы",
+                note: "Ваши зелёные покупки",
+                icon: "basket",
+              },
+              {
+                section: "profile",
+                href: "/account/profile",
+                label: "Мои данные",
+                note: "Всё о вас — под рукой",
+                icon: "person",
+              },
+              {
+                section: "favorites",
+                href: "/account/favorites",
+                label: "Избранное",
+                note: "Приглянулись и ждут",
+                icon: "heart",
+              },
+              {
+                section: "reviews",
+                href: "/account/reviews",
+                label: "Мои отзывы",
+                note: "Впечатления о покупках",
+                icon: "reviews",
+              },
+            ] as const
+          ).map((item) => (
+            <a
+              key={item.section}
+              aria-current={section === item.section ? "page" : undefined}
+              className={section === item.section ? "active" : ""}
+              href={item.href}
+            >
+              <span className="cozy-nav-icon">
+                <StoreNavIllustration kind={item.icon} />
+              </span>
+              <span className="cozy-nav-copy">
+                <strong>
+                  {item.label}
+                  {item.section === "chat" && chatUnread > 0 && (
+                    <b className="account-chat-count" aria-label={`Непрочитанных: ${chatUnread}`}>
+                      {chatUnread}
+                    </b>
+                  )}
+                </strong>
+                <small>{item.note}</small>
+              </span>
+              <svg className="cozy-nav-arrow" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="m7 5 5 5-5 5" />
+              </svg>
+            </a>
+          ))}
+        </nav>
+        <a className="cozy-care-link" href="/care">
+          Подсказки по уходу <span aria-hidden="true">↗</span>
+        </a>
+        <div className="cozy-account-footer">
+          {staff && (
+            <a className="account-switch" href="/admin">
+              Управление магазином ↗
+            </a>
+          )}
+          <button
+            className="signout-link"
+            type="button"
+            aria-label="Выйти из аккаунта"
+            onClick={onSignOut}
+          >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M8 3H4v14h4m3-11 4 4-4 4m-4-4h8" />
+            </svg>
+            Выйти
+          </button>
+        </div>
+      </aside>
+      <div className="account-content">{children}</div>
+    </section>
   );
 }
 
-function SectionHeading({
-  title,
-  aside,
-}: {
-  eyebrow: string;
-  title: string;
-  aside?: React.ReactNode;
-}) {
+function SectionHeading({ title, aside }: { title: string; aside?: React.ReactNode }) {
   return (
     <div className="account-title">
       <div>
@@ -352,7 +294,7 @@ function OrdersSection({ error: profileError, onRetry }: { error: string; onRetr
 
   return (
     <>
-      <SectionHeading eyebrow="" title="Мои заказы" />
+      <SectionHeading title="Мои заказы" />
       <div className="customer-order-tabs" role="tablist" aria-label="Статус заказов">
         {views.map(({ view, label }, index) => (
           <button
@@ -490,188 +432,6 @@ function OrdersSection({ error: profileError, onRetry }: { error: string; onRetr
           >
             Показать ещё
           </button>
-        )}
-      </section>
-    </>
-  );
-}
-
-function OrderDetailSection({ orderNumber }: { orderNumber: string }) {
-  const [order, setOrder] = useState<OrderDetail | null>(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetch(`/api/v1/account/orders/${encodeURIComponent(orderNumber)}`, {
-      credentials: "same-origin",
-    })
-      .then(async (response) => {
-        const data = (await response.json()) as { order?: OrderDetail; error?: string };
-        if (!response.ok || !data.order) throw new Error(data.error || "Заказ не найден");
-        setOrder(data.order);
-      })
-      .catch((caught: Error) => setError(caught.message));
-  }, [orderNumber]);
-
-  if (error)
-    return (
-      <>
-        <SectionHeading eyebrow="Заказ" title={orderNumber} />
-        <p className="auth-error" role="alert">
-          {error}
-        </p>
-        <a className="text-link" href="/account">
-          ← Ко всем заказам
-        </a>
-      </>
-    );
-  if (!order) return <SectionHeading eyebrow="Заказ" title="Загружаем…" />;
-
-  // The manager can make an unpaid order payable after checking availability.
-  const payOrder = async (number: string) => {
-    try {
-      const response = await fetch(`/api/v1/payments/orders/${number}`, {
-        method: "POST",
-        credentials: "same-origin",
-      });
-      const result = (await response.json()) as { confirmationUrl?: string; error?: string };
-      if (!response.ok || !result.confirmationUrl)
-        throw new Error(result.error || "Не удалось начать оплату");
-      window.location.assign(result.confirmationUrl);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Не удалось начать оплату");
-    }
-  };
-
-  return (
-    <>
-      <a className="text-link account-back-link" href="/account">
-        ← Ко всем заказам
-      </a>
-      <SectionHeading
-        eyebrow={`Оформлен ${formatDate(order.createdAt)}`}
-        title={`Заказ ${order.orderNumber}`}
-        aside={<span>{orderStatusLabels[order.status] ?? order.status}</span>}
-      />
-      <section className="order-items">
-        {order.items.map((item, index) => (
-          <div className="order-item" key={`${item.productName}-${index}`}>
-            <span>{item.productName}</span>
-            <small>
-              {item.quantity} × {money.format(item.unitPrice)}
-            </small>
-            <strong>{money.format(item.unitPrice * item.quantity)}</strong>
-          </div>
-        ))}
-      </section>
-      <section className="order-totals">
-        <div>
-          <span>Товары</span>
-          <span>{money.format(order.subtotal + (order.discountAmount ?? 0))}</span>
-        </div>
-        {!!order.discountAmount && (
-          <div>
-            <span>Скидка</span>
-            <span>−{money.format(order.discountAmount)}</span>
-          </div>
-        )}
-        <div>
-          <span>{order.deliveryPayee === "carrier" ? "Доставка, справочно" : "Доставка"}</span>
-          <span>
-            {order.deliveryFeePending
-              ? "рассчитает менеджер"
-              : order.deliveryFee
-                ? money.format(order.deliveryFee)
-                : "—"}
-          </span>
-        </div>
-        {order.hasPreorder && (
-          <p className="order-note">
-            В заказе есть растения под заказ. Менеджер уточнит срок поставки; до его решения оплата
-            не требуется.
-          </p>
-        )}
-        {order.deliveryFeePending && (
-          <p className="order-note">
-            {order.deliveryPayee === "carrier"
-              ? order.repackRequested
-                ? "Вы просили упаковать растения в одну коробку. Менеджер уточнит стоимость доставки до отправки."
-                : "Менеджер уточнит стоимость доставки до отправки."
-              : "Менеджер уточнит стоимость доставки и сообщит итоговую сумму заказа."}
-          </p>
-        )}
-        {order.deliveryPayee === "carrier" && (
-          <p className="order-note">Доставка оплачивается перевозчику при получении.</p>
-        )}
-        <div className="total">
-          <span>{order.deliveryPayee === "carrier" ? "Растения к оплате" : "Итого"}</span>
-          <span>{money.format(order.total)}</span>
-        </div>
-      </section>
-      <section className="order-facts">
-        <div>
-          <small>Способ получения</small>
-          <span>{deliveryLabels[order.deliveryMethod] ?? order.deliveryMethod}</span>
-        </div>
-        {order.address && (
-          <div>
-            <small>Адрес</small>
-            <span>{order.address}</span>
-          </div>
-        )}
-        {order.trackNumber && (
-          <div>
-            <small>Трек-номер СДЭК</small>
-            <span>
-              <a
-                href={`https://www.cdek.ru/ru/tracking?order_id=${encodeURIComponent(order.trackNumber)}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {order.trackNumber}
-              </a>
-            </span>
-          </div>
-        )}
-        <div>
-          <small>Оплата</small>
-          <span
-            className={
-              order.paymentStatus === "paid"
-                ? "payment-state paid"
-                : order.status !== "cancelled" && order.paymentStatus === "pending"
-                  ? "payment-state unpaid"
-                  : "payment-state"
-            }
-          >
-            {order.status === "cancelled" &&
-            ["pending", "manager_confirmation", "payment_provider_pending"].includes(
-              order.paymentStatus,
-            )
-              ? "Оплата не требуется"
-              : (paymentLabels[order.paymentStatus] ?? order.paymentStatus)}
-          </span>
-        </div>
-        {order.status !== "cancelled" &&
-          order.paymentStatus === "pending" &&
-          order.paymentReady === true &&
-          !order.hasPreorder &&
-          !order.deliveryFeePending && (
-            <button className="primary-button" onClick={() => payOrder(order.orderNumber)}>
-              {order.deliveryPayee === "carrier" ? "Оплатить растения" : "Оплатить заказ"}:{" "}
-              {money.format(order.total)}
-            </button>
-          )}
-        <div>
-          <small>Получатель</small>
-          <span>
-            {order.customerName}, {order.phone}
-          </span>
-        </div>
-        {order.comment && (
-          <div>
-            <small>Комментарий</small>
-            <span>{order.comment}</span>
-          </div>
         )}
       </section>
     </>
@@ -947,7 +707,6 @@ function ProfileSection({
   return (
     <>
       <SectionHeading
-        eyebrow="Профиль покупателя"
         title="Мои данные"
         aside={user.accountType === "wholesale" ? <span>Оптовый клиент</span> : undefined}
       />
@@ -1212,7 +971,7 @@ function FavoritesSection() {
   );
   return (
     <>
-      <SectionHeading eyebrow="Сохранённые товары" title="Избранное" />
+      <SectionHeading title="Избранное" />
       <p className="customer-intro">
         Сохранённые растения на этом устройстве. Список общий с избранным в каталоге.
       </p>
@@ -1298,13 +1057,7 @@ function FavoritesSection() {
 
 // ----------------------------------------------------------------- page
 
-export default function AccountPage({
-  section,
-  orderNumber,
-}: {
-  section: Section;
-  orderNumber?: string;
-}) {
+export default function AccountPage({ section }: { section: Section }) {
   const [user, setUser] = useState<StoreUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1358,20 +1111,17 @@ export default function AccountPage({
     }
   }
 
-  if (loading)
-    return (
-      <main className="account-page customer-account">
-        <StoreHeader />
+  return (
+    <main
+      className={`account-page customer-account ${section === "chat" ? "account-chat-page" : ""}`}
+    >
+      <StoreHeader showTabBar={section !== "chat"} />
+      {loading ? (
         <section className="customer-loading" aria-busy="true">
           <h1>Личный кабинет</h1>
           <p role="status">Загружаем ваши данные…</p>
         </section>
-      </main>
-    );
-  if (!user)
-    return (
-      <main className="account-page customer-account">
-        <StoreHeader />
+      ) : !user ? (
         <section className="auth-shell">
           <p className="auth-error" role="alert">
             {error || "Не удалось загрузить профиль"}
@@ -1386,31 +1136,28 @@ export default function AccountPage({
             Войти снова
           </a>
         </section>
-      </main>
-    );
-
-  return (
-    <AccountShell user={user} section={section} onSignOut={() => void signOut()}>
-      {error && section !== "orders" && (
-        <p className="auth-error" role="alert">
-          {error}
-        </p>
-      )}
-      {orderNumber ? (
-        <OrderDetailSection orderNumber={orderNumber} />
-      ) : section === "orders" ? (
-        <OrdersSection error={error} onRetry={() => void load()} />
-      ) : section === "profile" ? (
-        <ProfileSection user={user} onUpdated={setUser} />
-      ) : section === "chat" ? (
-        <Suspense fallback={<p role="status">Открываем сообщения…</p>}>
-          <AccountChat />
-        </Suspense>
-      ) : section === "reviews" ? (
-        <AccountReviews />
       ) : (
-        <FavoritesSection />
+        <AccountShell user={user} section={section} onSignOut={() => void signOut()}>
+          {error && section !== "orders" && (
+            <p className="auth-error" role="alert">
+              {error}
+            </p>
+          )}
+          {section === "orders" ? (
+            <OrdersSection error={error} onRetry={() => void load()} />
+          ) : section === "profile" ? (
+            <ProfileSection user={user} onUpdated={setUser} />
+          ) : section === "chat" ? (
+            <Suspense fallback={<p role="status">Открываем сообщения…</p>}>
+              <AccountChat />
+            </Suspense>
+          ) : section === "reviews" ? (
+            <AccountReviews />
+          ) : (
+            <FavoritesSection />
+          )}
+        </AccountShell>
       )}
-    </AccountShell>
+    </main>
   );
 }

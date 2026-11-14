@@ -563,34 +563,6 @@ func (store *PostgresStore) RefreshSiteSales(ctx context.Context, from, to time.
 	return store.ReplaceSales(ctx, "site", from, to, records)
 }
 
-func (store *PostgresStore) replaceSalesWithQuery(
-	ctx context.Context,
-	channel string,
-	from, to time.Time,
-	insertSQL string,
-) (int, error) {
-	tx, err := store.pool.Begin(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("begin sales refresh: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
-	if _, err := tx.Exec(ctx, `DELETE FROM procurement_sales_daily WHERE channel = $1 AND sale_date BETWEEN $2 AND $3`, channel, from, to); err != nil {
-		return 0, fmt.Errorf("clear sales refresh window: %w", err)
-	}
-	command, err := tx.Exec(ctx, insertSQL, from, to)
-	if err != nil {
-		return 0, fmt.Errorf("insert refreshed sales: %w", err)
-	}
-	count := int(command.RowsAffected())
-	if err := finishSalesSync(ctx, tx, channel, from, to, count); err != nil {
-		return 0, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("commit sales refresh: %w", err)
-	}
-	return count, nil
-}
-
 func (store *PostgresStore) ReplaceSales(
 	ctx context.Context,
 	channel string,

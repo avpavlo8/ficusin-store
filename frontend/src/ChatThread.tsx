@@ -288,7 +288,14 @@ export default function ChatThread({
 
   const send = async (event: FormEvent) => {
     event.preventDefault();
-    if (sending || preparing || loading || (!text.trim() && !attachment && !reference)) return;
+    if (
+      sending ||
+      preparing ||
+      loading ||
+      (!text.trim() && !attachment && !reference) ||
+      (!staff && !thread.id && thread.consentRequired && !consent)
+    )
+      return;
     setSending(true);
     setError("");
     const signature = JSON.stringify([text.trim(), topic, reference?.kind, reference?.id]);
@@ -350,6 +357,7 @@ export default function ChatThread({
   return (
     <div
       className="chat-thread"
+      data-reference-open={referenceKind ? "true" : undefined}
       onKeyDown={(event) => {
         if ((emojiOpen || attachMenu || referenceKind) && event.key === "Escape") {
           event.preventDefault();
@@ -361,6 +369,22 @@ export default function ChatThread({
         }
       }}
     >
+      {referenceKind && (
+        <ChatReferencePicker
+          key={referenceKind}
+          base={base}
+          kind={referenceKind}
+          onClose={() => {
+            setReferenceKind(null);
+            textarea.current?.focus({ preventScroll: true });
+          }}
+          onSelect={(value) => {
+            setReference(value);
+            setReferenceKind(null);
+            textarea.current?.focus({ preventScroll: true });
+          }}
+        />
+      )}
       <div
         className="chat-messages"
         ref={scroll}
@@ -551,22 +575,6 @@ export default function ChatThread({
             </button>
           </div>
         )}
-        {referenceKind && (
-          <ChatReferencePicker
-            key={referenceKind}
-            base={base}
-            kind={referenceKind}
-            onClose={() => {
-              setReferenceKind(null);
-              textarea.current?.focus({ preventScroll: true });
-            }}
-            onSelect={(value) => {
-              setReference(value);
-              setReferenceKind(null);
-              textarea.current?.focus({ preventScroll: true });
-            }}
-          />
-        )}
         {attachMenu && (
           <div className="chat-attach-menu" role="group" aria-label="Что прикрепить">
             <button
@@ -748,11 +756,12 @@ export default function ChatThread({
             onKeyDown={(event) => {
               if (
                 event.key === "Enter" &&
-                (event.ctrlKey || event.metaKey) &&
-                !event.nativeEvent.isComposing
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing &&
+                event.nativeEvent.keyCode !== 229
               ) {
                 event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
+                if (!event.repeat) event.currentTarget.form?.requestSubmit();
               }
             }}
           />

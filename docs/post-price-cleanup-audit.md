@@ -1,0 +1,729 @@
+# Повторный аудит после переноса цен
+
+Проверка 13 ноября 2026, исходная ревизия `e944d3e`, ветка
+`cleanup/unused-legacy-code`. Проверены backend, frontend, HTTP-контракт,
+таблицы/триггеры, окружение, workflows, скрипты, ассеты, тесты и документация.
+Удаление основано на текущих вызовах и источниках данных; слово `legacy`
+само по себе не является доказательством неиспользования.
+
+## Удалённые остатки
+
+| Остаток | Доказательство / замена |
+|---|---|
+| `managerVariantContent`, `UpdateVariantContent`, `VariantContentUpdate` | Обработчик не имел маршрута/вызовов. Менеджер сохраняет SKU через `UpdateProduct` → `saveVariantEdits`; тесты характеристик и сезонной упаковки проверяют этот действующий путь |
+| `POST /admin/products/sync` | UI его не вызывал; HTTP-метод и доменная реализация только отклоняли вызов. Удалены маршрут, обработчики, DTO, permission и описание OpenAPI |
+| `effectiveAttributeProvider` | Неиспользуемый интерфейс; текущие category/PIM-маршруты используют собственные рабочие зависимости |
+| `cmd/pricing-preview` | Недокументированный stdin/stdout wrapper без вызывающих скриптов, CI или UI. Рабочий расчёт и HTTP pricing preview сохранены |
+| `procurement_action_batches.source` | После переноса manual оставалось единственное постоянное значение, ни одного рабочего чтения. Архивные batches сохраняют исходный source |
+| `catalog_editor_price_publications.old_value_minor` | Не читалось приложением; единственное заполнение дублировало архивное old_value. Миграция проверяет точное соответствие архиву перед удалением |
+| Семь `admin.*` схем старых финансовых операций | Нет зарегистрированных операций и соответствующих Go-типов: FinanceCashInput, FinanceClassification, FinanceReconciliation, MarketplaceAdjustmentInput, SupplierAccountInput, SupplierReconciliationInput, TaxPeriodInput |
+| Пять E2E-заглушек доставки | Нет HTTP-потребителей: Post/Yandex status/quote и CDEK GET quote. Текущий CDEK POST и status/cities/offices сохранены |
+| `products.sync` в тестовой выдаче прав | Само разрешение и его операция сняты |
+| Девять параметров `.env.example` | Нет читателей: RUSSIAN_POST_ACCESS_TOKEN/USER_AUTH_KEY/FROM_INDEX, YANDEX_DELIVERY_TOKEN/GEOCODER_API_KEY/SENDER_ADDRESS/SENDER_LONGITUDE/SENDER_LATITUDE, YOOKASSA_SEND_RECEIPT |
+
+Удалённые схемы больше не могут незаметно вернуться: `check-openapi.mjs`
+проверяет существование Go-типа для каждого квалифицированного имени компонента.
+Именованные схемы текущих операций и протокольные DTO сохранены.
+
+Применённые миграции не переписаны. Новая
+`20261113_zzzzzzzz_remove_retired_price_columns.sql` берёт блокировку,
+отказывается удалять историческую сумму без точного архивного источника и
+не использует CASCADE. Исчезнувшие колонки также отклоняют SQL старого
+manual-producer. Активные закупки и новые ценовые команды сохраняются.
+
+## Старая логика симулятора
+
+`RunPreview` нельзя удалить: он обслуживает подготовку СБИС в изолированном
+mock-контуре. Исправлено старое поведение, которое позволяло брать disabled
+снимки: main запускает симулятор только в mock, а оба SQL claim/recheck
+выбирают исключительно `execution_mode='mock'`. Disabled-команда не создаёт
+синтетический SKU или canonical mapping. Тест оставляет старшую disabled-строку
+нетронутой и проверяет штатную mock-публикацию с `STG-EDITOR` ID.
+
+## Удалённые изображения и проверка БД
+
+Из `public/assets/redesign/` удалены 9 файлов, суммарно 419312 байт:
+
+- `checkout-summary-art.webp`;
+- `favorites-zamioculcas-v1.webp`;
+- `filters/dark-room.webp`;
+- `home-service-4k.webp`;
+- `home-service-v4.webp`;
+- `info-delivery-scene-v1.webp`;
+- `service-care-v2.webp`;
+- `service-delivery-v2.webp`;
+- `site-footer-v1.webp`.
+
+У этих путей нет текущих статических или динамических потребителей в исходниках,
+манифестах и service worker. Например, checkout использует alpha-версию рисунка,
+footer — v2, а подборки — текущие wall-v2 обложки.
+
+13 ноября в **19:10:08 UTC** дополнительно проверена production `default_db`.
+SELECT/DO с SELECT выполнялись внутри `BEGIN TRANSACTION READ ONLY`, с
+statement_timeout 30s и lock_timeout 2s. По именам файлов проверены text,
+varchar/char, JSON/JSONB и текстовые/JSON-массивы обычных таблиц схем
+`public`/`legacy_archive`: **126 таблиц, 588 колонок, 0 совпавших строк**.
+Выгружались только время и агрегированные счётчики. Данные, права и настройки
+production не менялись. Это датированный срез; он не анализирует внешние
+закладки или содержимое загруженных бинарных документов.
+
+## Что сохранено и почему
+
+| Механизм | Текущий потребитель / условие удаления |
+|---|---|
+| Неунифицированная формула закупочных цен | API допускает `economics.unified.enabled=false`; UI и новый ценовой процесс имеют достижимый fallback. Сначала нужно официально снять этот режим, затем закрыть его в API/БД и перевести исторические расчёты |
+| Закупочные `saby_price` и XLSX | Действующие закупочные пакеты, экспорт и подтверждение импорта; это другой процесс, чем удалённый manual-источник |
+| Архив exporter и manual-пакетов | Защита ранее отправленных SKU, происхождение сумм/идентификаторов и история. Удаление read-guard возможно после проверенного переноса защиты в канонические связи; удаление самой истории требует отдельного обоснования срока хранения |
+| `catalog_editor_link_history` | Заполняется SQL-триггером и хранит прежние привязки, даже если имя не встречается в Go INSERT |
+| `launch_hidden_*` | Рабочие исключения витрины/заказа и ограничения объединения опубликованных карточек; удаление возможно после снятия этих бизнес-исключений и сверки всех затронутых товаров |
+| Склад staging и mock-хранилища | Изолированная локальная/стендовая проверка; не production-write fallback |
+| Старые URL/ID и статусы платежей | Существующие ссылки, продажи и сверка исторических денежных операций |
+| Старые вложения и file migration CLI | Авторизованные чтения bytea/прежнего bucket до проверенного переноса файлов |
+| Старые root PWA-иконки | Установленные приложения могут продолжать запрашивать прежние URL |
+| Диагностические workflows/probes и генераторы SQL | Инциденты, проверки поставки и воспроизведение уже применённых миграций; вызовы/документация сохранены |
+| `ReadFrom`, `Unwrap`, pgx trace callbacks, testsupport | Протокольные интерфейсы и реальные тестовые зависимости; одиночное объявление в grep не делает их мёртвыми |
+
+`source='manual'` в `product_external_ids` сохранён: это источник ручного
+сопоставления идентификаторов и истории продаж, а не удалённый ценовой
+источник закупочных batches. Одинаковое слово не означает одинаковый механизм.
+
+Граф runtime-imports охватывает 177 frontend-файлов без недостижимых исполняемых
+модулей; семантическая проверка экспортов не нашла дополнительных удалений.
+Проверка CSS охватывает 1247 классов без мёртвых правил. Все девять workflows
+имеют текущие назначения; дополнительные удаления jobs/скриптов не обоснованы.
+
+## Повторная проверка после `9e8da4a`
+
+Проверены сохранённые определения 16 SQL-функций, 11 прикладных триггеров и
+представления на локальной БД после 213 миграций. Ссылок на удалённые колонки
+или рабочие таблицы снятых процессов не найдено. Чтение архивного exporter
+защитой ранее опубликованного SKU сохранено намеренно.
+
+В CRM workflow найден отдельный шаг с двумя удалёнными manual-price тестами:
+Go возвращал успех с `[no tests to run]`. Шаг удалён; текущие PostgreSQL-тесты
+цен редактора уже вызываются основным CI. Остальные селекторы проверены по
+именам тестовых функций каждого целевого пакета; пустых совпадений не осталось.
+
+`telegram.enabled` сохранялся и отображался владельцу, но не читался ни одним
+отправителем. Константа, определение панели и default удалены. Новая миграция
+214 архивирует исходную строку со значением/временем и удаляет рабочий ключ;
+остальные, в том числе неизвестные будущие, настройки не меняются. Фактическое
+поведение Telegram не меняется: production использует клиент с обязательными
+ключами, development/staging — отключённый адаптер. Панельного выключателя нет.
+
+Общий whitelist настроек теперь проверяется перед любыми записями: неизвестный
+или удалённый ключ возвращает 400, корректная часть смешанного запроса отдельно
+не сохраняется. Текущий клиент получает values только для известных Definitions,
+поэтому неизвестные исторические строки обратно не отправляет. Локальные
+PostgreSQL-сценарии проверили отсутствие прежнего ключа и оба его старых значения
+`0`/`1`, точную сохранность архива, неизменность других настроек и атомарный отказ
+смешанного запроса. Проверка включена в CI; production-миграции здесь не запускались.
+
+Следующая миграция 215 убирает прежние подписки СБИС на обновление контента:
+изменяемые исходные массивы и время товара сохраняются в
+`legacy_archive.product_saby_content_flags`. Рабочий `saby_fields` содержит только
+`stock` либо пустой массив; наличие stock-подписки сохраняется точно. Обратный
+обмен больше не записывает существующие тексты, фото и цену даже при старых
+флагах. Исходное имя/описание/изображения/цена в `saby_nomenclature` по-прежнему
+нужны явному импорту новой draft-карточки. Реальный сценарий link → sync
+подтвердил сохранность названия, описания, цены и всей галереи со старыми
+флагами, обновление остатков и возможность первоначального импорта.
+
+Из frontend-модели удалены старый `SabyStepDraft`, неиспользуемые поля канала,
+остатка и вкладки, а также неиспользуемые статусы публикации. Текущие
+`sabyEditor`, внешние идентификаторы и ручные цены сохранены. Тест старого
+локального журнала подтверждает сохранность полезного черновика.
+
+Найдена ошибка нового процесса: чистый браузер восстанавливал ручной режим,
+но терял сохранённые суммы WB/Ozon. Теперь точные строки, включая ноль,
+восстанавливаются вместе с режимом. Для исторических планов с суммами без
+`priceMode` выбирается ручной режим до явного «Авто». Поздние ответы сервера
+не перезаписывают новый локальный выбор и цены. Подтверждение отправки
+площадкам по-прежнему требуется отдельно. Шесть браузерных сценариев проверили
+свежий черновик, повторное сохранение точных сумм, старый формат и гонки ответа.
+
+Удалены неиспользуемые Go-объявления `MovementWriteoff`, `ErrInvalidCredentials`,
+`ErrTooManyAttempts`, `integrationDeepEvery` и всегда пустое поле
+`RefundIssue.ReceiptReference`. Текущие внешние DTO и SQL-поведение сохранены.
+
+## Проверки предыдущего изменения (`9e8da4a`)
+
+Полные Go-тесты, vet и сборка API; frontend lint/format/type-check/build/budget
+и unit-тесты. PostgreSQL-проверки охватывают текущий атомарный редактор,
+сохранение менеджером, публикации контента/цен, изоляцию preview и перенос
+212 → 213, включая очередь, claim token, payload, суммы и архив.
+
+Прошли 98 browser-сценариев редактора и доставки (iPhone, Android, desktop).
+На пустой отдельной БД API применил все 213 миграций: readiness, главная и
+каталог вернули 200, текущий footer — 200, удалённый v1 — 404. OpenAPI проверяет
+236 операций и 94 схемы. Подробный итог — в `current-system.md`. Реальные
+отправки площадкам не запускались.
+
+## Проверки текущей повторной очистки
+
+Полные `go test ./...`, `go vet ./...` и сборка API прошли. PostgreSQL-набор
+выполнил текущие публикации цен/контента, связь и первоначальный импорт СБИС,
+изоляцию preview, все проверки архивирования и новые миграции 214/215 без skip.
+Новый API на пустой отдельной БД применил все 215 миграций; readiness, health,
+главная и каталог ответили 200. Старого ключа Telegram и подписок на контент
+в рабочих таблицах нет, обе новые архивные таблицы созданы.
+
+Frontend: 76 unit-тестов, lint, format, строгая проверка TypeScript, сборка и
+bundle budget прошли. Runtime-граф: 177 файлов без недостижимых исполняемых
+модулей; CSS: 1247 классов без мёртвых правил. OpenAPI: 236 операций / 94 схемы.
+Все оставшиеся 32 сочетания пакета/селектора CI находят тесты; новые SQL-тесты
+включены в workflow. Production и внешние отправки не затрагивались.
+
+Повторный полный прогон `admin-catalog-safe-editor.spec.ts`: 88/88 прошли на
+iPhone, Android и desktop (1,5 минуты), включая скидку WB и новые случаи
+восстановления цен. Первый запуск был прерван после таймаутов WebKit на
+`page.goto` до проверок интерфейса. Одиночные контроли на той же сборке и
+повторный полный прогон прошли без изменения приложения или тестов; точная
+причина исходного сбоя окружения не установлена. Остальные browser-спецификации
+в этом изменении повторно не запускались.
+
+## Повторный аудит 14 ноября 2026 после `b41154a`
+
+Заново проверены текущие вызовы всех cmd, члены живых frontend-модулей,
+SQL-колонки, определения функций/представлений/триггеров, неявные JSON-снимки,
+API-схемы и инструменты. Исходные миграции не редактировались.
+
+### Удалённый код
+
+- Go: `replacePhotos`, `Store.Photo`, `nestedString`, `mail.Invoice`,
+  `order.QueueLetter`, `settings.DefaultNumber/NonNegative`, `PopularityWeight`,
+  `recommendationScore`, `procurement.NewService` и `YooKassaClient.Refund`.
+  Старое требование Refund удалено из payment.provider. Рабочие async возвраты
+  используют отдельный refundProvider; письма пишутся текущими транзакциями
+  заказа/упаковки, обычный outbox worker сохранён. Реальный первоначальный импорт
+  фото из СБИС остался; удалённая replacePhotos не имела вызовов.
+- `PopularityWeight/recommendationScore` были копиями SQL исключительно для
+  тестов, а не рабочими формулами. Их тесты заменены исполнением ListAvailable
+  и listRecommendations на PostgreSQL: подтверждённые/отменённые продажи,
+  четыре возраста, сходство карточек и пустые атрибуты. SQL-поведение не менялось.
+- Неиспользуемые `Registration.Phone` и `mergeProduct.Snapshot` с лишним
+  to_jsonb/Scan. HTTP phone, вход по звонку и отдельный реальный merge-аудит
+  сохранены. Chat.Photo и старый конструктор закупок имели только тестовых
+  потребителей: тесты теперь используют текущие Attachment/NewServiceWithExecutor.
+- Frontend: возвращаемые blockers/missingStage1/unknownEnums и лишняя копия
+  массива readiness, CareArticle.image, OzonAttribute.attribute_complex_id,
+  DraftMedia.size и его четыре писателя. Полезные данные старых localStorage
+  черновиков, IndexedDB Blob и ограничения реальных загрузок остаются.
+  CareArticle.sources — редакторские первоисточники, назначение описано в типе.
+- Семь неподключённых дубликатов OpenAPI: CallVerification, User, OrderSummary,
+  analytics.Attribution, httpapi.createOrderBody/requestCodeBody/verifyCodeBody.
+  Канонические auth.User/order.Summary сохраняют необходимые constraints;
+  актуальный OrderWorkflow подключён к реальному ответу GET /admin/orders.
+  Контракт по-прежнему 236 операций; осталось 87 достижимых схем.
+- Неподключённая `plant_passport_content.schema.json` и три исчезнувших имени
+  в allowExportNames ESLint. Реальный генератор проверяет четыре исторических
+  набора JSON своей validate(); источники и воспроизводимость миграций сохранены.
+  Остальные 27 исключений ESLint имеют потребителей. Дополнительных неиспользуемых
+  env, jobs или прямых Go/Node/Docker-зависимостей не подтверждено.
+
+### Очистка рабочей схемы
+
+Миграции 216/217 блокируют исходные таблицы, копируют точные типизированные
+значения с идентификаторами/датами в detached archive, затем удаляют только
+перечисленные поля. Ни одного DROP CASCADE; неизвестная зависимость прервёт Apply.
+
+| Таблица | Удалённые поля | Архив в legacy_archive |
+|---|---|---|
+| customers | password_hash, email_verified | customer_password_fields |
+| products | saby_snapshot | product_retired_sync_fields |
+| product_variants | price_override_minor, price_override_until, saby_snapshot | variant_retired_price_sync_fields |
+| organizations | wholesale_discount_bps, payment_terms | organization_retired_terms |
+| marketplace_returns | channel_withheld_rub, channel_compensation_rub | marketplace_return_retired_amounts |
+| payment_refunds | receipt_required, receipt_confirmed_by | refund_retired_receipt_fields |
+
+У этих 12 полей нет текущих читателей/писателей в приложении и скриптах,
+зависимых SQL-функций/представлений или триггеров. Неявные JSON-снимки объединения
+и правок возвратов — история; restore/populate_record из старых ключей отсутствует.
+Существующие JSON-аудиты оставлены байт-в-байт. Новый SQL-тест сравнивает все
+остальные поля рабочих строк, точность JSON/денег/NULL, даты и автора чека,
+связанные строки, пустую схему и новые записи. Архив не теряется при удалении
+связанного автора. Миграция 216 дополнительно проверяет реальные вход существующего
+клиента, регистрацию, сессию, выход и привязку гостевого заказа по телефону.
+
+Отсутствие Go-чтения не стало поводом удалять активные audit timestamps,
+legacy_proposal_id, launch-hidden доказательства и catalog_editor_link_history:
+их назначение — происхождение, защита и история. Рабочие фискальные request/ID,
+lease/claim tokens, саби-идентичность и additive fallback экономики сохранены.
+
+### Итог проверок
+
+- Полные Go test/vet/build; анализ достижимости x/tools deadcode из всех cmd
+  с тестами: дополнительных недостижимых прикладных функций не найдено.
+  Статический анализ консервативен для интерфейсов и не заменяет проверку данных.
+- Восемь пакетов live-DB проверок на схеме 217; публикации WB/Ozon/Saby и цен,
+  файлы чата — отдельно на разрешённой isolated publisher БД; CRM seed прошёл
+  на отдельной копии, затем прошли закупки, merge, документы/правки возвратов,
+  старые и текущие платёжные/reconciliation сценарии. Сценарии с CRM fixtures
+  выполнялись отдельно от общего набора; local publisher требует своё имя БД.
+- При повторе старого payment recovery теста обнаружен конфликт постоянных ID
+  заглушки с предыдущим прогоном и cleanup после закрытия пула. ID привязаны к
+  ключу/локальной записи, пул закрывается последним cleanup. Повтор с count=2
+  прошёл на той же БД; рабочий платёжный код этим исправлением не менялся.
+- Новые архивные и прежние migration-тесты прошли. API на новой пустой БД
+  применил 217 миграций, рабочие 12 полей отсутствуют; readiness, health,
+  главная и каталог — 200. История существующих миграций не переписана.
+- Frontend lint/format/strict TypeScript/build/budget, 76 unit-тестов,
+  48 Python-тестов; реальные источники паспортов проверены генератором.
+  Все 32 оставшихся CI package/selector сочетания находят тесты; новые миграции
+  включены в CI, реальный SQL ranking попадает в существующий LiveDatabase шаг.
+- 110 browser-сценариев: 88 редактора и 22 каталога/статей на iPhone, Android,
+  desktop. Остальные browser-спецификации в этой итерации не запускались.
+
+Production-данные, ключи окружения и внешние отправки здесь не менялись.
+
+## Продолжение проверки после `61dabdf`, 14 ноября 2026
+
+### Старые modal процессы корзины и оформления
+
+Оба состояния начинались с false; все оставшиеся setters могли только закрыть
+панель. Реальные переходы уже вели на /cart и /checkout. Удалены modal UI,
+open/close состояние, overlay/body-lock и их CSS. CartDrawer заменён page-only
+CartPanel. StorefrontPage больше не монтирует скрытый CheckoutHost с неиспользуемой там
+загрузкой профиля и provider-проверками. Нужный запрос профиля StoreHeader остаётся. Действующий cart-error-toast и retry остались
+на витрине. CheckoutPageContent владеет useCheckout, профилем формы, ошибками
+и подтверждением; очистка серверной корзины не уничтожает итог заказа.
+
+Проверяются отсутствие скрытых форм/побочных provider GET на home/cart,
+наличие GET на checkout, серверная ошибка корзины с повтором, пустая корзина,
+профиль, согласия, варианты доставки, оплата и возврат после оплаты. Старые
+внешние ссылки ?cart продолжают работать через редирект.
+
+### PIM и HTTP-контракт
+
+У текущего UI не осталось потребителей обновления первого SKU через верхний
+уровень ProductUpdate. Удалены входные priceMinor, variantLabel, heightCm,
+potDiameterCm, packageLengthCm/packageWidthCm/packageHeightCm/packageWeightGrams,
+wholesaleMinQty, stock, sabyFields, externalIds и image. Варианты меняются
+явно через variants[]. У POST удалены шесть размерных полей, stock и image;
+priceMinor и variantAttributes сохранены. Исходные stock/images справочника
+СБИС остаются для явного ImportProducts. ProductUpdate редакционные поля
+и PRODUCT-typed bridge остаются текущими, а не legacy-кандидатами.
+
+Сняты first-variant SQL update, ручное изменение остатка через старую форму,
+product-level external-ID replacement, одиночный image fallback, wrapper
+safeAdminProductUpdateHandler и запись override flags. Настоящий обработчик
+сохраняет raw field/role guard; проверки менеджера теперь используют текущий
+nested payload. Каждый бывший PATCH alias возвращает owner400/manager403,
+каждый бывший POST alias — 400. Никаких молчаливых успешных no-op.
+
+SalesLink принимает channel/externalId/variantId. Старый входной sabyId и SQL
+выбор первого SKU по remote ID удалены; результаты по-прежнему содержат
+разрешённый Saby ID. HTTP-тесты отклоняют старый и смешанный формат до записи;
+текущая привязка и пересчёт истории проверены на PostgreSQL.
+
+OpenAPI содержит точные ProductUpdate/VariantEdit и необходимые passport refs,
+сохранённые ProductCreate поля и variantId-only SalesLink. PATCH больше не
+permissive stub; x-source указывает на реальный обработчик. Четыре write DTO
+сверяются по именам с Go AST и strictness. Восемь проверочных мутаций старых
+aliases/permissive схем отклонены; схема не делает все optional поля обязательными.
+Текущий итог: 236 операций / 91 достижимая схема.
+
+### Миграция 218
+
+Архивируются products.override_fields и product_variants.override_fields вместе
+с шестью variant dimensions (height_cm, pot_diameter_cm, package_length_cm,
+package_width_cm, package_height_cm, package_weight_grams). Архивы
+legacy_archive.product_retired_overrides / variant_retired_dimensions сохраняют
+PK, связь product_id, исходные массивы/NULL, все значения и даты без рабочих FK.
+
+PIM — действующий источник после 061. Остаточные три чтения старых размеров
+(список админки, подготовка и проверка цен) переведены на variant_numeric_attribute.
+Для данных, заведённых прежними инструментами только в колонку после 061,
+218 заполняет отсутствующую PIM-строку из каждого SQL NOT NULL значения.
+ON CONFLICT DO NOTHING сохраняет все ранее записанные PIM-строки, в том числе
+явный JSON null. Missing-only импорт маркируется source=import; прежняя строка
+не теряет источник и время. Отсутствующее/неподходящее определение и недопустимый
+source прерывают транзакцию. Колонки удаляются без CASCADE после архива/переноса.
+
+Шесть PostgreSQL-сценариев: canonical, missing definition, wrong type, wrong
+scope, source constraint, empty. Проверены конфликт старого числа с новой
+числовой строкой 21.5, JSON null, ноль, отрицательное значение, отсутствие
+строки, точные архивы, сохранность цены/остатка/timestamps/исторического JSON
+и полный rollback при отказе. Использован реальный SQL numeric helper.
+Существующие функции/представления и runtime SQL проверены на зависимости;
+размеры накладных и supplier aliases не относятся к этим снятым колонкам.
+
+### Другие подтверждённые остатки
+
+Семантическая проверка Go-полей учитывала присваивания, Scan и сериализацию.
+XML-поля, html/template-контекст и JSON fingerprint сохранены: их читает
+соответствующий runtime без обращения field selector в Go. Удалены:
+
+- order.Service.notifier с неиспользуемым аргументом; реальный NotificationWorker
+  остаётся единственным отправителем заказа. Ненужная заглушка из тестов удалена.
+- mail.Sender.logger с неиспользуемым аргументом. LetterWorker по-прежнему
+  протоколирует ошибки и обслуживает outbox.
+- TelegramOrder.PaymentMethod (formatter использует payment status) и лишний
+  SQL/Scan; ShipmentRequest.CityCode (PVZ CreateOrder использует OfficeCode),
+  город расчёта/выбора ПВЗ остаётся в своём текущем контракте.
+- Нечитавшиеся SQL-проекции/локальные поля shipping claim/reconcile/refresh
+  и CalculateOrder. Условия отбора, блокировки, retry и расчёт не менялись.
+- safeMappingToken и проверявший только его unit-тест: единственный прежний
+  product-level external-ID consumer снят; текущие SKU guards сохранены.
+
+Staging origin checks сведены к одному реальному helper для двух конфигураций
+и bootstrap. Проверены два разрешённых и 17 отклоняемых URL, в том числе
+production/подмена host/credentials/ports/path/query. Загружены конфигурации
+с обоими поддерживаемыми origin; запросов на staging/production не делалось.
+Дополнительных неиспользуемых CLI flags/action inputs не найдено.
+
+Обновлены инструкции PIM/редактора/закупок/витрины, фактическая архитектура
+ключей и workers, staging origin policy. Убраны устаревшие утверждения про
+резерв и автоматическое списание склада; исторические snapshots не переписаны.
+
+### Проверки продолжения
+
+- Go: полные test/vet/build. Анализ всех cmd после удаления safeMappingToken
+  не показывает дополнительных недостижимых функций. Семантический разбор полей
+  использовался только как список кандидатов, не как разрешение удалить XML,
+  template, fingerprint или историю.
+- PostgreSQL: старые archive/migration проверки и шесть сценариев 218;
+  актуальные admin/auth/catalog/order/payment/analytics live-наборы на схеме 218.
+  Isolated publisher WB/Ozon/СБИС/цен и preview isolation прошли отдельно.
+  На отдельной CRM-копии прошли закупки, сверка цен, состояния СДЭК, объединение,
+  документы/правки возвратов. Обычные live, CRM seed и publisher DB разделены
+  по требованиям существующих тестов. Реальные адаптеры проверяются с локальными
+  эмуляторами; внешние записи не запускались.
+- Новый API на пустой БД применил 218 миграций; readiness/главная/каталог — 200,
+  восемь снятых полей отсутствуют. На ещё одной отдельной seed-копии CRM
+  acceptance прошёл через настоящий HTTP API для owner/manager в 1440 и 390 px,
+  с сохранением галереи и проверкой прав. Изменения PIM не проверялись только моками.
+- Frontend после окончательного удаления обоих modal: 84/84 browser
+  (61 delivery/payment/cart-network/mobile-purchase и 23 выбранных
+  navigation/storefront/profile/cart). Ранние прогоны до последней сборки
+  не прибавлены к этому числу. Был исправлен неверный новый test assertion,
+  ожидавший modal close после перехода на /cart; действующий переход проверяется
+  как page-only, приложение ради этого утверждения не менялось.
+- Все 76 frontend unit-тестов, lint/format/strict TypeScript/build/budget,
+  48 Python-тестов и два Node staging-origin теста прошли. Контракт:
+  236 операций / 91 достижимая схема, четыре актуальных write DTO согласованы
+  с Go AST. Новая миграция и origin-check включены в CI.
+
+Проверки выполнялись локально. Production-очереди, база и секреты не менялись;
+ветка не сливалась в main. Активная совместимость внешних URL, платёжных
+неизвестных результатов, архивной идентичности и существующих файлов сохранена.
+
+## Продолжение удаления после `b89f1ca`
+
+### Интерфейс и маршруты
+
+JSX-аудит включал все call sites и spreads. Ни один текущий caller не передавал
+AccountPage.orderNumber: Root давно направляет /account/orders/:number в
+AccountOrderPage. Удалены OrderDetailSection, второй DTO заказа, payOrder,
+только ему нужные форматтеры/labels и 21 неиспользуемый CSS-селектор.
+Действующие список заказов, пагинация, детализация и оплата отдельной страницы
+сохранены. Не удалялись реальные orderNumber в ссылках/моделях заказов.
+
+Удалены никогда не менявшиеся optional props: CatalogSearch.inlineResults,
+StoreHeader.showSearch, ChannelReferencePicker.kind, SabyLinkPicker.label,
+ConfirmDialog.danger; вместе с AccountPage.orderNumber это шесть контрактов.
+Callback onCartClick был остатком старого modal: оба caller просто переходили
+на /cart, как и default anchor. Он и дублирующие button/link ветки сняты,
+header и TabBar сохраняют доступные подписи/счётчик на обычном /cart anchor.
+Действующие onSearch/onChange, режимы меню и справочники не вырезались.
+
+### Складской журнал и исторические резервы
+
+purchasableItem.Reserved нигде не получал значения. Старый reserveVariantForEdit
+на каждом пути возвращал reserved=0; последующий reserve INSERT всегда отсеивал
+нулевые строки. Поля/аргументы и пустой вызов удалены; DB default reserved_qty=0
+подтверждён реальным оформлением. Новый needsPreorderForEdit делает только
+проверку наличия/предзаказа.
+
+RecordMovement больше не принимает произвольный kind и не содержит будущих
+reserve/writeoff веток. RecordStockRelease записывает только реальное освобождение
+положительных исторических резервов. Два текущих caller — ReleaseStock и
+редактирование заказа — сохранены. Журнал, order_items/inventory reserved_qty,
+shipment reservations и operations parity guards не удалены: это необходимые
+потребители старых данных. При ошибке журнала редактирование откатывается атомарно.
+Это не возобновление отправки stock_movements в СБИС и не изменение закупочной приёмки.
+
+PostgreSQL-тесты проверяют оформление и конкуренцию без новых резервов,
+редактирование с освобождением старой единицы, отмену/завершение, сохранение
+физического остатка и чужих двух зарезервированных единиц, идемпотентный повтор.
+Исторические seed-состояния оставлены: они проверяют эту действующую совместимость.
+
+### Неиспользуемые поля данных
+
+- OrderEditLine.productId/identity fallback снят: текущий редактор и acceptance
+  отправляют sku, SQL выбирает SKU. Старый единственный HTTP fixture передавал
+  slug, который фактический SKU lookup всё равно не разрешал. Strict HTTP
+  отклоняет старый ключ; текущие снимки/legacy_product_ref заказов сохранены.
+- ProductCreate.shortDescription раньше принимался, но CreateProduct всегда
+  создавал пустое краткое описание и не читал поле. Текущий POST его не отправляет;
+  ключ снят и возвращает 400. ProductUpdate.shortDescription действует как прежде.
+- AdminVariant.managedFields и Product.sabyUpdatedAt были только проекциями
+  ответа/TS-объявлениями без UI consumer. Чтение/DTO удалены; рабочие saby_fields,
+  StockUpdatedAt и исторический DB saby_updated_at сохранены.
+- analytics.Event.orderNumber никогда не читался/не записывался; публичный
+  frontend EventInput не имел этого поля. Strict HTTP теперь возвращает 400
+  до Record, валидное текущее событие сохраняет свой контракт. Trusted
+  RecordOrder и DB order_number не изменены. Регрессия проверяет оба запроса.
+- chat.Reference.detail никогда не заполнялся resolver/options SQL и не имеет
+  frontend поля/рендеринга. Удалён пустой optional DTO-slot без изменения
+  сохранённого JSON или идентичности/доступности ссылок. Chat live-тесты прошли.
+
+ProductAttribute.DisplayMode сознательно оставлен: отсутствие прямого Go
+selector обманчиво — поле заполняется JSON из catalogListQuery и используется
+фильтрами витрины. Внешние parse/serialize DTO и записи истории не удалялись
+по одному счётчику Go-полей. В scripts/CI новых доказанных остатков не найдено.
+Документация 218 уточняет точные архивы и отсутствие overwrite для существующего PIM.
+
+### Проверка рабочей версии
+
+Полные Go test/vet/build и анализ cmd-достижимости прошли без дополнительных
+кандидатов. Отдельные PostgreSQL-наборы order/admin/analytics/chat и три
+целевых исторических/concurrent сценария прошли. Новый API на пустой БД
+применил все 218 миграций и отдал 200 readiness/главная/каталог.
+CRM acceptance через настоящий API прошёл для владельца и менеджера в
+1440/390 px, галерея и границы прав сохранены. OpenAPI: 236 операций / 91 схема;
+SKU-only OrderEditLine включён в проверку полей с Go AST. Новая миграция не нужна.
+
+Финальные frontend-проверки этой группы: 47/47 browser (9 текущих заказов,
+21 аккаунта/профиля/навигации, 17 поиска/header/Saby/подтверждений), все 76
+unit-тестов, strict TypeScript, lint/format/build/budget. Удалён 21 эксклюзивный
+CSS-селектор, оставшиеся 1238 классов прошли проверку. Полный набор других
+browser-спецификаций в этой итерации не перезапускался. 48 Python-тестов прошли.
+Production не изменялась; изменения сохранены только в ветке очистки.
+
+## Очистка настроек и постоянных UI-режимов после `788a885`
+
+### Пять старых настроек
+
+Проверка включала действующие unified=true и false, UI калькуляторы, workers,
+preview, охранные проверки и сохранённые snapshot/readback paths. Пять параметров
+имели только цепь DTO → validation → load/store без эффекта на расчёт:
+domesticRetailMultiplier, internationalCostMultiplier, internationalRetailMultiplier,
+retailRoundStep, avoidRoundHundreds. Удалены Go/TS поля, defaults/валидация,
+проекции/сохранение, неиспользуемые test setup поля и schema properties.
+
+Миграция 219 — `20261114_archive_unused_procurement_settings.sql`. Под lock она
+сохраняет пять точных SQL-значений, settings_id, version, updated_by, updated_at
+в detached `legacy_archive.procurement_retired_pricing_settings`, затем удаляет
+колонки без CASCADE. Нет bump версии/времени или переписывания существующих
+calculation_settings, channel_quotes, unified_price_snapshot, action payload,
+claim/receipt IDs. В этих historical JSON не применяется strict PricingSettings
+декодирование; receipts читают собственный payload. Следовательно, контракт
+возобновления уже подготовленной операции сохраняет те же входные байты/версии.
+
+PostgreSQL-тест TestUnusedProcurementSettingsArchivePreservesPendingHistoryOnDatabase
+исполняет actual SQL на клонах рабочих таблиц: existing/empty/dependent view.
+Проверены exact numeric/bool, identity/version/author/time, все остальные поля
+настроек и целые строки исторических orders/quotes/batches/unknown receipts;
+archive не имеет FK, зависимость прерывает изменение атомарно.
+TestPricingSettingsRoundTripAndVersionGuardOnDatabase исполняет текущие store/service
+в обоих unified modes: save/readback, audit, stale-version rejection и расчёт
+по сохранённым настройкам. Оба теста включены в существующие CI-шаги.
+
+Сохранены реальные retailMarkupMultiplier/roundPrices, текущие расходы/налог/
+упаковка/возвраты/logistics и Economics.Unified. TrolleyVolume/Fill/CostRUB
+читаются frontend калькуляторами и планом; отсутствие Go arithmetic reader
+не делает их мёртвыми. trolleyCostCurrency и рабочая альтернативная формула
+не удалялись. Поля старых предложенных цен OrderLine и финансовая история
+также остаются; переписывание 0 в NULL не выдавалось за удаление мёртвого кода.
+
+### Прочие удалённые остатки
+
+- У UnitPriceInput снята первая версия preview без mode, вызывавшаяся только
+  старым unit-тестом. Два текущих frontend caller передают cost/retail.
+  Отсутствие/пустой/неизвестный mode возвращают 400 до store; явные cost и retail
+  сохраняют разный смысл (наценка себестоимости против переноса вклада цены).
+  Новый unit проверяет оба смысла и fallback; Browser проверяет wire mode
+  cost/cost/retail. API описывает required enum и проверяет его в checker.
+  Старые editor draft priceMode без режима сюда не относятся и не менялись.
+- calculateAllocatedLine.heightCM не читался в теле; параметр и лишние
+  передающие locals убраны. Рабочее распределение логистики/коробки сохранено.
+- NomenclatureCandidate totalSales/sabySales/wbSales/ozonSales/siteSales
+  никогда не заполнялись ни SearchNomenclature, ни SearchLinkableNomenclature.
+  У четырёх UI consumer нет чтения этих полей, включая computed keys/spreads.
+  Удалены пять Go/TS полей и одна ложная search fixture. Соседняя строка
+  «Продано» принадлежит текущему Recommendation и оставлена вместе со всеми
+  реальными продажами/расчётом рекомендаций.
+- JSX callsite audit подтвердил InstallHint.inline=true у обоих caller,
+  AccountMenu.iconOnly=true у единственного caller и homeNavigation=true у
+  всех страниц. Убраны три режима, плавающая install подсказка, текстовая
+  ветка аккаунта и false menu/fetch ветка. Девять эксклюзивных CSS-селекторов
+  удалены; PWA callbacks, first-visit/account entry, header accessibility и
+  текущее меню каталога сохранены. Generic label/title widget props не
+  специализировались ради косметического сокращения.
+
+В операционных документах исправлены устаревшие утверждения о месте ключей
+СБИС и отсутствии Go workers, автоматических резервах и S3. Restore-скрипт
+требует пустую цель и сам выполняет dump/restore — инструкция больше не
+предлагает запускать его после ручного восстановления. Provider restore и CI
+roundtrip разделены; локальная проверка приложения описывает изолированное
+окружение. Новых доказанных удалений jobs/CLI inputs не найдено.
+
+### Проверки текущего изменения
+
+Go test/vet/build и cmd-достижимость прошли без новых кандидатов. Целевые
+PG archive/roundtrip tests и закупочные/ценовые/receipt/shipping сценарии
+на схеме 219 прошли, как и isolated WB/Ozon/СБИС editor publishers и preview.
+Новый API на новой пустой БД применил 219 миграций; readiness/главная/каталог
+вернули 200, пять старых колонок отсутствуют. На отдельной seed-копии CRM
+acceptance прошёл через настоящий API для owner/manager в 1440/390 px,
+с сохранением галереи и границ прав. OpenAPI: 236 операций / 91 схема.
+Production и внешние операции в этой итерации не запускались.
+
+Финальный frontend результат: 30/30 browser (7 PWA, 8 pricing, 15 navigation),
+76 unit-тестов, strict TypeScript, lint/format/build/budget; 1237 CSS-классов
+без подтверждённых мёртвых селекторов. 48 Python-тестов прошли. Это выбранные
+затронутые browser-сценарии, а не повторный запуск всего e2e набора.
+
+Промежуточные migration/OpenAPI/navigation запуски столкнулись с локальным
+iCloud eviction: неизменённые файлы читались как EOF. Четыре dataless-файла
+восстановлены атомарно из HEAD, хэши всех 35 изменённых/новых файлов проверены
+и сохранены. После этого весь выбранный archive/settings PG-набор, OpenAPI
+и 15 navigation-сценариев прошли. Исходники и тесты ради этого сбоя
+не ослаблялись; production не затрагивалась.
+
+## Очистка worker-fallback и остаточных timestamps после `03a3fd1`
+
+### Удалённые механизмы
+
+- Единственный production NewSalesWorker получает PostgresStore. Он всегда
+  реализует IntegrationSyncCoordinator, поэтому ветка externalAt/deepAt/
+  externalEvery и методы externalDue/deepDue/syncExternal работали только
+  со старыми тестовыми заглушками. Удалены этот планировщик в памяти и его
+  собственный deep cadence; текущие claim/finish, month/deep windows,
+  диагностика ошибок и durable backoff остаются. Источником глубокого окна
+  теперь в контракте явно является полученный claim, как и раньше в production.
+- Единственный production NewActionWorker получает PostgresStore и
+  ProcurementExecutor с групповыми методами. Снята альтернативная одиночная
+  ветка и необязательный price guard. Constructor требует рабочие group/guard
+  контракты. ClaimAction и Execute сохраняют реальных потребителей внутри
+  групповых делегатов СБИС/Avito; удалять сами методы было бы ошибкой.
+  Из базового service Store убраны только лишние требования worker-методов
+  и их заглушки. Охрана stale price и lease/token результата остаётся обязательной.
+- Источник DB shipped_at — миграция финансового recognition, единственный
+  оставшийся writer — stamp_actual_shipment_time. Все её потребители уже
+  удалены вместе с финансовыми триггерами. У products/product_variants.
+  saby_updated_at нет runtime reader/writer; inventory.synced_at и текущие
+  stock/identity связи не заменяются этим историческим полем.
+  Миграция 220 под общим lock архивирует все четыре колонки, включая NULL,
+  в detached retired_workflow_timestamps и снимает два stamp-триггера, функцию
+  и колонки без CASCADE. Старые применённые миграции не редактировались.
+- Vite раньше получал сгенерированные tsc копии vite.config.js/d.ts рядом
+  с каноническим .ts; порядок загрузки Vite предпочитает .js. Node tsconfig
+  теперь noEmit, dev/build/preview явно выбирают .ts. Удалены только две
+  игнорируемые локальные копии, lockfiles не менялись. Два последовательных
+  build подтвердили отсутствие повторной генерации, preview отдал итоговый bundle.
+- Внутренний AccountBadge имеет единственный caller внутри avatarUpdatedAt
+  guard. Недостижимый fallback инициалов и его CSS удалены; avatar URL,
+  alt и доступное имя ссылки проверены существующим browser-сценарием.
+
+### Сохранённые данные и проверки
+
+TestRetiredWorkflowTimestampsPreserveHistoryOnDatabase использует клоны четырёх
+текущих таблиц и настоящий старый stamp function из применённой миграции.
+Проверены existing/empty/dependent view: точная дата с микросекундами/NULL,
+все остальные поля строк, в том числе неизвестная заявка СДЭК, отсутствие FK
+у архива и сохранность после удаления рабочих строк. Неожиданный view
+атомарно восстанавливает колонки, триггеры и исходные строки; частичного
+архива нет. Переходы заказов/отправлений работают после снятия функции.
+
+TestSalesWorkerUsesDurableWindowsAndCooldownAcrossRestartOnDatabase работает
+с настоящей отдельной PostgreSQL queue: новый worker не обходит next attempt
+или Retry-After cooldown, выполняет 365/30/30/365-дневные окна по claim,
+сохраняет покрытие/число строк/последнее событие. Existing coordinator live
+test подтверждает lease fencing. Group worker проверяет fail-closed guard,
+свой owner/token каждого результата и отсутствие повторной отправки при
+устаревшем finish. Оба новых PG-теста добавлены в существующие CI-шаги.
+
+Полные Go test/vet/build прошли; cmd-анализ достижимости не нашёл кандидатов.
+Полный выбранный archive/settings PG-набор прошёл на схеме 220. На свежей
+seed-копии прошли order/admin/procurement/saby live-сценарии; изолированный
+publisher test запускается отдельно на предназначенной ему disposable БД,
+вместе с WB/Ozon/СБИС publisher checks. Повторные глобальные fixture-тесты
+требуют свежей копии: они могут оставлять события продаж и письма; проверки
+не ослаблялись ради повторного использования уже изменённой базы.
+
+Чистая установка применила все 220 миграций; отдельная копия схемы 219
+успешно обновилась до 220. API готов, четыре колонки и stamp function отсутствуют.
+CRM acceptance через настоящий локальный API прошёл для owner/manager в
+1440/390 px с сохранением галереи и границ прав. SITE_URL локального API
+совпадает с browser origin; проверка Origin остаётся включённой.
+Frontend: build/lint/format/budget, 76 unit, 18 уникальных browser-сценариев
+(15 navigation и 3 avatar); эти же три avatar дополнительно повторены.
+OpenAPI остаётся 236 операций / 91 схема. Другие browser-спецификации этой
+итерацией не перепроверялись. Production/внешние операции не запускались.
+
+## Очистка контрактов и неэффективных тестов после `e384122`
+
+### Удалённые проекции и обходные контракты
+
+- admin.Product.sabyId/sabyFields были только ListProducts SELECT/Scan → JSON.
+  productToDraft, mergeContentPatch и сохранение формируют явные наборы полей;
+  ни прямых, ни вычисляемых обращений к этим двум полям не найдено. Сняты
+  Go/TS свойства, SQL-проекции и значения в текущих моках. products.saby_id,
+  products.saby_fields, импорт, stock membership, mergeProductState и
+  внешние идентификаторы SKU остаются: это отдельные работающие потребители.
+- admin.Category.icon/childrenCount также были только проекциями ответа.
+  Дерево использует parentId. Убран лишний COUNT детей из ListCategories и
+  categoryByID; DeleteCategory продолжает независимо проверять детей/товары.
+  Public catalog.Category.Icon и SQL-колонка categories.icon сохранены.
+- Единственный production Service получает PostgresStore, поддерживающий
+  разбор/исключение продаж. SalesLinkStore/SalesIgnoreStore включены в Store,
+  HTTP capabilities — в procurementService. Удалены type-assertion обходы,
+  ErrSalesLinkUnsupported и fallback, терявший ignored=1. При полном отсутствии
+  HTTP procurement dependency сохранён 503; проверки роли/входных данных остаются.
+  RememberChannelProducts вызывается напрямую с прежней обработкой ошибки.
+- Сервис закупок больше не требует Execute, который использует только worker;
+  конкретные Execute внутри индивидуальных/групповых делегатов остались.
+  CatalogSyncStore/SalesStore требуют только claim/finish через IntegrationSyncRunner;
+  Request/List остаются в полном coordinator. Убраны неиспользуемые тестовые
+  методы. У private wbUpdate снят единственный нечитавшийся аргумент Request;
+  подготовленный payload, ID и контекст внешнего запроса остаются.
+
+### Почему удалены тесты
+
+| Проверка | Подтверждение бесполезности/дублирования и сохранённый инвариант |
+|---|---|
+| 4 Python platform reliability checks | Все четыре прошли с полностью закомментированными YAML workflows и production config с фиксированным URL, где нужный env token оставлен только комментарием. Файл удалён; действующие workflows и исполняемые smoke/monitor/browser проверки сохранены |
+| Python role-boundaries source check | В памяти в начало настоящего admin.Can вставлен `if role==RoleManager{return true}`; старый тест прошёл. TestRolePermissions и реальные CRM handler/mixed-request проверки выявляют нарушение прав и сохранены |
+| Go ReleaseStock substring check | Проверял присутствие SUM(reserved_qty)/FOR UPDATE в исходнике. Реальные CommerceLifecycle и CatalogueAndOrderEditing проверяют свою/чужую долю резерва, историю, неизменность физического остатка и повторный вызов |
+| Go preorder JOIN substring check | Заменён проверкой фактической procurement_requests записи внутри существующего CommerceLifecycle. Fixture теперь имеет разные валидные СБИС-ID у карточки и купленного SKU; проверяются точный variant SabyID и quantity, поэтому подмена связи на карточку не проходит |
+| Go constructor field-only check | Уникальный смысл перенесён в существующий provider-refusal тест через настоящий NewExpiryWorker: проверяются отказ, ID заказа и однократный вызов, а не только non-nil поле |
+| Go unsupported old store check | Проверял конфигурацию без SalesLinkStore, которой нет у production constructor. Сняты и эта конфигурация/ветки, и её plainStoreStub/test; положительные list/link/ignore/cache сценарии сохранены |
+| Profile address smoke | Назывался проверкой подсказок после обновления, но лишь открывал форму и искал поле. Утверждение перенесено в существующий сценарий ошибки сохранения, сохранности ввода и полного повторного payload |
+| Install offer unit duplicate | Все уникальные проверки установленного приложения, пустого storage и marker перенесены в существующий StrictMode/repeated-call/reload сценарий |
+
+Дополнительно убраны три старых fixture DraftMedia.size; намеренный старый
+журнал с size сохранён как compatibility input. Проверка отсутствия оферты
+в домене теперь требует именно соответствующую ошибку, а не любой отказ по
+пустому input. В HTTP profile-default fixture используется текущий pickup.
+Новые HTTP проверки выполняют настоящий router: ignored filter, исключение/
+возврат, точные actor/ID и отказ read-only менеджеру; nil dependency остаётся 503.
+
+Статические проверки неизменяемых миграций/источников контента без доказанной
+эквивалентной замены не удалялись. Возраст, короткий тест, условный skip без
+PostgreSQL или строка в настоящем JSON-ответе не признаны основанием удаления.
+Политика качества тестов закреплена в AGENTS.md. В current-system.md убрана
+дублирующая хроника старых прогонов; осталась актуальная карта с текущими
+контрактами и границами. Полное прежнее состояние карты доступно в ревизии
+e384122, а подробные аудиты остаются в этом файле и legacy-process-retirement.md.
+Исторический план доставок явно отделён от текущих самовывоза/СДЭК.
+
+### Результат проверки
+
+Новая PostgreSQL проверка категорий исполняет CRUD, иерархию, productsCount,
+запрет удаления занятой категории, удаление пустой и сохранение public icon.
+Имя OnLiveDatabase включает её в существующий CI selector без отдельной job.
+На свежей схеме 220 прошли этот тест, CatalogueAndOrderEditing, усиленный
+CommerceLifecycle, Stage04 ledger, coordinator lease и sales worker restart.
+Isolated editor WB/Ozon/СБИС price/content publication прошли отдельно.
+
+Полные Go test/vet/build прошли. Go-достижимость всех пакетов с тестами не
+нашла дополнительных кандидатов. Frontend build/lint/format/budget прошли;
+после объединения дубля — 75 unit. Прошли 43 Python и 22 уникальных browser
+сценария (19 category/editor/PDP/Saby + 3 profile save/retry). CRM на финальном
+Go API прошёл для owner/manager в 1440/390 px с сохранением галереи и прав.
+Прямое чтение API подтвердило отсутствие четырёх снятых свойств и сохранение
+текущих SKU/externalIds/stock полей. OpenAPI — 236 операций / 91 схема.
+Новых миграций нет; БД и очереди production не менялись. Полный e2e набор
+этой итерацией не перезапускался.

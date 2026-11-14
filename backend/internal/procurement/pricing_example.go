@@ -17,7 +17,7 @@ type PricingExample struct {
 }
 
 type UnitPriceInput struct {
-	Mode       string          `json:"mode,omitempty"`
+	Mode       string          `json:"mode"`
 	MarkupRate *float64        `json:"markupRate,omitempty"`
 	CostRUB    float64         `json:"costRub"`
 	RetailRUB  float64         `json:"retailRub"`
@@ -33,13 +33,7 @@ func (service *Service) PreviewUnitPrice(ctx context.Context, input UnitPriceInp
 	if err := validateUnitPriceInput(input); err != nil {
 		return UnitPricePreview{}, err
 	}
-	store, ok := service.store.(interface {
-		PreviewUnitPrice(context.Context, UnitPriceInput) (UnitPricePreview, error)
-	})
-	if !ok {
-		return UnitPricePreview{}, ErrInvalidInput
-	}
-	return store.PreviewUnitPrice(ctx, input)
+	return service.store.PreviewUnitPrice(ctx, input)
 }
 
 func (store *PostgresStore) PreviewUnitPrice(ctx context.Context, input UnitPriceInput) (UnitPricePreview, error) {
@@ -51,7 +45,7 @@ func (store *PostgresStore) PreviewUnitPrice(ctx context.Context, input UnitPric
 }
 
 func validateUnitPriceInput(input UnitPriceInput) error {
-	if input.Mode != "" && input.Mode != "cost" && input.Mode != "retail" {
+	if input.Mode != "cost" && input.Mode != "retail" {
 		return ErrInvalidInput
 	}
 	if !finiteNonnegative(input.CostRUB) || input.CostRUB > 1e9 || !finiteNonnegative(input.RetailRUB) || input.RetailRUB > 1e9 {
@@ -61,7 +55,7 @@ func validateUnitPriceInput(input UnitPriceInput) error {
 		if input.RetailRUB <= 0 {
 			return ErrInvalidInput
 		}
-	} else if input.CostRUB <= 0 || (input.Mode == "" && input.RetailRUB <= 0) {
+	} else if input.CostRUB <= 0 {
 		return ErrInvalidInput
 	}
 	if input.MarkupRate != nil && (!finiteNonnegative(*input.MarkupRate) || *input.MarkupRate > 10) {
@@ -126,10 +120,7 @@ func previewUnitPrice(settings PricingSettings, input UnitPriceInput) (UnitPrice
 	if input.MarkupRate != nil {
 		markup = *input.MarkupRate
 	}
-	retailInput := input.RetailRUB
-	if input.Mode == "cost" {
-		retailInput = decimalProduct(input.CostRUB, decimalFloat(decimalSum(1, markup)))
-	}
+	retailInput := decimalProduct(input.CostRUB, decimalFloat(decimalSum(1, markup)))
 	retail := roundRetail(retailInput, settings.RoundPrices)
 	if unified {
 		quotes := unifiedChannelQuotesTarget(settings, input.CostRUB, input.Package, markup)
@@ -148,13 +139,7 @@ func (service *Service) PricingExample(ctx context.Context, input PricingSetting
 	if err != nil {
 		return PricingExample{}, err
 	}
-	store, ok := service.store.(interface {
-		PricingExample(context.Context, PricingSettings) (PricingExample, error)
-	})
-	if !ok {
-		return PricingExample{}, ErrInvalidInput
-	}
-	return store.PricingExample(ctx, input)
+	return service.store.PricingExample(ctx, input)
 }
 func (store *PostgresStore) PricingExample(ctx context.Context, input PricingSettings) (PricingExample, error) {
 	current, err := store.loadSettings(ctx)

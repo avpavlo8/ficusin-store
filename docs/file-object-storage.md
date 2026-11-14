@@ -2,21 +2,23 @@
 
 Public product photos keep using `S3_*`. New private files use `PRIVATE_S3_BUCKET`; it deliberately never falls back to the public bucket. Endpoint, region and credentials may inherit the corresponding `S3_*` values, or be set independently. Configuration rejects identical public/private buckets at the same endpoint. Bucket policy must deny anonymous reads; private uploads also carry a signed `x-amz-acl: private` and `Cache-Control: private, no-store`. No keys reach the browser.
 
-`internal/fileassets.Storage` is the shared contract. `Save` writes a random immutable key and reads it back, comparing SHA-256 and length before a database reference may commit. Failed verification or a failure before a database commit attempt cleans only the new uncommitted object. An unknown COMMIT/autocommit outcome retains the object rather than risk deleting committed bytes; later inventory can identify a true orphan. `Read` uses the stored object key if present, without silently reviving stale legacy bytes during storage failure. Without an object key, old bytea remains readable.
+`internal/fileassets.Storage` is the shared contract. `Save` writes a random immutable key and reads it back, comparing SHA-256 and length before a database reference may commit. Failed verification or a failure before a database commit attempt cleans only the new uncommitted object. An unknown COMMIT/autocommit outcome retains the object rather than risk deleting committed bytes; later inventory can identify a true orphan. `Read` uses only the stored object key; an empty key represents no attachment. Database-byte and old public-review readers have been retired behind an explicit copy/verify/archive cutover.
 
-Avatar, return/discount photos, procurement invoices, new review media and chat attachments use the private store. Their existing authorized or publication-filtered API reads remain in place; storage keys are internal metadata. Uploads fail clearly with 503 if private storage is unavailable; text-only chat/review operations and legacy bytea reads do not require a bucket. Private storage reads are bounded at 64 MiB and fail rather than truncate larger files.
+Avatar, return/discount photos, procurement invoices, new review media and chat attachments use the private store. Their existing authorized or publication-filtered API reads remain in place; storage keys are internal metadata. Uploads fail clearly with 503 if private storage is unavailable; text-only chat/review operations do not require a bucket. Private storage reads are bounded at 64 MiB and fail rather than truncate larger files.
 
-Existing review object keys originally pointed at the public photo bucket. New `storage_scope` defaults to `legacy-public` for these rows, while new uploads write `private`. `WithLegacyMediaStorage(photoStorage)` preserves reads from the original bucket. An explicit old-key copy migration may be added later; do not reinterpret old keys inside the new bucket.
+Existing review object keys originally pointed at the public photo bucket. `migrate-file-assets --public-reviews` copies those current objects to verified private keys, preserving original keys in its journal. The cutover migration refuses any remaining public review, then sets the private default and constraint; the public-review runtime adapter is removed. Keys are never merely reinterpreted in a different bucket.
 
-The finance import table has a new optional object reference and is supported by the migration command. There is no active Go finance upload/read handler in this checkout; no new financial workflow was invented or executed.
+The retired finance import table is preserved in `legacy_archive.finance_imports`, including its original bytes and object references. It is excluded from the active file migration command.
 
 ## Legacy bytea migration
 
-`go -C backend run ./cmd/migrate-file-assets` is **dry-run by default**, using `DATABASE_URL` and the same private S3 configuration. It reports kind, row ID, size and checksum; never file contents or credentials. Optional `--kinds avatars,returns,procurement,finance,reviews,chat` and `--limit 100` bound the inventory.
+`go -C backend run ./cmd/migrate-file-assets` is **dry-run by default**, using `DATABASE_URL` and the same private S3 configuration. It reports kind, row ID, size and checksum; never file contents or credentials. Optional `--kinds avatars,returns,procurement,reviews,chat` and `--limit 100` bound the inventory.
 
-Only an explicit `--apply` performs copies. Every file is PUT, GET and checksummed before a compare-and-set object reference update. Concurrently replaced rows are skipped. **Source bytea is retained**, including after success; repeated runs skip committed references. Cleanup/retention is a separate task, not a migration side effect. Existing public review object keys stay in the legacy reader and are not part of this bytea-only copier.
+Only an explicit `--apply` performs copies. Every file is PUT, GET and checksummed before a compare-and-set object reference update. Concurrently replaced rows are skipped. **Source bytea is retained**, including after success; repeated runs skip committed references. The separate `--public-reviews` mode handles old public keys, using source GETs even in dry-run. Reference changes and `file_asset_migration_history` commit together; neither source object nor source bytea is deleted by the copying command.
 
-No application daemon starts the migration. An operator must first review dry-run output against the intended database and storage policy. This implementation was tested only with fake storage and isolated local database fixtures; it does not mean working data has been migrated.
+No application daemon starts the migration. An operator must first review dry-run output against the intended database and storage policy, then run complete `--verify --limit 10000` for every kind. It performs only SELECT/GET, rejects partial kinds/samples as cutover certification, reports missing/mismatched/concurrently changed objects and compares original digests from bytea, migration history or the detached archive.
+
+`20261114_zzzzz_private_file_cutover.sql` locks the sources, rejects remaining unmigrated data, copies binary bytes and exact original metadata to `legacy_archive.file_binary_payloads`, verifies SQL byte/digest equality, clears runtime bytes and adds constraints forbidding their return. Null columns are retained for compatible rolling instances and standalone migration tools. File authorization/routes are unchanged. See [transition evidence and remaining gates](legacy-data-transition.md).
 
 ## Static assets in S3
 
@@ -39,12 +41,12 @@ The product editor still retains draft blobs in IndexedDB until Save, then uploa
 ## Verification
 
 - Core Save/Read: unavailable store, SHA mismatch, rollback cleanup, no stale bytea fallback.
-- Local isolated database: migration dry-run, copy/verify/reference commit, preserved bytea, idempotence and checksum-failure rejection.
-- Local domain fixtures: avatar metadata-only Save/read and bytea compatibility; return/approved discount read; procurement PDF read; reviews original public bucket/new private bucket/bytea and hidden-review filtering.
+- Local isolated database: dry-run, verified bytea/public-object copy, atomic receipt/reference, preserved source, idempotence, CAS race, journal failure, checksum rejection, partial-sample blocking and archive digest verification. Cutover tests cover guard refusal, exact binary/metadata archive and old-writer rejection.
+- Local domain fixtures: avatar metadata-only Save/read; return/approved discount read; procurement PDF read; private reviews, unavailable-store failure and hidden-review filtering.
 - Static proxy: credential/query isolation, same-origin shell exclusions, remote-only asset, local rollback fallback.
 - Static manifest: no side effects without `--apply`, unsafe prefix rejection, successful fake-store publication and stale-manifest rejection.
 
-All working S3 bucket creation/policy, existing-data migration and deploy steps remain unperformed.
+This branch has not been deployed and has not changed production data. Read-only production GET/SQL verification and its limits are recorded in the transition document; local fixture migration is not a claim that production schema cutover already ran.
 
 ## Explicit local private-file emulator
 

@@ -47,7 +47,6 @@ test('@desktop @phone product keeps care available in tabs, sorted sizes and com
   const card=await page.locator('.pdp-related-track a').first().boundingBox();
   expect(card!.x).toBeGreaterThanOrEqual(rail!.x-1);
   await expect(page.locator('.pdp-related-side.prev')).toBeDisabled();
-  await expect(page.locator('.floating-cart')).toHaveCount(0);
   const chat=await page.locator('.chat-launcher').boundingBox();
   expect(chat!.y).toBeGreaterThanOrEqual(0);
   expect(chat!.y+chat!.height).toBeLessThanOrEqual(page.viewportSize()!.height);

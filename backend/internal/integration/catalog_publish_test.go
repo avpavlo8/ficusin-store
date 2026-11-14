@@ -61,6 +61,21 @@ func TestCatalogPayloadUsesSharedContentAndFrozenPackaging(t *testing.T) {
 		}
 	}
 }
+func TestOzonTransportWeightPreservesCanonicalGrams(t *testing.T) {
+	for _, grams := range []float64{1, 1000, 1250} {
+		r := cardFixture("ozon")
+		r.Packaging.Weight = grams
+		body, err := BuildOzonCard(r, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		item := body["items"].([]any)[0].(map[string]any)
+		if item["weight"] != int64(grams) || item["weight_unit"] != "g" {
+			t.Fatalf("canonical grams converted twice: %#v", item)
+		}
+	}
+}
+
 func TestCatalogRejectsInvalidDictionaryAndPrivateImages(t *testing.T) {
 	r := cardFixture("ozon")
 	r.Channel.Attributes["90002"] = "Россия"

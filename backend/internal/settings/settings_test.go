@@ -1,6 +1,10 @@
 package settings
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"testing"
+)
 
 // A setting nobody has touched must still mean something sensible: the shop
 // starts before anyone opens the panel.
@@ -42,6 +46,21 @@ func TestEveryDefinitionHasADefault(t *testing.T) {
 	for _, definition := range Definitions {
 		if _, found := defaults[definition.Key]; !found {
 			t.Fatalf("у настройки %s нет значения по умолчанию", definition.Key)
+		}
+	}
+}
+
+func TestRetiredOrUnknownSettingsRejectWholeSaveBeforeWriting(t *testing.T) {
+	service := &Service{values: map[string]string{"telegram.enabled": "0"}}
+	if _, visible := service.All()["telegram.enabled"]; visible {
+		t.Fatal("retired setting is still exposed to the panel")
+	}
+	for _, key := range []string{"telegram.enabled", "unrecognized.future.setting"} {
+		// A nil pool would panic if a supported preference were written before
+		// rejecting the other key. Validation must precede all writes.
+		err := service.Save(context.Background(), map[string]string{PaymentsEnabled: "0", key: "1"})
+		if !errors.Is(err, ErrUnknownSetting) {
+			t.Fatalf("unsupported key %q was accepted: %v", key, err)
 		}
 	}
 }

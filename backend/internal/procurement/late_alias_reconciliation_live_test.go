@@ -29,8 +29,8 @@ func TestResolveAliasCollapsesLateInvoiceLineOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	var actorID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Late alias owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("late-alias-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Late alias owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("late-alias-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	var supplierID int64
@@ -115,8 +115,8 @@ func TestManualInvoicePairOverridesWrongAliasAndPreservesPlanPrice(t *testing.T)
 		}
 	}
 	var actorID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Manual pair owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("manual-pair-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Manual pair owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("manual-pair-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	var supplierID int64
@@ -141,9 +141,9 @@ func TestManualInvoicePairOverridesWrongAliasAndPreservesPlanPrice(t *testing.T)
 	}
 	var documentID int64
 	hash := fmt.Sprintf("%064x", unique)
-	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,
 		parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by)
-		VALUES($1,$2,'manual-pair.pdf','application/pdf',8,$3,'12345678','holland_packing_list',1,'review','ok',$4,'EUR',1,12,$5) RETURNING id`,
+		VALUES($1,$2,'manual-pair.pdf','application/pdf',8,$3,'fixtures/synthetic-invoice.pdf','holland_packing_list',1,'review','ok',$4,'EUR',1,12,$5) RETURNING id`,
 		supplierID, orderID, hash, fmt.Sprintf("INV-PAIR-%d", unique), actorID).Scan(&documentID); err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestManualInvoicePairSwapsAlreadyMatchedCarmonaRows(t *testing.T) {
 		}
 	}
 	var actorID, supplierID, orderID, documentID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Swap owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("swap-%d@example.invalid", unique), fmt.Sprintf("+76%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Swap owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("swap-%d@example.invalid", unique), fmt.Sprintf("+76%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,country_code,default_currency) VALUES($1,'international','NL','EUR') RETURNING id`, fmt.Sprintf("Swap supplier %d", unique)).Scan(&supplierID); err != nil {
@@ -210,7 +210,7 @@ func TestManualInvoicePairSwapsAlreadyMatchedCarmonaRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash := fmt.Sprintf("%064x", unique+7)
-	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'swap.pdf','application/pdf',8,$3,'12345678','holland_packing_list',1,'parsed','ok',$4,'EUR',2,40,$5) RETURNING id`, supplierID, orderID, hash, fmt.Sprintf("INV-SWAP-%d", unique), actorID).Scan(&documentID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,line_count,unit_count,created_by) VALUES($1,$2,'swap.pdf','application/pdf',8,$3,'fixtures/synthetic-invoice.pdf','holland_packing_list',1,'parsed','ok',$4,'EUR',2,40,$5) RETURNING id`, supplierID, orderID, hash, fmt.Sprintf("INV-SWAP-%d", unique), actorID).Scan(&documentID); err != nil {
 		t.Fatal(err)
 	}
 	var alias25, alias30 int64

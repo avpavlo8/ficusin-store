@@ -21,10 +21,10 @@ func (stub *windowSourceStub) FetchSales(_ context.Context, channel string, from
 	return []SalesRecord{{Date: to, ExternalID: channel + "-1", Units: 1}}, nil
 }
 
-// Каналы без выделенного зеркала ежедневно спрашивают месяц и раз в неделю
-// год. Wildberries проверяется отдельно в WBMirrorWorker.
-func TestSalesWorkerAsksMonthDailyAndYearWeekly(t *testing.T) {
-	store := &salesStoreStub{replaced: map[string][]SalesRecord{}, states: map[string]string{}}
+// Durable claims choose the history window and may defer a lane completely.
+// A newly constructed worker must not override that persisted decision.
+func TestSalesWorkerUsesOnlyClaimedHistoryWindows(t *testing.T) {
+	store := &salesStoreStub{replaced: map[string][]SalesRecord{}, states: map[string]string{}, modes: map[string][]string{"ozon": {"deep", "current", "", "deep"}}}
 	source := &windowSourceStub{}
 	worker := NewSalesWorker(store, source, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	moment := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
@@ -35,10 +35,12 @@ func TestSalesWorkerAsksMonthDailyAndYearWeekly(t *testing.T) {
 	worker.run(context.Background())
 	moment = moment.AddDate(0, 0, 1)
 	worker.run(context.Background())
+	worker = NewSalesWorker(store, source, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker.now = func() time.Time { return moment }
 	moment = moment.AddDate(0, 0, 6)
 	worker.run(context.Background())
 
-	expected := []int{salesHistoryDays, salesRefreshDays, salesRefreshDays, salesHistoryDays}
+	expected := []int{salesHistoryDays, salesRefreshDays, salesHistoryDays}
 	if len(source.days) != len(expected) {
 		t.Fatalf("заходов = %v, ожидалось %v", source.days, expected)
 	}

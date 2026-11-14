@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -157,6 +158,16 @@ func AttributeValues(a Attribute, raw any, channel string) ([]Value, error) {
 	if max := a.Limit(); max > 0 && len(values) > max {
 		return nil, fmt.Errorf("«%s»: максимум значений — %d", a.Name, max)
 	}
+	if channel == "wb" && a.Role(channel) == "tnved" {
+		for i := range values {
+			code, err := TNVEDCode(values[i].Value)
+			if err != nil {
+				return nil, fmt.Errorf("«%s»: %w", a.Name, err)
+			}
+			// Ozon's dictionary label and dictionary ID are not WB values.
+			values[i] = Value{Value: code}
+		}
+	}
 	for _, v := range values {
 		if strings.TrimSpace(v.Value) == "" {
 			return nil, fmt.Errorf("«%s»: пустое значение", a.Name)
@@ -178,6 +189,21 @@ func AttributeValues(a Attribute, raw any, channel string) ([]Value, error) {
 		}
 	}
 	return values, nil
+}
+
+var tnvedLabel = regexp.MustCompile(`^([0-9]{10})(?:\s*[-–—:]\s*\S.*)?$`)
+
+// Keep leading zeros and accept a dictionary label only when its complete
+// ten-digit code is explicit. Never guess or silently shorten a longer code.
+func TNVEDCode(label string) (string, error) {
+	if strings.ContainsAny(label, "\r\n") {
+		return "", fmt.Errorf("нужен код ТН ВЭД из 10 цифр")
+	}
+	match := tnvedLabel.FindStringSubmatch(strings.TrimSpace(label))
+	if match == nil {
+		return "", fmt.Errorf("нужен код ТН ВЭД из 10 цифр")
+	}
+	return match[1], nil
 }
 func CommonValue(a Attribute, m Marketplace, ch string, name, description string) any {
 	switch a.Role(ch) {
@@ -216,7 +242,14 @@ type Packaging struct {
 	Height float64 `json:"heightCm"`
 	Weight float64 `json:"weightGrams"`
 }
+type PriceRequest struct {
+	TargetID       string `json:"targetId"`
+	PriceMinor     int64  `json:"priceMinor"`
+	CompareAtMinor *int64 `json:"compareAtMinor,omitempty"`
+}
+
 type Request struct {
+	Price          *PriceRequest  `json:"price,omitempty"`
 	Saby           Saby           `json:"saby,omitempty"`
 	SabyID         string         `json:"sabyId,omitempty"`
 	SabyUUID       string         `json:"sabyUUID,omitempty"`
@@ -245,6 +278,7 @@ type Saby struct {
 	ExistingCode string   `json:"existingCode"`
 }
 type RemoteIDs struct {
+	IsCreated    *bool  `json:"isCreated,omitempty"`
 	UUID         string `json:"uuid,omitempty"`
 	ImageCount   int    `json:"imageCount,omitempty"`
 	RemoteStatus string `json:"remoteStatus,omitempty"`
@@ -254,6 +288,7 @@ type RemoteIDs struct {
 	Barcode      string `json:"barcode,omitempty"`
 }
 type Progress struct {
+	ReapplyPayload  bool            `json:"reapplyPayload,omitempty"`
 	Native          json.RawMessage `json:"native,omitempty"`
 	UpdateRequest   *Request        `json:"updateRequest,omitempty"`
 	Stage           string          `json:"stage,omitempty"`

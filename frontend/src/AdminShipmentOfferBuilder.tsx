@@ -68,7 +68,6 @@ export function AdminShipmentOffers({
   offers: Offer[];
   deliveryMethod: string;
   deliveryFee: number;
-  cdekTariffCode?: number;
   busy: boolean;
   readOnly: boolean;
   setBusy: (value: boolean) => void;

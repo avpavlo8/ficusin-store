@@ -15,7 +15,7 @@ func TestOrderEmailContainsBrandedHTMLAndPlainText(t *testing.T) {
 	order.TrackNumber = "10338612280"
 	letter := Confirmation(order)
 	letter.To = "owner@example.invalid"
-	sender := NewSender(Config{From: "info@ficusin.ru"}, nil)
+	sender := NewSender(Config{From: "info@ficusin.ru"})
 	message, err := mail.ReadMessage(strings.NewReader(sender.compose(letter)))
 	if err != nil {
 		t.Fatal(err)

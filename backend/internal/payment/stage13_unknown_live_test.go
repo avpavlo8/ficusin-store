@@ -27,7 +27,7 @@ func (*unknownPaymentProvider) Configured() bool { return true }
 func (provider *unknownPaymentProvider) CreatePayment(_ context.Context, request integration.PaymentRequest) (integration.Payment, error) {
 	provider.creates++
 	provider.lastRequest = request
-	result := integration.Payment{ID: "stage13-recovered-provider", Status: StatusPending, Amount: request.Amount, ConfirmationURL: "https://payments.example.invalid/recovered"}
+	result := integration.Payment{ID: "stage13-" + request.IdempotenceKey, Status: StatusPending, Amount: request.Amount, ConfirmationURL: "https://payments.example.invalid/recovered"}
 	if provider.firstTimeout && provider.creates == 1 {
 		return integration.Payment{}, fmt.Errorf("%w: response timeout after acceptance", integration.ErrPaymentOutcomeUnknown)
 	}
@@ -36,8 +36,7 @@ func (provider *unknownPaymentProvider) CreatePayment(_ context.Context, request
 func (provider *unknownPaymentProvider) FetchPayment(context.Context, string) (integration.Payment, error) {
 	return provider.fetched, nil
 }
-func (*unknownPaymentProvider) Refund(context.Context, string, float64, string) error { return nil }
-func (*unknownPaymentProvider) CancelPayment(context.Context, string, string) error   { return nil }
+func (*unknownPaymentProvider) CancelPayment(context.Context, string, string) error { return nil }
 
 func TestStage13UnknownPaymentRecoveryOnLiveDatabase(t *testing.T) {
 	databaseURL := os.Getenv("CRM_TEST_DATABASE_URL")
@@ -49,7 +48,7 @@ func TestStage13UnknownPaymentRecoveryOnLiveDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	provider := &unknownPaymentProvider{firstTimeout: true}
 	service := NewService(pool, provider, "https://ficusin.example.invalid", slog.New(slog.NewTextHandler(io.Discard, nil)))
 
@@ -93,8 +92,8 @@ func TestStage13UnknownPaymentRecoveryOnLiveDatabase(t *testing.T) {
 	if err = pool.QueryRow(ctx, `INSERT INTO payments(order_id,idempotence_key,amount,status) VALUES($1,$2,1490,'pending') RETURNING id`, webhookOrderID, fmt.Sprintf("webhook-key-%d", time.Now().UnixNano())).Scan(&webhookPaymentID); err != nil {
 		t.Fatal(err)
 	}
-	provider.fetched = integration.Payment{ID: "webhook-provider-id", Status: "succeeded", Paid: true, Amount: 1490, Description: "Оплата заказа " + webhookNumber + " — Фикусин", Metadata: map[string]string{"ficusin_payment_id": strconv.FormatInt(webhookPaymentID, 10)}}
-	if err = service.SyncOutstanding(ctx, "webhook-provider-id"); err != nil {
+	provider.fetched = integration.Payment{ID: "webhook-provider-" + strconv.FormatInt(webhookPaymentID, 10), Status: "succeeded", Paid: true, Amount: 1490, Description: "Оплата заказа " + webhookNumber + " — Фикусин", Metadata: map[string]string{"ficusin_payment_id": strconv.FormatInt(webhookPaymentID, 10)}}
+	if err = service.SyncOutstanding(ctx, provider.fetched.ID); err != nil {
 		t.Fatal(err)
 	}
 	var webhookStatus string
@@ -121,8 +120,8 @@ func TestStage13UnknownPaymentRecoveryOnLiveDatabase(t *testing.T) {
 		t.Fatalf("unknown payment allowed cancellation: %v", err)
 	}
 
-	provider.fetched = integration.Payment{ID: "manual-provider-id", Status: "succeeded", Paid: true, Amount: 1490, Description: "Оплата заказа " + oldNumber + " — Фикусин"}
-	balance, err := service.ResolveUnknown(ctx, oldOrderID, oldPaymentID, "manual-provider-id")
+	provider.fetched = integration.Payment{ID: "manual-provider-" + strconv.FormatInt(oldPaymentID, 10), Status: "succeeded", Paid: true, Amount: 1490, Description: "Оплата заказа " + oldNumber + " — Фикусин"}
+	balance, err := service.ResolveUnknown(ctx, oldOrderID, oldPaymentID, provider.fetched.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

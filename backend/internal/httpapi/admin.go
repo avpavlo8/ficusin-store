@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -17,7 +20,7 @@ import (
 
 type adminRepository interface {
 	Dashboard(context.Context) (admin.Dashboard, error)
-	ListCustomers(context.Context) ([]admin.Customer, error)
+	ListCustomersPage(context.Context, string, bool, int, int) (admin.CustomerPage, error)
 	UpdateCustomer(context.Context, admin.Actor, int64, admin.CustomerUpdate) (admin.Customer, error)
 	ListOrders(context.Context) ([]admin.Order, error)
 	UpdateOrderStatus(context.Context, admin.Actor, int64, string, string) (admin.Order, error)
@@ -28,7 +31,6 @@ type adminRepository interface {
 	UpdateProduct(context.Context, admin.Actor, int64, admin.ProductUpdate) (admin.Product, error)
 	CreateProduct(context.Context, admin.Actor, admin.ProductCreate) (admin.Product, error)
 	ImportProducts(context.Context, admin.Actor, admin.ImportRequest) (admin.ImportResult, error)
-	SyncProducts(context.Context, admin.Actor, admin.SyncRequest) (admin.SyncResult, error)
 	ListCategories(context.Context) ([]admin.Category, error)
 	CreateCategory(context.Context, admin.Actor, admin.CategoryCreate) (admin.Category, error)
 	UpdateCategory(context.Context, admin.Actor, int64, admin.CategoryUpdate) (admin.Category, error)
@@ -98,23 +100,12 @@ func (handlers adminHandlers) customers(response http.ResponseWriter, request *h
 	if limit == 0 {
 		limit = 100
 	}
-	if pager, ok := handlers.repository.(interface {
-		ListCustomersPage(context.Context, string, bool, int, int) (admin.CustomerPage, error)
-	}); ok {
-		page, err := pager.ListCustomersPage(request.Context(), query, pendingWholesale, limit, offset)
-		if err != nil {
-			handlers.failed(response, "list admin customers", err)
-			return
-		}
-		writeJSON(response, http.StatusOK, page)
-		return
-	}
-	customers, err := handlers.repository.ListCustomers(request.Context())
+	page, err := handlers.repository.ListCustomersPage(request.Context(), query, pendingWholesale, limit, offset)
 	if err != nil {
 		handlers.failed(response, "list admin customers", err)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"customers": customers, "total": len(customers), "hasMore": false})
+	writeJSON(response, http.StatusOK, page)
 }
 
 func (handlers adminHandlers) updateCustomer(response http.ResponseWriter, request *http.Request) {
@@ -354,6 +345,20 @@ func (handlers adminHandlers) updateProduct(response http.ResponseWriter, reques
 	if !ok {
 		return
 	}
+	var fields map[string]json.RawMessage
+	if decodeJSON(request, &fields) != nil || fields == nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		return
+	}
+	if !validateManagerProductFields(response, actor, fields) {
+		return
+	}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
+		return
+	}
+	request.Body = io.NopCloser(bytes.NewReader(raw))
 	var update admin.ProductUpdate
 	if decodeJSON(request, &update) != nil {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректные данные"})
@@ -361,14 +366,6 @@ func (handlers adminHandlers) updateProduct(response http.ResponseWriter, reques
 	}
 	if update.Status != nil && !slices.Contains([]string{"draft", "published", "archived"}, *update.Status) {
 		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Некорректный статус товара"})
-		return
-	}
-	if update.PriceMinor != nil && *update.PriceMinor < 0 {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Цена не может быть отрицательной"})
-		return
-	}
-	if update.WholesaleMinQty != nil && *update.WholesaleMinQty < 1 {
-		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Минимум для опта должен быть не меньше 1"})
 		return
 	}
 	if update.CatalogSection != nil && !slices.Contains([]string{"plants", "soil", "fertilizer", "pots", "accessories"}, *update.CatalogSection) {
@@ -483,7 +480,7 @@ func (handlers adminHandlers) publishDraftProducts(response http.ResponseWriter,
 // dryRun панель показывает, что получится, ничего не создавая: список из
 // сотни кодов стоит сначала увидеть глазами.
 func (handlers adminHandlers) importProducts(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionIntegrationsEdit)
 	if !ok {
 		return
 	}
@@ -570,7 +567,7 @@ func (handlers adminHandlers) mergePublishedProducts(response http.ResponseWrite
 }
 
 func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionDelete)
 	if !ok {
 		return
 	}
@@ -589,17 +586,6 @@ func (handlers adminHandlers) mergeProducts(response http.ResponseWriter, reques
 		return
 	}
 	writeJSON(response, http.StatusOK, map[string]any{"ok": true})
-}
-
-type effectiveAttributeProvider interface {
-	EffectiveCategoryAttributes(context.Context, int64) ([]admin.EffectiveCategoryAttribute, error)
-}
-
-func (handlers adminHandlers) syncProducts(response http.ResponseWriter, request *http.Request) {
-	if _, _, ok := handlers.authorize(response, request, admin.PermissionProductsSync); !ok {
-		return
-	}
-	writeJSON(response, http.StatusGone, errorResponse{Error: "Контент и цена хранятся на сайте. Остатки обновляются автоматически из СБИС."})
 }
 
 func (handlers adminHandlers) categories(response http.ResponseWriter, request *http.Request) {
@@ -739,7 +725,7 @@ func permissionsFor(role string) []string {
 		admin.PermissionChat, admin.PermissionDashboard, admin.PermissionCustomersRead, admin.PermissionCustomersEdit,
 		admin.PermissionRolesEdit, admin.PermissionDiscountsEdit, admin.PermissionOrdersRead,
 		admin.PermissionOrdersEdit, admin.PermissionPaymentsRefund, admin.PermissionPaymentsManage, admin.PermissionProductsRead, admin.PermissionProductsEdit,
-		admin.PermissionProductsSync, admin.PermissionProcurementRead,
+		admin.PermissionProcurementRead,
 		admin.PermissionProcurementEdit, admin.PermissionIntegrationsEdit,
 		admin.PermissionAnalyticsRead, admin.PermissionProductsManage, admin.PermissionDelete,
 		admin.PermissionReturnsRead, admin.PermissionReturnsEdit, admin.PermissionReturnsReceipt, admin.PermissionReturnsDelete,

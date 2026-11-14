@@ -57,7 +57,6 @@ func TestPrivateFileDomainsLocalDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	private := testsupport.NewFileStorage()
-	public := testsupport.NewFileStorage()
 	avatar := auth.NewService(pool, 30, nil).WithFileStorage(private)
 	if err = avatar.SaveAvatar(ctx, 1, []byte("new-avatar"), "image/jpeg"); err != nil {
 		t.Fatal(err)
@@ -75,11 +74,6 @@ func TestPrivateFileDomainsLocalDatabase(t *testing.T) {
 	if _, _, err = auth.NewService(pool, 30, nil).Avatar(ctx, 1); !errors.Is(err, fileassets.ErrUnavailable) {
 		t.Fatal("private outage fell back", err)
 	}
-	pool.Exec(ctx, `UPDATE customers SET avatar_image='legacy-avatar',avatar_object_key=NULL WHERE id=1`)
-	data, _, err = auth.NewService(pool, 30, nil).Avatar(ctx, 1)
-	if err != nil || string(data) != "legacy-avatar" {
-		t.Fatal("legacy avatar broke", err)
-	}
 	if err = avatar.DeleteAvatar(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +81,7 @@ func TestPrivateFileDomainsLocalDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool.Exec(ctx, `INSERT INTO marketplace_return_photos VALUES(1,1,'image/jpeg',NULL,$1,NULL),(2,1,'image/jpeg','legacy-return',NULL,NULL)`, key)
+	pool.Exec(ctx, `INSERT INTO marketplace_return_photos VALUES(1,1,'image/jpeg',NULL,$1,NULL)`, key)
 	repo := admin.NewPostgresRepository(pool).WithFileStorage(private)
 	_, data, err = repo.ReturnPhoto(ctx, 1)
 	if err != nil || string(data) != "return-private" {
@@ -97,32 +91,24 @@ func TestPrivateFileDomainsLocalDatabase(t *testing.T) {
 	if err != nil || string(data) != "return-private" {
 		t.Fatal("approved discount photo unavailable", err)
 	}
-	_, data, err = admin.NewPostgresRepository(pool).ReturnPhoto(ctx, 2)
-	if err != nil || string(data) != "legacy-return" {
-		t.Fatal("legacy return broke", err)
-	}
 	key, err = fileassets.Save(ctx, private, "procurement/1", "application/pdf", []byte("private-pdf"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	pool.Exec(ctx, `INSERT INTO procurement_documents VALUES(1,'legacy-pdf',NULL),(2,NULL,$1)`, key)
-	data, err = procurement.NewPostgresStore(pool).DocumentPDF(ctx, 1)
-	if err != nil || string(data) != "legacy-pdf" {
-		t.Fatal("legacy invoice broke", err)
-	}
+	pool.Exec(ctx, `INSERT INTO procurement_documents VALUES(2,NULL,$1)`, key)
 	data, err = procurement.NewPostgresStore(pool).WithFileStorage(private).DocumentPDF(ctx, 2)
 	if err != nil || string(data) != "private-pdf" {
 		t.Fatal(err)
 	}
-	public.Put(ctx, "legacy-review", []byte("public-bucket"), "image/jpeg")
 	private.Put(ctx, "private-review", []byte("private-bucket"), "image/jpeg")
-	pool.Exec(ctx, `INSERT INTO product_review_photos VALUES(1,1,'image/jpeg',NULL,'legacy-review','legacy-public'),(2,1,'image/jpeg',NULL,'private-review','private'),(3,1,'image/jpeg','legacy-review-bytes',NULL,'legacy-public')`)
-	store := reviews.NewStore(pool, private).WithLegacyMediaStorage(public)
-	for id, want := range map[int64]string{1: "public-bucket", 2: "private-bucket", 3: "legacy-review-bytes"} {
-		_, data, err = store.Photo(ctx, id)
-		if err != nil || string(data) != want {
-			t.Fatal("review bucket routing", id, string(data), err)
-		}
+	pool.Exec(ctx, `INSERT INTO product_review_photos VALUES(2,1,'image/jpeg',NULL,'private-review','private')`)
+	store := reviews.NewStore(pool, private)
+	_, data, err = store.Photo(ctx, 2)
+	if err != nil || string(data) != "private-bucket" {
+		t.Fatal("private review inaccessible", err)
+	}
+	if _, _, err = reviews.NewStore(pool).Photo(ctx, 2); !errors.Is(err, fileassets.ErrUnavailable) {
+		t.Fatal("review read without private storage", err)
 	}
 	pool.Exec(ctx, `UPDATE product_reviews SET status='hidden' WHERE id=1`)
 	if _, _, err = store.Photo(ctx, 2); err == nil {

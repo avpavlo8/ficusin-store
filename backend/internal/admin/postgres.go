@@ -20,6 +20,7 @@ type OrderNotifier interface {
 
 type ShipmentQuoteService interface {
 	Configured() bool
+	GetOffices(context.Context, int) ([]integration.CDEKOffice, error)
 	CalculatePVZPackages(context.Context, int, []integration.Parcel) ([]integration.CDEKQuote, error)
 }
 

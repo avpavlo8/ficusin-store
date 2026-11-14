@@ -13,7 +13,8 @@ import (
 //
 //   - img-src also allows https: because product photos come from the
 //     catalogue's own storage, and data: because the avatar editor previews
-//     the picked file before uploading it.
+//     the picked file before uploading it. Blob URLs display local product
+//     draft photos and videos before they have been uploaded.
 //   - style-src allows inline styles: React writes a few through the style
 //     attribute, which the browser treats as inline.
 //   - frame-ancestors none stops the site being framed, which is what makes
@@ -21,7 +22,8 @@ import (
 const contentSecurityPolicy = "default-src 'self'; " +
 	"script-src 'self' https://mc.yandex.ru; " +
 	"style-src 'self' 'unsafe-inline'; " +
-	"img-src 'self' data: https:; " +
+	"img-src 'self' data: blob: https:; " +
+	"media-src 'self' blob: https:; " +
 	"font-src 'self' data:; " +
 	"frame-src 'self' https://yandex.ru; " +
 	"connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru wss://mc.yandex.com; " +

@@ -21,11 +21,11 @@ func (stub *channelScopeStub) SetVariantMarketplaceScope(_ context.Context, _ ad
 	return nil
 }
 
-func TestMarketplaceScopeRequiresOwner(t *testing.T) {
+func TestMarketplaceScopeRejectsContentOnlyAdministrator(t *testing.T) {
 	stub := &channelScopeStub{}
 	request := adminRequest(http.MethodPatch, "/api/v1/admin/variants/61/marketplace-scope", `{"marketplaceScope":"site_only"}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(stub, admin.RoleManager, "manager@example.com")).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(stub, admin.RoleAdministrator, "manager@example.com")).ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden || stub.called {
 		t.Fatalf("status=%d called=%v", response.Code, stub.called)
 	}

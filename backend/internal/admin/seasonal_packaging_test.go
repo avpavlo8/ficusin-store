@@ -44,7 +44,7 @@ func TestManagerCanSaveWinterPackagingOnLiveDatabase(t *testing.T) {
 	if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,is_active) VALUES($1,'Seasonal test',0) RETURNING id`, productID).Scan(&variantID); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,password_hash,full_name,consent_at) VALUES($1,'','Seasonal manager',CURRENT_TIMESTAMP) RETURNING id`, "seasonal-manager-"+suffix).Scan(&staffID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,full_name,consent_at) VALUES($1,'Seasonal manager',CURRENT_TIMESTAMP) RETURNING id`, "seasonal-manager-"+suffix).Scan(&staffID); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -52,11 +52,15 @@ func TestManagerCanSaveWinterPackagingOnLiveDatabase(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, staffID)
 	}()
 	repository := NewPostgresRepository(pool)
-	result, err := repository.UpdateVariantContent(ctx, Actor{CustomerID: staffID, Role: RoleManager}, variantID, VariantContentUpdate{Attributes: map[string]any{"package_winter_length_cm": float64(40), "package_winter_width_cm": float64(20), "package_winter_height_cm": float64(20)}})
+	_, err = repository.UpdateProduct(ctx, Actor{CustomerID: staffID, Role: RoleManager}, productID, ProductUpdate{Variants: []VariantEdit{{ID: variantID, Attributes: map[string]any{"package_winter_length_cm": float64(40), "package_winter_width_cm": float64(20), "package_winter_height_cm": float64(20)}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Attributes["package_winter_width_cm"] != float64(20) {
-		t.Fatalf("winter packaging not saved: %+v", result.Attributes)
+	result, err := repository.ListProductVariants(ctx, productID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].Attributes["package_winter_width_cm"] != float64(20) {
+		t.Fatalf("winter packaging not saved: %+v", result)
 	}
 }

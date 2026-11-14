@@ -52,7 +52,7 @@ func TestUnifiedReceivedPublicationPreservesReceiptAndGuardsQueuedPrices(t *test
 			_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID)
 		}
 	}()
-	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Unified publication',now()) RETURNING id`, "unified-publish-"+tag+"@example.invalid", "+75"+tag[len(tag)-9:]).Scan(&actorID))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Unified publication',now()) RETURNING id`, "unified-publish-"+tag+"@example.invalid", "+75"+tag[len(tag)-9:]).Scan(&actorID))
 	actor := Actor{CustomerID: actorID, Role: "owner"}
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, "unified-publish-"+tag).Scan(&supplier))
 	codes := []string{"X615770892", "X525558640", "X740063870"}

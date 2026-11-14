@@ -13,9 +13,6 @@ import (
 type orderRepository interface {
 	ListForCustomer(context.Context, int64, int) ([]order.Summary, error)
 	DetailForCustomer(ctx context.Context, customerID int64, orderNumber string) (*order.Detail, error)
-}
-
-type customerOrderPager interface {
 	ListPageForCustomer(context.Context, int64, string, int, int) (order.CustomerOrderPage, error)
 }
 
@@ -107,12 +104,7 @@ func accountOrdersHandler(
 					*target = parsed
 				}
 			}
-			pager, ok := orders.(customerOrderPager)
-			if !ok {
-				writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Не удалось загрузить заказы"})
-				return
-			}
-			page, err := pager.ListPageForCustomer(request.Context(), user.ID, view, limit, offset)
+			page, err := orders.ListPageForCustomer(request.Context(), user.ID, view, limit, offset)
 			if err != nil {
 				logger.Error("account order page failed", "error", err, "customer_id", user.ID)
 				writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Не удалось загрузить заказы"})

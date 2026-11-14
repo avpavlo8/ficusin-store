@@ -1,21 +1,9 @@
-import { lazy, Suspense, useState } from "react";
-import { Dialog, api } from "./adminShared";
+import { useState } from "react";
+import { api } from "./adminShared";
 import type { Product } from "./adminTypes";
 
-const ProductMediaDialog = lazy(() => import("./PdpProductMediaDialog"));
-
-export function PdpAdminTools({
-  slug,
-  adminRole,
-  onChanged,
-}: {
-  slug: string;
-  adminRole?: string;
-  onChanged: () => void;
-}) {
+export function PdpAdminTools({ slug, adminRole }: { slug: string; adminRole?: string }) {
   const allowed = adminRole === "owner" || adminRole === "administrator" || adminRole === "manager";
-  const [product, setProduct] = useState<Product | null>(null);
-  const [mode, setMode] = useState<"media" | "">("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -27,12 +15,9 @@ export function PdpAdminTools({
       const data = await api<{ products: Product[] }>("/api/v1/admin/products");
       const found = data.products.find((item) => (item.productCode || item.slug) === slug);
       if (!found) throw new Error("Карточка не найдена в редакторе");
-      if (next === "edit") {
-        window.location.assign(`/admin?section=products&product=${found.id}`);
-        return;
-      }
-      setProduct(found);
-      setMode("media");
+      window.location.assign(
+        `/admin?section=products&product=${found.id}${next === "media" ? "&editor=media#product-media" : ""}`,
+      );
     } catch (reason) {
       setError((reason as Error).message);
     } finally {
@@ -53,22 +38,6 @@ export function PdpAdminTools({
         </button>
         {error && <small>{error}</small>}
       </div>
-      {product && mode === "media" && (
-        <Suspense
-          fallback={
-            <Dialog title="Фотографии" onClose={() => setMode("")}>
-              <p role="status">Загружаем фотографии…</p>
-            </Dialog>
-          }
-        >
-          <ProductMediaDialog
-            owner={adminRole === "owner"}
-            product={product}
-            onClose={() => setMode("")}
-            onChanged={onChanged}
-          />
-        </Suspense>
-      )}
     </>
   );
 }

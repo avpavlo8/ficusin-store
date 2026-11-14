@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	OrderRealization       OrderRealization
 	FileStorageMode        string
 	LocalPrivateFilesDir   string
 	StaticAssetsBaseURL    string
@@ -136,10 +137,9 @@ type Auth struct {
 	SessionDays  int
 }
 
-// SMS holds settings for the SMS.ru gateway used to deliver OTP login
-// codes over a call (no sender name registration required). If APIKey is
-// empty, codes are only logged (useful for local development) and no call
-// is actually placed.
+// SMS configures SMS.ru's user-initiated call check, not an OTP delivery call.
+// Without APIKey the development adapter fabricates a confirmed check. A
+// production deployment must supply SMSRU_API_KEY for real phone verification.
 type SMS struct {
 	APIKey string
 }
@@ -278,6 +278,9 @@ func Load() (Config, error) {
 		if !filepath.IsAbs(configured.LocalPrivateFilesDir) || filepath.Clean(configured.LocalPrivateFilesDir) == string(filepath.Separator) {
 			return Config{}, errors.New("LOCAL_PRIVATE_FILES_DIR must be a dedicated absolute directory")
 		}
+	}
+	if err = configureOrderRealization(&configured); err != nil {
+		return Config{}, err
 	}
 	return configured, nil
 }

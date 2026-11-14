@@ -95,7 +95,7 @@ func (repository *PostgresRepository) AddUploadedVariantMedia(
 }
 
 func (repository *PostgresRepository) DeleteVariantMedia(ctx context.Context, actor Actor, variantID, mediaID int64) error {
-	if !Can(actor.Role, PermissionDelete) {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
 	tx, err := repository.pool.Begin(ctx)

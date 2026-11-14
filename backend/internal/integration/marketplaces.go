@@ -205,11 +205,6 @@ func (executor *MarketplaceExecutor) fetchWBOperationalSalesPaged(ctx context.Co
 	return nil, fmt.Errorf("Wildberries вернул больше %d страниц продаж; синхронизация остановлена до полного чтения", maxPages)
 }
 
-func isRateLimit(err error) bool {
-	var remote *remoteError
-	return errors.As(err, &remote) && remote.Status == http.StatusTooManyRequests
-}
-
 func ozonPostingCountsAsSale(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "driver_pickup", "delivering", "last_mile", "delivered":
@@ -673,10 +668,10 @@ func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items
 	}
 	prices := make([]map[string]any, 0, len(items))
 	for _, item := range items {
-		price := strconv.FormatInt(int64(item.NewValue), 10)
+		price := strconv.FormatFloat(item.NewValue, 'f', -1, 64)
 		oldPrice := "0"
 		if item.CompareAtValue != nil && *item.CompareAtValue > item.NewValue {
-			oldPrice = strconv.FormatInt(int64(*item.CompareAtValue), 10)
+			oldPrice = strconv.FormatFloat(*item.CompareAtValue, 'f', -1, 64)
 		}
 		// Optional empty fields are deliberately omitted: Ozon validates an
 		// explicitly supplied min_price/enum even when the seller did not set it.
@@ -691,7 +686,6 @@ func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items
 			OfferID string `json:"offer_id"`
 			Updated bool   `json:"updated"`
 			Errors  []struct {
-				Code    string `json:"code"`
 				Message string `json:"message"`
 			} `json:"errors"`
 		} `json:"result"`
@@ -1200,7 +1194,6 @@ func (executor *MarketplaceExecutor) fetchWBCatalog(ctx context.Context) ([]proc
 			Cursor struct {
 				UpdatedAt string `json:"updatedAt"`
 				NmID      int64  `json:"nmID"`
-				Total     int    `json:"total"`
 			} `json:"cursor"`
 		}
 		if err := executor.requestRead(ctx, http.MethodPost,

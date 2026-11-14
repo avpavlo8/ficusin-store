@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { BrandLogo } from "./BrandLogo";
 import { CatalogSearch } from "./CatalogSearch";
 import { useSharedCart } from "./lib/cart";
-import { useFavorites, useAvailableFavoriteCount, FAVORITES_EVENT } from "./lib/favorites";
+import { useFavorites, useAvailableFavoriteCount } from "./lib/favorites";
 import { useModalFocus } from "./lib/useModalFocus";
 import { sharedAPIJSON } from "./lib/api";
 import { orderStorefrontCategories } from "./lib/category-order";
@@ -87,25 +87,14 @@ function HeaderMenuBranch({
 }
 
 function AccountBadge({ user }: { user: StoreUser }) {
-  if (user.avatarUpdatedAt) {
-    return (
-      <img
-        className="account-button-photo"
-        src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`}
-        alt=""
-      />
-    );
-  }
   return (
-    <span className="account-button-photo placeholder">
-      {user.fullName.trim().charAt(0).toUpperCase() || "◯"}
-    </span>
+    <img
+      className="account-button-photo"
+      src={`/api/v1/account/avatar?v=${user.avatarUpdatedAt}`}
+      alt=""
+    />
   );
 }
-
-// Favourites remain local for now. Cart contents are never stored here: the
-// header reads the same server-backed cart as the catalogue and checkout.
-export const STORAGE_EVENT = FAVORITES_EVENT;
 
 export function useStoreUser() {
   const [user, setUser] = useState<StoreUser | null>(null);
@@ -125,9 +114,7 @@ export function useStoreUser() {
   return user;
 }
 
-// Keeps the page behind an open panel from scrolling. It toggles a class
-// rather than an inline style because the cart drawer does the same thing:
-// two inline styles would fight over who gets to clear it.
+// Lock page scrolling behind the search or catalogue panel through the responsive body class.
 function useBodyLock(locked: boolean, name: string) {
   useEffect(() => {
     document.body.classList.toggle(name, locked);
@@ -135,28 +122,20 @@ function useBodyLock(locked: boolean, name: string) {
   }, [locked, name]);
 }
 
-export function AccountMenu({
-  user,
-  iconOnly = false,
-}: {
-  user: StoreUser | null;
-  iconOnly?: boolean;
-}) {
+export function AccountMenu({ user }: { user: StoreUser | null }) {
   const staff =
     user?.adminRole === "manager" ||
     user?.adminRole === "administrator" ||
     user?.adminRole === "owner";
-  const name = user?.fullName.trim().split(/\s+/)[0] || "Личный кабинет";
   return (
     <div className="account-access account-menu">
       <a
-        className={iconOnly ? "account-button icon-only" : "account-button"}
+        className="account-button icon-only"
         href={user ? "/account" : "/login?returnTo=%2Faccount"}
         aria-label="Личный кабинет"
         title={user ? "Личный кабинет" : "Войти в личный кабинет"}
       >
         {user?.avatarUpdatedAt ? <AccountBadge user={user} /> : <Icon path={icons.person} />}{" "}
-        {!iconOnly && <span>{name}</span>}
       </a>
       {staff && (
         <a
@@ -434,7 +413,6 @@ function MobileTabBar({
   user,
   favorites,
   cart,
-  onCartClick,
   onSearchClick,
   onCatalogClick,
   catalogOpen,
@@ -442,7 +420,6 @@ function MobileTabBar({
   user: StoreUser | null;
   favorites: number;
   cart: number;
-  onCartClick?: () => void;
   onSearchClick: (trigger: HTMLButtonElement) => void;
   onCatalogClick: () => void;
   catalogOpen: boolean;
@@ -493,13 +470,7 @@ function MobileTabBar({
         </span>
         <small>Поиск</small>
       </button>
-      {onCartClick ? (
-        <button type="button" onClick={onCartClick}>
-          {cartInside}
-        </button>
-      ) : (
-        <a href="/cart">{cartInside}</a>
-      )}
+      <a href="/cart">{cartInside}</a>
       <a href={user ? "/account" : "/login"}>
         <span className="tab-icon">
           <Icon path={icons.person} />
@@ -517,12 +488,8 @@ export function StoreHeader({
   onQueryChange,
   onSearch,
   onSearchClose,
-  onCartClick,
   showTabBar = true,
-  showSearch = true,
-  homeNavigation = true,
   catalogMenuItems = [],
-  plantMenuItems = [],
   onHomeCategoryPick,
 }: {
   cartCount?: number;
@@ -531,17 +498,8 @@ export function StoreHeader({
   onQueryChange?: (value: string) => void;
   onSearch?: (value: string) => void;
   onSearchClose?: () => void;
-  // Supplied by the storefront, which opens the cart as a drawer instead of
-  // navigating away from the catalogue.
-  onCartClick?: () => void;
   showTabBar?: boolean;
-  // The storefront carries its own search bar under the header, so it asks
-  // for the header field to step aside. Every other page keeps it: there it
-  // is the only way to search at all.
-  showSearch?: boolean;
-  homeNavigation?: boolean;
   catalogMenuItems?: HeaderMenuItem[];
-  plantMenuItems?: HeaderMenuItem[];
   onHomeCategoryPick?: (id: number) => void;
 }) {
   const user = useStoreUser();
@@ -569,10 +527,7 @@ export function StoreHeader({
     searchTrigger.current?.focus({ preventScroll: true });
     onSearchClose?.();
   };
-  const [fallbackMenus, setFallbackMenus] = useState<{
-    catalog: HeaderMenuItem[];
-    plants: HeaderMenuItem[];
-  }>({ catalog: [], plants: [] });
+  const [fallbackMenus, setFallbackMenus] = useState<HeaderMenuItem[]>([]);
   const [menuState, setMenuState] = useState<"loading" | "ready" | "error">("loading");
   const [menuReload, setMenuReload] = useState(0);
   const headerRef = useRef<HTMLElement>(null);
@@ -621,8 +576,7 @@ export function StoreHeader({
     };
   }, []);
   useEffect(() => {
-    if ((!homeNavigation && !showTabBar) || catalogMenuItems.length || plantMenuItems.length)
-      return;
+    if (catalogMenuItems.length) return;
     sharedAPIJSON<{
       categories?: Array<{
         id: number;
@@ -646,31 +600,14 @@ export function StoreHeader({
           slug: item.slug,
           children: order(children.get(item.id) || []).map(branch),
         });
-        const catalog = order(children.get(null) || []).map(branch);
-        const plantRoot = categories.find(
-          (item) => item.parentId == null && /растен/i.test(item.name),
-        );
-        const leaves = (parentId: number): typeof categories =>
-          order(children.get(parentId) || []).flatMap((item) =>
-            children.get(item.id)?.length ? leaves(item.id) : [item],
-          );
-        setFallbackMenus({
-          catalog,
-          plants: plantRoot
-            ? order(leaves(plantRoot.id)).map((item) => ({
-                id: item.id,
-                label: item.name,
-                slug: item.slug,
-              }))
-            : [],
-        });
+        setFallbackMenus(order(children.get(null) || []).map(branch));
         setMenuState("ready");
       })
       .catch(() => {
-        setFallbackMenus({ catalog: [], plants: [] });
+        setFallbackMenus([]);
         setMenuState("error");
       });
-  }, [homeNavigation, showTabBar, catalogMenuItems.length, plantMenuItems.length, menuReload]);
+  }, [catalogMenuItems.length, menuReload]);
 
   useEffect(() => {
     headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => {
@@ -678,9 +615,7 @@ export function StoreHeader({
     });
   }, [query]);
 
-  const resolvedCatalogMenuItems = catalogMenuItems.length
-    ? catalogMenuItems
-    : fallbackMenus.catalog;
+  const resolvedCatalogMenuItems = catalogMenuItems.length ? catalogMenuItems : fallbackMenus;
   const categoryPick = onHomeCategoryPick;
   const closeHeaderMenus = () =>
     headerRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((details) => {
@@ -696,7 +631,6 @@ export function StoreHeader({
   const cartLabel = `Корзина, товаров: ${cart}`;
   return (
     <>
-      <div className="announcement" hidden />
       <header
         className="header store-header"
         ref={headerRef}
@@ -720,54 +654,41 @@ export function StoreHeader({
           <BrandLogo decorative />
         </a>
         <nav className="desktop-nav">
-          {homeNavigation ? (
-            <>
-              <details
-                className="header-dropdown"
-                onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}
-              >
-                <summary>
-                  Каталог <span>⌄</span>
-                </summary>
-                <div>
-                  <a href="/#catalog">
-                    Весь каталог<span>→</span>
-                  </a>
-                  {resolvedCatalogMenuItems.map((item) => (
-                    <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />
-                  ))}
-                  <a href="/discounts">
-                    Растения со скидкой<span>→</span>
-                  </a>
-                </div>
-              </details>
+          <>
+            <details
+              className="header-dropdown"
+              onToggle={(event) => closeOtherHeaderMenus(event.currentTarget)}
+            >
+              <summary>
+                Каталог <span>⌄</span>
+              </summary>
+              <div>
+                <a href="/#catalog">
+                  Весь каталог<span>→</span>
+                </a>
+                {resolvedCatalogMenuItems.map((item) => (
+                  <HeaderMenuBranch item={item} onPick={categoryPick} key={item.id} />
+                ))}
+                <a href="/discounts">
+                  Растения со скидкой<span>→</span>
+                </a>
+              </div>
+            </details>
 
-              <a href="/delivery-and-returns">Доставка и оплата</a>
-              <AboutMenu />
-            </>
-          ) : (
-            <>
-              <a href="/#catalog">Каталог</a>
-              <a href="/favorites">Избранное</a>
-              <a href="/delivery-and-returns">Доставка и возврат</a>
-              <AboutMenu />
-            </>
-          )}
+            <a href="/delivery-and-returns">Доставка и оплата</a>
+            <AboutMenu />
+          </>
         </nav>
         <div className="header-actions">
-          {showSearch && (
-            <>
-              <CatalogSearch value={query} onChange={onQueryChange} onSearch={search} />
-              <button
-                className="search-toggle"
-                onClick={(event) => (searchOpen ? closeSearch() : openSearch(event.currentTarget))}
-                aria-label="Поиск по каталогу"
-                aria-expanded={searchOpen}
-              >
-                <Icon path={icons.search} />
-              </button>
-            </>
-          )}
+          <CatalogSearch value={query} onChange={onQueryChange} onSearch={search} />
+          <button
+            className="search-toggle"
+            onClick={(event) => (searchOpen ? closeSearch() : openSearch(event.currentTarget))}
+            aria-label="Поиск по каталогу"
+            aria-expanded={searchOpen}
+          >
+            <Icon path={icons.search} />
+          </button>
           <a
             className="favorites-button"
             href="/favorites"
@@ -778,25 +699,16 @@ export function StoreHeader({
             </span>
             {favorites > 0 && <b>{favorites}</b>}
           </a>
-          <AccountMenu user={user} iconOnly />
-          {onCartClick ? (
-            <button className="cart-button" onClick={onCartClick} aria-label={cartLabel}>
-              <span>
-                <Icon path={icons.bag} />
-              </span>
-              {cart > 0 && <b>{cart}</b>}
-            </button>
-          ) : (
-            <a className="cart-button" href="/cart" aria-label={cartLabel}>
-              <span>
-                <Icon path={icons.bag} />
-              </span>
-              {cart > 0 && <b>{cart}</b>}
-            </a>
-          )}
+          <AccountMenu user={user} />
+          <a className="cart-button" href="/cart" aria-label={cartLabel}>
+            <span>
+              <Icon path={icons.bag} />
+            </span>
+            {cart > 0 && <b>{cart}</b>}
+          </a>
         </div>
       </header>
-      {showSearch && searchOpen && (
+      {searchOpen && (
         <MobileSearch
           query={query}
           onQueryChange={onQueryChange}
@@ -833,7 +745,6 @@ export function StoreHeader({
             user={user}
             favorites={favorites}
             cart={cart}
-            onCartClick={onCartClick}
             onSearchClick={openSearch}
             onCatalogClick={() => {
               setSearchOpen(false);

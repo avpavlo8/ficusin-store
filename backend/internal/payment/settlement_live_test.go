@@ -31,7 +31,7 @@ func (p *fixtureSettlementProvider) CreateSettlementReceipt(_ context.Context, r
 func (p *fixtureSettlementProvider) FetchReceipt(context.Context, string) (integration.FiscalReceipt, error) {
 	return p.result, nil
 }
-func TestSettlementReceiptRequiresOwnerActionAndSurvivesTimeoutOnLiveDatabase(t *testing.T) {
+func TestOwnerSettlementReceiptSurvivesTimeoutOnLiveDatabase(t *testing.T) {
 	ctx, pool, s, p, orderID, ids := fiscalFixture(t)
 	provider := &fixtureSettlementProvider{fiscalRefundProvider: p, unknown: true}
 	s.provider = provider
@@ -62,7 +62,7 @@ func TestSettlementReceiptRequiresOwnerActionAndSurvivesTimeoutOnLiveDatabase(t 
 		t.Fatal("no first receipt request")
 	}
 	if err := s.reconcileSettlementReceipts(ctx); err != nil || len(provider.sent) != 1 {
-		t.Fatal("worker created a receipt without owner action")
+		t.Fatal("worker ignored the retry backoff")
 	}
 	provider.unknown = false
 	if err := s.SettlePaymentReceipt(ctx, orderID, ids[0], actor); err != nil {

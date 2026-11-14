@@ -37,7 +37,7 @@ type Summary = {
   returns: number;
   previousRevenue: number;
   previousOrders: number;
-  daily: Array<{ date: string; sessions: number; orders: number; revenue: number }>;
+  daily: Array<{ date: string; orders: number; revenue: number }>;
   salesChannels: ChannelRow[];
   salesProducts: ProductRow[];
   dataQuality: {

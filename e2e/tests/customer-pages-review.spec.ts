@@ -108,6 +108,7 @@ test("@desktop @phone profile keeps input after a failed save and sends the whol
   });
   await page.goto("/account/profile");
   await page.getByRole("button", { name: "Изменить", exact: true }).click();
+  await expect(page.getByLabel("Адрес доставки")).toBeVisible();
   await page.getByLabel("Имя", { exact: true }).fill("Анна");
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Профиль не сохранён");
@@ -187,10 +188,17 @@ test("@desktop @phone wholesale registration retains company details when buyer 
 });
 
 test("@desktop @phone avatar upload rejects unsupported files before sending a request", async ({ page }) => {
+  const avatarUpdatedAt = "2026-11-14T09:00:00Z";
   await mockApi(page, owner);
+  await page.context().route("**/api/v1/auth/me", route => route.fulfill({ json: { user: { ...owner.user, avatarUpdatedAt } } }));
   let requested = false;
   await page.context().route("**/api/v1/account/avatar", route => { requested = true; return route.fulfill({ json: { user: owner.user } }); });
   await page.goto("/account/profile");
+  const accountLink = page.locator(".account-access .account-button");
+  await expect(accountLink).toHaveAttribute("href", "/account");
+  await expect(accountLink).toHaveAccessibleName("Личный кабинет");
+  await expect(accountLink.locator("img")).toHaveAttribute("src", `/api/v1/account/avatar?v=${avatarUpdatedAt}`);
+  await expect(accountLink.locator("img")).toHaveAttribute("alt", "");
   await page.locator('#avatar-input').setInputFiles({ name: "invalid.txt", mimeType: "text/plain", buffer: Buffer.from("not an image") });
   await expect(page.getByRole("alert")).toContainText("Выберите фото JPEG, PNG или WebP");
   expect(requested).toBeFalsy();

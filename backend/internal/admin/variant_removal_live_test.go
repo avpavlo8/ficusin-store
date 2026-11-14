@@ -24,10 +24,10 @@ func TestVariantRemovalOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var customer int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Removal test',NOW()) RETURNING id`, "removal-"+tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Removal test',NOW()) RETURNING id`, "removal-"+tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); err != nil {
 		t.Fatal(err)
 	}
-	actor := Actor{CustomerID: customer, Role: RoleOwner}
+	actor := Actor{CustomerID: customer, Role: RoleManager}
 	repo := NewPostgresRepository(pool)
 	p, err := repo.CreateProduct(ctx, actor, ProductCreate{Name: "Removal test " + tag, CatalogSection: "plants"})
 	if err != nil {
@@ -38,7 +38,7 @@ func TestVariantRemovalOnLiveDatabase(t *testing.T) {
 		pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, p.ID)
 		pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)
 	}()
-	for _, kind := range []string{"free", "stock", "reserved", "negative-stock", "saby", "saby-external", "order", "history"} {
+	for _, kind := range []string{"free", "stock", "negative-stock", "saby", "saby-external", "order", "history"} {
 		t.Run(kind, func(t *testing.T) {
 			tx, err := pool.Begin(ctx)
 			if err != nil {
@@ -54,15 +54,12 @@ func TestVariantRemovalOnLiveDatabase(t *testing.T) {
 			var id int64
 			must(tx.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,is_active) VALUES($1,'Removal size',1) RETURNING id`, p.ID).Scan(&id))
 			switch kind {
-			case "stock", "reserved", "negative-stock":
+			case "stock", "negative-stock":
 				var w int64
 				must(tx.QueryRow(ctx, `SELECT id FROM warehouses LIMIT 1`).Scan(&w))
 				a, r := 0, 0
 				if kind == "stock" {
 					a = 3
-				}
-				if kind == "reserved" {
-					r = 1
 				}
 				if kind == "negative-stock" {
 					a = -1
@@ -119,8 +116,8 @@ func TestVariantRemovalOnLiveDatabase(t *testing.T) {
 	}
 }
 func TestVariantRemovalValidation(t *testing.T) {
-	if validateVariantEdits(Actor{Role: RoleManager}, []VariantEdit{{ID: 1, Remove: true}}) == nil {
-		t.Fatal("manager can delete")
+	if validateVariantEdits(Actor{Role: RoleAdministrator}, []VariantEdit{{ID: 1, Remove: true}}) == nil {
+		t.Fatal("administrator can delete")
 	}
 	label := "new"
 	if validateVariantEdits(Actor{Role: RoleOwner}, []VariantEdit{{ID: 1, Remove: true, Label: &label}}) == nil {

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,8 +25,8 @@ type paymentCanceller interface {
 
 // ExpiryWorker cancels orders nobody paid for.
 //
-// Checkout no longer reserves plants. Expiry still closes abandoned online
-// payments so customers cannot pay from an old payment link indefinitely.
+// Expiry closes abandoned online payments and requests cancellation of an
+// order's early realization. Physical stock returns only after verified undo.
 type ExpiryWorker struct {
 	pool     *pgxpool.Pool
 	settings settingsReader
@@ -80,7 +81,7 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 			AND has_preorder = 0
 			AND delivery_fee_pending = 0
 			AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w WHERE w.order_id=orders.id AND w.state NOT IN ('cancelled','stale') AND w.notified_at IS NULL)
-			AND status NOT IN ('cancelled', 'completed')
+			AND status NOT IN ('cancelled', 'completed', 'shipped', 'shipping')
 			AND COALESCE((SELECT w.notified_at FROM order_packing_workflows w WHERE w.order_id=orders.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at) < CURRENT_TIMESTAMP - make_interval(hours => $1)
 		ORDER BY id
 		LIMIT 100
@@ -107,9 +108,10 @@ func (worker *ExpiryWorker) process(ctx context.Context) {
 	}
 }
 
-// cancel returns the plants to the shelf and closes the unfinished payment.
-// Everything happens in one transaction: stock released without the order
-// being cancelled would let the same plants be sold twice.
+// cancel closes the unfinished payment, then atomically cancels the order,
+// queues any required Saby undo.
+// The worker confirms physical stock return separately; this transaction never
+// fabricates a returned balance while an external operation is unresolved.
 func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 	// Recheck a selected candidate under the preparation lock. A manager may
 	// have confirmed packing after the worker selected this older order.
@@ -123,7 +125,7 @@ func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 			return err
 		}
 		var eligible bool
-		err = guard.QueryRow(ctx, `SELECT payment_status='pending' AND payment_method='online' AND has_preorder=0 AND delivery_fee_pending=0 AND status NOT IN ('cancelled','completed')
+		err = guard.QueryRow(ctx, `SELECT payment_status='pending' AND payment_method='online' AND has_preorder=0 AND delivery_fee_pending=0 AND status NOT IN ('cancelled','completed','shipped','shipping')
 		 AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') AND w.notified_at IS NULL)
 		 AND COALESCE((SELECT w.notified_at FROM order_packing_workflows w WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at)<CURRENT_TIMESTAMP-make_interval(hours=>$2) FROM orders o WHERE id=$1`, orderID, worker.settings.Number("orders.auto_cancel_hours")).Scan(&eligible)
 		if err != nil {
@@ -145,21 +147,44 @@ func (worker *ExpiryWorker) cancel(ctx context.Context, orderID int64) error {
 			return err
 		}
 	}
+	// Payment reconciliation may have committed a successful capture while
+	// CancelPending was running. Only the current, locked order may authorize
+	// cancellation; the earlier candidate snapshot cannot release its plants.
+	hours := 0
+	if worker.settings != nil {
+		hours = worker.settings.Number("orders.auto_cancel_hours")
+	}
+	if hours <= 0 {
+		return nil
+	}
 
 	transaction, err := worker.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = transaction.Rollback(ctx) }()
+	var stillEligible bool
+	err = transaction.QueryRow(ctx, `SELECT payment_status='pending' AND payment_method='online'
+	 AND has_preorder=0 AND delivery_fee_pending=0
+	 AND status NOT IN ('cancelled','completed','shipped','shipping')
+	 AND NOT EXISTS(SELECT 1 FROM order_packing_workflows w WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') AND w.notified_at IS NULL)
+	 AND COALESCE((SELECT w.notified_at FROM order_packing_workflows w WHERE w.order_id=o.id AND w.state NOT IN ('cancelled','stale') ORDER BY w.id DESC LIMIT 1),created_at)<CURRENT_TIMESTAMP-make_interval(hours=>$2)
+	 FROM orders o WHERE id=$1 FOR UPDATE`, orderID, hours).Scan(&stillEligible)
+	if err != nil {
+		return err
+	}
+	if !stillEligible {
+		return nil
+	}
+	if err := ordersale.RequestCancellation(ctx, transaction, orderID); err != nil {
+		return err
+	}
 	if _, err := transaction.Exec(ctx, `
 		UPDATE orders
 		SET status = 'cancelled', payment_status = 'cancelled',
 			cancellation_reason = 'Срок оплаты заказа истёк'
 		WHERE id = $1 AND status <> 'cancelled'
 	`, orderID); err != nil {
-		return err
-	}
-	if err := ReleaseStock(ctx, transaction, orderID); err != nil {
 		return err
 	}
 	if err := CancelOpenShipmentOffers(ctx, transaction, orderID); err != nil {

@@ -139,7 +139,7 @@ func TestCDEKTrackingLetterQueuedOnceOnLiveDatabase(t *testing.T) {
 	ctx, pool := cdekReviewPool(t)
 	var customer int64
 	suffix := fmt.Sprint(time.Now().UnixNano())
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,last_name,consent_at) VALUES($1,$2,'','Александр','Павловский',CURRENT_TIMESTAMP) RETURNING id`, "ci-tracking-"+suffix+"@example.invalid", "ci-tracking-"+suffix).Scan(&customer); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,last_name,consent_at) VALUES($1,$2,'Александр','Павловский',CURRENT_TIMESTAMP) RETURNING id`, "ci-tracking-"+suffix+"@example.invalid", "ci-tracking-"+suffix).Scan(&customer); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer) })

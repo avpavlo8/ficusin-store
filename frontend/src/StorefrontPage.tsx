@@ -1,7 +1,11 @@
+import {
+  initialAttributeFilters,
+  initialRangeFilters,
+  type RangeValue,
+} from "./lib/catalog-query-filters";
 import { NumericInput } from "./NumericInput";
 import { HomeBenefits } from "./HomeBenefits";
 import { useEffect, useMemo, useState } from "react";
-import CheckoutHost from "./CheckoutHost";
 import { StoreHeader, type HeaderMenuItem } from "./StoreHeader";
 import { CollectionStrip } from "./Collections";
 import NotFoundPage from "./NotFoundPage";
@@ -81,7 +85,6 @@ type CollectionMeta = {
   count?: number;
   selectsVariant?: boolean;
 };
-type RangeValue = { min: string; max: string };
 type Facet = {
   name: string;
   unit?: string;
@@ -141,29 +144,6 @@ const categoryIconPaths: Record<string, string> = {
   fertilizer: "M9 3h6v4l3 4v9H6v-9l3-4V3Zm0 10h6",
   tools: "M14 5a4 4 0 0 0 5 5l-9 9-4-4 9-9",
 };
-
-function initialAttributeFilters() {
-  const result: Record<string, string> = {};
-  new URLSearchParams(window.location.search).forEach((value, key) => {
-    if (key.startsWith("filter.")) result[key.slice(7)] = value;
-  });
-  return result;
-}
-
-function initialRangeFilters() {
-  const result: Record<string, RangeValue> = {};
-  new URLSearchParams(window.location.search).forEach((value, key) => {
-    if (key.startsWith("min.")) {
-      const code = key.slice(4);
-      result[code] = { min: value, max: result[code]?.max || "" };
-    }
-    if (key.startsWith("max.")) {
-      const code = key.slice(4);
-      result[code] = { min: result[code]?.min || "", max: value };
-    }
-  });
-  return result;
-}
 
 function CatalogDropdown({
   label,
@@ -298,9 +278,12 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   const [inStockOnly, setInStockOnly] = useState(
     () => new URLSearchParams(window.location.search).get("stock") === "1",
   );
-  const [attributeFilters, setAttributeFilters] =
-    useState<Record<string, string>>(initialAttributeFilters);
-  const [rangeFilters, setRangeFilters] = useState<Record<string, RangeValue>>(initialRangeFilters);
+  const [attributeFilters, setAttributeFilters] = useState<Record<string, string>>(() =>
+    initialAttributeFilters(window.location.search),
+  );
+  const [rangeFilters, setRangeFilters] = useState<Record<string, RangeValue>>(() =>
+    initialRangeFilters(window.location.search),
+  );
   const [sort, setSort] = useState(
     () => new URLSearchParams(window.location.search).get("sort") || "popular",
   );
@@ -320,7 +303,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
 
   const [cart, setCart, cartMeta] = useSharedCart();
   const [favorites, setFavorites] = useFavorites();
-  const [cartOpen, setCartOpen] = useState(false);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -478,22 +460,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       slug: item.slug,
       children: order(children.get(item.id) || []).map(branch),
     });
-    const roots = order(children.get(null) || []).map(branch);
-    const plantRoot = categories.find((item) => item.parentId == null && /растен/i.test(item.name));
-    if (!plantRoot) return { catalog: roots, plants: [] };
-    const collectPlantKinds = (parentId: number): Category[] =>
-      order(children.get(parentId) || []).flatMap((item): Category[] => {
-        const nested = children.get(item.id) || [];
-        return nested.length ? collectPlantKinds(item.id) : [item];
-      });
-    return {
-      catalog: roots,
-      plants: order(collectPlantKinds(plantRoot.id)).map((item) => ({
-        id: item.id,
-        label: item.name,
-        slug: item.slug,
-      })),
-    };
+    return order(children.get(null) || []).map(branch);
   }, [categories]);
 
   const inBranch = useMemo(() => {
@@ -554,8 +521,8 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       setInStockOnly(params.get("stock") === "1");
       setSort(params.get("sort") || "popular");
       setPriceRange({ min: params.get("priceMin") || "", max: params.get("priceMax") || "" });
-      setAttributeFilters(initialAttributeFilters());
-      setRangeFilters(initialRangeFilters());
+      setAttributeFilters(initialAttributeFilters(window.location.search));
+      setRangeFilters(initialRangeFilters(window.location.search));
     };
     window.addEventListener("popstate", restoreLocation);
     return () => window.removeEventListener("popstate", restoreLocation);
@@ -986,8 +953,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           onQueryChange={updateSearch}
           onSearch={submitSearch}
           onSearchClose={cancelSearch}
-          onCartClick={() => window.location.assign("/cart")}
-          homeNavigation
           onHomeCategoryPick={
             !landing
               ? (id) => {
@@ -996,8 +961,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
                 }
               : undefined
           }
-          catalogMenuItems={headerMenus.catalog}
-          plantMenuItems={headerMenus.plants}
+          catalogMenuItems={headerMenus}
         />
         <p className="storefront-empty">Загружаем каталог…</p>
       </main>
@@ -1012,8 +976,6 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
         onQueryChange={updateSearch}
         onSearch={submitSearch}
         onSearchClose={cancelSearch}
-        onCartClick={() => window.location.assign("/cart")}
-        homeNavigation
         onHomeCategoryPick={
           !landing
             ? (id) => {
@@ -1022,8 +984,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
               }
             : undefined
         }
-        catalogMenuItems={headerMenus.catalog}
-        plantMenuItems={headerMenus.plants}
+        catalogMenuItems={headerMenus}
       />
 
       {!searching && !landing && (
@@ -1404,20 +1365,14 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
           )}
         </div>
       </section>
-      <CheckoutHost
-        cart={cart}
-        products={[
-          ...products,
-          ...cartMeta.lines.filter((line) => !products.some((product) => product.sku === line.sku)),
-        ]}
-        cartOpen={cartOpen}
-        onCartOpenChange={setCartOpen}
-        onCartChange={setCart}
-        cartStatus={cartMeta.status}
-        cartError={cartMeta.error}
-        missingCartItems={cartMeta.missingSkus.length}
-        onCartRetry={cartMeta.retry}
-      />
+      {cartMeta.status === "error" && (
+        <div className="toast cart-error-toast" role="alert">
+          <span>{cartMeta.error || "Изменение корзины не сохранено"}</span>
+          <button type="button" onClick={cartMeta.retry}>
+            Повторить
+          </button>
+        </div>
+      )}
     </main>
   );
 }

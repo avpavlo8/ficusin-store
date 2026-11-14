@@ -25,8 +25,8 @@ func invoiceFirstFixture(t *testing.T) (context.Context, *pgxpool.Pool, *Postgre
 	t.Cleanup(pool.Close)
 	key := fmt.Sprintf("invoice-first-%d", time.Now().UnixNano())
 	var actorID, supplierID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
- VALUES($1,$2,'','Invoice owner',CURRENT_TIMESTAMP) RETURNING id`, key+"@example.invalid", key).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+ VALUES($1,$2,'Invoice owner',CURRENT_TIMESTAMP) RETURNING id`, key+"@example.invalid", key).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency)

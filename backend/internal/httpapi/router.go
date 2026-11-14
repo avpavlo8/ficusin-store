@@ -19,6 +19,7 @@ var BuildVersion = "development"
 
 type catalogRepository interface {
 	ListAvailable(context.Context) ([]catalog.Product, error)
+	ListForCollection(context.Context, string) ([]catalog.Product, error)
 	ListCategories(context.Context) ([]catalog.Category, error)
 	DetailBySlug(context.Context, string) (catalog.ProductDetail, error)
 }
@@ -39,7 +40,6 @@ type Dependencies struct {
 	CDEK                cdekService
 	Admin               adminRepository
 	Saby                sabySyncService
-	CatalogExport       catalogExportService
 	Push                pushService
 	Chat                *chat.Store
 	Cart                cartStore
@@ -94,12 +94,12 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("GET /api/v1/admin/products/{id}/editor-plan", editorPlanHandler(adminAPI))
 	mux.HandleFunc("GET /api/v1/admin/products/{id}/marketplace-cards", editorMarketplaceCardsHandler(adminAPI, dependencies.EditorReferences))
 	mux.HandleFunc("PUT /api/v1/admin/products/{id}/editor-plan", editorPlanHandler(adminAPI))
+	mux.HandleFunc("POST /api/v1/admin/products/{id}/editor-plan/sync-existing", editorSyncExistingHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/products/{id}/editor-publications/{channel}/retry", editorPublicationRetryHandler(adminAPI))
 	mux.HandleFunc("GET /api/v1/admin/catalog-editor/references", editorReferencesHandler(adminAPI, dependencies.EditorReferences))
 
+	registerOrderSaleRoutes(mux, adminAPI)
 	procurementAPI := newProcurementHandlers(logger, adminAPI, dependencies.Procurement)
-	mux.HandleFunc("GET /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, false))
-	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/saby-export", catalogExportHandler(adminAPI, dependencies.CatalogExport, true))
 	if dependencies.Avito != nil {
 		mux.HandleFunc("GET /api/v1/admin/avito", avitoListHandler(adminAPI, dependencies.Avito))
 		mux.HandleFunc("POST /api/v1/admin/avito/import", avitoImportHandler(adminAPI, dependencies.Avito))
@@ -245,6 +245,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	}
 	mux.HandleFunc("GET /api/v1/admin/settings", settingsAPI.get)
 	mux.HandleFunc("PUT /api/v1/admin/settings", settingsAPI.update)
+	mux.HandleFunc("GET /api/v1/admin/catalog-editor/settings", editorSettingsHandler(adminAPI, dependencies.Settings))
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
 	mux.HandleFunc("GET /api/v1/admin/operations", adminOperationsHandler(adminAPI, dependencies.Operations))
 	mux.HandleFunc("GET /api/v1/admin/analytics/metrika", analyticsMetrikaStatusHandler(logger, adminAPI, dependencies.Analytics))
@@ -302,8 +303,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("POST /api/v1/admin/products/merge", adminAPI.mergeProducts)
 	mux.HandleFunc("POST /api/v1/admin/products/merge-published", adminAPI.mergePublishedProducts)
 	mux.HandleFunc("POST /api/v1/admin/products/merge-published/preview", adminAPI.previewPublishedMerge)
-	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", safeAdminProductUpdateHandler(adminAPI))
-	mux.HandleFunc("POST /api/v1/admin/products/sync", adminAPI.syncProducts)
+	mux.HandleFunc("PATCH /api/v1/admin/products/{id}", adminAPI.updateProduct)
 	registerAdminCatalogToolRoutes(mux, adminAPI, dependencies.ProductPhotos)
 	if dependencies.Reviews != nil {
 		mux.HandleFunc("GET /api/v1/admin/reviews", pendingReviewsHandler(adminAPI, dependencies.Reviews))

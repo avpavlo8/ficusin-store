@@ -1,7 +1,6 @@
 package order
 
 import (
-	"context"
 	"time"
 )
 
@@ -82,9 +81,4 @@ type ShipmentOffer struct {
 	ExpiresAt     *time.Time `json:"expiresAt,omitempty"`
 	Items         []Item     `json:"items"`
 	Boxes         int        `json:"boxes"`
-}
-
-type Repository interface {
-	ListForCustomer(context.Context, int64, int) ([]Summary, error)
-	DetailForCustomer(ctx context.Context, customerID int64, orderNumber string) (*Detail, error)
 }

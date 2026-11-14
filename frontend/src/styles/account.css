@@ -80,12 +80,6 @@
   border-radius: 50%;
   object-fit: cover;
 }
-.account-button-photo.placeholder {
-  background: var(--green);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-}
 
 /* --- Личный кабинет: общий каркас для всех разделов --- */
 .account-avatar {
@@ -108,10 +102,6 @@
 }
 .account-switch:hover {
   text-decoration: underline;
-}
-.account-back-link {
-  display: inline-block;
-  margin-bottom: 14px;
 }
 .profile-form {
   max-width: 520px;
@@ -277,58 +267,6 @@
 .order-row-arrow {
   color: var(--green);
   text-align: right;
-}
-.order-items {
-  margin-bottom: 18px;
-  display: grid;
-  gap: 2px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-}
-.order-item {
-  padding: 14px 20px;
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 18px;
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-}
-.order-item:last-child {
-  border-bottom: 0;
-}
-.order-item small {
-  color: #737c74;
-  font-size: 13px;
-}
-.order-totals {
-  max-width: 380px;
-  margin-bottom: 22px;
-  display: grid;
-  gap: 8px;
-}
-.order-totals > div {
-  display: flex;
-  justify-content: space-between;
-  color: #58645c;
-  font-size: 14px;
-}
-.order-totals .total {
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-  color: var(--green);
-  font-size: 17px;
-  font-weight: 700;
-}
-.order-facts {
-  display: grid;
-  gap: 14px;
-}
-.order-facts small {
-  display: block;
-  margin-bottom: 2px;
-  color: #737c74;
-  font-size: 12px;
 }
 
 .address-field {
@@ -737,12 +675,6 @@
 .admin-form-grid input.numeric-input {
   appearance: textfield;
 }
-.external-mapping-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr 2fr auto;
-  gap: 8px;
-  align-items: end;
-}
 .storefront-attribute-filters {
   display: grid;
   gap: 10px;
@@ -815,11 +747,6 @@
 .dialog-actions button.primary {
   border-color: var(--green);
   background: var(--green);
-  color: white;
-}
-.dialog-actions button.danger-primary {
-  border-color: #a13e36;
-  background: #a13e36;
   color: white;
 }
 .dialog-actions button:disabled {
@@ -947,14 +874,12 @@
   text-shadow: 0 2px 16px rgba(255, 252, 246, 0.7);
 }
 .orders-list,
-.profile-card,
-.order-items {
+.profile-card {
   position: relative;
   z-index: 1;
 }
 .order-row,
 .profile-card,
-.order-items,
 .orders-list article {
   border-color: #dfd2c2;
   background: rgba(255, 253, 248, 0.88);
@@ -1199,27 +1124,10 @@
   color: #405331;
   font-weight: 800;
 }
-.account-page:not(.admin-page) .order-items,
-.account-page:not(.admin-page) .order-facts,
-.account-page:not(.admin-page) .order-totals {
-  padding: 20px;
-  border: 1px solid #dfd2c2;
-  border-radius: 18px;
-  background: rgba(255, 253, 248, 0.9);
-}
-.account-page:not(.admin-page) .order-facts {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.account-page:not(.admin-page) .order-totals {
-  max-width: none;
-  margin-top: 16px;
-}
-.account-page:not(.admin-page) .profile-card dt,
-.account-page:not(.admin-page) .order-facts small {
+.account-page:not(.admin-page) .profile-card dt {
   font-size: 12px;
 }
-.account-page:not(.admin-page) .profile-card dd,
-.account-page:not(.admin-page) .order-facts span {
+.account-page:not(.admin-page) .profile-card dd {
   font-size: 15px;
 }
 @media (max-width: 1100px) {
@@ -1283,8 +1191,5 @@
   }
   .account-page:not(.admin-page) .order-row {
     grid-template-columns: 1fr !important;
-  }
-  .account-page:not(.admin-page) .order-facts {
-    grid-template-columns: 1fr;
   }
 }

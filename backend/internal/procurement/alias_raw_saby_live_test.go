@@ -97,8 +97,8 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 	targetCode := fmt.Sprintf("X%d", 100000000+unique%800000000)
 	var actorID, supplierID, aliasID, orderID, documentID, lineID int64
 
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Alias pricing owner',CURRENT_TIMESTAMP) RETURNING id`,
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Alias pricing owner',CURRENT_TIMESTAMP) RETURNING id`,
 		fmt.Sprintf("alias-pricing-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
@@ -129,10 +129,10 @@ func TestStage13CalculationUsesConfirmedAliasIdentityForSabyOnlyProductOnLiveDat
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_documents(
-		supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,content,
+		supplier_id,procurement_order_id,file_name,content_type,size_bytes,sha256,object_key,
 		parser_kind,parser_version,parse_status,arithmetic_status,document_number,currency,
 		line_count,unit_count,product_subtotal,document_total,calculated_total,extracted_text,created_by,revision_no
-	) VALUES($1,$2,'alias-price.pdf','application/pdf',4,$3,decode('25504446','hex'),
+	) VALUES($1,$2,'alias-price.pdf','application/pdf',4,$3,'fixtures/synthetic-invoice.pdf',
 		'domestic_payment_invoice',1,'parsed','ok',$4,'RUB',1,4,4800,4800,4800,
 		'Alias price synthetic invoice',$5,1) RETURNING id`,
 		supplierID, orderID, fmt.Sprintf("%064x", unique), fmt.Sprintf("INV-ALIAS-%d", unique), actorID).Scan(&documentID); err != nil {

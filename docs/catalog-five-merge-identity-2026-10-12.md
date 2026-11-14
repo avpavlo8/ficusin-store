@@ -1,5 +1,9 @@
 # Five plant groups: safe identity preparation
 
+> Исторический документ: описывает состояние и решения своего этапа, а не
+> текущий состав приложения. Действующая карта — [current-system.md](current-system.md).
+
+
 `20261012_zzzzz_confirmed_merge_latin.sql` narrows two existing Latin labels to the exact named cultivars listed by RHS. Each update requires the existing product code, published plant card, exact current name and Latin, **and the complete expected SKU ↔ СБИС X-code set**. Changed or incomplete live data leave the row untouched.
 
 | Source card | Latin correction | Primary source |

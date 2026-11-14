@@ -51,7 +51,7 @@ func (repository *PostgresRepository) SearchSabyLinkCandidates(ctx context.Conte
 // LinkVariantToSaby attaches only a previously unlinked site SKU to an
 // existing, current Saby entry. Stock becomes usable only after a real sync.
 func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, actor Actor, variantID int64, sabyID string) error {
-	if actor.Role != RoleOwner {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
 	sabyID = strings.TrimSpace(sabyID)
@@ -68,9 +68,6 @@ func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, act
 	var sku string
 	var archived bool
 	if err = tx.QueryRow(ctx, `SELECT product_id,sku,COALESCE(saby_id,''),archived_at IS NOT NULL FROM product_variants WHERE id=$1 FOR UPDATE`, variantID).Scan(&productID, &sku, &currentID, &archived); err != nil {
-		return err
-	}
-	if err := guardSabyExport(ctx, tx, variantID); err != nil {
 		return err
 	}
 	if archived || currentID != "" {
@@ -131,7 +128,7 @@ func (repository *PostgresRepository) LinkVariantToSaby(ctx context.Context, act
 // the site's product, SKU, content and historical external identifiers.
 // Stock stays unavailable until the next confirmed Saby snapshot.
 func (repository *PostgresRepository) RebindVariantToSaby(ctx context.Context, actor Actor, variantID int64, oldID, newID string) error {
-	if actor.Role != RoleOwner {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return ErrForbidden
 	}
 	oldID, newID = strings.TrimSpace(oldID), strings.TrimSpace(newID)
@@ -147,9 +144,6 @@ func (repository *PostgresRepository) RebindVariantToSaby(ctx context.Context, a
 	var sku, currentID string
 	var archived bool
 	if err = tx.QueryRow(ctx, `SELECT product_id,sku,COALESCE(saby_id,''),archived_at IS NOT NULL FROM product_variants WHERE id=$1 FOR UPDATE`, variantID).Scan(&productID, &sku, &currentID, &archived); err != nil {
-		return err
-	}
-	if err := guardSabyExport(ctx, tx, variantID); err != nil {
 		return err
 	}
 	if archived || currentID != oldID {
@@ -230,15 +224,4 @@ func (repository *PostgresRepository) RebindVariantToSaby(ctx context.Context, a
 		return err
 	}
 	return tx.Commit(ctx)
-}
-
-func guardSabyExport(ctx context.Context, tx pgx.Tx, id int64) error {
-	var pending bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND state IN ('queued','checking','verifying','unknown'))`, id).Scan(&pending); err != nil {
-		return err
-	}
-	if pending {
-		return fmt.Errorf("%w: сначала дождитесь проверки отправки в СБИС", ErrInvalidInput)
-	}
-	return nil
 }

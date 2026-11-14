@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { ProductDetail, ProductVariant } from "./types";
-import { attributeLabel, attributeValue, money } from "./types";
+import { attributeLabel, displayAttributeValue, money } from "./types";
 import { CareLevel } from "./CareLevel";
 
 import { CharacteristicIcon } from "./CharacteristicIcon";
@@ -54,9 +54,12 @@ export function ProductPurchasePanel({
   const allAttributes = [...product.attributes, ...(variant?.attributes || [])].filter(
     (item) => isPlant || !plantOnlyAttributeCodes.has(item.code),
   );
-  const careLevel = String(
-    product.attributes.find((item) => item.code === "care_level")?.value || product.careLevel || "",
-  );
+  const careAttribute = product.attributes.find((item) => item.code === "care_level");
+  const careLevel = String(careAttribute?.value || product.careLevel || "");
+  const hasCanonicalCareLabel =
+    careAttribute &&
+    (careAttribute.displayValue != null ||
+      careAttribute.optionLabels?.[String(careAttribute.value)]);
   const diameter =
     variant?.potDiameterCm && variant.potDiameterCm > 0
       ? `${variant.potDiameterCm} см`
@@ -85,7 +88,7 @@ export function ProductPurchasePanel({
     const item = allAttributes.find((entry) =>
       tokens.some((token) => `${entry.code} ${entry.name}`.toLocaleLowerCase("ru").includes(token)),
     );
-    return item ? attributeValue(item.value, item.unit) : fallback;
+    return item ? displayAttributeValue(item) : fallback;
   };
   const standardSummaryTokens = [
     "освещ",
@@ -285,8 +288,14 @@ export function ProductPurchasePanel({
                 <p>
                   <small>Сложность ухода</small>
                   <strong>
-                    <CareLevel value={careLevel} showScale={false} />
-                    {!["easy", "medium", "demanding"].includes(careLevel) && "Не указана"}
+                    {hasCanonicalCareLabel ? (
+                      displayAttributeValue(careAttribute)
+                    ) : (
+                      <>
+                        <CareLevel value={careLevel} showScale={false} />
+                        {!["easy", "medium", "demanding"].includes(careLevel) && "Не указана"}
+                      </>
+                    )}
                   </strong>
                 </p>
               </div>
@@ -331,7 +340,7 @@ export function ProductPurchasePanel({
                   </span>
                   <p>
                     <small>{item.name}</small>
-                    <strong>{attributeValue(item.value, item.unit)}</strong>
+                    <strong>{displayAttributeValue(item)}</strong>
                   </p>
                 </div>
               ))}
@@ -349,7 +358,7 @@ export function ProductPurchasePanel({
                   <div key={item.code}>
                     <p>
                       <small>{item.name}</small>
-                      <strong>{attributeValue(item.value, item.unit)}</strong>
+                      <strong>{displayAttributeValue(item)}</strong>
                     </p>
                   </div>
                 ))}

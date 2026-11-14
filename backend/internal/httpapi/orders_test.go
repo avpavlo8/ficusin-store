@@ -53,7 +53,7 @@ func TestCreateOrderUsesAuthenticatedProfileDefaults(t *testing.T) {
 		"/api/v1/orders",
 		strings.NewReader(`{
 			"customer":{"name":"","phone":"","email":"","address":"","comment":""},
-			"delivery":"courier",
+			"delivery":"pickup",
 			"items":[{"id":"ficus","quantity":1}],
 			"consent":true,"offerAccepted":true
 		}`),

@@ -1,38 +1,40 @@
 import {expect,test,type Page} from '@playwright/test';
 import {owner} from './helpers';
-const categories=[{id:1,parentId:null,name:'Растения',slug:'plants',sortOrder:1,productsCount:0,childrenCount:1},{id:2,parentId:1,name:'Аглаонемы',slug:'aglaonema',sortOrder:2,productsCount:2,childrenCount:0}];
+const categories=[{id:1,parentId:null,name:'Растения',slug:'plants',sortOrder:1,productsCount:0},{id:2,parentId:1,name:'Аглаонемы',slug:'aglaonema',sortOrder:2,productsCount:2}];
 const passport={origin:'',lighting:'Рассеянный свет',watering:'Умеренный',humidity:'',temperature:'',soil:'',fertilizer:'',repotting:'',careDifficulty:'',growthRate:'',matureSize:'',toxicity:'',problems:'',pests:'',faq:[]};
-const product=(id:number)=>({id,sabyId:'',sabyCode:'',slug:`plant-${id}`,name:id===1?'Аглаонема Мария':id===2?'Хлорофитум':`Растение ${id}`,latinName:'Aglaonema',shortDescription:'Старое краткое описание',description:id===2?'':'Описание растения',careInstructions:'Уход',status:'draft',featured:false,image:'/assets/hero-monstera.webp',price:1490,stock:0,sku:String(id),variantLabel:'D11',wholesaleMinQty:1,overrideFields:[],sabyFields:['stock'],passport,importantWarnings:[],externalIds:[],attributes:{light:'diffused'},categoryId:2,catalogSection:'plants',variantCount:2,updatedAt:'2026-10-15T12:00:00Z'});
+const product=(id:number)=>({id,sabyCode:'',slug:`plant-${id}`,name:id===1?'Аглаонема Мария':id===2?'Хлорофитум':`Растение ${id}`,latinName:'Aglaonema',shortDescription:'Старое краткое описание',description:id===2?'':'Описание растения',careInstructions:'Уход',status:'draft',featured:false,image:'/assets/hero-monstera.webp',price:1490,stock:0,sku:String(id),variantLabel:'D11',wholesaleMinQty:1,passport,importantWarnings:[],externalIds:[],attributes:{light:'diffused'},categoryId:2,catalogSection:'plants',variantCount:2,updatedAt:'2026-10-15T12:00:00Z'});
 const schema=[{id:1,code:'light',name:'Освещение',dataType:'enum',unit:'',options:['diffused'],optionLabels:{diffused:'Рассеянный свет'},audience:'customer',scope:'product',required:false,filterable:true,showOnPdp:true,keyCharacteristic:true,badge:false,sortOrder:1}];
 const effective=['length_cm','width_cm','height_cm','weight_grams'].map((code,i)=>({id:i+2,code:`package_${code}`,name:['Длина упаковки','Ширина упаковки','Высота упаковки','Вес упаковки'][i],unit:i===3?'г':'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:true}));
 effective.push(...['length_cm','width_cm','height_cm'].map((code,i)=>({id:20+i,code:`package_winter_${code}`,name:['Длина зимней упаковки','Ширина зимней упаковки','Высота зимней упаковки'][i],unit:'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:false})));
 const size=(id:number,pid:number,label:string)=>({id,productId:pid,sku:String(id),label,price:1490,stock:0,wholesaleMinQty:1,active:false,archived:false,sabyId:`fixture-saby-${id}`,attributes:{pot_diameter_cm:Number(label.slice(1)),height_cm:40,package_length_cm:20,package_width_cm:20,package_height_cm:50,package_weight_grams:1000},externalIds:[{provider:'saby',type:'id',externalId:`fixture-saby-${id}`}],images:[],stockSource:'saby'});
-async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=false,sharedGalleryPhoto=false,variantTasks=[] as string[]}={}){
+async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=false,sharedGalleryPhoto=false,variantGalleryPhoto=false,variantTasks=[] as string[],role='owner' as 'owner'|'administrator'|'manager'}={}){
+ const contentOnly=role==='administrator';
  let products=Array.from({length:total},(_,i)=>product(i+1));if(variantTasks.length)Object.assign(products[0],{variantTasks});const variants=new Map(products.map(p=>[p.id,[size(p.id*10,p.id,'D11'),size(p.id*10+1,p.id,'D17')]]));const updates:Array<Record<string,any>>=[],calls:string[]=[],plans=new Map<number,any>(),creations=new Map<string,any>(),mutations:Array<{path:string;method:string;body:any}>=[];let nextId=1000;
  let nextMediaId=100000;
  const media:Array<{id:number;productId:number;variantId?:number;url:string;primary:boolean;sortOrder:number}>=products.map(p=>({id:p.id*100,productId:p.id,url:p.image,primary:true,sortOrder:0}));
  if(sharedGalleryPhoto)media.push({id:++nextMediaId,productId:1,url:'/assets/hero-monstera.webp?photo=own',primary:false,sortOrder:1});
+ if(variantGalleryPhoto)media.push({id:++nextMediaId,productId:1,variantId:10,url:'/assets/hero-monstera.webp?photo=variant',primary:true,sortOrder:0});
  await page.route('**/api/v1/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname,method=req.method();calls.push(path);if(!['GET','HEAD'].includes(method)&&!path.endsWith('/pricing/preview'))mutations.push({path,method,body:req.postDataJSON()});const send=(body:unknown,status=200)=>route.fulfill({status,json:body});
- if(path==='/api/v1/auth/me')return send({user:{...owner.user,adminRole:'owner'}});
- if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role:'owner',permissions:['dashboard.read','products.read','products.edit','products.manage','products.sync','catalog.delete'],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
+ if(path==='/api/v1/auth/me')return send({user:{...owner.user,adminRole:role}});
+ if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role,permissions:contentOnly?['dashboard.read','products.read','products.edit']:role==='manager'?['dashboard.read','products.read','products.edit','products.manage']:['dashboard.read','products.read','products.edit','products.manage','integrations.edit','catalog.delete'],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
  if(path==='/api/v1/admin/products'&&method==='GET')return send({products});
  if(path==='/api/v1/admin/products'&&method==='POST'){const body=req.postDataJSON();if(body.creationId&&creations.has(body.creationId))return send({product:creations.get(body.creationId)});const p={...product(++nextId),...body,image:'',price:body.priceMinor/100,status:'draft'};products.push(p);variants.set(p.id,[{...size(++nextId,p.id,'Основной'),externalIds:[],price:p.price,attributes:body.variantAttributes}]);if(body.creationId)creations.set(body.creationId,p);if(loseCreateResponse){loseCreateResponse=false;return send({error:'Ответ создания потерян'},503)}return send({product:p});}
  if(path==='/api/v1/admin/catalog-editor/references')return send({categories:[{id:'fixture-category',name:'Тестовая категория СБИС'}],folders:[{id:'fixture-folder',name:'Тестовый раздел СБИС'}]});
- const planMatch=path.match(/\/products\/(\d+)\/editor-plan$/);if(planMatch){const id=Number(planMatch[1]);if(method==='PUT')plans.set(id,req.postDataJSON().config);return send({config:plans.get(id)||{variants:[]},publications:[],links:{},barcodes:{},publicationMode:'disabled'});}
- if(path==='/api/v1/admin/settings')return send({values:{'cdek.packaging_season':'summer'}});
+ if(path.endsWith('/editor-plan/sync-existing')&&method==='POST')return send({queued:0});
+ const planMatch=path.match(/\/products\/(\d+)\/editor-plan$/);if(planMatch){const id=Number(planMatch[1]);if(method==='PUT'){if(contentOnly)return send({error:'Недостаточно прав'},403);plans.set(id,req.postDataJSON().config)};return send({config:plans.get(id)||{variants:[]},publications:[],links:{},barcodes:{},publicationMode:'disabled'});}
+ if(path==='/api/v1/admin/catalog-editor/settings')return send({values:{'cdek.packaging_season':'summer'}});
+ if(path==='/api/v1/admin/settings')return role==='owner'?send({values:{'cdek.packaging_season':'summer'}}):send({error:'Недостаточно прав'},403);
  if(path==='/api/v1/admin/procurement/pricing/preview')return send({quotes:{wb:{priceRub:2490,missing:[]},ozon:{priceRub:2990,missing:[]}}});
  if(path==='/api/v1/admin/categories')return send({categories});
  if(/\/categories\/\d+\/attributes$/.test(path))return send({attributes:[...schema,...effective,...[{code:'pot_diameter_cm',name:'Диаметр горшка'},{code:'height_cm',name:'Высота'}].map((f,i)=>({...schema[0],...f,id:40+i,dataType:'number',unit:'см',scope:'variant',options:[]}))]});
  if(/\/categories\/\d+\/effective-attributes$/.test(path))return send({attributes:effective});
  const rows=path.match(/\/products\/(\d+)\/variants$/);if(rows)return send({variants:variants.get(Number(rows[1]))||[]});
- if(path.endsWith('/relationships'))return send({relationships:{mappings:[],suppliers:[],sales:[]}});
- if(path.endsWith('/price-proposals'))return send({proposals:[]});
  const mediaRoute=path.match(/\/(products|variants)\/(\d+)\/media(?:\/(copy|\d+)(?:\/(primary))?)?$/);
  if(mediaRoute){const [,kind,rawId,action,primary]=mediaRoute;const id=Number(rawId);const belongs=(row:typeof media[number])=>kind==='products'?row.productId===id:row.variantId===id;
   if(method==='GET')return send({media:media.filter(belongs)});
   if(action==='copy'&&method==='POST'){const source=media.find(row=>row.id===req.postDataJSON().mediaId);const variant=[...variants.values()].flat().find(row=>row.id===id);if(!source||!variant||source.productId!==variant.productId)return send({error:'Фото не найдено'},404);const owned=media.filter(belongs);const copy={...source,id:++nextMediaId,variantId:id,primary:owned.length===0,sortOrder:owned.length};media.push(copy);return send({media:copy},201);}
   if(primary){for(const row of media.filter(belongs))row.primary=row.id===Number(action);return send({ok:true});}
-  if(method==='DELETE'){const index=media.findIndex(row=>belongs(row)&&row.id===Number(action));if(index>=0)media.splice(index,1);return send({ok:true});}
+  if(method==='DELETE'){if(contentOnly)return send({error:'Недостаточно прав'},403);const index=media.findIndex(row=>belongs(row)&&row.id===Number(action));if(index>=0)media.splice(index,1);return send({ok:true});}
   return send({error:'Unmocked media mutation'},400);
  }
  if(path==='/api/v1/admin/collection-definitions')return send({collections:[{id:1,title:'Для тёмной комнаты',slug:'shade',active:true,mode:'dynamic',rules:[{attribute:'light',operator:'eq',value:'diffused'}],products:[1],coverImage:'/assets/hero-monstera.webp',sortOrder:1}]});
@@ -40,7 +42,7 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
  if(path==='/api/v1/admin/attributes')return send({attributes:schema.map(a=>({...a,active:true,options:[{code:'diffused',label:'Рассеянный свет',active:true}]}))});
  if(path==='/api/v1/admin/catalog-filters')return send({filters:[]});if(path.endsWith('/reviews'))return send({reviews:[]});
  if(path.endsWith('/products/publish'))return send({published:[1],blocked:[{productId:2,name:'Хлорофитум',reason:'Нет активного размера'}]});
- const update=path.match(/\/products\/(\d+)$/);if(update&&method==='PATCH'){const id=Number(update[1]),body=req.postDataJSON();updates.push({id,body});if(failSave)return send({error:'Ошибка сохранения'},500);for(const v of body.variants||[]){const current=variants.get(id)||[];const old=current.find(x=>x.id===v.id);if(old)Object.assign(old,v,{price:v.priceMinor/100,attributes:{...old.attributes,...v.attributes}});else current.push({...size(++nextId,id,v.label),...v,id:nextId,price:v.priceMinor/100});variants.set(id,current)}const i=products.findIndex(p=>p.id===id);const {variants:_,...patch}=body;products[i]={...products[i],...patch};return send({product:products[i]})}
+ const update=path.match(/\/products\/(\d+)$/);if(update&&method==='PATCH'){const id=Number(update[1]),body=req.postDataJSON();updates.push({id,body});if(failSave)return send({error:'Ошибка сохранения'},500);for(const v of body.variants||[]){const current=variants.get(id)||[];const old=current.find(x=>x.id===v.id);if(v.remove){if(contentOnly)return send({error:'Недостаточно прав'},403);if(old?.sabyId||old?.externalIds?.length){Object.assign(old,{active:false,archived:true})}else if(old)current.splice(current.indexOf(old),1);continue;}if(old)Object.assign(old,v,{price:typeof v.priceMinor==='number'?v.priceMinor/100:old.price,attributes:{...old.attributes,...v.attributes}});else current.push({...size(++nextId,id,v.label),...v,id:nextId,price:v.priceMinor/100});variants.set(id,current)}const i=products.findIndex(p=>p.id===id);const {variants:_,...patch}=body;products[i]={...products[i],...patch};return send({product:products[i]})}
  return send({});});return{updates,calls,variants,plans,mutations,creations,media};
 }
 async function open(page:Page){await page.goto('/admin?section=products');await expect(page.locator('table.products tbody tr').first()).toBeVisible()}
@@ -151,17 +153,17 @@ test('@desktop @phone creation destinations have native accessible checkboxes an
  const box=await wb.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(16);expect(box!.height).toBeGreaterThanOrEqual(16);await expect(e.locator('.editor-save-actions').getByRole('button',{name:'Создать товар',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
-test('@desktop route editor has product, marketplace and FAQ tabs without obsolete generated content',async({page})=>{
- const f=await fixture(page);await open(page);const e=await edit(page);await expect(page).toHaveURL(/product=1/);await expect(page.getByRole('dialog')).toHaveCount(0);
- await expect(e.getByRole('tab')).toHaveCount(3);await expect(e.getByText(/AI|ИИ|Сгенерировать|SEO/)).toHaveCount(0);await expect(e.getByLabel('Короткое описание')).toHaveCount(0);
- await e.locator('.editor-care-topic > summary').filter({hasText:'На заметку'}).click();await expect(e.getByLabel('На заметку',{exact:true})).toBeVisible();expect(f.calls.filter(p=>p.includes('ai-'))).toEqual([]);
+test('@desktop route editor has product, marketplace and FAQ tabs with editable care notes',async({page})=>{
+ await fixture(page);await open(page);const e=await edit(page);await expect(page).toHaveURL(/product=1/);await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(e.getByRole('tab')).toHaveCount(3);
+ await e.locator('.editor-care-topic > summary').filter({hasText:'На заметку'}).click();await expect(e.getByLabel('На заметку',{exact:true})).toBeVisible();
 });
 
 test('@desktop unified product and two variant edits survive reload',async({page})=>{
- const f=await fixture(page);await open(page);let e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Новое описание');await e.getByLabel('Диаметр горшка',{exact:true}).fill('13');await e.getByLabel('Вес, г',{exact:true}).fill('1250');
- await e.locator('.editor-variant-card').getByRole('button',{name:/^D17/}).click();await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1990');await e.locator('.editor-variant-card').getByRole('button',{name:/^D13/}).click();await expect(e.getByLabel('Вес, г',{exact:true})).toHaveValue('1250');await saveEditor(e);
+ const f=await fixture(page);await open(page);let e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Новое описание');await e.getByLabel('Диаметр горшка',{exact:true}).fill('13');await e.getByLabel('Вес, кг',{exact:true}).fill('1.25');
+ await e.locator('.editor-variant-card').getByRole('button',{name:/^D17/}).click();await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1990');await e.locator('.editor-variant-card').getByRole('button',{name:/^D13/}).click();await expect(e.getByLabel('Вес, кг',{exact:true})).toHaveValue('1.25');await saveEditor(e);
  expect(f.updates).toHaveLength(1);expect(f.updates[0].body.description).toBe('Новое описание');expect(f.updates[0].body.variants).toHaveLength(2);expect(f.variants.get(1)?.[0].attributes.package_weight_grams).toBe(1250);expect(f.variants.get(1)?.[1].price).toBe(1990);
- await page.reload();e=page.locator('.editor-page');await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Новое описание');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('13');await expect(e.getByLabel('Вес, г',{exact:true})).toHaveValue('1250');
+ await page.reload();e=page.locator('.editor-page');await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Новое описание');await expect(e.getByLabel('Диаметр горшка',{exact:true})).toHaveValue('13');await expect(e.getByLabel('Вес, кг',{exact:true})).toHaveValue('1.25');
 });
 
 test('@desktop failed save preserves the draft across reload',async({page})=>{
@@ -339,7 +341,7 @@ test('@desktop @phone Saby create/link controls preserve an existing code withou
 });
 
 test('@desktop Saby edits stay local until unified Save',async({page})=>{
- const f=await fixture(page);await open(page);const e=await edit(page);await sabyFields(e);expect(f.plans.size).toBe(0);expect(f.calls.some(p=>p.endsWith('/saby-export'))).toBe(false);await page.reload();await expect(e.getByRole('combobox',{name:'Категория в СБИС',exact:true})).toHaveValue('Тестовая категория СБИС');await saveEditor(e);expect(f.plans.get(1).variants[0].saby.category.id).toBe('fixture-category');expect(f.calls.some(p=>p.endsWith('/saby-export'))).toBe(false);
+ const f=await fixture(page);await open(page);const e=await edit(page);await sabyFields(e);expect(f.plans.size).toBe(0);expect(f.mutations).toHaveLength(0);await page.reload();await expect(e.getByRole('combobox',{name:'Категория в СБИС',exact:true})).toHaveValue('Тестовая категория СБИС');await saveEditor(e);expect(f.plans.get(1).variants[0].saby.category.id).toBe('fixture-category');expect(f.mutations.map(({path,method})=>({path,method}))).toEqual([{path:'/api/v1/admin/products/1/editor-plan',method:'PUT'}]);
 });
 
 test('@desktop @phone late catalog snapshot cannot discard a route editor draft',async({page})=>{
@@ -372,3 +374,284 @@ for (const width of [768, 1024, 1280]) {
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   });
 }
+
+test('@desktop @phone administrator saves product content and queues only stored marketplace connections',async({page})=>{
+ const f=await fixture(page,{role:'administrator'});await open(page);const e=await edit(page);
+ await expect(e.getByLabel('Цена на сайте, ₽ *',{exact:true})).toBeDisabled();
+ await expect(e.getByLabel('Оптовый минимум, шт.',{exact:true})).toBeDisabled();
+ await expect(e.getByRole('button',{name:'+ Добавить вариант',exact:true})).toBeDisabled();
+ await expect(e.getByRole('button',{name:'Удалить обложку',exact:true})).toBeDisabled();
+ await expect(e.getByRole('button',{name:'Уже создан в СБИС',exact:true})).toBeDisabled();
+ await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Описание, изменённое менеджером');
+ await e.getByLabel('Высота',{exact:true}).fill('47');
+ await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
+ const marketplace=e.getByRole('group',{name:'Настройки маркетплейсов',exact:true});
+ await expect(marketplace.locator('button').first()).toBeDisabled();
+ await expect(e.getByRole('group',{name:'Где создать товар'})).toHaveCount(0);
+ await e.getByRole('tab',{name:'Вопросы и ответы',exact:true}).click();
+ await e.getByRole('button',{name:'Добавить вопрос',exact:true}).click();
+ await e.getByLabel('Вопрос',{exact:true}).fill('Можно ли держать в спальне?');
+ await e.getByLabel('Ответ',{exact:true}).fill('Да, при подходящем освещении.');
+ await saveEditor(e);
+ expect(f.updates[0].body.description).toBe('Описание, изменённое менеджером');
+ expect(f.updates[0].body.variants[0].attributes.height_cm).toBe(47);
+ expect(f.updates[0].body.variants[0]).not.toHaveProperty('priceMinor');
+ expect(f.updates[0].body.variants[0]).not.toHaveProperty('externalIds');
+ expect(f.updates[0].body.passport.faq).toEqual([{question:'Можно ли держать в спальне?',answer:'Да, при подходящем освещении.'}]);
+ expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT')).toHaveLength(0);
+ expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan/sync-existing'))).toEqual([{path:'/api/v1/admin/products/1/editor-plan/sync-existing',method:'POST',body:{}}]);
+ await expect(e.locator('.editor-notice')).toHaveText('Изменения товара сохранены.');
+ await e.getByRole('button',{name:'Закрыть редактор',exact:true}).click();
+ await page.getByRole('link',{name:'Аглаонема Мария',exact:true}).click();
+ await e.getByRole('tab',{name:'Товар',exact:true}).click();
+ await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Описание, изменённое менеджером');
+});
+
+test('@desktop administrator can retry a failed stored-plan sync without changing prices or marketplace links',async({page})=>{
+ const f=await fixture(page,{role:'administrator'});let calls=0;
+ await page.route('**/api/v1/admin/products/1/editor-plan/sync-existing',route=>{calls++;return route.fulfill({status:calls===1?503:200,json:calls===1?{error:'Обновление площадок временно недоступно'}:{queued:1}})});
+ await open(page);const e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Сохранённый контент при повторе обмена');
+ await e.getByRole('button',{name:'Сохранить',exact:true}).click();
+ await expect(e.getByRole('alert')).toContainText('Обновление площадок временно недоступно');
+ await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Сохранённый контент при повторе обмена');
+ expect(f.updates).toHaveLength(1);await saveEditor(e);expect(calls).toBe(2);
+ expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT')).toHaveLength(0);
+ expect(f.updates).toHaveLength(1);
+});
+
+test('@desktop administrator sees when saved content needs owner setup before marketplace sync',async({page})=>{
+ await fixture(page,{role:'administrator'});await page.route('**/api/v1/admin/products/1/editor-plan/sync-existing',route=>route.fulfill({json:{queued:0,skipped:1,warnings:['Для обновления Ozon владелец должен завершить настройку карточки.']}}));
+ await open(page);const e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Контент сохранён, настройка площадки не потеряна');await saveEditor(e);
+ await expect(e.getByRole('alert')).toContainText('Для обновления Ozon владелец должен завершить настройку карточки.');
+ await expect(e.locator('.editor-notice')).toHaveText('Изменения товара сохранены.');
+});
+
+test('@desktop @phone manager has the full product editor without global delete permission',async({page})=>{
+ const f=await fixture(page,{role:'manager'});await open(page);const e=await edit(page);
+ await expect(e.getByLabel('Цена на сайте, ₽ *',{exact:true})).toBeEnabled();
+ await expect(e.getByLabel('Оптовый минимум, шт.',{exact:true})).toBeEnabled();
+ await expect(e.getByRole('button',{name:'Уже создан в СБИС',exact:true})).toBeEnabled();
+ await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1990.50');
+ await e.getByLabel('Оптовый минимум, шт.',{exact:true}).fill('3');
+ await e.getByLabel('Высота',{exact:true}).fill('46');
+ await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('2490');
+ await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('2990');
+ expect(f.calls).toContain('/api/v1/admin/catalog-editor/settings');expect(f.calls).toContain('/api/v1/admin/procurement/pricing/preview');expect(f.calls).not.toContain('/api/v1/admin/settings');
+ await e.getByRole('button',{name:'Вручную',exact:true}).click();
+ await e.getByLabel('Цена Wildberries, ₽',{exact:true}).fill('2700');await e.getByLabel('Цена Ozon, ₽',{exact:true}).fill('3150');
+ await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
+ await expect(e.getByRole('group',{name:'Настройки маркетплейсов',exact:true}).locator('button').first()).toBeEnabled();
+ await e.getByRole('tab',{name:'Товар',exact:true}).click();
+ await e.getByRole('button',{name:'+ Добавить вариант',exact:true}).click();
+ await e.getByLabel('Диаметр горшка',{exact:true}).fill('24');await sabyFields(e);
+ await saveEditor(e);
+ const changed=f.updates[0].body.variants.find((v:any)=>v.id===10);
+ expect(changed.priceMinor).toBe(199050);expect(changed.wholesaleMinQty).toBe(3);expect(changed.attributes.height_cm).toBe(46);
+ expect(f.updates[0].body.variants.find((v:any)=>v.id<0).label).toBe('D24');
+ expect(f.variants.get(1)!.filter(v=>!v.archived)).toHaveLength(3);
+ expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT')).toHaveLength(1);
+ expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan/sync-existing'))).toHaveLength(0);
+ expect(f.plans.get(1).variants).toHaveLength(3);
+ const plan=f.plans.get(1).variants.find((v:any)=>v.variantId===10);expect(plan.wbPrice).toBe('2700');expect(plan.ozonPrice).toBe('3150');
+});
+
+test('@desktop @phone manager removes saved photos and archives a linked variant inside the editor',async({page})=>{
+ const f=await fixture(page,{role:'manager',variantGalleryPhoto:true});await open(page);const e=await edit(page);
+ const removePhoto=e.getByRole('button',{name:/^Удалить фото /}).first();await expect(removePhoto).toBeEnabled();await removePhoto.click();
+ await e.getByRole('button',{name:'Удалить вариант D17',exact:true}).click();
+ await saveEditor(e);
+ expect(f.mutations.filter(x=>x.method==='DELETE'&&x.path==='/api/v1/admin/variants/10/media/100001')).toHaveLength(1);
+ expect(f.updates[0].body.variants).toContainEqual({id:11,remove:true});
+ expect(f.variants.get(1)!.find(v=>v.id===11)!.archived).toBe(true);
+ await expect(e.locator('.editor-notice')).toContainText('В архиве из-за связей: D17');
+ expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT')).toHaveLength(1);
+});
+
+test('@desktop administrator cannot open product creation through a direct URL',async({page})=>{
+ await fixture(page,{role:'administrator'});await page.goto('/admin?section=products&create=1');
+ await expect(page.getByRole('alert')).toHaveText('Нет доступа к редактору товара.');
+ await expect(page.locator('.editor-page')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Добавить товар',exact:true})).toHaveCount(0);
+});
+
+test('@desktop manager editor capability does not grant catalogue import or bulk merge',async({page})=>{
+ const f=await fixture(page,{role:'manager'});await open(page);
+ await expect(page.getByRole('button',{name:'Добавить товар',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Импорт из СБИС',exact:true})).toHaveCount(0);
+ await page.getByRole('checkbox',{name:'Выбрать Аглаонема Мария',exact:true}).check();
+ await page.getByRole('checkbox',{name:'Выбрать Хлорофитум',exact:true}).check();
+ const selection=page.getByRole('region',{name:'Выбранные товары',exact:true});
+ await expect(selection.locator('summary')).toContainText('Выбрано: 2');
+ await expect(selection.getByRole('button',{name:'Опубликовать',exact:true})).toBeEnabled();
+ await expect(selection.getByRole('button',{name:'Объединить размеры',exact:true})).toHaveCount(0);
+ await expect(selection.getByRole('button',{name:'Проверить объединение',exact:true})).toHaveCount(0);
+ await expect(selection.getByRole('button',{name:'Удалить черновики',exact:true})).toHaveCount(0);
+ expect(f.mutations).toHaveLength(0);
+
+});
+
+test('@desktop @phone saved price proposals require an explicit channel confirmation with the saved fingerprint',async({page})=>{
+ await fixture(page);
+ let approvals=0;
+ let price={id:91,variantId:10,channel:'wb',targetId:'WB-price-fixture',priceMinor:250000,compareAtMinor:300000,expectedSitePriceMinor:149000,status:'draft',message:'Готово к проверке',fingerprint:'exact-price-snapshot',executionMode:'live',canApprove:true,canRetry:false,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{prices:[price],publicationMode:'live'}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/91/approve',route=>{approvals++;expect(route.request().postDataJSON()).toEqual({fingerprint:'exact-price-snapshot'});price={...price,status:'queued',canApprove:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeEnabled();await expect(panel).toContainText('Базовая цена WB');expect(approvals).toBe(0);
+ await saveEditor(e);await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeEnabled();expect(approvals).toBe(0);
+ await panel.getByRole('button',{name:'Подтвердить цену',exact:true}).click();await expect(panel).toContainText('В очереди');expect(approvals).toBe(1);
+ await e.getByRole('tab',{name:'Товар',exact:true}).click();await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();expect(approvals).toBe(1);
+});
+
+test('@desktop price confirmation conflict remains visible and never discards the unsaved editor draft',async({page})=>{
+ await fixture(page);
+ let approvals=0;
+ const price={id:92,variantId:10,channel:'avito',targetId:'AVITO-price-fixture',priceMinor:250000,compareAtMinor:null,expectedSitePriceMinor:149000,status:'draft',message:'Готово',fingerprint:'stale-snapshot',executionMode:'live',canApprove:true,canRetry:false,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{prices:[price],publicationMode:'live'}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/92/approve',route=>{approvals++;return route.fulfill({status:409,json:{error:'Предложение цены изменилось'}})});
+ await open(page);const e=await edit(page);await e.getByLabel('Название товара *',{exact:true}).fill('Несохранённое имя');await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await panel.getByRole('button',{name:'Подтвердить цену',exact:true}).click();await expect(panel.getByRole('alert')).toContainText('Предложение цены изменилось');expect(approvals).toBe(1);
+ await e.getByRole('tab',{name:'Товар',exact:true}).click();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Несохранённое имя');
+ await e.getByLabel('Цена на сайте, ₽ *',{exact:true}).fill('1600');await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toBeDisabled();expect(approvals).toBe(1);
+});
+
+test('@desktop disabled publication keeps migrated price drafts unapproved',async({page})=>{
+ await fixture(page);let approvals=0;
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'disabled',prices:[{id:93,variantId:10,channel:'ozon',targetId:'OZON-migrated',priceMinor:250000,compareAtMinor:320000,expectedSitePriceMinor:149000,status:'draft',message:'Перенесённый черновик',fingerprint:'migrated',executionMode:'disabled',canApprove:false,canRetry:false,blockReason:'Отправка отключена'}]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/*/approve',route=>{approvals++;return route.fulfill({json:{}})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});await expect(panel).toContainText('Перенесённый черновик');await expect(panel).toContainText('Отправка цен отключена');await expect(panel.getByRole('button',{name:'Подтвердить цену',exact:true})).toHaveCount(0);expect(approvals).toBe(0);
+});
+
+test('@desktop mock price retry stays explicit and uses the operation fingerprint',async({page})=>{
+ await fixture(page);let retries=0;
+ let price={id:94,variantId:10,channel:'ozon',targetId:'OZON-local',priceMinor:250000,compareAtMinor:320000,expectedSitePriceMinor:149000,status:'failed',message:'Локальная ошибка',fingerprint:'exact-retry',executionMode:'mock',canApprove:false,canRetry:true,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'mock',prices:[price]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/94/retry',route=>{retries++;expect(route.request().postDataJSON()).toEqual({fingerprint:'exact-retry'});price={...price,status:'queued',canRetry:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});await expect(panel).toContainText('Реальные цены площадок не меняются');expect(retries).toBe(0);await panel.getByRole('button',{name:'Повторить отправку',exact:true}).click();await expect(panel).toContainText('В очереди');expect(retries).toBe(1);
+});
+
+
+test('@desktop WB price confirmation shows the effective integer-discount price before approval',async({page})=>{
+ await fixture(page);let approvals=0;
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'live',prices:[{id:95,variantId:10,channel:'wb',targetId:'WB-rounded',priceMinor:150025,compareAtMinor:200000,expectedSitePriceMinor:149000,status:'draft',message:'Проверьте округление',fingerprint:'rounded-price',executionMode:'live',canApprove:true,canRetry:false,blockReason:''}]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/95/approve',route=>{approvals++;return route.fulfill({json:{}})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Расчётная цена'})}).last().locator('dd')).toContainText(/1\s?500,25/);
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Скидка WB'})}).last().locator('dd')).toHaveText('24%');
+ await expect(panel.locator('div').filter({has:page.locator('dt').filter({hasText:'Цена WB после округления скидки'})}).last().locator('dd')).toContainText(/1\s?520/);
+ expect(approvals).toBe(0);
+});
+
+
+test('@desktop read-only price reconciliation keeps the frozen fingerprint after the site price changes',async({page})=>{
+ const f=await fixture(page);f.variants.get(1)![0].price=1600;let checks=0;
+ let price={id:96,variantId:10,channel:'wb',targetId:'WB-inflight',priceMinor:250000,compareAtMinor:300000,expectedSitePriceMinor:149000,status:'needs_attention',message:'Ответ не получен',fingerprint:'frozen-old-request',executionMode:'live',canApprove:false,canRetry:true,blockReason:''};
+ await page.route('**/api/v1/admin/products/1/editor-prices',route=>route.fulfill({json:{publicationMode:'live',prices:[price]}}));
+ await page.route('**/api/v1/admin/products/1/editor-prices/96/retry',route=>{checks++;expect(route.request().postDataJSON()).toEqual({fingerprint:'frozen-old-request'});price={...price,status:'queued',canRetry:false};return route.fulfill({json:price})});
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();const panel=e.getByRole('region',{name:'Подтверждение цен площадок'});const check=panel.getByRole('button',{name:'Проверить результат',exact:true});await expect(check).toBeEnabled();await check.click();await expect(panel).toContainText('В очереди');expect(checks).toBe(1);
+});
+
+test('@desktop editor price mode is explicit in saved plans and restored without losing local intent',async({page})=>{
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,priceMode:'manual'}]});await open(page);const e=await edit(page);const modes=e.getByRole('group',{name:'Режим цен маркетплейсов'});
+ await expect(modes.getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('manual');
+ await modes.getByRole('button',{name:'Авто',exact:true}).click();await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('auto');
+ await page.reload();await expect(page.locator('.editor-page').getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Авто',exact:true})).toHaveAttribute('aria-pressed','true');
+});
+
+for(const savedMode of ['manual',undefined] as const)test(`@desktop late saved ${savedMode || 'legacy'} price mode cannot overwrite an explicit auto draft choice`,async({page})=>{
+ const f=await fixture(page);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/v1/admin/products/1/editor-plan',async route=>{if(route.request().method()!=='GET')return route.fallback();await held;return route.fulfill({json:{config:{variants:[{variantId:10,priceMode:savedMode,ozonPrice:'4321.45',wbPrice:'3210.25'}]},publications:[],links:{},barcodes:{},publicationMode:'disabled'}})});
+ await open(page);const e=await edit(page);const auto=e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Авто',exact:true});await auto.click();release();await expect(auto).toHaveAttribute('aria-pressed','true');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10).priceMode).toBe('auto');
+});
+
+
+test('@desktop saved manual marketplace amounts survive a fresh browser draft and Save unchanged',async({page})=>{
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'}]});
+ await open(page);let e=await edit(page);
+ for(const [label,value] of [['Цена Wildberries, ₽','3210.25'],['Цена Ozon, ₽','4321.45']])await expect(e.getByLabel(label,{exact:true})).toHaveValue(value);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+ await page.evaluate(()=>localStorage.removeItem('ficusin:product-edit-draft:v1:1'));await page.reload();e=page.locator('.editor-page');
+ await expect(e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');
+ for(const [label,value] of [['Цена Wildberries, ₽','3210.25'],['Цена Ozon, ₽','4321.45']])await expect(e.getByLabel(label,{exact:true})).toHaveValue(value);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+});
+
+test('@desktop a late saved plan preserves newer manual price edits including zero',async({page})=>{
+ await fixture(page);let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve});
+ await page.route('**/api/v1/admin/products/1/editor-plan',async route=>{if(route.request().method()!=='GET')return route.fallback();await held;return route.fulfill({json:{config:{variants:[{variantId:10,priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'}]},publications:[],links:{},barcodes:{},publicationMode:'disabled'}})});
+ await open(page);const e=await edit(page);const manual=e.getByRole('group',{name:'Режим цен маркетплейсов'}).getByRole('button',{name:'Вручную',exact:true});await manual.click();await e.getByLabel('Цена Wildberries, ₽',{exact:true}).fill('0');await e.getByLabel('Цена Ozon, ₽',{exact:true}).fill('5220.21');
+ const response=page.waitForResponse(r=>r.url().endsWith('/editor-plan')&&r.request().method()==='GET');release();await response;
+ await expect(manual).toHaveAttribute('aria-pressed','true');await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('0');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('5220.21');
+});
+
+
+test('@desktop migrated saved prices retain manual intent until explicit Auto',async({page})=>{
+ // The backend migration materializes missing modes before exposing saved plans.
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'}]});await open(page);const e=await edit(page);const modes=e.getByRole('group',{name:'Режим цен маркетплейсов'});
+ await expect(modes.getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('3210.25');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('4321.45');expect(f.mutations).toHaveLength(0);
+ await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
+ await modes.getByRole('button',{name:'Авто',exact:true}).click();await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('2490');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('2990');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'auto',ozonPrice:'2990',wbPrice:'2490'});
+});
+
+test('@desktop @phone marketplace dictionary pagination retains canonical IDs in the local draft',async({page})=>{
+ const f=await fixture(page);
+ f.plans.set(1,{variants:[{variantId:10,saby:{mode:'link',existingCode:'fixture-code',category:{id:'fixture-category',name:'Категория'},folder:{id:'fixture-folder',name:'Раздел'}},marketplace:{name:'',article:'10',description:'',brand:'',model:'',tnved:'',units:1,ozon:{enabled:false,mode:'create',existingId:'',category:{id:'123',typeId:456,name:'Растения Ozon'}},wb:{enabled:false,mode:'create',existingId:'',category:{id:'',name:''}}}}]});
+ const reads:URLSearchParams[]=[];
+ await page.route('**/api/v1/admin/catalog-editor/references?*',route=>{
+  const params=new URL(route.request().url()).searchParams;
+  if(params.get('channel')!=='ozon')return route.fallback();
+  if(params.get('kind')==='attributes')return route.fulfill({json:{data:{result:[{id:85,name:'Бренд',dictionary_id:2}]}}});
+  reads.push(params);
+  return route.fulfill({json:{data:params.get('cursor')?{result:[{id:901,value:'Первая марка'},{id:902,value:'Вторая марка'}]}:{result:[{id:901,value:'Первая марка'}],next:901}}});
+ });
+ await open(page);const e=await edit(page);await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
+ const brand=e.getByRole('combobox',{name:'Бренд *',exact:true});await brand.click();
+ const list=e.getByRole('listbox',{name:'Бренд *',exact:true});await expect(list.getByRole('option')).toHaveCount(1);
+ await list.getByRole('button',{name:'Показать ещё',exact:true}).click();await expect(list.getByRole('option')).toHaveCount(2);
+ await list.getByRole('option',{name:'Вторая марка',exact:true}).click();await expect(brand).toHaveValue('Вторая марка');
+ expect(reads.map(p=>({channel:p.get('channel'),kind:p.get('kind'),category:p.get('category'),typeId:p.get('typeId'),attribute:p.get('attribute'),cursor:p.get('cursor')}))).toEqual([{channel:'ozon',kind:'values',category:'123',typeId:'456',attribute:'85',cursor:''},{channel:'ozon',kind:'values',category:'123',typeId:'456',attribute:'85',cursor:'901'}]);
+ await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('ficusin:product-edit-draft:v1:1')||'{}').variants?.find((v:{serverId:number})=>v.serverId===10)?.marketplace?.brandId)).toBe(902);
+ await page.reload();await expect(page.locator('.editor-page').getByRole('combobox',{name:'Бренд *',exact:true})).toHaveValue('Вторая марка');
+});
+
+test('@desktop owner integration permission keeps catalogue import available',async({page})=>{
+ await fixture(page,{role:'owner'});await open(page);
+ await expect(page.getByRole('button',{name:'Импорт из СБИС',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Добавить товар',exact:true})).toBeEnabled();
+});
+
+function oldBrowserDraft() {
+ return {version:1,name:'Сохранённая работа V1',categoryId:2,latinName:'Aglaonema',description:'Локальное описание',shortDescription:'',care:'',warnings:'',price:'1490',wholesaleMinQty:'1',active:true,attributes:{light:'diffused'},faq:[{id:'old-question',question:'Старый вопрос',answer:'Сохранённый ответ'}],media:[],remoteInitialized:true,creationId:'unchanged-creation-id',remoteCreatedProductId:1,selectedVariantId:'legacy-10',editorTab:'product',variants:[{id:'legacy-10',serverId:10,sku:'10',label:'D11',price:'1490',wholesaleMinQty:'1',active:false,archived:false,attributes:{pot_diameter_cm:11,height_cm:40},externalIds:[],media:[{id:'legacy-file',name:'Сохранённое фото.png',type:'image/png'}],mediaInitialized:true,mediaCustomized:true,ozon:{article:'',price:'0'},wb:{article:'WB-OLD',price:'3456.70'},sabyEditor:{mode:'create',existingCode:'',category:{id:'',name:''},folder:{id:'',name:''}},sabyEditorTouched:{mode:true,existingCode:true,category:true,folder:true}}]};
+}
+
+test('@desktop @phone V1 browser work and binary photographs migrate once and survive reload',async({page})=>{
+ const f=await fixture(page);const raw=JSON.stringify(oldBrowserDraft());
+ await page.addInitScript(({raw})=>{
+  const key='ficusin:product-edit-draft:v1:1';if(localStorage.getItem(key)!==null)return;localStorage.setItem(key,raw);
+  const req=indexedDB.open('ficusin-product-drafts',1);req.onupgradeneeded=()=>req.result.createObjectStore('media');req.onsuccess=()=>{const db=req.result,tx=db.transaction('media','readwrite');const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='),c=>c.charCodeAt(0));tx.objectStore('media').put({version:1,type:'image/png',bytes:bytes.buffer},'legacy-file');tx.oncomplete=()=>db.close();};
+ },{raw});
+ await page.goto('/admin?section=products&product=1');const e=page.locator('.editor-page');
+ await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Сохранённая работа V1');
+ await expect(e.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();
+ const check=()=>page.evaluate(()=>({backup:localStorage.getItem('ficusin:product-edit-draft:v1:1:migration-backup:v1'),draft:JSON.parse(localStorage.getItem('ficusin:product-edit-draft:v1:1')!)}));
+ let value=await check();expect(value.backup).toBe(raw);expect(value.draft.version).toBe(2);expect(value.draft.creationId).toBe('unchanged-creation-id');expect(value.draft.remoteCreatedProductId).toBe(1);expect(value.draft.selectedVariantId).toBe('legacy-10');
+ expect(value.draft.variants[0]).toMatchObject({marketplacePriceMode:'manual',marketplace:{ozon:{article:''},wb:{article:'WB-OLD'}},ozon:{price:'0'},sabyEditor:{mode:'create',existingCode:''},sabyEditorTouched:{mode:true,existingCode:true}});
+ await page.reload();await expect(e.getByLabel('Название товара *',{exact:true})).toHaveValue('Сохранённая работа V1');await expect(e.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();value=await check();expect(value.backup).toBe(raw);expect(value.draft.variants[0].media[0].id).toBe('legacy-file');expect(f.mutations).toHaveLength(0);
+});
+
+for(const failure of ['malformed','quota'] as const)test(`@desktop @phone unsafe ${failure} V1 migration preserves its source and blocks editor writes`,async({page})=>{
+ const f=await fixture(page),raw=failure==='malformed'?'{broken':JSON.stringify(oldBrowserDraft());
+ await page.addInitScript(({raw,failure})=>{const key='ficusin:product-edit-draft:v1:1',set=Storage.prototype.setItem;if(localStorage.getItem(key)===null)set.call(localStorage,key,raw);if(failure==='quota')Storage.prototype.setItem=function(k,v){if(k.startsWith(key))throw new DOMException('Full','QuotaExceededError');return set.call(this,k,v);};},{raw,failure});
+ await page.goto('/admin?section=products&product=1');const e=page.locator('.editor-page');await expect(e.getByRole('alert')).toContainText('Исходные данные не удалены');await expect(e.getByRole('button',{name:'Сохранить',exact:true})).toHaveCount(0);await expect(e.getByLabel('Название товара *',{exact:true})).toHaveCount(0);
+ await page.reload();await expect(e.getByRole('alert')).toContainText('Исходные данные не удалены');expect(await page.evaluate(()=>localStorage.getItem('ficusin:product-edit-draft:v1:1'))).toBe(raw);expect(f.mutations).toHaveLength(0);
+});
+
+
+test('@desktop legacy IndexedDB Blob is atomically backed up as exact binary bytes before replacement',async({page})=>{
+ await fixture(page);await open(page);const raw=JSON.stringify(oldBrowserDraft());
+ await page.evaluate(async raw=>{localStorage.setItem('ficusin:product-edit-draft:v1:1',raw);await new Promise<void>((resolve,reject)=>{const request=indexedDB.open('ficusin-product-drafts',1);request.onupgradeneeded=()=>request.result.createObjectStore('media');request.onsuccess=()=>{const db=request.result,tx=db.transaction('media','readwrite');const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=='),c=>c.charCodeAt(0));tx.objectStore('media').put(new Blob([bytes],{type:'image/png'}),'legacy-file');tx.oncomplete=()=>{db.close();resolve();};tx.onerror=()=>reject(tx.error);};});},raw);
+ await page.goto('/admin?section=products&product=1&editor=media');await expect(page.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();
+ const read=()=>page.evaluate(async()=>{const db=await new Promise<IDBDatabase>(resolve=>{const r=indexedDB.open('ficusin-product-drafts',1);r.onsuccess=()=>resolve(r.result);});try{return await Promise.all(['legacy-file','migration-backup:v1:legacy-file'].map(id=>new Promise<any>(resolve=>{const r=db.transaction('media').objectStore('media').get(id);r.onsuccess=()=>resolve({version:r.result.version,type:r.result.type,bytes:Array.from(new Uint8Array(r.result.bytes))});})));}finally{db.close();}});
+ await expect.poll(async()=>(await read())[0].version).toBe(1);const [current,backup]=await read();expect(current).toEqual(backup);expect(current.type).toBe('image/png');expect(current.bytes.slice(0,8)).toEqual([137,80,78,71,13,10,26,10]);await page.reload();await expect(page.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();expect(await read()).toEqual([current,backup]);
+});

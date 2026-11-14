@@ -7,7 +7,7 @@ import (
 
 func TestPlanAllowsMultipleNewProductsAndCalculatesPackageQuantity(t *testing.T) {
 	store := &storeStub{}
-	_, err := NewService(store).CreatePlan(context.Background(), Actor{}, PlanCreate{SupplierID: 1, Items: []PlanItem{
+	_, err := NewServiceWithExecutor(store, nil).CreatePlan(context.Background(), Actor{}, PlanCreate{SupplierID: 1, Items: []PlanItem{
 		{RawName: " Olea ", PackageCount: 2, UnitsPerPackage: 12, Quantity: 999, ExpectedUnitPrice: 10},
 		{RawName: "Citrus", PackageCount: 1, UnitsPerPackage: 6, ExpectedUnitPrice: 5},
 	}})
@@ -22,7 +22,7 @@ func TestPlanAllowsMultipleNewProductsAndCalculatesPackageQuantity(t *testing.T)
 func TestPlanPreservesSupplierFieldsNeededForNextOrder(t *testing.T) {
 	store := &storeStub{}
 	pot, height := 12.0, 35.0
-	_, err := NewService(store).CreatePlan(context.Background(), Actor{}, PlanCreate{SupplierID: 1, Items: []PlanItem{{
+	_, err := NewServiceWithExecutor(store, nil).CreatePlan(context.Background(), Actor{}, PlanCreate{SupplierID: 1, Items: []PlanItem{{
 		SabyID: "saby-1", RawName: "Цитрус", Category: " Цитрус ", SupplierArticle: " NL-42 ",
 		PackageCount: 2, UnitsPerPackage: 12, ExpectedUnitPrice: 5.3,
 		PotDiameterCM: &pot, HeightCM: &height,
@@ -45,7 +45,7 @@ func TestPlanRejectsPartialPackagingAndDuplicateLinkedProducts(t *testing.T) {
 		{{RawName: "Olea", PackageCount: 1000000, UnitsPerPackage: 1000000}},
 		{{Quantity: 1}},
 	} {
-		if _, err := NewService(&storeStub{}).CreatePlan(context.Background(), Actor{}, PlanCreate{SupplierID: 1, Items: items}); err == nil {
+		if _, err := NewServiceWithExecutor(&storeStub{}, nil).CreatePlan(context.Background(), Actor{}, PlanCreate{SupplierID: 1, Items: items}); err == nil {
 			t.Fatalf("accepted invalid items: %+v", items)
 		}
 	}

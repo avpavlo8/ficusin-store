@@ -28,7 +28,7 @@ const defaultBaseURL = "https://api.avito.ru"
 const freshStockCTE = `WITH fresh_stock AS (
  SELECT v.id variant_id,p.id product_id,v.base_price_minor,GREATEST(i.available_qty-i.reserved_qty,0) qty
  FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL
- JOIN inventory i ON i.variant_id=v.id
+ JOIN order_sale_inventory i ON i.variant_id=v.id
  JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
  JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
  WHERE 'stock'=ANY(p.saby_fields) AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'

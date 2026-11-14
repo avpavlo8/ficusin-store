@@ -94,6 +94,8 @@ type PaymentRequest struct {
 }
 
 type Payment struct {
+	// nil means the provider did not return a test-mode fact.
+	Test            *bool
 	ReceiptStatus   string
 	ID              string
 	Status          string
@@ -286,7 +288,6 @@ func (client *YooKassaClient) send(
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		var failure struct {
 			Description string `json:"description"`
-			Parameter   string `json:"parameter"`
 		}
 		_ = json.NewDecoder(response.Body).Decode(&failure)
 		if response.StatusCode >= http.StatusInternalServerError {
@@ -304,6 +305,7 @@ func (client *YooKassaClient) send(
 }
 
 type yooKassaPayment struct {
+	Test          *bool             `json:"test"`
 	ReceiptStatus string            `json:"receipt_registration"`
 	ID            string            `json:"id"`
 	Status        string            `json:"status"`
@@ -325,6 +327,7 @@ func (payment yooKassaPayment) toPayment() (Payment, error) {
 		return Payment{}, fmt.Errorf("%w: некорректная сумма платежа", ErrPaymentOutcomeUnknown)
 	}
 	return Payment{
+		Test:            payment.Test,
 		ReceiptStatus:   payment.ReceiptStatus,
 		ID:              payment.ID,
 		Status:          payment.Status,
@@ -426,21 +429,4 @@ func (client *YooKassaClient) refundResponse(ctx context.Context, method, path, 
 		return Refund{}, fmt.Errorf("%w: некорректный ответ возврата", ErrPaymentOutcomeUnknown)
 	}
 	return Refund{ID: response.ID, Status: response.Status, PaymentID: response.PaymentID, Amount: money.Rubles(amount), ReceiptStatus: response.ReceiptStatus}, nil
-}
-
-// Kept for compatibility with callers outside the order workflow. Pending is
-// explicitly not success; order refunds use CreateRefund/FetchRefund instead.
-func (client *YooKassaClient) Refund(ctx context.Context, paymentID string, amount float64, key string) error {
-	req, err := client.PrepareRefund(paymentID, amount, key, PaymentRequest{})
-	if err != nil {
-		return err
-	}
-	result, err := client.CreateRefund(ctx, req)
-	if err != nil {
-		return err
-	}
-	if result.Status != "succeeded" {
-		return errors.New("возврат ещё не подтверждён")
-	}
-	return nil
 }

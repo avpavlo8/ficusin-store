@@ -123,7 +123,6 @@ func TestSabySyncErrorCodeDoesNotExposeDatabaseError(t *testing.T) {
 		"update Saby stock: duplicate key contains customer data": "stock-update",
 		"map Saby characteristics: invalid input syntax":          "characteristics-map",
 		"map Saby IDs: unique constraint contains an identifier":  "ids-map",
-		"query Saby photo targets: private object key":            "photos-query",
 		"finish Saby sync: internal database detail":              "sync-run-finish",
 	}
 	for message, want := range tests {

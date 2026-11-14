@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { isStandalone } from "./lib/pwa";
 import { claimInstallOffer } from "./lib/install-offer";
 import { InstallHint } from "./InstallHint";
 import "./styles/app-discovery.css";
 export function InstallFirstVisit() {
   const [open, setOpen] = useState(false);
-  const dialog = useRef<HTMLDialogElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useEffect(() => {
     const show = () => {
@@ -31,28 +30,9 @@ export function InstallFirstVisit() {
       document.removeEventListener("visibilitychange", show);
     };
   }, []);
-  useEffect(() => {
-    const node = dialog.current;
-    if (!open || !node) return;
-    node.showModal();
-    return () => {
-      if (node.open) node.close();
-    };
-  }, [open]);
   if (!open) return null;
   return (
-    <dialog
-      ref={dialog}
-      className="install-first-visit"
-      aria-label="Фикусин на экране Домой"
-      onCancel={(event) => {
-        event.preventDefault();
-        close();
-      }}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) close();
-      }}
-    >
+    <aside className="install-first-visit" aria-label="Фикусин на экране Домой">
       <button
         type="button"
         className="install-offer-close"
@@ -72,7 +52,7 @@ export function InstallFirstVisit() {
           <path d="m6 6 12 12M18 6 6 18" />
         </svg>
       </button>
-      <InstallHint inline onInstalled={close} />
-    </dialog>
+      <InstallHint compact onInstalled={close} />
+    </aside>
   );
 }

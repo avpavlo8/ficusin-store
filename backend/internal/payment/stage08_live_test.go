@@ -127,30 +127,74 @@ func TestCancelledOrderRejectsShipmentOfferPayment(t *testing.T) {
 	}
 	defer pool.Close()
 	unique := time.Now().UnixNano()
-	var customerID, orderID, offerID int64
-	if err := pool.QueryRow(ctx, `SELECT id FROM customers WHERE email='crm-owner@example.invalid'`).Scan(&customerID); err != nil {
-		t.Fatal(err)
+	var customerID, orderID, offerID, productID, variantID, itemID, warehouseID int64
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_id,customer_name,phone,email,delivery_method,subtotal,total,payment_method,payment_status,status)
-		VALUES($1,$2,'Отменённый заказ','+70000000000','cancelled-offer@example.invalid','pickup',100,100,'online','cancelled','cancelled') RETURNING id`, fmt.Sprintf("CRM-CANCEL-OFFER-%d", unique), customerID).Scan(&orderID); err != nil {
-		t.Fatal(err)
-	}
+	exec := func(sql string, args ...any) { t.Helper(); _, err := pool.Exec(ctx, sql, args...); must(err) }
+	must(pool.QueryRow(ctx, `SELECT id FROM customers WHERE email='crm-owner@example.invalid'`).Scan(&customerID))
+	must(pool.QueryRow(ctx, `SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main' AND is_active=1`).Scan(&warehouseID))
+	// Own fresh stock: shared CRM inventory must not accidentally determine
+	// whether the offer is valid or be modified by the positive control.
+	sabyID := fmt.Sprintf("cancelled-offer-stock-%d", unique)
+	exec(`INSERT INTO saby_nomenclature(saby_id,name) VALUES($1,'Cancellation guard plant')`, sabyID)
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID) }()
+	must(pool.QueryRow(ctx, `INSERT INTO products(name,slug,saby_id,saby_fields) VALUES('Cancellation guard plant',$1,$2,ARRAY['stock']) RETURNING id`, sabyID, sabyID).Scan(&productID))
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID) }()
+	var sku string
+	must(pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,saby_id,label,base_price_minor) VALUES($1,$2,'D17',10000) RETURNING id,sku`, productID, sabyID).Scan(&variantID, &sku))
+	exec(`INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at) VALUES($1,$2,5,0,CURRENT_TIMESTAMP)`, warehouseID, variantID)
+	must(pool.QueryRow(ctx, `INSERT INTO orders(order_number,customer_id,customer_name,phone,email,delivery_method,delivery_fee,subtotal,total,payment_method,payment_status,status)
+ VALUES($1,$2,'Cancellation guard buyer','+70000000000','cancelled-offer@example.invalid','pickup',0,100,100,'online','pending','confirmed') RETURNING id`, fmt.Sprintf("CRM-CANCEL-OFFER-%d", unique), customerID).Scan(&orderID))
 	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, orderID) }()
+	must(pool.QueryRow(ctx, `INSERT INTO order_items(order_id,product_id,variant_id,sku,product_name,variant_label,variant_snapshot,unit_price,quantity,is_preorder,reserved_qty)
+ VALUES($1,$2,$3,$4,'Cancellation guard plant','D17','{}',100,1,1,0) RETURNING id`, orderID, productID, variantID, sku).Scan(&itemID))
 	token := fmt.Sprintf("cancelled-offer-%d", unique)
-	if err := pool.QueryRow(ctx, `INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,subtotal,total,expires_at,created_by)
-		VALUES($1,$2,1,'offered','pickup',100,100,CURRENT_TIMESTAMP+INTERVAL '48 hours',$3) RETURNING id`, orderID, token, customerID).Scan(&offerID); err != nil {
-		t.Fatal(err)
-	}
+	must(pool.QueryRow(ctx, `INSERT INTO shipment_offers(order_id,public_token,order_revision,status,delivery_method,subtotal,total,expires_at,created_by)
+ VALUES($1,$2,1,'offered','pickup',100,100,CURRENT_TIMESTAMP+INTERVAL '48 hours',$3) RETURNING id`, orderID, token, customerID).Scan(&offerID))
+	exec(`INSERT INTO shipment_offer_items(shipment_offer_id,order_item_id,variant_id,sku,product_name,unit_price,quantity)
+ VALUES($1,$2,$3,$4,'Cancellation guard plant',100,1)`, offerID, itemID, variantID, sku)
 	provider := &livePaymentProvider{}
 	service := NewService(pool, provider, "https://ficusin.example.invalid", slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if _, err := service.StartShipmentOffer(ctx, token, customerID); err == nil {
-		t.Fatal("ссылка отменённого заказа открыла оплату")
+	// The identical open offer must create a local payment and reach only the
+	// fake provider. Empty items, stale stock and invalid totals cannot explain
+	// the cancellation error checked below.
+	url, err := service.StartShipmentOffer(ctx, token, customerID)
+	if err != nil || url == "" || provider.creates != 1 || provider.request.Amount != 100 || len(provider.request.Items) != 1 || provider.request.Items[0].Quantity != 1 {
+		t.Fatalf("valid open offer did not reach payment creation: url=%q err=%v creates=%d request=%+v", url, err, provider.creates, provider.request)
 	}
-	if _, err := service.reserveOfferAndCreatePayment(ctx, offerID, orderID, "cancelled-order-test", 100); err == nil {
-		t.Fatal("транзакция создала платёж после отмены заказа")
+	var payments int
+	must(pool.QueryRow(ctx, `SELECT count(*) FROM payments WHERE order_id=$1 AND shipment_offer_id=$2`, orderID, offerID).Scan(&payments))
+	if payments != 1 {
+		t.Fatalf("positive control created %d local payments", payments)
+	}
+	exec(`DELETE FROM payments WHERE order_id=$1`, orderID)
+	exec(`UPDATE shipment_offers SET status='offered',checkout_locked_until=NULL WHERE id=$1`, offerID)
+	exec(`UPDATE orders SET status='cancelled',payment_status='cancelled' WHERE id=$1`, orderID)
+	provider = &livePaymentProvider{}
+	service = NewService(pool, provider, "https://ficusin.example.invalid", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	const closedOrderMessage = "заказ закрыт — оплатить отправку нельзя"
+	if _, err = service.StartShipmentOffer(ctx, token, customerID); err == nil || err.Error() != closedOrderMessage {
+		t.Fatalf("cancelled order did not hit the public parent-status guard: %v", err)
+	}
+	if _, err = service.reserveOfferAndCreatePayment(ctx, offerID, orderID, "cancelled-order-test", 100); err == nil || err.Error() != closedOrderMessage {
+		t.Fatalf("cancelled order did not hit the locked transaction parent-status guard: %v", err)
 	}
 	if provider.creates != 0 {
-		t.Fatalf("провайдер получил %d запросов после отмены", provider.creates)
+		t.Fatalf("provider received %d creates after cancellation", provider.creates)
+	}
+	must(pool.QueryRow(ctx, `SELECT count(*) FROM payments WHERE order_id=$1`, orderID).Scan(&payments))
+	if payments != 0 {
+		t.Fatalf("cancelled order created %d local payments", payments)
+	}
+	var available, reserved, itemReserved int
+	must(pool.QueryRow(ctx, `SELECT available_qty,reserved_qty FROM inventory WHERE warehouse_id=$1 AND variant_id=$2`, warehouseID, variantID).Scan(&available, &reserved))
+	must(pool.QueryRow(ctx, `SELECT reserved_qty FROM order_items WHERE id=$1`, itemID).Scan(&itemReserved))
+	if available != 5 || reserved != 0 || itemReserved != 0 {
+		t.Fatalf("payment attempts changed stock: available=%d reserved=%d itemReserved=%d", available, reserved, itemReserved)
 	}
 }
 

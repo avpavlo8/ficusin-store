@@ -1,12 +1,14 @@
 package catalogeditor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"io"
 	"log/slog"
 	"time"
 )
@@ -20,6 +22,7 @@ func RunPublisher(ctx context.Context, pool *pgxpool.Pool, publisher Publisher, 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
+		logPriceStep(ctx, pool, publisher, mode, logger)
 		if err := PublicationStep(ctx, pool, publisher, mode); err != nil && ctx.Err() == nil {
 			logger.Error("catalog publication worker", "error", err)
 		}
@@ -50,22 +53,19 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	if e != nil {
 		return e
 	}
-	if channel == "saby" {
-		var legacyBusy bool
-		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_saby_exports WHERE variant_id=$1 AND state IN ('queued','checking','verifying','unknown'))`, variant).Scan(&legacyBusy); e != nil {
+	var priceBusy bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_editor_price_publications WHERE variant_id=$1 AND execution_mode=$2 AND status IN('queued','processing','needs_attention'))`, variant, mode).Scan(&priceBusy); e != nil {
+		return e
+	}
+	if priceBusy {
+		if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET next_attempt_at=NOW()+INTERVAL '10 seconds' WHERE variant_id=$1 AND channel=$2`, variant, channel); e != nil {
 			return e
 		}
-		if legacyBusy {
-			_, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET next_attempt_at=NOW()+INTERVAL '20 seconds',message='Ожидаем завершения предыдущей отправки в СБИС' WHERE variant_id=$1 AND channel='saby'`, variant)
-			if e != nil {
-				return e
-			}
-			return tx.Commit(ctx)
-		}
+		return tx.Commit(ctx)
 	}
 	var request Request
 	var progress Progress
-	if e = json.Unmarshal(raw, &request); e != nil {
+	if e = decodePublicationRequest(channel, raw, &request); e != nil {
 		return e
 	}
 	if e = json.Unmarshal(stateRaw, &progress); e != nil {
@@ -97,6 +97,10 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	}
 	if status == "processing" && progress.Stage == "create" {
 		progress.Stage = "reconcile"
+		progress.Ambiguous = true
+	}
+	if status == "processing" && channel == "ozon" && progress.ReapplyPayload && progress.Stage == "update" {
+		progress.Stage = "ozon-reapply-unknown"
 		progress.Ambiguous = true
 	}
 	if status == "processing" && channel == "saby" {
@@ -255,12 +259,41 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET status=$3,message=$4,progress=$5,lease_until=NULL,next_attempt_at=NOW()+$6::interval,updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, variant, channel, result.Status, result.Message, stateRaw, delay.String()); e != nil {
 		return e
 	}
-	if result.Status == "created" || result.Status == "synced" || result.Status == "linked" || result.Status == "failed" && result.Progress.IDs.ProductID != "" {
-		if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET payload=pending_payload,fingerprint=pending_fingerprint,progress='{}'::jsonb,status='prepared',message='Сохранены новые изменения, ожидают отправки',pending_payload=NULL,pending_fingerprint=NULL,next_attempt_at=NOW() WHERE variant_id=$1 AND channel=$2 AND pending_payload IS NOT NULL`, variant, channel); e != nil {
-			return e
+	if result.Status == "created" || result.Status == "synced" || result.Status == "linked" || result.Status == "failed" {
+		var pendingRaw []byte
+		err := tx.QueryRow(ctx, `SELECT pending_payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 AND pending_payload IS NOT NULL AND pending_fingerprint IS NOT NULL`, variant, channel).Scan(&pendingRaw)
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
+		if err == nil {
+			var next Request
+			if decodePublicationRequest(channel, pendingRaw, &next) == nil {
+				if nextProgress, ready := PendingPublicationProgress(channel, result.Status, request, next, result.Progress); ready {
+					progressRaw, _ := json.Marshal(nextProgress)
+					if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET payload=pending_payload,fingerprint=pending_fingerprint,progress=$3,status='prepared',message='Сохранены новые изменения, ожидают отправки',pending_payload=NULL,pending_fingerprint=NULL,next_attempt_at=NOW() WHERE variant_id=$1 AND channel=$2`, variant, channel, progressRaw); e != nil {
+						return e
+					}
+				}
+			}
 		}
 	}
 	return tx.Commit(ctx)
+}
+
+func decodePublicationRequest(channel string, raw []byte, request *Request) error {
+	if channel != "saby" {
+		return json.Unmarshal(raw, request)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if err := decoder.Decode(request); err != nil {
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return errors.New("invalid Saby publication JSON boundary")
+	}
+	return nil
 }
 
 func remoteCardOccupied(ctx context.Context, tx pgx.Tx, variant int64, channel, mode string, ids RemoteIDs) (bool, error) {

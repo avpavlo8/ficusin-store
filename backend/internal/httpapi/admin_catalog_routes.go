@@ -3,6 +3,9 @@ package httpapi
 import "net/http"
 
 func registerAdminCatalogToolRoutes(mux *http.ServeMux, adminAPI adminHandlers, storage productPhotoStorage) {
+	mux.HandleFunc("GET /api/v1/admin/products/{productId}/editor-prices", editorPricesHandler(adminAPI))
+	mux.HandleFunc("POST /api/v1/admin/products/{productId}/editor-prices/{priceId}/approve", editorPriceMutationHandler(adminAPI, false))
+	mux.HandleFunc("POST /api/v1/admin/products/{productId}/editor-prices/{priceId}/retry", editorPriceMutationHandler(adminAPI, true))
 	mux.HandleFunc("GET /api/v1/admin/products/{id}/media", listProductMediaHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/products/{id}/media", uploadProductMediaHandler(adminAPI, storage))
 	mux.HandleFunc("POST /api/v1/admin/products/{id}/media/copy", copyProductMediaHandler(adminAPI))
@@ -30,16 +33,7 @@ func registerAdminCatalogToolRoutes(mux *http.ServeMux, adminAPI adminHandlers, 
 	mux.HandleFunc("GET /api/v1/admin/saby/link-candidates", sabyLinkCandidatesHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/saby-link", linkVariantToSabyHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/saby-relink", rebindVariantToSabyHandler(adminAPI))
-	mux.HandleFunc("GET /api/v1/admin/products/{id}/relationships", productRelationshipsHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/products/{id}/variants", productVariantsHandler(adminAPI))
-	mux.HandleFunc("PATCH /api/v1/admin/variants/{variantId}", productVariantHandler(adminAPI))
-	mux.HandleFunc("DELETE /api/v1/admin/variants/{variantId}", productVariantHandler(adminAPI))
-	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/copy", copyProductVariantHandler(adminAPI))
-	mux.HandleFunc("POST /api/v1/admin/variants/{variantId}/archive", archiveProductVariantHandler(adminAPI))
-	mux.HandleFunc("GET /api/v1/admin/variants/{variantId}/price-proposals", manualPriceProposalsHandler(adminAPI))
-	mux.HandleFunc("POST /api/v1/admin/price-proposals/{proposalId}/approve", approveManualPriceProposalHandler(adminAPI))
-	mux.HandleFunc("POST /api/v1/admin/price-proposals/{proposalId}/retry", retryManualPriceProposalHandler(adminAPI))
-	mux.HandleFunc("GET /api/v1/admin/price-proposals/{proposalId}/saby-xlsx", manualSabyPriceXLSXHandler(adminAPI))
 
 	mux.HandleFunc("GET /api/v1/admin/catalog-filters", catalogFiltersHandler(adminAPI))
 	mux.HandleFunc("POST /api/v1/admin/catalog-filters", catalogFiltersHandler(adminAPI))

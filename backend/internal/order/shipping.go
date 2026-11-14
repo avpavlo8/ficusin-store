@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/avpavlo8/ficusin-store/backend/internal/settings"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -142,6 +143,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			cdek_last_error='Остатка растений недостаточно для заявки СДЭК. Проверьте наличие и решите вручную.',
 			cdek_next_attempt_at=NULL
 		WHERE o.delivery_method='cdek' AND o.delivery_payee='shop' AND o.cdek_uuid=''
+ AND NOT order_sale_revision_pending(o.id)
 			AND o.cdek_create_state NOT IN ('unknown','manual_review','registered')
 			AND o.has_preorder=0 AND o.status NOT IN ('cancelled','completed')
 			AND (o.payment_status IN ('paid','on_delivery') OR (o.payment_status IN ('pending','partially_paid') AND o.cdek_checkout_requested=1))
@@ -149,7 +151,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			AND (EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=o.id AND oi.variant_id IS NOT NULL
 					GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
-						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(o.id,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 						JOIN product_variants v ON v.id=i.variant_id
 						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -165,11 +167,12 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 			cdek_last_error='Оплаченная отправка: остатка растений недостаточно. Проверьте наличие и решите вручную.',
 			cdek_next_attempt_at=NULL, updated_at=CURRENT_TIMESTAMP
 		WHERE so.status='paid' AND so.delivery_method='cdek' AND so.delivery_payee='shop'
+ AND NOT order_sale_revision_pending(so.order_id)
 			AND so.cdek_uuid='' AND so.cdek_create_state NOT IN ('unknown','manual_review','registered')
 			AND (EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NULL)
 				OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
 					GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(so.order_id,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 						JOIN product_variants v ON v.id=i.variant_id
 						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -188,7 +191,7 @@ func (worker *ShippingWorker) orderStockShort(ctx context.Context, orderID int64
 		EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=$1 AND oi.variant_id IS NULL)
 		OR EXISTS (SELECT 1 FROM order_items oi WHERE oi.order_id=$1 AND oi.variant_id IS NOT NULL
 			GROUP BY oi.variant_id HAVING SUM(oi.quantity)>COALESCE((
-				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity($1,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 				JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 				JOIN product_variants v ON v.id=i.variant_id
 				JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -204,7 +207,7 @@ func (worker *ShippingWorker) offerStockShort(ctx context.Context, offerID int64
 		EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 AND soi.variant_id IS NULL)
 		OR EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=$1 AND soi.variant_id IS NOT NULL
 			GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+				SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity((SELECT order_id FROM shipment_offers WHERE id=$1),i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 				JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 				JOIN product_variants v ON v.id=i.variant_id
 				JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -222,13 +225,14 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 		WITH candidates AS (
 			SELECT so.id FROM shipment_offers so JOIN orders o ON o.id=so.order_id
 				WHERE so.status='paid' AND so.delivery_method='cdek' AND so.cdek_uuid=''
+ AND NOT order_sale_revision_pending(so.order_id)
 					AND so.delivery_payee='shop'
 					AND so.cdek_create_state NOT IN ('unknown','manual_review')
 					AND NOT EXISTS (SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NULL)
 					AND NOT EXISTS (
 						SELECT 1 FROM shipment_offer_items soi WHERE soi.shipment_offer_id=so.id AND soi.variant_id IS NOT NULL
 						GROUP BY soi.variant_id HAVING SUM(soi.quantity)>COALESCE((
-							SELECT SUM(GREATEST(i.available_qty-i.reserved_qty,0)) FROM inventory i
+							SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(so.order_id,i.warehouse_id,i.variant_id),0)) FROM order_sale_inventory i
 							JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 							JOIN product_variants v ON v.id=i.variant_id
 							JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -244,7 +248,7 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 			FROM candidates c WHERE so.id=c.id RETURNING so.*
 		)
 		SELECT so.id,o.id,o.order_number,o.customer_name,o.phone,COALESCE(o.cdek_office_code,''),
-			COALESCE(so.cdek_tariff_code,0),COALESCE(o.cdek_city_code,0),so.cdek_attempts
+			COALESCE(so.cdek_tariff_code,0),so.cdek_attempts
 		FROM claimed so JOIN orders o ON o.id=so.order_id ORDER BY so.id`)
 	if err != nil {
 		worker.logger.Error("find shipment offers to ship failed", "error", err)
@@ -253,12 +257,12 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 	type pending struct {
 		offerID, orderID            int64
 		number, name, phone, office string
-		tariff, city, attempts      int
+		tariff, attempts            int
 	}
 	waiting := make([]pending, 0)
 	for rows.Next() {
 		var item pending
-		if err := rows.Scan(&item.offerID, &item.orderID, &item.number, &item.name, &item.phone, &item.office, &item.tariff, &item.city, &item.attempts); err != nil {
+		if err := rows.Scan(&item.offerID, &item.orderID, &item.number, &item.name, &item.phone, &item.office, &item.tariff, &item.attempts); err != nil {
 			worker.logger.Error("scan shipment offer failed", "error", err)
 			break
 		}
@@ -266,6 +270,16 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 	}
 	rows.Close()
 	for _, item := range waiting {
+		pendingRevision, revisionErr := ordersale.RevisionPending(ctx, worker.pool, item.orderID)
+		if revisionErr != nil || pendingRevision {
+			if revisionErr != nil {
+				worker.logger.Error("check shipment realization revision failed", "error", revisionErr, "offer_id", item.offerID)
+			}
+			if _, err := worker.pool.Exec(ctx, `UPDATE shipment_offers SET status='paid',cdek_create_state='new',cdek_last_error='Ожидаем обновления состава заказа в СБИС',cdek_next_attempt_at=NOW()+INTERVAL '30 seconds',updated_at=NOW() WHERE id=$1 AND status='shipping' AND cdek_uuid='' AND cdek_create_state='creating'`, item.offerID); err != nil {
+				worker.logger.Error("defer shipment offer revision failed", "error", err, "offer_id", item.offerID)
+			}
+			continue
+		}
 		short, checkErr := worker.offerStockShort(ctx, item.offerID)
 		if checkErr != nil {
 			worker.recordOfferCreateFailure(ctx, item.offerID, item.number, item.attempts, checkErr)
@@ -289,7 +303,6 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 			OrderNumber:    fmt.Sprintf("%s-%d", item.number, item.offerID),
 			TariffCode:     item.tariff,
 			OfficeCode:     item.office,
-			CityCode:       item.city,
 			Packages:       packages,
 			SenderName:     worker.settings.Value(settings.CDEKSenderName),
 			SenderPhone:    worker.settings.Value(settings.CDEKSenderPhone),
@@ -443,7 +456,7 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 			if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok && item.status != "cancelled" && item.status != "completed" {
 				nextStatus = mapped
 			}
-			_, err = worker.pool.Exec(ctx, `
+			_, err = worker.storeShipmentStatus(ctx, item.id, 0, nextStatus == "shipped" && nextStatus != item.status, `
 				UPDATE orders
 				SET cdek_uuid=$2,cdek_track_number=$3,cdek_status=$4,cdek_status_reason=$5,
 					cdek_create_state='registered',cdek_last_error='',cdek_next_attempt_at=NULL,
@@ -504,7 +517,7 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 			if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok {
 				nextStatus = mapped
 			}
-			_, err = worker.pool.Exec(ctx, `
+			_, err = worker.storeShipmentStatus(ctx, 0, item.id, nextStatus == "shipped" && nextStatus != item.status, `
 				UPDATE shipment_offers
 				SET cdek_uuid=$2,cdek_track_number=$3,cdek_status=$4,cdek_status_reason=$5,
 					cdek_create_state='registered',cdek_last_error='',cdek_next_attempt_at=NULL,
@@ -633,6 +646,7 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			SELECT o.id
 			FROM orders o
 				WHERE o.delivery_method = 'cdek'
+ AND NOT order_sale_revision_pending(o.id)
 					-- The shop collects delivery with the order; CDEK must not collect it again.
 					AND o.delivery_payee = 'shop'
 					AND o.cdek_uuid = ''
@@ -650,8 +664,8 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 					WHERE oi.order_id = o.id AND oi.variant_id IS NOT NULL
 					GROUP BY oi.variant_id
 					HAVING SUM(oi.quantity) > COALESCE((
-						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty, 0))
-						FROM inventory i
+						SELECT SUM(GREATEST(i.available_qty-i.reserved_qty+order_sale_owned_quantity(o.id,i.warehouse_id,i.variant_id), 0))
+						FROM order_sale_inventory i
 						JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
 						JOIN product_variants v ON v.id=i.variant_id
 						JOIN products p ON p.id=v.product_id AND 'stock'=ANY(p.saby_fields)
@@ -674,8 +688,6 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 		)
 		SELECT o.id, COALESCE(NULLIF(o.cdek_order_number,''),o.order_number), o.customer_name, o.phone,
 			COALESCE(o.cdek_office_code, ''), COALESCE(o.cdek_tariff_code, 0),
-			COALESCE(o.cdek_city_code, 0), o.payment_status,
-			o.total::DOUBLE PRECISION, o.delivery_fee::DOUBLE PRECISION,
 			o.cdek_attempts
 		FROM claimed o
 		ORDER BY o.id
@@ -685,18 +697,17 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 		return
 	}
 	type pending struct {
-		id                                     int64
-		number, name, phone, office, payStatus string
-		tariff, city                           int
-		total, deliveryFee                     float64
-		attempts                               int
+		id                          int64
+		number, name, phone, office string
+		tariff                      int
+		attempts                    int
 	}
 	waiting := make([]pending, 0)
 	for rows.Next() {
 		var item pending
 		if err := rows.Scan(
 			&item.id, &item.number, &item.name, &item.phone, &item.office,
-			&item.tariff, &item.city, &item.payStatus, &item.total, &item.deliveryFee,
+			&item.tariff,
 			&item.attempts,
 		); err != nil {
 			worker.logger.Error("scan order to ship failed", "error", err)
@@ -707,6 +718,16 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 	rows.Close()
 
 	for _, item := range waiting {
+		pendingRevision, revisionErr := ordersale.RevisionPending(ctx, worker.pool, item.id)
+		if revisionErr != nil || pendingRevision {
+			if revisionErr != nil {
+				worker.logger.Error("check order realization revision failed", "error", revisionErr, "order_id", item.id)
+			}
+			if _, err := worker.pool.Exec(ctx, `UPDATE orders SET cdek_create_state='pending',cdek_last_error='Ожидаем обновления состава заказа в СБИС',cdek_next_attempt_at=NOW()+INTERVAL '30 seconds' WHERE id=$1 AND cdek_uuid='' AND cdek_create_state='creating'`, item.id); err != nil {
+				worker.logger.Error("defer order shipment revision failed", "error", err, "order_id", item.id)
+			}
+			continue
+		}
 		short, checkErr := worker.orderStockShort(ctx, item.id)
 		if checkErr != nil {
 			worker.recordCreateFailure(ctx, item.id, item.number, item.attempts, checkErr)
@@ -737,7 +758,6 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 			OrderNumber:       item.number,
 			TariffCode:        item.tariff,
 			OfficeCode:        item.office,
-			CityCode:          item.city,
 			Box:               box,
 			Packages:          packages,
 			Items:             items,
@@ -854,7 +874,7 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		if mapped, known := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; known {
 			nextStatus = mapped
 		}
-		command, err := worker.pool.Exec(ctx, `
+		command, err := worker.storeShipmentStatus(ctx, item.id, 0, nextStatus != "" && nextStatus != item.status, `
 			UPDATE orders
 			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = CASE WHEN status IN ('cancelled','completed') OR $5='' THEN status ELSE $5 END,
 				cdek_synced_at = CURRENT_TIMESTAMP
@@ -876,19 +896,19 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 }
 
 func (worker *ShippingWorker) refreshOfferStatuses(ctx context.Context) {
-	rows, err := worker.pool.Query(ctx, `SELECT id,cdek_uuid,cdek_track_number,cdek_status,status FROM shipment_offers WHERE cdek_uuid<>'' AND status NOT IN ('cancelled','completed','expired') ORDER BY cdek_synced_at ASC NULLS FIRST,id LIMIT 50`)
+	rows, err := worker.pool.Query(ctx, `SELECT id,cdek_uuid,status FROM shipment_offers WHERE cdek_uuid<>'' AND status NOT IN ('cancelled','completed','expired') ORDER BY cdek_synced_at ASC NULLS FIRST,id LIMIT 50`)
 	if err != nil {
 		worker.logger.Error("find shipment offers to refresh failed", "error", err)
 		return
 	}
 	type tracked struct {
-		id                              int64
-		uuid, track, cdekStatus, status string
+		id           int64
+		uuid, status string
 	}
 	items := []tracked{}
 	for rows.Next() {
 		var item tracked
-		if err := rows.Scan(&item.id, &item.uuid, &item.track, &item.cdekStatus, &item.status); err != nil {
+		if err := rows.Scan(&item.id, &item.uuid, &item.status); err != nil {
 			rows.Close()
 			return
 		}
@@ -905,7 +925,7 @@ func (worker *ShippingWorker) refreshOfferStatuses(ctx context.Context) {
 		if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok {
 			next = mapped
 		}
-		if _, err := worker.pool.Exec(ctx, `UPDATE shipment_offers SET cdek_track_number=$2,cdek_status=$3,cdek_status_reason=$4,status=$5,cdek_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, next); err != nil {
+		if _, err := worker.storeShipmentStatus(ctx, 0, item.id, next != item.status, `UPDATE shipment_offers SET cdek_track_number=$2,cdek_status=$3,cdek_status_reason=$4,status=$5,cdek_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, next); err != nil {
 			worker.logger.Error("store cdek shipment offer status failed", "error", err, "offer_id", item.id)
 		}
 	}

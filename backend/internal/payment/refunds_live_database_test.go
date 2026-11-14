@@ -19,10 +19,13 @@ import (
 func (p *livePaymentProvider) PrepareRefund(id string, amount float64, key string, _ integration.PaymentRequest) (integration.RefundRequest, error) {
 	return integration.RefundRequest{PaymentID: id, Amount: amount, IdempotenceKey: key}, nil
 }
-func (p *livePaymentProvider) CreateRefund(ctx context.Context, r integration.RefundRequest) (integration.Refund, error) {
-	if err := p.Refund(ctx, r.PaymentID, r.Amount, r.IdempotenceKey); err != nil {
-		return integration.Refund{}, err
+func (p *livePaymentProvider) CreateRefund(_ context.Context, r integration.RefundRequest) (integration.Refund, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if r.IdempotenceKey == "" {
+		return integration.Refund{}, fmt.Errorf("refund has no idempotence key")
 	}
+	p.refunds++
 	return integration.Refund{ID: "ci-refund-" + r.IdempotenceKey, PaymentID: r.PaymentID, Amount: r.Amount, Status: "succeeded"}, nil
 }
 func (*livePaymentProvider) FetchRefund(context.Context, string) (integration.Refund, error) {

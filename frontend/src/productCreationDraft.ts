@@ -3,44 +3,23 @@ import type {
   SabyEditorConfig,
   SabyEditorTouched,
   ChannelCategory,
-} from "./catalogEditorChannels";
+} from "./catalogEditorChannels.ts";
 import type { PlantPassport } from "./adminTypes";
-import type { SabyStepDraft } from "./ProductCreationSabyStep";
-
-export const creationSteps = [
-  { id: "main", label: "Основное" },
-  { id: "saby", label: "СБИС" },
-  { id: "ozon", label: "Озон" },
-  { id: "wb", label: "Валдберес" },
-  { id: "attributes", label: "Характеристики" },
-  { id: "media", label: "Медиа" },
-  { id: "care", label: "Уход и FAQ" },
-] as const;
-export type CreationStep = (typeof creationSteps)[number]["id"];
+import { normalizeProductDraft } from "./productDraftMigration.ts";
 type ChannelDraft = {
-  enabled: boolean;
-  name: string;
-  category: string;
   price: string;
-  article: string;
-  description: string;
-  brand?: string;
-  model?: string;
-  tnved?: string;
-  country?: string;
-  composition?: string;
 };
 export type DraftMedia = {
   id: string;
   name: string;
   type: string;
-  size: number;
   source?: string;
   serverId?: number;
 };
 export type DraftVariant = {
-  marketplace?: MarketplaceCommon;
-  sabyEditor?: SabyEditorConfig;
+  marketplace: MarketplaceCommon;
+  marketplaceInitialized?: boolean;
+  sabyEditor: SabyEditorConfig;
   // Local journal only: even clearing a field or clicking the default mode is
   // an explicit choice that a late editor-plan response must not replace.
   sabyEditorTouched?: SabyEditorTouched;
@@ -51,7 +30,6 @@ export type DraftVariant = {
   label: string;
   sku: string;
   price: string;
-  stock: number;
   wholesaleMinQty: string;
   active: boolean;
   archived: boolean;
@@ -61,26 +39,20 @@ export type DraftVariant = {
   mediaInitialized?: boolean;
   mediaCustomized?: boolean;
   sabyId?: string;
-  saby?: SabyStepDraft;
-  ozon?: ChannelDraft;
-  wb?: ChannelDraft;
+  ozon: ChannelDraft;
+  wb: ChannelDraft;
 };
 export type ProductCreationDraft = {
   creationId?: string;
   remoteCreatedProductId?: number;
-  sabyCategory?: ChannelCategory;
-  sabyFolder?: ChannelCategory;
-  version: 1;
+  sabyDefaults?: { category?: ChannelCategory; folder?: ChannelCategory };
+  version: 2;
   updatedAt: string;
-  step: CreationStep;
   name: string;
-  pot: string;
-  height: string;
   price: string;
   categoryId?: number;
   description: string;
   latinName: string;
-  saby: SabyStepDraft;
   ozon: ChannelDraft;
   wb: ChannelDraft;
   attributes: Record<string, string | number | boolean | string[] | null>;
@@ -92,7 +64,6 @@ export type ProductCreationDraft = {
   cover?: DraftMedia | null;
   remoteInitialized?: boolean;
   editorTab?: "product" | "channels" | "faq";
-  channelTab?: "saby" | "ozon" | "wb";
   variants?: DraftVariant[];
   selectedVariantId?: string;
   warnings?: string;
@@ -100,69 +71,65 @@ export type ProductCreationDraft = {
 };
 export const draftStorageKey = "ficusin:product-creation-draft:v1";
 const channel = (): ChannelDraft => ({
-  enabled: false,
-  name: "",
-  category: "",
   price: "",
-  article: "",
-  description: "",
 });
-export const emptyProductDraft = (): ProductCreationDraft => ({
-  version: 1,
-  updatedAt: "",
-  step: "main",
-  name: "",
-  pot: "",
-  height: "",
-  price: "",
-  description: "",
-  latinName: "",
-  saby: { mode: "create", folderId: "", initialStock: "", query: "", selected: null },
-  ozon: channel(),
-  wb: channel(),
-  attributes: {},
-  care: "",
-  faq: [],
-  media: [],
-});
+export const emptyProductDraft = (): ProductCreationDraft => {
+  const base: ProductCreationDraft = {
+    version: 2,
+    updatedAt: "",
+    name: "",
+    price: "",
+    description: "",
+    latinName: "",
+    ozon: channel(),
+    wb: channel(),
+    attributes: {},
+    care: "",
+    faq: [],
+    media: [],
+  };
+  return normalizeProductDraft(base, base);
+};
 export function loadProductDraft(
   key = draftStorageKey,
   fallback = emptyProductDraft(),
-): { draft: ProductCreationDraft; error: string } {
+): { draft: ProductCreationDraft; error: string; blocked?: boolean } {
   try {
     const raw = localStorage.getItem(key);
-    if (!raw) return { draft: fallback, error: "" };
+    if (!raw) return { draft: normalizeProductDraft(fallback, emptyProductDraft()), error: "" };
     const data = JSON.parse(raw);
-    if (
-      data?.version !== 1 ||
-      typeof data.name !== "string" ||
-      !Array.isArray(data.media) ||
-      !Array.isArray(data.faq) ||
-      !data.saby ||
-      !data.ozon ||
-      !data.wb
-    )
-      throw new Error("invalid draft");
-    return { draft: { ...emptyProductDraft(), ...data }, error: "" };
+    const draft = normalizeProductDraft(data, emptyProductDraft());
+    if (data.version === 1) {
+      preserveDraftBackup(key, raw);
+      if (localStorage.getItem(key) !== raw) throw new Error("Draft changed in another tab");
+      localStorage.setItem(key, JSON.stringify(draft));
+    }
+    return { draft, error: "" };
   } catch {
     return {
-      draft: emptyProductDraft(),
-      error: "Не удалось прочитать сохранённый черновик. Проверьте доступ к хранилищу браузера.",
+      draft: normalizeProductDraft(fallback, emptyProductDraft()),
+      error:
+        "Не удалось безопасно перенести черновик. Исходные данные не удалены. Проверьте свободное место и доступ к хранилищу браузера, затем обновите страницу.",
+      blocked: true,
     };
   }
+}
+function preserveDraftBackup(key: string, raw: string) {
+  const prefix = `${key}:migration-backup:v1`;
+  for (let slot = 0; slot < 1000; slot++) {
+    const name = slot === 0 ? prefix : `${prefix}:${slot}`;
+    const saved = localStorage.getItem(name);
+    if (saved === raw) return;
+    if (saved === null) {
+      localStorage.setItem(name, raw);
+      return;
+    }
+  }
+  throw new Error("Draft backup limit reached");
 }
 export function saveProductDraft(draft: ProductCreationDraft, key = draftStorageKey) {
   localStorage.setItem(key, JSON.stringify(draft));
 }
-export function readCreationStep(fallback: CreationStep): CreationStep {
-  const id = new URLSearchParams(location.search).get("step");
-  return (
-    creationSteps.find((step) => step.id === id)?.id ||
-    creationSteps.find((step) => step.id === fallback)?.id ||
-    "main"
-  );
-}
-
 // Files are stored separately from the synchronous text journal so large media
 // cannot exhaust localStorage or delay a keystroke's save.
 function mediaDB(): Promise<IDBDatabase> {
@@ -176,11 +143,15 @@ function mediaDB(): Promise<IDBDatabase> {
   });
 }
 export async function saveDraftMedia(id: string, file: Blob): Promise<void> {
+  // WebKit can reject Blob/File values during IndexedDB serialization. Keep
+  // their exact bytes and MIME type; legacy Blob records remain readable below.
+  const stored = { version: 1, bytes: await file.arrayBuffer(), type: file.type };
   const db = await mediaDB();
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction("media", "readwrite");
-      tx.objectStore("media").put(file, id);
+      const request = tx.objectStore("media").put(stored, id);
+      request.onerror = () => reject(request.error);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
@@ -192,12 +163,54 @@ export async function saveDraftMedia(id: string, file: Blob): Promise<void> {
 export async function readDraftMedia(id: string): Promise<Blob | undefined> {
   const db = await mediaDB();
   try {
-    return await new Promise<Blob | undefined>((resolve, reject) => {
+    const stored = await new Promise<unknown>((resolve, reject) => {
       const tx = db.transaction("media", "readonly");
       const request = tx.objectStore("media").get(id);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+    if (stored == null) return undefined;
+    if (stored instanceof Blob) {
+      const binary = { version: 1, bytes: await stored.arrayBuffer(), type: stored.type };
+      // File IDs are immutable. Backup and replacement share one transaction;
+      // quota/abort leaves the original Blob and all earlier backups untouched.
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("media", "readwrite"),
+          store = tx.objectStore("media");
+        const request = store.get(id);
+        request.onsuccess = () => {
+          const current = request.result;
+          if (
+            !(current instanceof Blob) ||
+            current.size !== stored.size ||
+            current.type !== stored.type
+          )
+            return;
+          const backupKey = `migration-backup:v1:${id}`,
+            backup = store.get(backupKey);
+          backup.onsuccess = () => {
+            if (backup.result != null) return;
+            store.put(binary, backupKey);
+            store.put(binary, id);
+          };
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      return new Blob([binary.bytes], { type: binary.type });
+    }
+    if (
+      typeof stored === "object" &&
+      "version" in stored &&
+      stored.version === 1 &&
+      "bytes" in stored &&
+      stored.bytes instanceof ArrayBuffer &&
+      "type" in stored &&
+      typeof stored.type === "string"
+    )
+      return new Blob([stored.bytes], { type: stored.type });
+    throw new Error("Файл черновика повреждён");
   } finally {
     db.close();
   }

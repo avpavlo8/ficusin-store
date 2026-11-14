@@ -17,7 +17,6 @@
   box-shadow: none;
 }
 .checkout-page-panel:not(.checkout-order-complete)::before,
-.checkout-page-panel > .drawer-head h2::after,
 .checkout-page-panel :is(.checkout-form-section, .checkout-submit-section)::before,
 .checkout-page-panel .checkout-order-summary::after {
   content: none;

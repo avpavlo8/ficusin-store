@@ -346,13 +346,12 @@ func (service *Service) SaveAvatar(
 			fileassets.Discard(service.fileStorage, key)
 		}
 	}()
-	// A lost autocommit UPDATE reply may still have keepFile its reference.
+	// A lost autocommit UPDATE reply may still have committed its reference.
 	// Retain the object after attempting the mutation; a possible orphan is safer
 	// than deleting bytes referenced by a successful but unacknowledged write.
 	keepFile = true
 	tag, err := service.pool.Exec(ctx, `
 		UPDATE customers SET
-			avatar_image = NULL,
    avatar_object_key=$2,
 			avatar_mime = $3,
 			avatar_updated_at = CURRENT_TIMESTAMP,
@@ -372,7 +371,6 @@ func (service *Service) SaveAvatar(
 func (service *Service) DeleteAvatar(ctx context.Context, customerID int64) error {
 	if _, err := service.pool.Exec(ctx, `
 		UPDATE customers SET
-			avatar_image = NULL,
    avatar_object_key=NULL,
 			avatar_mime = NULL,
 			avatar_updated_at = NULL,
@@ -391,15 +389,15 @@ func (service *Service) Avatar(ctx context.Context, customerID int64) ([]byte, s
 	var mime *string
 	var key string
 	err := service.pool.QueryRow(ctx, `
-		SELECT avatar_image, avatar_mime,COALESCE(avatar_object_key,'') FROM customers WHERE id = $1
-	`, customerID).Scan(&image, &mime, &key)
+		SELECT avatar_mime,COALESCE(avatar_object_key,'') FROM customers WHERE id = $1
+	`, customerID).Scan(&mime, &key)
 	if isNoRows(err) {
 		return nil, "", nil
 	}
 	if err != nil {
 		return nil, "", fmt.Errorf("load avatar: %w", err)
 	}
-	image, err = fileassets.Read(ctx, service.fileStorage, key, image)
+	image, err = fileassets.Read(ctx, service.fileStorage, key)
 	if err != nil {
 		return nil, "", err
 	}

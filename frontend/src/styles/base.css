@@ -72,22 +72,6 @@ h1,
 h2 {
   font-family: Georgia, "Times New Roman", serif;
 }
-
-.announcement {
-  min-height: 34px;
-  padding: 9px 5vw;
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  background: var(--green);
-  color: #eef2ea;
-  font-size: 11px;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-.announcement[hidden] {
-  display: none !important;
-}
 /* Шапка выше строки поиска по слою. Пока приоритет был одинаковым,
    выпадающее меню под именем пряталось за поиском: строка идёт в разметке
    позже и рисовалась поверх. */
@@ -374,8 +358,6 @@ footer small {
   transition: transform 0.32s ease;
   box-shadow: -20px 0 60px rgba(15, 48, 38, 0.16);
 }
-.drawer.open,
-.checkout.open,
 .mobile-menu.open {
   transform: none;
 }
@@ -408,13 +390,6 @@ footer small {
   justify-content: space-between;
   border-bottom: 1px solid var(--line);
 }
-.drawer-head h2 {
-  margin: 0;
-  color: var(--green);
-  font-size: 40px;
-  font-weight: 400;
-}
-.drawer-head button,
 .mobile-menu > button {
   width: 42px;
   height: 42px;
@@ -517,9 +492,6 @@ footer small {
 .cart-summary p {
   color: #737b74;
   font-size: 12px;
-}
-.cart-summary .primary-button {
-  width: 100%;
 }
 .toast {
   position: fixed;

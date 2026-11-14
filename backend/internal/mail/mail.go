@@ -1,5 +1,5 @@
 // Package mail sends the letters the shop owes its customers: the order
-// they placed, what happened to it, and the invoice a company asked for.
+// they placed, status changes, packing offers and tracking updates.
 //
 // Everything here is switched off by an empty SMTP host, like every other
 // integration in this shop. A shop with no mail settings simply sends no
@@ -12,7 +12,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log/slog"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
@@ -36,10 +35,9 @@ type Config struct {
 
 type Sender struct {
 	config Config
-	logger *slog.Logger
 }
 
-func NewSender(config Config, logger *slog.Logger) *Sender {
+func NewSender(config Config) *Sender {
 	config.Host = strings.TrimSpace(config.Host)
 	config.From = strings.TrimSpace(config.From)
 	if config.FromName == "" {
@@ -48,7 +46,7 @@ func NewSender(config Config, logger *slog.Logger) *Sender {
 	if config.Port == 0 {
 		config.Port = 465
 	}
-	return &Sender{config: config, logger: logger}
+	return &Sender{config: config}
 }
 
 func (sender *Sender) Configured() bool {

@@ -341,10 +341,11 @@ test("@desktop корзина открывается отдельной стра
   await card.getByRole("button", { name: /Перейти в корзину/ }).click();
 
   await expect(page).toHaveURL(/\/cart$/);
-  const drawer = page.locator(".drawer.open");
+  const drawer = page.locator(".cart-page-panel");
   await expect(drawer).toBeVisible();
   await expect(drawer.getByText("Аглаонема Мария")).toBeVisible();
   await expect(drawer.locator(".quantity span")).toHaveText("1");
+  await expect(page.locator(".checkout")).toHaveCount(0);
 });
 
 test("@desktop корзина ведёт в оформление с контактами и доставкой на одной странице", async ({ page }) => {
@@ -354,7 +355,7 @@ test("@desktop корзина ведёт в оформление с контак
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
   await card.getByRole("button", { name: /Перейти в корзину/ }).click();
-  await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
+  await page.locator(".cart-page-panel").getByRole("button", { name: "Оформить заказ" }).click();
 
   await expect(page).toHaveURL(/\/checkout$/);
   const checkout = page.locator(".checkout-page-panel");
@@ -383,7 +384,7 @@ test("@desktop оформление отправляет заказ с норм�
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
   await card.getByRole("button", { name: /Перейти в корзину/ }).click();
-  await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
+  await page.locator(".cart-page-panel").getByRole("button", { name: "Оформить заказ" }).click();
 
   const checkout = page.locator(".checkout-page-panel");
   await checkout.getByLabel("Имя").fill("Александр");
@@ -419,7 +420,7 @@ test("@desktop оформление подставляет профиль авт
   const card = page.locator(".storefront-card", { hasText: "Аглаонема Мария" });
   await card.getByRole("button", { name: "В корзину" }).click();
   await card.getByRole("button", { name: /Перейти в корзину/ }).click();
-  await page.locator(".drawer.open").getByRole("button", { name: "Оформить заказ" }).click();
+  await page.locator(".cart-page-panel").getByRole("button", { name: "Оформить заказ" }).click();
 
   const checkout = page.locator(".checkout-page-panel");
   await expect(checkout.getByLabel("Имя")).toHaveValue("Александр");
@@ -432,6 +433,6 @@ test("@desktop старая ссылка на корзину ведёт на о�
   await mockApi(page);
   await page.goto("/?cart=1");
 
-  await expect(page.locator(".drawer.open")).toBeVisible();
+  await expect(page.locator(".cart-page-panel")).toBeVisible();
   await expect(page).toHaveURL(/\/cart$/);
 });

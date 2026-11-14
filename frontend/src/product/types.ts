@@ -190,6 +190,23 @@ export const attributeValue = (value: string | number | boolean | string[], unit
   return `${values.map(attributeLabel).join(", ")}${unit ? ` ${unit}` : ""}`;
 };
 
+// PIM display text is authoritative. Machine values remain available for
+// filters and business logic; the seeded map only covers metadata-free data.
+export const displayAttributeValue = (
+  attribute: Pick<ProductAttribute, "value" | "displayValue" | "optionLabels" | "unit">,
+) => {
+  const { value, displayValue, optionLabels, unit } = attribute;
+  if (displayValue !== undefined && displayValue !== null) {
+    const displayed = Array.isArray(displayValue) ? displayValue : [displayValue];
+    return `${displayed.join(", ")}${unit ? ` ${unit}` : ""}`;
+  }
+  const values = Array.isArray(value) ? value : [value];
+  const displayed = values.map((item) =>
+    typeof item === "string" && optionLabels?.[item] ? optionLabels[item] : attributeLabel(item),
+  );
+  return `${displayed.join(", ")}${unit ? ` ${unit}` : ""}`;
+};
+
 export const money = (value: number) =>
   new Intl.NumberFormat("ru-RU", {
     style: "currency",
