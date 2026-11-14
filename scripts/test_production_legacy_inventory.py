@@ -23,7 +23,7 @@ class Tests(unittest.TestCase):
         self.assertTrue(flags['privateConfigured']);self.assertTrue(flags['publicConfigured']);self.assertTrue(flags['distinctBuckets'])
     def test_configuration_returns_flags_never_keys(self):
         env={prefix+key:'SECRET' for prefix in ['S3_','PRIVATE_S3_'] for key in ['ENDPOINT','REGION','BUCKET','ACCESS_KEY','SECRET_KEY']}
-        self.assertEqual(inventory.storage_flags(env),{'privateConfigured':True,'publicConfigured':True,'distinctBuckets':False,'objectsReadOrWritten':0})
+        self.assertEqual(inventory.storage_flags(env),{'privateConfigured':True,'publicConfigured':True,'distinctBuckets':False,'objectsWritten':0})
         self.assertNotIn('SECRET',str(inventory.storage_flags(env)))
 
 if __name__=='__main__':unittest.main()

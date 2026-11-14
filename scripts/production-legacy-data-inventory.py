@@ -137,7 +137,7 @@ def storage_flags(env):
     private = bool(text('PRIVATE_S3_BUCKET') and (text('PRIVATE_S3_ACCESS_KEY') or text('S3_ACCESS_KEY')) and (text('PRIVATE_S3_SECRET_KEY') or text('S3_SECRET_KEY')))
     return {'privateConfigured': private, 'publicConfigured': public,
             'distinctBuckets': bool(text('PRIVATE_S3_BUCKET')) and text('PRIVATE_S3_BUCKET') != text('S3_BUCKET'),
-            'objectsReadOrWritten': 0}
+            'objectsWritten': 0}
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
@@ -156,6 +156,7 @@ def main():
                 with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
                     report=inspect(cursor)
                     report['objectVerification']=verify_private_objects(cursor,env)
+                    report['objectReadAttempts']=sum(item['readable']+item['unavailable'] for item in report['objectVerification'].values())
                     report['publicationDiagnostics']=publication_diagnostics(cursor)
         report.update(expectedProductionCommit=args.expected_commit,storage=storage_flags(env),readOnly=True,
                       databaseWrites=0,providerCalls=0,objectsWritten=0,checkedAt=datetime.datetime.now(datetime.timezone.utc).isoformat())

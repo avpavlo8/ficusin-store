@@ -1,4 +1,4 @@
-name: Read-only legacy data inventory
+name: Read-only blocked publication reconciliation
 on:
   workflow_dispatch:
     inputs:
@@ -20,9 +20,9 @@ jobs:
       - name: Install read-only database client
         run: python3 -m pip install 'psycopg[binary]==3.2.13'
       - name: Test bounded read-only inventory guards
-        run: python3 -m unittest discover -s scripts -p 'test_production_legacy_inventory.py'
-      - name: Read production legacy data counts without writes
+        run: python3 -m unittest discover -s scripts -p 'test_production*reconciliation.py'
+      - name: Read exact blocked marketplace publications without writes
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/production-legacy-data-inventory.py --expected-commit "$EXPECTED_COMMIT"
+        run: python3 scripts/production-catalog-readonly-reconciliation.py --expected-commit "$EXPECTED_COMMIT"
