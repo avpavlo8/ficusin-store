@@ -6,7 +6,7 @@ import { ProductPurchasePanel } from "./product/ProductPurchasePanel";
 import { PurchaseReviewSummary } from "./product/PurchaseReviewSummary";
 import { PlantAbout, PlantCareGuide, PlantQuestions } from "./product/PlantCareGuide";
 import type { ProductDetail } from "./product/types";
-import { attributeValue, money } from "./product/types";
+import { attributeValue, displayAttributeValue, money } from "./product/types";
 import { useSharedCart } from "./lib/cart";
 import { orderStorefrontCategories } from "./lib/category-order";
 import { track } from "./lib/analytics";
@@ -607,7 +607,7 @@ export default function ProductPage({ slug }: { slug: string }) {
                     customerAttributes.map((item) => (
                       <div key={`${item.code}-${variant?.sku || "product"}`}>
                         <dt>{item.name}</dt>
-                        <dd>{attributeValue(item.value, item.unit)}</dd>
+                        <dd>{displayAttributeValue(item)}</dd>
                       </div>
                     ))
                   ) : (

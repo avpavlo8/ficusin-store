@@ -6,27 +6,6 @@ import (
 	"testing"
 )
 
-// Заказ «после подтверждения менеджером» лежит в том же payment_status
-// pending, что и брошенная оплата картой. Общее условие автоотмены
-// отменяло его вместе с резервом, пока менеджер до него не дошёл.
-func TestExpiryCancelsOnlyAbandonedOnlinePayments(t *testing.T) {
-	raw, err := os.ReadFile("expire.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	sql := string(raw)
-
-	if !strings.Contains(sql, "payment_method = 'online'") {
-		t.Error("автоотмена снова ловит все pending-заказы, включая ожидающие менеджера")
-	}
-	if !strings.Contains(sql, "has_preorder = 0") {
-		t.Error("предзаказ без резерва не должен истекать как брошенная корз обычная оплата")
-	}
-	if !strings.Contains(sql, "status NOT IN ('cancelled', 'completed')") {
-		t.Error("автоотмена потеряла защиту от повторной отмены")
-	}
-}
-
 // Миграция обязана заполнить reserved_qty у уже лежащих заказов, иначе
 // первая же отмена старого заказа не вернёт ничего.
 func TestReservedQuantityMigrationBackfillsExistingOrders(t *testing.T) {

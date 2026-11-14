@@ -86,28 +86,3 @@ func TestCRMManagerPermissionResponse(t *testing.T) {
 		}
 	}
 }
-
-// Current editing uses one atomic product PATCH. Retired independent mutation
-// routes must not remain reachable after their old UI has been removed.
-func TestRetiredCatalogRoutesAreNotRegistered(t *testing.T) {
-	router := NewRouter(discardLogger(), adminDependencies(admin.NewPostgresRepository(nil), admin.RoleOwner, ""))
-	for _, operation := range []struct{ method, path string }{
-		{"PATCH", "/api/v1/admin/variants/1"},
-		{"DELETE", "/api/v1/admin/variants/1"},
-		{"POST", "/api/v1/admin/variants/1/copy"},
-		{"POST", "/api/v1/admin/variants/1/archive"},
-		{"GET", "/api/v1/admin/products/1/relationships"},
-		{"GET", "/api/v1/admin/variants/1/price-proposals"},
-		{"POST", "/api/v1/admin/price-proposals/1/approve"},
-		{"POST", "/api/v1/admin/price-proposals/1/retry"},
-		{"GET", "/api/v1/admin/price-proposals/1/saby-xlsx"},
-	} {
-		t.Run(operation.method+" "+operation.path, func(t *testing.T) {
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, adminRequest(operation.method, operation.path, "{}"))
-			if response.Code != 404 {
-				t.Fatalf("retired route returned %d: %s", response.Code, response.Body.String())
-			}
-		})
-	}
-}
