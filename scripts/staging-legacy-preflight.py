@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only cutover inventory of the fixed isolated staging database."""
 import argparse
+import base64
 import importlib.util
 import json
 import os
@@ -74,7 +75,7 @@ def inspect(cursor):
     return report
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--expected-commit',required=True);args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--expected-commit',required=True);p.add_argument('--expected-version',default='');args=p.parse_args()
     try:
         require(os.environ.get('GITHUB_ACTIONS')=='true','github_actions_only');env=staging_settings(read_app(),args.expected_commit)
         import psycopg.rows
@@ -83,6 +84,18 @@ def main():
                 require(connection.execute("SELECT current_database(),current_user,current_setting('transaction_read_only')").fetchone()==(DATABASE,LOGIN,'on'),'wrong_readonly_database')
                 require(connection.execute("SELECT rolsuper,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user").fetchone()==(False,False,False),'unsafe_stage_role')
                 with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:report=inspect(cursor)
+        if args.expected_version:
+            require(bool(re.fullmatch('[0-9a-f]{16}',args.expected_version)),'invalid_expected_build')
+            report['http']={}
+            for path in ('health','ready'):
+                token=env.get('STAGING_ACCESS_TOKEN','');require(bool(token),'stage_access_missing')
+                authorization=base64.b64encode(('staging:'+token).encode()).decode()
+                request=urllib.request.Request('https://avpavlo8-ficusin-store-1b1b.twc1.net/api/v1/'+path,headers={'Authorization':'Basic '+authorization,'Cache-Control':'no-cache'},method='GET')
+                with urllib.request.build_opener(guards.NoRedirect()).open(request,timeout=20) as response:
+                    require(response.headers.get('X-Ficusin-Environment')=='staging' and 'noindex' in response.headers.get('X-Robots-Tag',''),'stage_http_guard_missing')
+                    value=json.loads(response.read(10000))
+                require(value.get('status')=='ok' and value.get('version')==args.expected_version,'stage_build_not_ready')
+                report['http'][path]={'status':value['status'],'version':value['version']}
         report.update(readOnly=True,databaseWrites=0,businessWrites=0,stageApp=APP,expectedStageCommit=args.expected_commit,isolatedMock=True)
         print(json.dumps(report,sort_keys=True));return 0
     except Exception as e:

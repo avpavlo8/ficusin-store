@@ -6,6 +6,10 @@ on:
         description: Exact deployed staging SHA
         type: string
         required: true
+      expected_version:
+        description: Optional exact built code version for health/readiness checks
+        type: string
+        required: false
 permissions:
   contents: read
 jobs:
@@ -23,4 +27,5 @@ jobs:
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-        run: python3 scripts/staging-legacy-preflight.py --expected-commit "$EXPECTED_COMMIT"
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: python3 scripts/staging-legacy-preflight.py --expected-commit "$EXPECTED_COMMIT" --expected-version "$EXPECTED_VERSION"
