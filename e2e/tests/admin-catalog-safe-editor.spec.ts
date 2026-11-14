@@ -372,3 +372,16 @@ for (const width of [768, 1024, 1280]) {
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   });
 }
+
+test('@desktop @phone Flowwow channel saves site-authoritative publication settings',async({page})=>{
+ const state=await fixture(page);
+ await page.route('**/api/v1/admin/flowwow/references?*',route=>{const q=new URL(route.request().url()).searchParams;return route.fulfill({json:q.get('kind')==='categories'?{data:[{name:'Растения',subCategories:[{subCategoryId:101,name:'Горшечные'}]}]}:{data:[{field:'height',name:'Высота Flowwow',type:'measure',required:true,measure:[{id:3}]}]}})});
+ await open(page);const editor=await edit(page);await editor.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
+ const channel=editor.getByRole('region',{name:'Flowwow',exact:true});
+ await channel.getByLabel('Отправлять в Flowwow').check();
+ await channel.getByLabel('Подкатегория Flowwow').selectOption('101');
+ await channel.getByRole('spinbutton',{name:'Высота Flowwow: значение',exact:true}).fill('35');
+ await saveEditor(editor);
+ const saved=state.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT').at(-1)?.body;
+ expect(saved.submit).toBe(true);expect(saved.config.variants[0].flowwow.enabled).toBe(true);expect(saved.config.variants[0].flowwow.category.id).toBe('101');expect(saved.config.variants[0].flowwow.attributes.height).toEqual({val:35,measure:3});
+});

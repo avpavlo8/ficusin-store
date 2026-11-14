@@ -1,3 +1,5 @@
+import { ProductFlowwow } from "./ProductFlowwow";
+import { blankFlowwow, type FlowwowChannel } from "./flowwowTypes";
 import {
   mergeMarketplaceCards,
   replaceMarketplaceCard,
@@ -123,7 +125,7 @@ export function ProductCreationPage({
     }>
   >([]);
   const [channelLinks, setChannelLinks] = useState<
-    Record<string, Partial<Record<"wb" | "ozon", string>>>
+    Record<string, Partial<Record<"wb" | "ozon" | "flowwow", string>>>
   >({});
   const [sabyLinks, setSabyLinks] = useState<Record<string, SabyReadLink>>({});
   const [marketplaceCardError, setMarketplaceCardError] = useState("");
@@ -361,6 +363,7 @@ export function ProductCreationPage({
           variants: Array<{
             variantId: number;
             saby: SabyEditorConfig;
+            flowwow?: FlowwowChannel;
             marketplace: MarketplaceCommon;
           }>;
         };
@@ -371,7 +374,7 @@ export function ProductCreationPage({
           message: string;
           externalIds?: { productId: string; offerId?: string };
         }>;
-        links: Record<string, Partial<Record<"wb" | "ozon", string>>>;
+        links: Record<string, Partial<Record<"wb" | "ozon" | "flowwow", string>>>;
         sabyLinks?: Record<string, SabyReadLink>;
         publicationMode: string;
         barcodes: Record<string, string>;
@@ -407,7 +410,12 @@ export function ProductCreationPage({
                     defaults: { category: current.sabyCategory, folder: current.sabyFolder },
                   })
                 : undefined;
-            const next = { ...row, marketplace: row.marketplace || saved?.marketplace, sabyEditor };
+            const next = {
+              ...row,
+              marketplace: row.marketplace || saved?.marketplace,
+              flowwow: row.flowwow || saved?.flowwow,
+              sabyEditor,
+            };
             return JSON.stringify(next) === JSON.stringify(row) ? row : next;
           });
           if (hydrated?.some((row, index) => row !== current.variants?.[index]))
@@ -829,6 +837,7 @@ export function ProductCreationPage({
                 saby: previous.saby,
                 marketplacePriceMode: previous.marketplacePriceMode,
                 marketplace: previous.marketplace,
+                flowwow: previous.flowwow,
                 sabyEditor: previous.sabyEditor,
                 sabyEditorTouched: previous.sabyEditorTouched,
                 ozon: previous.ozon,
@@ -982,6 +991,7 @@ export function ProductCreationPage({
         .map((row) => ({
           variantId: row.serverId,
           saby: sabyOf(row, latest.current),
+          flowwow: row.flowwow || blankFlowwow(),
           marketplace: marketplaceOf(row, latest.current),
           ozonPrice: (row.ozon || latest.current.ozon).price,
           wbPrice: (row.wb || latest.current.wb).price,
@@ -1806,6 +1816,15 @@ export function ProductCreationPage({
                   wb: variant.wb?.price || draft.wb.price,
                 }}
               />
+              <ProductFlowwow
+                key={variant.id}
+                value={variant.flowwow || blankFlowwow()}
+                linked={linkedMarketplaces.flowwow}
+                sku={variant.sku}
+                price={variant.price}
+                stock={variant.stock}
+                onChange={(flowwow) => changeVariant({ flowwow })}
+              />
               {channelStatuses
                 .filter((status) => status.variantId === variant.serverId)
                 .map((status) => (
@@ -1814,7 +1833,9 @@ export function ProductCreationPage({
                       ? "Wildberries"
                       : status.channel === "ozon"
                         ? "Ozon"
-                        : "СБИС"}
+                        : status.channel === "flowwow"
+                          ? "Flowwow"
+                          : "СБИС"}
                     : {status.message}
                     {status.channel === "saby"
                       ? status.externalIds?.offerId && <> · Код {status.externalIds.offerId}</>

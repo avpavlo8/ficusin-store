@@ -43,7 +43,7 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	var channel, status string
 	var raw, stateRaw []byte
 	var attempts int
-	e = tx.QueryRow(ctx, `SELECT variant_id,channel,payload,progress,status,attempts FROM catalog_editor_publications WHERE (channel IN ('wb','ozon') OR (channel='saby' AND $1='live')) AND execution_mode=$1 AND ((status IN ('prepared','queued') AND next_attempt_at<=NOW()) OR (status='processing' AND lease_until<NOW())) ORDER BY next_attempt_at,variant_id,channel FOR UPDATE SKIP LOCKED LIMIT 1`, mode).Scan(&variant, &channel, &raw, &stateRaw, &status, &attempts)
+	e = tx.QueryRow(ctx, `SELECT variant_id,channel,payload,progress,status,attempts FROM catalog_editor_publications WHERE (channel IN ('wb','ozon','flowwow') OR (channel='saby' AND $1='live')) AND execution_mode=$1 AND ((status IN ('prepared','queued') AND next_attempt_at<=NOW()) OR (status='processing' AND lease_until<NOW())) ORDER BY next_attempt_at,variant_id,channel FOR UPDATE SKIP LOCKED LIMIT 1`, mode).Scan(&variant, &channel, &raw, &stateRaw, &status, &attempts)
 	if e == pgx.ErrNoRows {
 		return nil
 	}
@@ -271,6 +271,9 @@ func remoteCardOccupied(ctx context.Context, tx pgx.Tx, variant int64, channel, 
 	}
 	var occupied bool
 	provider := "wildberries"
+	if channel == "flowwow" {
+		provider = "flowwow"
+	}
 	if channel == "ozon" {
 		provider = "ozon"
 	}
@@ -278,6 +281,9 @@ func remoteCardOccupied(ctx context.Context, tx pgx.Tx, variant int64, channel, 
 	return occupied, e
 }
 func saveLiveRemoteLink(ctx context.Context, tx pgx.Tx, product, variant int64, channel string, ids RemoteIDs) error {
+	if channel == "flowwow" {
+		return nil
+	}
 	if channel == "saby" {
 		return saveLiveSabyLink(ctx, tx, product, variant, ids)
 	}

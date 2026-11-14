@@ -1,3 +1,4 @@
+import type { FlowwowChannel } from "./flowwowTypes";
 import type {
   MarketplaceCommon,
   SabyEditorConfig,
@@ -39,6 +40,7 @@ export type DraftMedia = {
   serverId?: number;
 };
 export type DraftVariant = {
+  flowwow?: FlowwowChannel;
   marketplace?: MarketplaceCommon;
   sabyEditor?: SabyEditorConfig;
   // Local journal only: even clearing a field or clicking the default mode is

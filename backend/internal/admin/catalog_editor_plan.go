@@ -28,6 +28,7 @@ type EditorChannel = catalogeditor.Channel
 type EditorMarketplace = catalogeditor.Marketplace
 type EditorSaby = catalogeditor.Saby
 type EditorVariantPlan struct {
+	Flowwow     EditorChannel     `json:"flowwow"`
 	VariantID   int64             `json:"variantId"`
 	Saby        EditorSaby        `json:"saby"`
 	Marketplace EditorMarketplace `json:"marketplace"`
@@ -141,9 +142,17 @@ func ValidateEditorPlan(plan EditorPlan, submit bool) error {
 			return fmt.Errorf("%w: проверьте варианты товара", ErrInvalidInput)
 		}
 		seen[v.VariantID] = true
-		for _, mode := range []string{v.Saby.Mode, v.Marketplace.Ozon.Mode, v.Marketplace.WB.Mode} {
+		for _, mode := range []string{v.Saby.Mode, v.Marketplace.Ozon.Mode, v.Marketplace.WB.Mode, v.Flowwow.Mode} {
 			if mode != "" && mode != "create" && mode != "link" {
 				return ErrInvalidInput
+			}
+		}
+		if submit && v.Flowwow.Enabled {
+			if v.Flowwow.Mode == "link" && strings.TrimSpace(v.Flowwow.ExistingID) == "" {
+				return fmt.Errorf("%w: укажите ID карточки Flowwow", ErrInvalidInput)
+			}
+			if v.Flowwow.Mode != "link" && v.Flowwow.Category.ID == "" {
+				return fmt.Errorf("%w: выберите подкатегорию Flowwow", ErrInvalidInput)
 			}
 		}
 		if v.Marketplace.Units < 0 {
@@ -352,7 +361,7 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 			return EditorPlanView{}, err
 		}
 		name := editorSabyName(productName, attrs)
-		for channel, ch := range map[string]EditorChannel{"saby": {Enabled: true}, "ozon": v.Marketplace.Ozon, "wb": v.Marketplace.WB} {
+		for channel, ch := range map[string]EditorChannel{"saby": {Enabled: true}, "ozon": v.Marketplace.Ozon, "wb": v.Marketplace.WB, "flowwow": v.Flowwow} {
 			action := "create"
 			existing := linked[channel]
 			if channel == "saby" {
@@ -398,7 +407,7 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 			}
 			if channel != "saby" {
 				schema := []catalogeditor.Attribute{}
-				if action == "create" {
+				if action == "create" && channel != "flowwow" {
 					schema, err = editorSchema(ctx, tx, channel, ch, r.editorPublicationMode)
 					if err != nil {
 						return EditorPlanView{}, err
@@ -409,6 +418,9 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 				payload["schema"] = schema
 				payload["packaging"] = packaging
 				payload["name"] = productName
+			}
+			if channel == "flowwow" {
+				payload["name"], payload["description"] = productName, description
 			}
 			raw, _ := json.Marshal(payload)
 			fingerprintPayload := map[string]any{}

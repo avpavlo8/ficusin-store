@@ -8,8 +8,8 @@ const limits = {
   entryJS: 106 * 1024,
   // Compact filters, gradient care indicators and the shared floating cart.
   css: 47 * 1024,
-  // The lazy admin chunk includes procurement planning and locale-safe price fields.
-  asyncJS: 38.5 * 1024,
+  // The lazy admin chunk includes procurement planning and Flowwow navigation.
+  asyncJS: 39 * 1024,
   staticAsset: 900 * 1024,
 };
 

@@ -359,7 +359,7 @@ jobs:
         run: |
           createdb -h 127.0.0.1 -U postgres ficusin_local_publisher_test
           createdb -h 127.0.0.1 -U postgres ficusin_staging_file_mock_test
-          go -C backend test ./internal/admin -run '^TestEditorPublicationLocalDatabase$' -count=1
+          go -C backend test ./internal/admin -run '^TestEditorPublicationLocalDatabase$|^TestFlowwowPublicationLocalDatabase$' -count=1
           go -C backend test ./internal/admin -run '^TestEditorSabyLinksReadMirrorWithoutChangingIdentityOrSavedPlan$' -count=1
           go -C backend test ./internal/admin -run '^TestSabyEditorPublicationLocalDatabase$' -count=1
           go -C backend test -p 1 ./internal/fileassets ./internal/chat -count=1
