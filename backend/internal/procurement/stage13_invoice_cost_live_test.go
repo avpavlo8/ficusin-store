@@ -57,8 +57,8 @@ func TestStage13InvoiceCalculationDoesNotRevalueExistingStock(t *testing.T) {
 		VALUES($1,$2,900,'estimated','saby_retail_half_initial','2035-01-01')`, variantID, sabyID); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Stage 13 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage13-invoice-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Stage 13 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage13-invoice-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err = pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency)

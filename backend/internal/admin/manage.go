@@ -1077,28 +1077,6 @@ func (repository *PostgresRepository) categoryByID(ctx context.Context, id int64
 	return c, err
 }
 
-// replacePhotos ставит карточке весь набор снимков из СБИС, а не первый:
-// у растения обычно несколько ракурсов, и терять их при подтягивании обидно.
-func replacePhotos(ctx context.Context, repository *PostgresRepository, id int64, name string, images []string) error {
-	tx, err := repository.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, "DELETE FROM product_media WHERE product_id = $1", id); err != nil {
-		return fmt.Errorf("replace product media: %w", err)
-	}
-	for index, image := range images {
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO product_media (product_id, object_key, alt_text, sort_order, is_primary)
-			VALUES ($1, $2, $3, $4, $5)
-		`, id, image, name, index, boolToSmallInt(index == 0)); err != nil {
-			return fmt.Errorf("insert product media: %w", err)
-		}
-	}
-	return tx.Commit(ctx)
-}
-
 func (repository *PostgresRepository) productByID(ctx context.Context, id int64) (Product, error) {
 	products, err := repository.ListProducts(ctx)
 	if err != nil {

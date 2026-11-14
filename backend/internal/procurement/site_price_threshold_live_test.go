@@ -35,8 +35,8 @@ func TestProcurementPriceActionsUseSitePriceThresholdOnLiveDatabase(t *testing.T
 	}
 	unique := time.Now().UnixNano()
 	var actorID, supplierID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Threshold owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("threshold-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Threshold owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("threshold-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency)

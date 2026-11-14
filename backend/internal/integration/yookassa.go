@@ -427,20 +427,3 @@ func (client *YooKassaClient) refundResponse(ctx context.Context, method, path, 
 	}
 	return Refund{ID: response.ID, Status: response.Status, PaymentID: response.PaymentID, Amount: money.Rubles(amount), ReceiptStatus: response.ReceiptStatus}, nil
 }
-
-// Kept for compatibility with callers outside the order workflow. Pending is
-// explicitly not success; order refunds use CreateRefund/FetchRefund instead.
-func (client *YooKassaClient) Refund(ctx context.Context, paymentID string, amount float64, key string) error {
-	req, err := client.PrepareRefund(paymentID, amount, key, PaymentRequest{})
-	if err != nil {
-		return err
-	}
-	result, err := client.CreateRefund(ctx, req)
-	if err != nil {
-		return err
-	}
-	if result.Status != "succeeded" {
-		return errors.New("возврат ещё не подтверждён")
-	}
-	return nil
-}

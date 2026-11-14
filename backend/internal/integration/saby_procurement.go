@@ -1042,32 +1042,6 @@ func (client *SabyClient) rpc(ctx context.Context, method string, params any, ta
 	return nil
 }
 
-func nestedString(value any, path ...string) string {
-	if len(path) == 0 {
-		return strings.TrimSpace(fmt.Sprint(value))
-	}
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, child := range typed {
-			if strings.EqualFold(key, path[0]) {
-				return nestedString(child, path[1:]...)
-			}
-		}
-		for _, child := range typed {
-			if found := nestedString(child, path...); found != "" {
-				return found
-			}
-		}
-	case []any:
-		for _, child := range typed {
-			if found := nestedString(child, path...); found != "" {
-				return found
-			}
-		}
-	}
-	return ""
-}
-
 func (client *SabyClient) Configured() bool {
 	return client != nil && client.appClientID != "" && client.appSecret != "" && client.secretKey != "" &&
 		client.pointID > 0 && client.priceListID > 0

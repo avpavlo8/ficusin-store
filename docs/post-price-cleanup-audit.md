@@ -181,3 +181,97 @@ iPhone, Android и desktop (1,5 минуты), включая скидку WB и
 повторный полный прогон прошли без изменения приложения или тестов; точная
 причина исходного сбоя окружения не установлена. Остальные browser-спецификации
 в этом изменении повторно не запускались.
+
+## Повторный аудит 14 ноября 2026 после `b41154a`
+
+Заново проверены текущие вызовы всех cmd, члены живых frontend-модулей,
+SQL-колонки, определения функций/представлений/триггеров, неявные JSON-снимки,
+API-схемы и инструменты. Исходные миграции не редактировались.
+
+### Удалённый код
+
+- Go: `replacePhotos`, `Store.Photo`, `nestedString`, `mail.Invoice`,
+  `order.QueueLetter`, `settings.DefaultNumber/NonNegative`, `PopularityWeight`,
+  `recommendationScore`, `procurement.NewService` и `YooKassaClient.Refund`.
+  Старое требование Refund удалено из payment.provider. Рабочие async возвраты
+  используют отдельный refundProvider; письма пишутся текущими транзакциями
+  заказа/упаковки, обычный outbox worker сохранён. Реальный первоначальный импорт
+  фото из СБИС остался; удалённая replacePhotos не имела вызовов.
+- `PopularityWeight/recommendationScore` были копиями SQL исключительно для
+  тестов, а не рабочими формулами. Их тесты заменены исполнением ListAvailable
+  и listRecommendations на PostgreSQL: подтверждённые/отменённые продажи,
+  четыре возраста, сходство карточек и пустые атрибуты. SQL-поведение не менялось.
+- Неиспользуемые `Registration.Phone` и `mergeProduct.Snapshot` с лишним
+  to_jsonb/Scan. HTTP phone, вход по звонку и отдельный реальный merge-аудит
+  сохранены. Chat.Photo и старый конструктор закупок имели только тестовых
+  потребителей: тесты теперь используют текущие Attachment/NewServiceWithExecutor.
+- Frontend: возвращаемые blockers/missingStage1/unknownEnums и лишняя копия
+  массива readiness, CareArticle.image, OzonAttribute.attribute_complex_id,
+  DraftMedia.size и его четыре писателя. Полезные данные старых localStorage
+  черновиков, IndexedDB Blob и ограничения реальных загрузок остаются.
+  CareArticle.sources — редакторские первоисточники, назначение описано в типе.
+- Семь неподключённых дубликатов OpenAPI: CallVerification, User, OrderSummary,
+  analytics.Attribution, httpapi.createOrderBody/requestCodeBody/verifyCodeBody.
+  Канонические auth.User/order.Summary сохраняют необходимые constraints;
+  актуальный OrderWorkflow подключён к реальному ответу GET /admin/orders.
+  Контракт по-прежнему 236 операций; осталось 87 достижимых схем.
+- Неподключённая `plant_passport_content.schema.json` и три исчезнувших имени
+  в allowExportNames ESLint. Реальный генератор проверяет четыре исторических
+  набора JSON своей validate(); источники и воспроизводимость миграций сохранены.
+  Остальные 27 исключений ESLint имеют потребителей. Дополнительных неиспользуемых
+  env, jobs или прямых Go/Node/Docker-зависимостей не подтверждено.
+
+### Очистка рабочей схемы
+
+Миграции 216/217 блокируют исходные таблицы, копируют точные типизированные
+значения с идентификаторами/датами в detached archive, затем удаляют только
+перечисленные поля. Ни одного DROP CASCADE; неизвестная зависимость прервёт Apply.
+
+| Таблица | Удалённые поля | Архив в legacy_archive |
+|---|---|---|
+| customers | password_hash, email_verified | customer_password_fields |
+| products | saby_snapshot | product_retired_sync_fields |
+| product_variants | price_override_minor, price_override_until, saby_snapshot | variant_retired_price_sync_fields |
+| organizations | wholesale_discount_bps, payment_terms | organization_retired_terms |
+| marketplace_returns | channel_withheld_rub, channel_compensation_rub | marketplace_return_retired_amounts |
+| payment_refunds | receipt_required, receipt_confirmed_by | refund_retired_receipt_fields |
+
+У этих 12 полей нет текущих читателей/писателей в приложении и скриптах,
+зависимых SQL-функций/представлений или триггеров. Неявные JSON-снимки объединения
+и правок возвратов — история; restore/populate_record из старых ключей отсутствует.
+Существующие JSON-аудиты оставлены байт-в-байт. Новый SQL-тест сравнивает все
+остальные поля рабочих строк, точность JSON/денег/NULL, даты и автора чека,
+связанные строки, пустую схему и новые записи. Архив не теряется при удалении
+связанного автора. Миграция 216 дополнительно проверяет реальные вход существующего
+клиента, регистрацию, сессию, выход и привязку гостевого заказа по телефону.
+
+Отсутствие Go-чтения не стало поводом удалять активные audit timestamps,
+legacy_proposal_id, launch-hidden доказательства и catalog_editor_link_history:
+их назначение — происхождение, защита и история. Рабочие фискальные request/ID,
+lease/claim tokens, саби-идентичность и additive fallback экономики сохранены.
+
+### Итог проверок
+
+- Полные Go test/vet/build; анализ достижимости x/tools deadcode из всех cmd
+  с тестами: дополнительных недостижимых прикладных функций не найдено.
+  Статический анализ консервативен для интерфейсов и не заменяет проверку данных.
+- Восемь пакетов live-DB проверок на схеме 217; публикации WB/Ozon/Saby и цен,
+  файлы чата — отдельно на разрешённой isolated publisher БД; CRM seed прошёл
+  на отдельной копии, затем прошли закупки, merge, документы/правки возвратов,
+  старые и текущие платёжные/reconciliation сценарии. Сценарии с CRM fixtures
+  выполнялись отдельно от общего набора; local publisher требует своё имя БД.
+- При повторе старого payment recovery теста обнаружен конфликт постоянных ID
+  заглушки с предыдущим прогоном и cleanup после закрытия пула. ID привязаны к
+  ключу/локальной записи, пул закрывается последним cleanup. Повтор с count=2
+  прошёл на той же БД; рабочий платёжный код этим исправлением не менялся.
+- Новые архивные и прежние migration-тесты прошли. API на новой пустой БД
+  применил 217 миграций, рабочие 12 полей отсутствуют; readiness, health,
+  главная и каталог — 200. История существующих миграций не переписана.
+- Frontend lint/format/strict TypeScript/build/budget, 76 unit-тестов,
+  48 Python-тестов; реальные источники паспортов проверены генератором.
+  Все 32 оставшихся CI package/selector сочетания находят тесты; новые миграции
+  включены в CI, реальный SQL ranking попадает в существующий LiveDatabase шаг.
+- 110 browser-сценариев: 88 редактора и 22 каталога/статей на iPhone, Android,
+  desktop. Остальные browser-спецификации в этой итерации не запускались.
+
+Production-данные, ключи окружения и внешние отправки здесь не менялись.

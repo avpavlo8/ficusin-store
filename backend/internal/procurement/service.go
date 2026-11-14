@@ -154,10 +154,6 @@ func (service *Service) ReceivingPDF(ctx context.Context, orderID int64) ([]byte
 	return content, fmt.Sprintf("receiving-%d-%d-items.pdf", orderID, count), nil
 }
 
-func NewService(store Store) *Service {
-	return &Service{store: store, parser: NewPDFParser()}
-}
-
 func NewServiceWithExecutor(store Store, executor Executor) *Service {
 	return &Service{store: store, parser: NewPDFParser(), executor: executor}
 }

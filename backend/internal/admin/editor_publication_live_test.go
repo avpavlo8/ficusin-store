@@ -37,7 +37,7 @@ func TestEditorPublicationLocalDatabase(t *testing.T) {
 	}
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var customer int64
-	if e = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Publisher local test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); e != nil {
+	if e = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Publisher local test',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&customer); e != nil {
 		t.Fatal(e)
 	}
 	actor := Actor{CustomerID: customer, Role: RoleOwner}

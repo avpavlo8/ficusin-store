@@ -31,7 +31,7 @@ func TestReceiptReadOnlyRecheckClosesOrderAndKeepsSourceHistory(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Receipt recheck',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("recheck-%d@example.invalid", u), fmt.Sprintf("+79%09d", u%1000000000)).Scan(&actor))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Receipt recheck',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("recheck-%d@example.invalid", u), fmt.Sprintf("+79%09d", u%1000000000)).Scan(&actor))
 	defer pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actor)
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'domestic','RUB') RETURNING id`, fmt.Sprintf("Recheck %d", u)).Scan(&supplier))
 	defer pool.Exec(ctx, `DELETE FROM procurement_suppliers WHERE id=$1`, supplier)

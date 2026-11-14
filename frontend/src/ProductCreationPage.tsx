@@ -234,7 +234,6 @@ export function ProductCreationPage({
               source: item.url,
               name: "Фото варианта",
               type: "image/jpeg",
-              size: 0,
             }));
         if (!latest.current.remoteInitialized) {
           const placeholder = latest.current.variants?.find((item) => item.id === "first");
@@ -276,7 +275,6 @@ export function ProductCreationPage({
                         source: item.url,
                         name: "Фото товара",
                         type: "image/jpeg",
-                        size: 0,
                       })),
                     ...localMedia,
                   ],
@@ -664,7 +662,7 @@ export function ProductCreationPage({
         }
         const id = crypto.randomUUID();
         await saveDraftMedia(id, file);
-        const photo: DraftMedia = { id, name: file.name, type: file.type, size: file.size };
+        const photo: DraftMedia = { id, name: file.name, type: file.type };
         update(appendGalleryMedia(latest.current, variant.id, photo));
       }
     } catch {

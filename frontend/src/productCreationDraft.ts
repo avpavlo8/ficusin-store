@@ -19,7 +19,6 @@ export type DraftMedia = {
   id: string;
   name: string;
   type: string;
-  size: number;
   source?: string;
   serverId?: number;
 };

@@ -28,7 +28,6 @@ export function productToDraft(product: Product): ProductCreationDraft {
             source: product.image,
             name: "Основное фото",
             type: "image/jpeg",
-            size: 0,
           },
         ]
       : [],

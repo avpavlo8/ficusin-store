@@ -1984,7 +1984,21 @@ paths:
       operationId: get_admin_orders
       responses:
         2XX:
-          description: Successful response. Payload and business rules are implemented by the source handler.
+          description: Current orders with their shared fulfilment workflow. Other order fields are projected by the source handler.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders]
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      type: object
+                      required: [workflow]
+                      properties:
+                        workflow:
+                          $ref: "#/components/schemas/OrderWorkflow"
         default:
           $ref: "#/components/responses/ValidationError"
       x-source: backend/internal/httpapi/admin.go#orders
@@ -6959,42 +6973,6 @@ components:
           type: integer
         showInCharacteristics:
           type: boolean
-    CallVerification:
-      type: object
-      required:
-        - phone
-        - flow
-        - checkId
-      properties:
-        checkId:
-          type: string
-        flow:
-          type: string
-          enum:
-            - login
-            - register
-        fullName:
-          type: string
-        phone:
-          type: string
-        email:
-          type: string
-          format: email
-        accountType:
-          type: string
-          enum:
-            - retail
-            - wholesale
-        companyName:
-          type: string
-        inn:
-          type: string
-        kpp:
-          type: string
-        legalAddress:
-          type: string
-        consent:
-          type: boolean
     OrderItemInput:
       type: object
       required:
@@ -7055,65 +7033,6 @@ components:
           type: array
           items:
             type: string
-    User:
-      type: object
-      required:
-        - id
-        - email
-        - phone
-        - fullName
-        - accountType
-        - wholesaleStatus
-        - retailDiscountBps
-        - lifetimeSpendMinor
-      properties:
-        id:
-          type: integer
-          format: int64
-        email:
-          type: string
-        phone:
-          type: string
-        fullName:
-          type: string
-        accountType:
-          type: string
-          enum:
-            - retail
-            - wholesale
-        wholesaleStatus:
-          type: string
-        retailDiscountBps:
-          type: integer
-        lifetimeSpendMinor:
-          type: integer
-          format: int64
-          description:
-            Сумма выполненных заказов в копейках. Кабинет считает по ней, сколько осталось до
-            следующей ступени скидки.
-    OrderSummary:
-      type: object
-      required:
-        - orderNumber
-        - deliveryMethod
-        - total
-        - status
-        - createdAt
-        - itemsCount
-      properties:
-        orderNumber:
-          type: string
-        deliveryMethod:
-          type: string
-        total:
-          type: number
-        status:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        itemsCount:
-          type: integer
     SabyCatalogItem:
       type: object
       required:
@@ -7732,37 +7651,12 @@ components:
         wholesaleMinQty:
           type: integer
       type: object
-    analytics.Attribution:
-      properties:
-        analyticsAllowed:
-          type: boolean
-        campaign:
-          type: string
-        content:
-          type: string
-        medium:
-          type: string
-        metrikaClientId:
-          type: string
-        metrikaCounterId:
-          type: string
-        metrikaServer:
-          type: boolean
-        referrer:
-          type: string
-        sessionId:
-          type: string
-        source:
-          type: string
-        term:
-          type: string
-        visitorId:
-          type: string
-      type: object
     auth.User:
+      required: [id, email, phone, fullName, accountType, wholesaleStatus, retailDiscountBps, lifetimeSpendMinor]
       properties:
         accountType:
           type: string
+          enum: [retail, wholesale]
         adminRole:
           type: string
         avatarUpdatedAt:
@@ -7775,10 +7669,13 @@ components:
           type: string
         id:
           type: integer
+          format: int64
         lastName:
           type: string
         lifetimeSpendMinor:
           type: integer
+          format: int64
+          description: Сумма выполненных заказов в копейках; кабинет использует её для расчёта следующей ступени скидки.
         patronymic:
           type: string
         phone:
@@ -7795,54 +7692,6 @@ components:
             type: integer
           type: array
       type: object
-    httpapi.createOrderBody:
-      properties:
-        attribution:
-          $ref: "#/components/schemas/analytics.Attribution"
-        cdek:
-          properties:
-            cityCode:
-              type: integer
-            cityName:
-              type: string
-            officeCode:
-              type: string
-            repack:
-              type: boolean
-            tariffCode:
-              type: integer
-          type: object
-        consent:
-          type: boolean
-        customer:
-          properties:
-            address:
-              type: string
-            comment:
-              type: string
-            email:
-              type: string
-            name:
-              type: string
-            phone:
-              type: string
-          type: object
-        delivery:
-          type: string
-        items:
-          items:
-            properties:
-              id:
-                type: string
-              quantity:
-                type: integer
-            type: object
-          type: array
-        offerAccepted:
-          type: boolean
-        paymentMethod:
-          type: string
-      type: object
     httpapi.profileBody:
       properties:
         deliveryAddress:
@@ -7854,13 +7703,6 @@ components:
         lastName:
           type: string
         patronymic:
-          type: string
-      type: object
-    httpapi.requestCodeBody:
-      properties:
-        flow:
-          type: string
-        phone:
           type: string
       type: object
     httpapi.subscriptionBody:
@@ -7878,37 +7720,6 @@ components:
             p256dh:
               type: string
           type: object
-      type: object
-    httpapi.verifyCodeBody:
-      properties:
-        accountType:
-          type: string
-        checkId:
-          type: string
-        companyName:
-          type: string
-        consent:
-          type: boolean
-        deliveryAddress:
-          type: string
-        email:
-          type: string
-        flow:
-          type: string
-        fullName:
-          type: string
-        inn:
-          type: string
-        kpp:
-          type: string
-        lastName:
-          type: string
-        legalAddress:
-          type: string
-        patronymic:
-          type: string
-        phone:
-          type: string
       type: object
     order.Detail:
       properties:
@@ -8024,6 +7835,7 @@ components:
           $ref: "#/components/schemas/RUBAmount"
       type: object
     order.Summary:
+      required: [orderNumber, deliveryMethod, total, status, createdAt, itemsCount]
       properties:
         createdAt:
           format: date-time

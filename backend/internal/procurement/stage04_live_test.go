@@ -162,8 +162,8 @@ func TestStage04SalesLedgerOnLiveDatabase(t *testing.T) {
 		t.Fatalf("rowsUnlinked before link=%d, want at least 1", unlinkedCountBefore)
 	}
 	var actorID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Stage 04 sales linker',CURRENT_TIMESTAMP) RETURNING id`,
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Stage 04 sales linker',CURRENT_TIMESTAMP) RETURNING id`,
 		fmt.Sprintf("stage04-link-%d@example.invalid", unique), fmt.Sprintf("+77%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}

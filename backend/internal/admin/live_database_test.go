@@ -51,7 +51,7 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	// Аудит админки ссылается на карточку сотрудника внешним ключом, поэтому
 	// актёр обязан существовать.
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Интеграционный владелец',CURRENT_TIMESTAMP) RETURNING id`,
+		`INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Интеграционный владелец',CURRENT_TIMESTAMP) RETURNING id`,
 		fmt.Sprintf("ci-%d@example.invalid", unique), fmt.Sprintf("+7900%07d", unique%10000000),
 	).Scan(&staffID); err != nil {
 		t.Fatalf("завести сотрудника: %v", err)

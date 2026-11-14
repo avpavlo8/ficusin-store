@@ -56,14 +56,13 @@ type User struct {
 }
 
 // Registration carries the details needed the first time a phone number
-// completes OTP verification. Only FullName, Phone and AccountType are
+// completes call verification. Only FullName and AccountType are
 // required; everything else can be filled in later from the account page.
 type Registration struct {
 	Flow            string
 	FullName        string
 	LastName        string
 	Patronymic      string
-	Phone           string
 	Email           string
 	DeliveryAddress string
 	AccountType     string

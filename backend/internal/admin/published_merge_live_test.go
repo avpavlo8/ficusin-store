@@ -50,8 +50,8 @@ func TestPublishedMergeOnLiveDatabase(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO categories(parent_id,name,slug,sort_order) SELECT id,'Merge test',$1,999 FROM categories WHERE slug='plants' RETURNING id`, fmt.Sprintf("merge-category-%d", unique)).Scan(&categoryID); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Merge test owner',CURRENT_TIMESTAMP) RETURNING id`, ownerEmail, fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&ownerID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Merge test owner',CURRENT_TIMESTAMP) RETURNING id`, ownerEmail, fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&ownerID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES

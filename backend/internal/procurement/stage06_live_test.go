@@ -30,8 +30,8 @@ func TestStage06PlanAndInvoiceRevisionsOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	var actorID int64
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at)
-		VALUES($1,$2,'','Stage 06 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage06-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at)
+		VALUES($1,$2,'Stage 06 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage06-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	var supplierID int64

@@ -55,7 +55,7 @@ func TestSabyLegacyFlagsCannotOverwriteSiteContentOnLiveDatabase(t *testing.T) {
 	}
 	exec(`CREATE VIEW canonical_product_directory AS SELECT v.id variant_id,v.product_id,v.saby_id FROM product_variants v`)
 	var actorID, product, variant int64
-	must(pool.QueryRow(ctx, `INSERT INTO customers(phone,password_hash,full_name,consent_at) VALUES('+70000000000','','Saby ownership owner',NOW()) RETURNING id`).Scan(&actorID))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(phone,full_name,consent_at) VALUES('+70000000000','Saby ownership owner',NOW()) RETURNING id`).Scan(&actorID))
 	must(pool.QueryRow(ctx, `INSERT INTO products(name,slug,description,status,saby_fields) VALUES('Название сайта','site-content-fixture','Описание сайта','draft',ARRAY['name','description','photo','price']) RETURNING id`).Scan(&product))
 	must(pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor,is_active) VALUES($1,'D12',149099,1) RETURNING id`, product).Scan(&variant))
 	exec(`INSERT INTO product_media(product_id,variant_id,object_key,alt_text,sort_order,is_primary) VALUES($1,NULL,'https://site.example.test/cover.jpg','Обложка сайта',3,1),($1,$2,'https://site.example.test/detail.jpg','Деталь сайта',7,0)`, product, variant)

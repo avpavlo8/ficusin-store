@@ -1,7 +1,7 @@
 -- Only an ephemeral CI database. No customer or supplier production data.
-INSERT INTO customers(email,phone,password_hash,full_name,consent_at,retail_discount_bps)
-VALUES ('crm-owner@example.invalid','+70000000901','','Владелец проверки',CURRENT_TIMESTAMP,500),
-       ('crm-manager@example.invalid','+70000000902','','Менеджер проверки',CURRENT_TIMESTAMP,0);
+INSERT INTO customers(email,phone,full_name,consent_at,retail_discount_bps)
+VALUES ('crm-owner@example.invalid','+70000000901','Владелец проверки',CURRENT_TIMESTAMP,500),
+       ('crm-manager@example.invalid','+70000000902','Менеджер проверки',CURRENT_TIMESTAMP,0);
 INSERT INTO admin_users(customer_id,role)
 SELECT id,CASE WHEN email='crm-owner@example.invalid' THEN 'owner' ELSE 'manager' END
 FROM customers WHERE email IN ('crm-owner@example.invalid','crm-manager@example.invalid');

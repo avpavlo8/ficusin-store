@@ -46,7 +46,7 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 			_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, ownerID)
 		}
 	}()
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Saby link owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("saby-link-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&ownerID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Saby link owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("saby-link-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&ownerID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$2,'Тестовый фикус')`, sabyID, code); err != nil {

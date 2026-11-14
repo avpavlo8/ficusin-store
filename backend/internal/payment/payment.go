@@ -124,7 +124,6 @@ type provider interface {
 	Configured() bool
 	CreatePayment(context.Context, integration.PaymentRequest) (integration.Payment, error)
 	FetchPayment(context.Context, string) (integration.Payment, error)
-	Refund(ctx context.Context, paymentID string, amount float64, idempotenceKey string) error
 }
 
 type Service struct {

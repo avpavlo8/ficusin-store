@@ -27,7 +27,6 @@ export default tseslint.config(
         {
           allowConstantExport: true,
           allowExportNames: [
-            "STORAGE_EVENT",
             "useStoreUser",
             "orderCategoryTree",
             "normalizeProcurementOrderDetail",
@@ -47,12 +46,10 @@ export default tseslint.config(
             "updateAvailability",
             "setExclusion",
             "updateRequestStatus",
-            "sabyFieldLabels",
             "money",
             "roles",
             "roleLabel",
             "paymentLabels",
-            "paymentMethodLabels",
             "orderStatuses",
             "statusLabels",
             "api",

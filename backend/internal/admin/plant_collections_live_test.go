@@ -32,7 +32,7 @@ func TestCanonicalPlantCollectionsOnLiveDatabase(t *testing.T) {
 	unique := time.Now().UnixNano()
 	var actorID, productID, childID, plantsID, bonsaiID, variantID int64
 	var productCode string
-	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Plant rules fixture',NOW()) RETURNING id`, fmt.Sprintf("plant-%d@example.invalid", unique), fmt.Sprintf("+798%09d", unique%1000000000)).Scan(&actorID))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Plant rules fixture',NOW()) RETURNING id`, fmt.Sprintf("plant-%d@example.invalid", unique), fmt.Sprintf("+798%09d", unique%1000000000)).Scan(&actorID))
 	defer func() {
 		_, _ = pool.Exec(ctx, "DELETE FROM admin_audit_log WHERE actor_customer_id=$1", actorID)
 		_, _ = pool.Exec(ctx, "DELETE FROM customers WHERE id=$1", actorID)

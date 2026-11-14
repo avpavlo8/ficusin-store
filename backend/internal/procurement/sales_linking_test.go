@@ -81,7 +81,7 @@ func (stub channelCatalogStub) FetchCatalog(context.Context, string) ([]ChannelP
 
 func TestUnlinkedSalesOnlyForChannelsWithForeignCodes(t *testing.T) {
 	t.Parallel()
-	service := NewService(&salesLinkStoreStub{})
+	service := NewServiceWithExecutor(&salesLinkStoreStub{}, nil)
 	for _, channel := range []string{"", "site", "avito"} {
 		if _, err := service.UnlinkedSales(context.Background(), channel); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("channel %q: err = %v, want %v", channel, err, ErrInvalidInput)
@@ -92,7 +92,7 @@ func TestUnlinkedSalesOnlyForChannelsWithForeignCodes(t *testing.T) {
 func TestUnlinkedSalesAsksStoreForBoundedList(t *testing.T) {
 	t.Parallel()
 	store := &salesLinkStoreStub{}
-	items, err := NewService(store).UnlinkedSales(context.Background(), " ozon ")
+	items, err := NewServiceWithExecutor(store, nil).UnlinkedSales(context.Background(), " ozon ")
 	if err != nil || len(items) != 1 || items[0].ExternalID != "fikus-benjamina-12" {
 		t.Fatalf("items = %+v, err = %v", items, err)
 	}
@@ -108,7 +108,7 @@ func TestUnlinkedSalesAsksStoreForBoundedList(t *testing.T) {
 
 func TestLinkSalesProductRejectsUnusableDecisions(t *testing.T) {
 	t.Parallel()
-	service := NewService(&salesLinkStoreStub{})
+	service := NewServiceWithExecutor(&salesLinkStoreStub{}, nil)
 	cases := map[string]SalesLink{
 		"канал без внешних кодов":  {Channel: "site", ExternalID: "X", SabyID: "S1"},
 		"пустой внешний код":       {Channel: "ozon", ExternalID: "  ", SabyID: "S1"},
@@ -126,7 +126,7 @@ func TestLinkSalesProductRejectsUnusableDecisions(t *testing.T) {
 func TestLinkSalesProductPassesTrimmedDecisionToStore(t *testing.T) {
 	t.Parallel()
 	store := &salesLinkStoreStub{}
-	result, err := NewService(store).LinkSalesProduct(context.Background(), Actor{CustomerID: 5}, SalesLink{
+	result, err := NewServiceWithExecutor(store, nil).LinkSalesProduct(context.Background(), Actor{CustomerID: 5}, SalesLink{
 		Channel: " ozon ", ExternalID: " fikus-benjamina-12 ", SabyID: " S-1 ",
 	})
 	if err != nil || result.LinkedRows != 3 {
@@ -142,7 +142,7 @@ func TestLinkSalesProductPassesTrimmedDecisionToStore(t *testing.T) {
 func TestLinkSalesProductAcceptsNumericWildberriesCode(t *testing.T) {
 	t.Parallel()
 	store := &salesLinkStoreStub{}
-	if _, err := NewService(store).LinkSalesProduct(context.Background(), Actor{}, SalesLink{
+	if _, err := NewServiceWithExecutor(store, nil).LinkSalesProduct(context.Background(), Actor{}, SalesLink{
 		Channel: "wb", ExternalID: "1851256804", SabyID: "S-1",
 	}); err != nil {
 		t.Fatalf("err = %v", err)
@@ -155,7 +155,7 @@ func TestLinkSalesProductAcceptsNumericWildberriesCode(t *testing.T) {
 func TestLinkSalesProductUsesCanonicalVariantWithoutRemoteIdentity(t *testing.T) {
 	t.Parallel()
 	store := &salesLinkStoreStub{}
-	if _, err := NewService(store).LinkSalesProduct(context.Background(), Actor{}, SalesLink{
+	if _, err := NewServiceWithExecutor(store, nil).LinkSalesProduct(context.Background(), Actor{}, SalesLink{
 		Channel: "ozon", ExternalID: "olive-d12-old", VariantID: 42,
 	}); err != nil {
 		t.Fatalf("err = %v", err)
@@ -167,14 +167,14 @@ func TestLinkSalesProductUsesCanonicalVariantWithoutRemoteIdentity(t *testing.T)
 
 func TestLinkableNomenclatureNeedsAMeaningfulQuery(t *testing.T) {
 	t.Parallel()
-	service := NewService(&salesLinkStoreStub{})
+	service := NewServiceWithExecutor(&salesLinkStoreStub{}, nil)
 	for _, query := range []string{"", " ", "ф"} {
 		if _, err := service.SearchLinkableNomenclature(context.Background(), query); !errors.Is(err, ErrInvalidInput) {
 			t.Fatalf("query %q: err = %v, want %v", query, err, ErrInvalidInput)
 		}
 	}
 	store := &salesLinkStoreStub{}
-	items, err := NewService(store).SearchLinkableNomenclature(context.Background(), "  фикус  ")
+	items, err := NewServiceWithExecutor(store, nil).SearchLinkableNomenclature(context.Background(), "  фикус  ")
 	if err != nil || len(items) != 1 {
 		t.Fatalf("items = %+v, err = %v", items, err)
 	}
@@ -208,7 +208,7 @@ func TestChannelCatalogSyncRemembersCardLabels(t *testing.T) {
 
 func TestSalesLinkingNeedsCapableStore(t *testing.T) {
 	t.Parallel()
-	service := NewService(&plainStoreStub{})
+	service := NewServiceWithExecutor(&plainStoreStub{}, nil)
 	if _, err := service.UnlinkedSales(context.Background(), "ozon"); !errors.Is(err, ErrSalesLinkUnsupported) {
 		t.Fatalf("list err = %v, want %v", err, ErrSalesLinkUnsupported)
 	}

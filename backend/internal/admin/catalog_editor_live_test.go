@@ -24,7 +24,7 @@ func TestCatalogEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	var actorID, categoryID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Catalog editor test',NOW()) RETURNING id`, fmt.Sprintf("editor-%d@example.invalid", unique), fmt.Sprintf("+799%09d", unique%1000000000)).Scan(&actorID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Catalog editor test',NOW()) RETURNING id`, fmt.Sprintf("editor-%d@example.invalid", unique), fmt.Sprintf("+799%09d", unique%1000000000)).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT id FROM categories WHERE slug='plants'`).Scan(&categoryID); err != nil {

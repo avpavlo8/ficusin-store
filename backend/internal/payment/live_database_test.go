@@ -60,15 +60,6 @@ func (provider *livePaymentProvider) CancelPayment(_ context.Context, paymentID,
 	provider.status.Paid = false
 	return nil
 }
-func (provider *livePaymentProvider) Refund(_ context.Context, _ string, _ float64, key string) error {
-	provider.mu.Lock()
-	defer provider.mu.Unlock()
-	if key == "" {
-		return fmt.Errorf("refund has no idempotence key")
-	}
-	provider.refunds++
-	return nil
-}
 
 // TestPaymentLifecycleOnLiveDatabase proves the money state machine against
 // the fully migrated schema without contacting YooKassa or moving real money.

@@ -161,7 +161,7 @@ func (stub parserStub) Parse([]byte) (ParsedDocument, error) { return stub.resul
 func TestCreateSupplierNormalizesInput(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
-	_, err := NewService(store).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
+	_, err := NewServiceWithExecutor(store, nil).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
 		Name: "  ТК Ярославский ", Kind: KindDomestic, CountryCode: "ru", DefaultCurrency: "rub",
 		TaxID: "7627031650", KPP: "762701001",
 	})
@@ -217,7 +217,7 @@ func TestWildberriesConnectionCheckReadsMirrorWithoutCallingAPI(t *testing.T) {
 func TestDeleteSupplierValidatesID(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
-	service := NewService(store)
+	service := NewServiceWithExecutor(store, nil)
 	if err := service.DeleteSupplier(context.Background(), Actor{}, 0); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("error = %v, want ErrInvalidInput", err)
 	}
@@ -228,7 +228,7 @@ func TestDeleteSupplierValidatesID(t *testing.T) {
 
 func TestDeleteOrderValidatesID(t *testing.T) {
 	store := &storeStub{}
-	service := NewService(store)
+	service := NewServiceWithExecutor(store, nil)
 	if err := service.DeleteOrder(context.Background(), Actor{}, 0); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("error = %v", err)
 	}
@@ -239,7 +239,7 @@ func TestDeleteOrderValidatesID(t *testing.T) {
 
 func TestCreateSupplierRejectsUnknownCurrency(t *testing.T) {
 	t.Parallel()
-	_, err := NewService(&storeStub{}).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
+	_, err := NewServiceWithExecutor(&storeStub{}, nil).CreateSupplier(context.Background(), Actor{}, SupplierCreate{
 		Name: "Поставщик", Kind: KindDomestic, DefaultCurrency: "CNY",
 	})
 	if !errors.Is(err, ErrInvalidInput) {
@@ -249,7 +249,7 @@ func TestCreateSupplierRejectsUnknownCurrency(t *testing.T) {
 
 func TestCreateOrderRequiresSupplier(t *testing.T) {
 	t.Parallel()
-	_, err := NewService(&storeStub{}).CreateOrder(context.Background(), Actor{}, OrderCreate{
+	_, err := NewServiceWithExecutor(&storeStub{}, nil).CreateOrder(context.Background(), Actor{}, OrderCreate{
 		SourceKind: SourceManual, Currency: "EUR",
 	})
 	if !errors.Is(err, ErrInvalidInput) {
@@ -286,7 +286,7 @@ func TestImportDocumentRejectsNonPDF(t *testing.T) {
 func TestSearchNomenclatureAndResolveAliasValidateInput(t *testing.T) {
 	t.Parallel()
 	store := &storeStub{}
-	service := NewService(store)
+	service := NewServiceWithExecutor(store, nil)
 	items, err := service.SearchNomenclature(context.Background(), "  Фикус ")
 	if err != nil || len(items) != 1 || store.searchInput != "Фикус" {
 		t.Fatalf("unexpected search: items=%+v input=%q err=%v", items, store.searchInput, err)

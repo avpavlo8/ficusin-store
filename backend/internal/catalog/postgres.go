@@ -443,34 +443,6 @@ func (repository *PostgresRepository) listRecommendations(ctx context.Context, p
 	return result, nil
 }
 
-// recommendationScore mirrors the SQL weights and keeps their ordering easy
-// to regression-test without a database.
-func recommendationScore(current ProductDetail, candidate Product) int {
-	score := 0
-	if current.CatalogSection == candidate.CatalogSection {
-		score += 6
-	}
-	if current.CategoryID != nil && candidate.CategoryID != nil && *current.CategoryID == *candidate.CategoryID {
-		score += 8
-	}
-	pairs := [][2]string{
-		{current.PlantKind, candidate.PlantKind}, {current.LightLevel, candidate.LightLevel},
-		{current.Watering, candidate.Watering}, {current.HeightClass, candidate.HeightClass},
-		{current.CareLevel, candidate.CareLevel}, {current.Placement, candidate.Placement},
-		{current.PetSafety, candidate.PetSafety}, {current.GrowthHabit, candidate.GrowthHabit},
-	}
-	for index, pair := range pairs {
-		if pair[0] != "" && pair[0] == pair[1] {
-			if index == 0 {
-				score += 4
-			} else {
-				score += 2
-			}
-		}
-	}
-	return score
-}
-
 func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 	return &PostgresRepository{pool: pool}
 }

@@ -45,7 +45,7 @@ func TestEditorPriceQueueLocalDatabase(t *testing.T) {
 	}
 	tag := fmt.Sprint(time.Now().UnixNano())
 	var actorID int64
-	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Price adapter fixture',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&actorID))
+	must(pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Price adapter fixture',NOW()) RETURNING id`, tag+"@example.invalid", "+7"+tag[len(tag)-10:]).Scan(&actorID))
 	actor := Actor{CustomerID: actorID, Role: RoleOwner}
 	repo := NewPostgresRepository(pool).WithEditorPublicationMode("mock")
 	defer pool.Exec(ctx, "DELETE FROM customers WHERE id=$1", actorID)

@@ -52,13 +52,20 @@ test("current drafts and old Saby journals retain useful content and canonical I
   const restored = loadProductDraft();
   assert.equal(restored.error, "");
   assert.equal(restored.draft.name, "Сохранённое растение");
-  assert.deepEqual(restored.draft.media, media);
+  assert.deepEqual(
+    restored.draft.media.map(({ id, name, type }) => ({ id, name, type })),
+    [{ id: "local-photo", name: "photo.jpg", type: "image/jpeg" }],
+  );
   assert.equal(restored.draft.selectedVariantId, "variant-10");
   assert.equal(restored.draft.variants[0].serverId, 10);
   assert.equal(restored.draft.variants[0].sabyId, "canonical-saby-id");
   assert.deepEqual(restored.draft.variants[0].externalIds, variant.externalIds);
   assert.equal(restored.draft.variants[0].wb.price, "3210.25");
-  const current = { ...emptyProductDraft(), name: "Новый черновик", media };
+  const current = {
+    ...emptyProductDraft(),
+    name: "Новый черновик",
+    media: [{ id: "new-photo", name: "new.jpg", type: "image/jpeg" }],
+  };
   saveProductDraft(current);
   assert.deepEqual(loadProductDraft(), { draft: current, error: "" });
 });

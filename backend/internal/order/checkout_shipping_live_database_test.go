@@ -104,7 +104,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value) SELECT $1,d.id,to_jsonb(v.n) FROM attribute_definitions d JOIN (VALUES('package_length_cm',40),('package_width_cm',20),('package_height_cm',20),('package_weight_grams',1500))v(code,n) ON v.code=d.code ON CONFLICT(variant_id,attribute_id) DO UPDATE SET value=EXCLUDED.value`, variantID); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,last_name,consent_at) VALUES($1,$2,'','Александр','Павловский',CURRENT_TIMESTAMP) RETURNING id`, email, "ci-mail-"+suffix).Scan(&customerID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,last_name,consent_at) VALUES($1,$2,'Александр','Павловский',CURRENT_TIMESTAMP) RETURNING id`, email, "ci-mail-"+suffix).Scan(&customerID); err != nil {
 		t.Fatal(err)
 	}
 	shop := &checkoutShippingSettings{enabled: true}

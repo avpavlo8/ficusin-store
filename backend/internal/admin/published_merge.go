@@ -83,7 +83,6 @@ type mergeProduct struct {
 	Section        string
 	CategoryID     *int64
 	SabyID         string
-	Snapshot       json.RawMessage
 	VariantIDs     []int64
 	VariantSKUs    []string
 	VariantLabels  []string
@@ -333,7 +332,7 @@ func sourceCodes(products map[int64]*mergeProduct, sourceIDs []int64) []string {
 
 func loadMergeProducts(ctx context.Context, tx pgx.Tx, ids []int64, lock bool) (map[int64]*mergeProduct, error) {
 	productQuery := `SELECT id,product_code::TEXT,slug,name,latin_name,status,catalog_section,category_id,
-		COALESCE(saby_id,''),to_jsonb(products)
+		COALESCE(saby_id,'')
 		FROM products WHERE id=ANY($1) ORDER BY id`
 	variantQuery := `SELECT product_id,id,sku,COALESCE(saby_id,''),label
 		FROM product_variants WHERE product_id=ANY($1) ORDER BY product_id,id`
@@ -349,7 +348,7 @@ func loadMergeProducts(ctx context.Context, tx pgx.Tx, ids []int64, lock bool) (
 	for rows.Next() {
 		item := &mergeProduct{}
 		if err = rows.Scan(&item.ID, &item.Code, &item.Slug, &item.Name, &item.Latin,
-			&item.Status, &item.Section, &item.CategoryID, &item.SabyID, &item.Snapshot); err != nil {
+			&item.Status, &item.Section, &item.CategoryID, &item.SabyID); err != nil {
 			rows.Close()
 			return nil, err
 		}

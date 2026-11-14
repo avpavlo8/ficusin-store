@@ -44,7 +44,7 @@ func TestManagerCanSaveWinterPackagingOnLiveDatabase(t *testing.T) {
 	if err = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,is_active) VALUES($1,'Seasonal test',0) RETURNING id`, productID).Scan(&variantID); err != nil {
 		t.Fatal(err)
 	}
-	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,password_hash,full_name,consent_at) VALUES($1,'','Seasonal manager',CURRENT_TIMESTAMP) RETURNING id`, "seasonal-manager-"+suffix).Scan(&staffID); err != nil {
+	if err = pool.QueryRow(ctx, `INSERT INTO customers(phone,full_name,consent_at) VALUES($1,'Seasonal manager',CURRENT_TIMESTAMP) RETURNING id`, "seasonal-manager-"+suffix).Scan(&staffID); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {

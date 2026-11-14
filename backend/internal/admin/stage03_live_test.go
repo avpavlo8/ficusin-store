@@ -25,7 +25,7 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 	repository := NewPostgresRepository(pool)
 	unique := time.Now().UnixNano()
 	var staffID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Stage 03 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage-03-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&staffID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Stage 03 owner',CURRENT_TIMESTAMP) RETURNING id`, fmt.Sprintf("stage-03-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&staffID); err != nil {
 		t.Fatal(err)
 	}
 	owner := Actor{CustomerID: staffID, Role: RoleOwner}

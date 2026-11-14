@@ -24,7 +24,7 @@ func TestReviewLegacyPriceRepairRequiresExactAuditAndIsIdempotent(t *testing.T) 
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	var customer, supplier int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Legacy repair test',now()) RETURNING id`, fmt.Sprintf("legacy-review-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&customer); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Legacy repair test',now()) RETURNING id`, fmt.Sprintf("legacy-review-%d@example.invalid", unique), fmt.Sprintf("+78%09d", unique%1000000000)).Scan(&customer); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, fmt.Sprintf("Legacy review %d", unique)).Scan(&supplier); err != nil {
@@ -114,7 +114,7 @@ func TestReviewFractionalPlanPricesSurviveDatabaseRoundTrip(t *testing.T) {
 	defer pool.Close()
 	unique := time.Now().UnixNano()
 	var customer, supplier int64
-	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,password_hash,full_name,consent_at) VALUES($1,$2,'','Review regression',now()) RETURNING id`, fmt.Sprintf("review-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&customer); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO customers(email,phone,full_name,consent_at) VALUES($1,$2,'Review regression',now()) RETURNING id`, fmt.Sprintf("review-%d@example.invalid", unique), fmt.Sprintf("+79%09d", unique%1000000000)).Scan(&customer); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency) VALUES($1,'international','EUR') RETURNING id`, fmt.Sprintf("Review %d", unique)).Scan(&supplier); err != nil {
