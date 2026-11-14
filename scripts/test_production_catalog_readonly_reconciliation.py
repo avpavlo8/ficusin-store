@@ -56,6 +56,7 @@ class Tests(unittest.TestCase):
         result=mod.reconcile_wb(fixture()[0],reader)
         self.assertEqual(result['classification'],'exact_card_barcode_ownership_confirmed')
         self.assertEqual(result['errorTags'],['mandatory','tnved'])
+        self.assertEqual(result['providerFirstBarcodeMatchCount'],1)
         self.assertFalse(result['replayAuthorized']);self.assertFalse(result['definitiveRejectionProven'])
         self.assertNotIn('private-',json.dumps(result))
         self.assertEqual(reader.requests[0][1]['settings']['filter']['textSearch'],'private-article')
@@ -64,6 +65,12 @@ class Tests(unittest.TestCase):
         reader=Reader([('wb_cards',{'cards':[{'nmID':7,'vendorCode':'private-article','sizes':[{'skus':['different']}]}]}),('wb_errors',{'data':[]})])
         result=mod.reconcile_wb(fixture()[0],reader)
         self.assertEqual(result['classification'],'article_collision_ownership_unproven');self.assertEqual(result['barcodeOwnedCardCount'],0)
+
+    def test_wb_later_barcode_provenance_does_not_claim_provider_first_barcode_match(self):
+        reader=Reader([('wb_cards',{'cards':[{'nmID':7,'vendorCode':'private-article','sizes':[{'skus':['other','private-barcode']}]}]}),('wb_errors',{'data':[]})])
+        result=mod.reconcile_wb(fixture()[0],reader)
+        self.assertEqual(result['barcodeOwnedCardCount'],1)
+        self.assertEqual(result['providerFirstBarcodeMatchCount'],0)
 
     def test_wb_missing_card_and_exact_old_errors_does_not_authorize_create(self):
         reader=Reader([('wb_cards',{'cards':[]}),('wb_errors',{'data':[{'vendorCode':'other','errors':['private-article']},{'vendorCode':'private-article','errors':['ТН ВЭД']} ]})])
