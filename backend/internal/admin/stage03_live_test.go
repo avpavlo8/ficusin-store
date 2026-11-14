@@ -179,7 +179,7 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 	})
 
 	price := int64(1)
-	if _, err := repository.UpdateProduct(ctx, manager, productA, ProductUpdate{Variants: []VariantEdit{{ID: variantA, PriceMinor: &price}}}); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("manager changed commercial fields: %v", err)
+	if _, err := repository.UpdateProduct(ctx, Actor{CustomerID: staffID, Role: RoleAdministrator}, productA, ProductUpdate{Variants: []VariantEdit{{ID: variantA, PriceMinor: &price}}}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("content-only administrator changed commercial fields: %v", err)
 	}
 }
