@@ -527,7 +527,7 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			endpoint := "/content/v2/cards/upload"
 			var requestBody any = body
 			if updating {
-				updated, err := p.wbUpdate(ctx, r, s.IDs.ProductID, body)
+				updated, err := p.wbUpdate(ctx, s.IDs.ProductID, body)
 				if err != nil {
 					return ce.Result{}, err
 				}
@@ -753,7 +753,7 @@ func (e *MarketplaceExecutor) LookupEditorCard(ctx context.Context, channel, ide
 	return (&CatalogPublisher{Executor: e}).lookup(ctx, channel, strings.TrimSpace(identifier), false)
 }
 
-func (p *CatalogPublisher) wbUpdate(ctx context.Context, r ce.Request, id string, created []map[string]any) ([]map[string]any, error) {
+func (p *CatalogPublisher) wbUpdate(ctx context.Context, id string, created []map[string]any) ([]map[string]any, error) {
 	var out struct {
 		Cards []map[string]any `json:"cards"`
 	}

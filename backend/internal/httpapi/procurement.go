@@ -14,6 +14,8 @@ import (
 )
 
 type procurementService interface {
+	salesLinkService
+	ignoredSalesService
 	Dashboard(context.Context) (procurement.Dashboard, error)
 	UpdateSettings(context.Context, procurement.Actor, procurement.PricingSettings) (procurement.PricingSettings, error)
 	CreateSupplier(context.Context, procurement.Actor, procurement.SupplierCreate) (procurement.Supplier, error)

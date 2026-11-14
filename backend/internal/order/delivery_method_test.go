@@ -17,7 +17,7 @@ func TestCreateRejectsRetiredDeliveryMethodsBeforeDatabaseAccess(t *testing.T) {
 
 func TestOrderRequiresOfferIndependentlyOfPersonalDataConsent(t *testing.T) {
 	service := &Service{}
-	if _, err := service.Create(context.Background(), CreateInput{Consent: true, Delivery: "pickup"}); err == nil {
-		t.Fatal("accepted consent without offer")
+	if _, err := service.Create(context.Background(), CreateInput{Consent: true, Delivery: "pickup"}); err == nil || err.Error() != "Примите условия оферты" {
+		t.Fatalf("missing offer must be rejected independently of other fields: %v", err)
 	}
 }

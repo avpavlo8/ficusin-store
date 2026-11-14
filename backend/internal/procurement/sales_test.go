@@ -27,12 +27,6 @@ type salesFinish struct {
 	err      error
 }
 
-func (*salesStoreStub) RequestIntegrationSync(context.Context, string, string) (IntegrationSyncStatus, error) {
-	panic("worker must claim queued work")
-}
-func (*salesStoreStub) ListIntegrationSync(context.Context) ([]IntegrationSyncStatus, error) {
-	panic("worker must claim queued work")
-}
 func (stub *salesStoreStub) ClaimIntegrationSync(_ context.Context, channel, resource, owner string, _ time.Duration) (*SyncClaim, error) {
 	mode := "current"
 	if modes, ok := stub.modes[channel]; ok {

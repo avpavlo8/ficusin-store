@@ -100,8 +100,23 @@ func (stub *storeStub) SetExclusion(_ context.Context, _ Actor, input ExclusionU
 func (stub *storeStub) LinkChannelProducts(_ context.Context, _ Actor, channel string, items []ChannelProduct) (ChannelLinkResult, error) {
 	return ChannelLinkResult{Channel: channel, Fetched: len(items)}, nil
 }
-func (stub *storeStub) RememberChannelProducts(context.Context, string, []ChannelProduct) error {
-	return nil
+func (*storeStub) RememberChannelProducts(context.Context, string, []ChannelProduct) error {
+	panic("unexpected catalogue cache write in this service fixture")
+}
+func (*storeStub) ListUnlinkedSales(context.Context, string, int) ([]UnlinkedSale, error) {
+	panic("unexpected manual sales list in this service fixture")
+}
+func (*storeStub) LinkSalesProduct(context.Context, Actor, SalesLink) (SalesLinkResult, error) {
+	panic("unexpected manual sales link in this service fixture")
+}
+func (*storeStub) SearchLinkableNomenclature(context.Context, string) ([]NomenclatureCandidate, error) {
+	panic("unexpected manual sales search in this service fixture")
+}
+func (*storeStub) IgnoreSalesProduct(context.Context, Actor, string, string, bool) error {
+	panic("unexpected manual sales ignore in this service fixture")
+}
+func (*storeStub) ListUnlinkedSalesIncludingIgnored(context.Context, string, int) ([]UnlinkedSale, error) {
+	panic("unexpected ignored sales list in this service fixture")
 }
 
 func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind string, channels []string) (ActionBatch, error) {
@@ -121,9 +136,7 @@ func (stub *storeStub) ListIntegrationHealth(context.Context) ([]IntegrationHeal
 type sabyRefreshExecutorStub struct{ refreshCalls int }
 
 func (stub *sabyRefreshExecutorStub) Configured(channel string) bool { return channel == "saby" }
-func (*sabyRefreshExecutorStub) Execute(context.Context, ActionItem) (ActionExecution, error) {
-	return ActionExecution{}, nil
-}
+
 func (stub *sabyRefreshExecutorStub) RefreshSabyCatalog(context.Context) (ChannelLinkResult, error) {
 	stub.refreshCalls++
 	return ChannelLinkResult{Channel: "saby", Fetched: 10, Linked: 10}, nil
@@ -132,9 +145,7 @@ func (stub *sabyRefreshExecutorStub) RefreshSabyCatalog(context.Context) (Channe
 type probeExecutorStub struct{ probeCalls int }
 
 func (*probeExecutorStub) Configured(string) bool { return true }
-func (*probeExecutorStub) Execute(context.Context, ActionItem) (ActionExecution, error) {
-	return ActionExecution{}, nil
-}
+
 func (stub *probeExecutorStub) Probe(context.Context, string) error {
 	stub.probeCalls++
 	return nil

@@ -28,10 +28,6 @@ func (*stalePriceWorkerStore) FinishAction(context.Context, int64, string, int64
 
 type stalePriceWorkerExecutor struct{ uploads int }
 
-func (*stalePriceWorkerExecutor) Configured(string) bool { return true }
-func (*stalePriceWorkerExecutor) Execute(context.Context, ActionItem) (ActionExecution, error) {
-	panic("stale price must not be exported")
-}
 func (executor *stalePriceWorkerExecutor) ExecuteGroup(context.Context, []ActionItem) []ActionOutcome {
 	executor.uploads++
 	return nil

@@ -28,6 +28,22 @@ type procurementStub struct {
 	deletedOrderIDs    []int64
 }
 
+func (*procurementStub) UnlinkedSales(context.Context, string) ([]procurement.UnlinkedSale, error) {
+	return nil, nil
+}
+func (*procurementStub) UnlinkedSalesWithIgnored(context.Context, string) ([]procurement.UnlinkedSale, error) {
+	return nil, nil
+}
+func (*procurementStub) IgnoreSalesProduct(context.Context, procurement.Actor, string, string, bool) error {
+	return nil
+}
+func (*procurementStub) SearchLinkableNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error) {
+	return nil, nil
+}
+func (*procurementStub) LinkSalesProduct(context.Context, procurement.Actor, procurement.SalesLink) (procurement.SalesLinkResult, error) {
+	return procurement.SalesLinkResult{}, nil
+}
+
 func (stub *procurementStub) Dashboard(context.Context) (procurement.Dashboard, error) {
 	return stub.dashboard, nil
 }

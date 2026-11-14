@@ -10,6 +10,8 @@ import (
 )
 
 type Store interface {
+	SalesLinkStore
+	SalesIgnoreStore
 	Dashboard(context.Context) (Dashboard, error)
 	UpdateSettings(context.Context, Actor, PricingSettings) (PricingSettings, error)
 	CreateSupplier(context.Context, Actor, SupplierCreate) (Supplier, error)
@@ -43,7 +45,6 @@ type Store interface {
 
 type Executor interface {
 	Configured(channel string) bool
-	Execute(context.Context, ActionItem) (ActionExecution, error)
 }
 
 // ActionGroupStore and GroupExecutor are the production worker contracts.
@@ -291,9 +292,7 @@ func (service *Service) SyncChannelCatalog(ctx context.Context, actor Actor, cha
 	// это числовой nmID, и без подписи человек не поймёт, какое растение
 	// разбирает. Подпись вспомогательная, поэтому её неудача не отменяет
 	// уже сделанное связывание артикулов.
-	if remember, able := service.store.(SalesLinkStore); able {
-		_ = remember.RememberChannelProducts(ctx, channel, items)
-	}
+	_ = service.store.RememberChannelProducts(ctx, channel, items)
 	if channel == "ozon" {
 		result.Queued = true
 		result.QueueStatus = "queued"

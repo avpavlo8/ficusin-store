@@ -496,7 +496,7 @@ func (repository *PostgresRepository) UpdateOrderStatus(
 
 func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Product, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT p.id, COALESCE(p.saby_id, ''), p.slug, p.product_code::TEXT, p.name, p.latin_name,
+		SELECT p.id, p.slug, p.product_code::TEXT, p.name, p.latin_name,
 			p.short_description, p.description, p.care_instructions, p.status,
 			p.is_featured <> 0, p.catalog_section, COALESCE(p.plant_kind, ''),
 			COALESCE(p.light_level, ''), COALESCE(p.watering, ''),
@@ -513,7 +513,6 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			variant_numeric_attribute(pv.id,'pot_diameter_cm')::INTEGER, shipping_package_dimension(pv.id, 'package_length_cm')::INTEGER, shipping_package_dimension(pv.id, 'package_width_cm')::INTEGER,
 			shipping_package_dimension(pv.id, 'package_height_cm')::INTEGER, variant_numeric_attribute(pv.id,'package_weight_grams')::INTEGER,
 			COALESCE(pv.wholesale_min_qty, 1),
-			p.saby_fields,
 			COALESCE((SELECT source.code FROM saby_nomenclature source WHERE source.saby_id = p.saby_id), ''),
 			p.category_id, p.plant_passport, p.important_warnings,
 			COALESCE((SELECT jsonb_agg(jsonb_build_object(
@@ -588,7 +587,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 		var externalIDs []byte
 		var attributes []byte
 		var variantTasks []byte
-		if err := rows.Scan(&item.ID, &item.SabyID, &item.Slug, &item.ProductCode, &item.Name,
+		if err := rows.Scan(&item.ID, &item.Slug, &item.ProductCode, &item.Name,
 			&item.LatinName, &item.ShortDescription, &item.Description,
 			&item.CareInstructions, &item.Status, &item.Featured,
 			&item.CatalogSection, &item.PlantKind, &item.LightLevel, &item.Watering,
@@ -596,7 +595,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.GrowthHabit, &item.Image, &item.Price, &item.Stock, &item.SKU, &item.VariantLabel, &item.HeightCM,
 			&item.PotDiameterCM, &item.PackageLengthCM, &item.PackageWidthCM,
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
-			&item.SabyFields, &item.SabyCode,
+			&item.SabyCode,
 			&item.CategoryID, &item.Passport, &item.ImportantWarnings,
 			&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues, &item.VariantCount, &item.StockUpdatedAt, &item.UpdatedAt, &item.TotalStock, &item.MinPrice, &item.MaxPrice, &item.VariantsReady, &variantTasks); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
@@ -791,9 +790,8 @@ func (repository *PostgresRepository) CatalogMediaHealth(ctx context.Context) (M
 
 func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Category, error) {
 	rows, err := repository.pool.Query(ctx, `
-		SELECT c.id, c.parent_id, c.name, c.slug, c.sort_order, c.icon,
-			(SELECT COUNT(*) FROM products p WHERE p.category_id=c.id)::int,
-			(SELECT COUNT(*) FROM categories ch WHERE ch.parent_id=c.id)::int
+		SELECT c.id, c.parent_id, c.name, c.slug, c.sort_order,
+			(SELECT COUNT(*) FROM products p WHERE p.category_id=c.id)::int
 		FROM categories c WHERE c.active=1 ORDER BY c.sort_order,c.name
 	`)
 	if err != nil {
@@ -803,7 +801,7 @@ func (repository *PostgresRepository) ListCategories(ctx context.Context) ([]Cat
 	result := make([]Category, 0)
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.SortOrder, &c.Icon, &c.ProductsCount, &c.ChildrenCount); err != nil {
+		if err := rows.Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.SortOrder, &c.ProductsCount); err != nil {
 			return nil, err
 		}
 		result = append(result, c)
@@ -900,10 +898,9 @@ func (repository *PostgresRepository) categoryByID(ctx context.Context, id int64
 	var c Category
 	err := repository.pool.QueryRow(ctx, `
 		SELECT c.id,c.parent_id,c.name,c.slug,c.sort_order,
-			(SELECT COUNT(*) FROM products WHERE category_id=c.id)::int,
-			(SELECT COUNT(*) FROM categories WHERE parent_id=c.id)::int
+			(SELECT COUNT(*) FROM products WHERE category_id=c.id)::int
 		FROM categories c WHERE c.id=$1
-	`, id).Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.SortOrder, &c.ProductsCount, &c.ChildrenCount)
+	`, id).Scan(&c.ID, &c.ParentID, &c.Name, &c.Slug, &c.SortOrder, &c.ProductsCount)
 	return c, err
 }
 

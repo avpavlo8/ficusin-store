@@ -25,7 +25,7 @@ const salesRefreshDays = 30
 var salesMoscow = time.FixedZone("Europe/Moscow", 3*60*60)
 
 type SalesStore interface {
-	IntegrationSyncCoordinator
+	IntegrationSyncRunner
 	RefreshSiteSales(context.Context, time.Time, time.Time) (int, error)
 	ReplaceSales(context.Context, string, time.Time, time.Time, []SalesRecord) (int, error)
 	MarkSalesSync(context.Context, string, string, error) error

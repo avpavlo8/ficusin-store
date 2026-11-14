@@ -119,13 +119,6 @@ test("@desktop кабинет называет, сколько осталось 
   await expect(loyalty.locator(".loyalty-next")).toHaveText(/Ещё 3\s600\s₽ до следующего уровня/);
 });
 
-test("@desktop профиль сохраняет адресные подсказки после обновления UI", async ({ page }) => {
-  await mockApi(page, owner);
-  await page.goto("/account/profile");
-  await page.getByRole("button", { name: "Изменить" }).click();
-  await expect(page.getByLabel("Адрес доставки")).toBeVisible();
-});
-
 // Остальным проверкам service worker выключен: он перехватывает запросы и
 // прячет их от моков. Переключателю уведомлений он, наоборот, нужен —
 // подписка живёт именно в нём, — поэтому здесь worker разрешён.

@@ -35,7 +35,7 @@ func quietLogger() *slog.Logger {
 func TestExpiryKeepsOrderWhileProviderRefusesToCancelPayment(t *testing.T) {
 	refusal := errors.New("ЮKassa не отменила платёж: succeeded")
 	payments := &stubCanceller{err: refusal}
-	worker := &ExpiryWorker{payments: payments, logger: quietLogger()}
+	worker := NewExpiryWorker(nil, nil, payments, quietLogger())
 
 	err := worker.cancel(context.Background(), 42)
 	if err == nil {
@@ -49,16 +49,5 @@ func TestExpiryKeepsOrderWhileProviderRefusesToCancelPayment(t *testing.T) {
 	}
 	if len(payments.orders) != 1 || payments.orders[0] != 42 {
 		t.Fatalf("закрывали платёж не того заказа: %v", payments.orders)
-	}
-}
-
-// Старый конструктор брал три аргумента и о платежах не знал. Проверка
-// закрепляет, что зависимость действительно доезжает до работника: без неё
-// автоотмена вернётся к тихому поведению.
-func TestNewExpiryWorkerKeepsPaymentCanceller(t *testing.T) {
-	payments := &stubCanceller{}
-	worker := NewExpiryWorker(nil, nil, payments, quietLogger())
-	if worker.payments == nil {
-		t.Fatal("автоотмена осталась без платёжного сервиса")
 	}
 }

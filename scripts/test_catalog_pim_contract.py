@@ -80,17 +80,6 @@ class CatalogPIMContractTest(unittest.TestCase):
         self.assertNotIn('const catalogFacets =', ui)
         self.assertIn("/api/v1/admin/catalog-filters", admin_ui)
 
-    def test_role_boundaries_exist_for_system_definitions(self):
-        pim = text("backend/internal/admin/catalog_pim.go")
-        manage = text("backend/internal/admin/manage.go")
-        permissions = text("backend/internal/admin/admin.go")
-        self.assertIn("if actor.Role != RoleOwner", pim)
-        self.assertIn("PermissionProductsManage", permissions)
-        self.assertIn("PermissionDelete", permissions)
-        self.assertNotIn("permission == PermissionProductsManage", permissions.split("case RoleManager:", 1)[1])
-        self.assertNotIn("permission == PermissionDelete", permissions.split("case RoleManager:", 1)[1])
-        self.assertIn("PermissionDelete", manage)
-
     def test_dynamic_collections_are_live_pim_queries(self):
         migration = text("timeweb/migrations/057_dynamic_collection_rules.sql")
         public = text("backend/internal/catalog/postgres.go")

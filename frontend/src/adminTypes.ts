@@ -21,9 +21,7 @@ export type Category = {
   name: string;
   slug: string;
   sortOrder: number;
-  icon: string;
   productsCount: number;
-  childrenCount: number;
 };
 
 export type CategoryAttribute = {
@@ -211,7 +209,6 @@ export type Product = {
   maxPrice?: number;
   variantsReady?: boolean;
   id: number;
-  sabyId: string;
   slug: string;
   productCode?: string;
   name: string;
@@ -233,7 +230,6 @@ export type Product = {
   packageHeightCm?: number;
   packageWeightGrams?: number;
   wholesaleMinQty: number;
-  sabyFields: string[];
   sabyCode: string;
   catalogSection: string;
   plantKind?: string;

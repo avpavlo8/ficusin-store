@@ -108,6 +108,7 @@ test("@desktop @phone profile keeps input after a failed save and sends the whol
   });
   await page.goto("/account/profile");
   await page.getByRole("button", { name: "Изменить", exact: true }).click();
+  await expect(page.getByLabel("Адрес доставки")).toBeVisible();
   await page.getByLabel("Имя", { exact: true }).fill("Анна");
   await page.getByRole("button", { name: "Сохранить", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Профиль не сохранён");

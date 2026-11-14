@@ -59,9 +59,6 @@ func (stub *salesLinkStoreStub) LinkChannelProducts(_ context.Context, _ Actor, 
 	return ChannelLinkResult{Channel: channel, Fetched: len(items), Linked: len(items)}, nil
 }
 
-// plainStoreStub — хранилище прежнего образца, без разбора продаж.
-type plainStoreStub struct{ Store }
-
 // channelCatalogStub — площадка, которая отдаёт свой справочник карточек.
 type channelCatalogStub struct {
 	items []ChannelProduct
@@ -69,9 +66,7 @@ type channelCatalogStub struct {
 }
 
 func (channelCatalogStub) Configured(string) bool { return true }
-func (channelCatalogStub) Execute(context.Context, ActionItem) (ActionExecution, error) {
-	return ActionExecution{}, nil
-}
+
 func (stub channelCatalogStub) FetchCatalog(context.Context, string) ([]ChannelProduct, error) {
 	if stub.calls != nil {
 		(*stub.calls)++
@@ -203,22 +198,5 @@ func TestChannelCatalogSyncRemembersCardLabels(t *testing.T) {
 	}
 	if remoteCalls != 0 {
 		t.Fatalf("WB API calls = %d, want 0", remoteCalls)
-	}
-}
-
-func TestSalesLinkingNeedsCapableStore(t *testing.T) {
-	t.Parallel()
-	service := NewServiceWithExecutor(&plainStoreStub{}, nil)
-	if _, err := service.UnlinkedSales(context.Background(), "ozon"); !errors.Is(err, ErrSalesLinkUnsupported) {
-		t.Fatalf("list err = %v, want %v", err, ErrSalesLinkUnsupported)
-	}
-	if _, err := service.SearchLinkableNomenclature(context.Background(), "фикус"); !errors.Is(err, ErrSalesLinkUnsupported) {
-		t.Fatalf("search err = %v, want %v", err, ErrSalesLinkUnsupported)
-	}
-	_, err := service.LinkSalesProduct(context.Background(), Actor{}, SalesLink{
-		Channel: "ozon", ExternalID: "fikus-12", VariantID: 42,
-	})
-	if !errors.Is(err, ErrSalesLinkUnsupported) {
-		t.Fatalf("link err = %v, want %v", err, ErrSalesLinkUnsupported)
 	}
 }

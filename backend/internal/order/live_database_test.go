@@ -30,6 +30,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	sabyID := "ci-commerce-saby-" + suffix
+	parentSabyID := "ci-commerce-parent-saby-" + suffix
 	email := "commerce-" + suffix + "@example.invalid"
 	phone := "+7000" + suffix[len(suffix)-7:]
 	var productID, variantID, warehouseID int64
@@ -100,6 +101,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	var orderID, preorderID int64
 	defer func() {
 		if preorderID != 0 {
+			_, _ = pool.Exec(ctx, "DELETE FROM procurement_requests WHERE customer_order_id=$1", preorderID)
 			_, _ = pool.Exec(ctx, "DELETE FROM consent_events WHERE order_id=$1", preorderID)
 			_, _ = pool.Exec(ctx, "DELETE FROM orders WHERE id=$1", preorderID)
 		}
@@ -110,7 +112,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		}
 		_, _ = pool.Exec(ctx, "DELETE FROM outbox WHERE recipient=$1", email)
 		_, _ = pool.Exec(ctx, "DELETE FROM products WHERE id=$1", productID)
-		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id=$1", sabyID)
+		_, _ = pool.Exec(ctx, "DELETE FROM saby_nomenclature WHERE saby_id IN ($1,$2)", sabyID, parentSabyID)
 	}()
 
 	service := NewService(pool, nil, nil, quietLogger())
@@ -219,6 +221,21 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE inventory SET synced_at=CURRENT_TIMESTAMP-INTERVAL '3 hours' WHERE variant_id=$1`, variantID); err != nil {
 		t.Fatal(err)
 	}
+	// After a product merge, the parent compatibility identity may refer to
+	// another size. Demand must follow the purchased variant, never that parent.
+	if _, err := pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,name,balance) VALUES($1,'Parent identity for another size',0)`, parentSabyID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE products SET saby_id=$2 WHERE id=$1`, productID, parentSabyID); err != nil {
+		t.Fatal(err)
+	}
+	var purchasedSaby, parentSaby string
+	if err := pool.QueryRow(ctx, `SELECT v.saby_id,p.saby_id FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1`, variantID).Scan(&purchasedSaby, &parentSaby); err != nil {
+		t.Fatal(err)
+	}
+	if purchasedSaby != sabyID || parentSaby != parentSabyID || purchasedSaby == parentSaby {
+		t.Fatalf("fixture does not distinguish purchased/parent identity: variant=%q parent=%q", purchasedSaby, parentSaby)
+	}
 	preorder, err := service.Create(ctx, CreateInput{
 		Customer: CustomerInput{Name: "CI Preorder", Phone: phone, Email: email},
 		Delivery: "pickup", Items: []ItemInput{{ID: sku, Quantity: 1}},
@@ -237,5 +254,14 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	}
 	if preorderMethod != payment.MethodOnline {
 		t.Fatalf("preorder payment method = %q, want future online payment", preorderMethod)
+	}
+	var requests, requestedQuantity int
+	var requestedSabyID string
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*),COALESCE(MAX(saby_id),''),COALESCE(SUM(quantity),0)::INTEGER
+		FROM procurement_requests WHERE customer_order_id=$1 AND kind='customer_order' AND status='open'`, preorderID).Scan(&requests, &requestedSabyID, &requestedQuantity); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || requestedSabyID != sabyID || requestedQuantity != 1 {
+		t.Fatalf("preorder demand lost purchased SKU identity/quantity: count=%d saby=%q quantity=%d", requests, requestedSabyID, requestedQuantity)
 	}
 }

@@ -52,7 +52,6 @@ async function setup(
     wholesaleMinQty: 1,
     attributes: {},
     externalIds: [],
-    sabyFields: [],
       importantWarnings: [],
     variantCount: 2,
     updatedAt: "2026-11-13T00:00:00Z",

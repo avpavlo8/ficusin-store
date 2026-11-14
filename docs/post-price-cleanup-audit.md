@@ -652,3 +652,78 @@ Frontend: build/lint/format/budget, 76 unit, 18 уникальных browser-с�
 (15 navigation и 3 avatar); эти же три avatar дополнительно повторены.
 OpenAPI остаётся 236 операций / 91 схема. Другие browser-спецификации этой
 итерацией не перепроверялись. Production/внешние операции не запускались.
+
+## Очистка контрактов и неэффективных тестов после `e384122`
+
+### Удалённые проекции и обходные контракты
+
+- admin.Product.sabyId/sabyFields были только ListProducts SELECT/Scan → JSON.
+  productToDraft, mergeContentPatch и сохранение формируют явные наборы полей;
+  ни прямых, ни вычисляемых обращений к этим двум полям не найдено. Сняты
+  Go/TS свойства, SQL-проекции и значения в текущих моках. products.saby_id,
+  products.saby_fields, импорт, stock membership, mergeProductState и
+  внешние идентификаторы SKU остаются: это отдельные работающие потребители.
+- admin.Category.icon/childrenCount также были только проекциями ответа.
+  Дерево использует parentId. Убран лишний COUNT детей из ListCategories и
+  categoryByID; DeleteCategory продолжает независимо проверять детей/товары.
+  Public catalog.Category.Icon и SQL-колонка categories.icon сохранены.
+- Единственный production Service получает PostgresStore, поддерживающий
+  разбор/исключение продаж. SalesLinkStore/SalesIgnoreStore включены в Store,
+  HTTP capabilities — в procurementService. Удалены type-assertion обходы,
+  ErrSalesLinkUnsupported и fallback, терявший ignored=1. При полном отсутствии
+  HTTP procurement dependency сохранён 503; проверки роли/входных данных остаются.
+  RememberChannelProducts вызывается напрямую с прежней обработкой ошибки.
+- Сервис закупок больше не требует Execute, который использует только worker;
+  конкретные Execute внутри индивидуальных/групповых делегатов остались.
+  CatalogSyncStore/SalesStore требуют только claim/finish через IntegrationSyncRunner;
+  Request/List остаются в полном coordinator. Убраны неиспользуемые тестовые
+  методы. У private wbUpdate снят единственный нечитавшийся аргумент Request;
+  подготовленный payload, ID и контекст внешнего запроса остаются.
+
+### Почему удалены тесты
+
+| Проверка | Подтверждение бесполезности/дублирования и сохранённый инвариант |
+|---|---|
+| 4 Python platform reliability checks | Все четыре прошли с полностью закомментированными YAML workflows и production config с фиксированным URL, где нужный env token оставлен только комментарием. Файл удалён; действующие workflows и исполняемые smoke/monitor/browser проверки сохранены |
+| Python role-boundaries source check | В памяти в начало настоящего admin.Can вставлен `if role==RoleManager{return true}`; старый тест прошёл. TestRolePermissions и реальные CRM handler/mixed-request проверки выявляют нарушение прав и сохранены |
+| Go ReleaseStock substring check | Проверял присутствие SUM(reserved_qty)/FOR UPDATE в исходнике. Реальные CommerceLifecycle и CatalogueAndOrderEditing проверяют свою/чужую долю резерва, историю, неизменность физического остатка и повторный вызов |
+| Go preorder JOIN substring check | Заменён проверкой фактической procurement_requests записи внутри существующего CommerceLifecycle. Fixture теперь имеет разные валидные СБИС-ID у карточки и купленного SKU; проверяются точный variant SabyID и quantity, поэтому подмена связи на карточку не проходит |
+| Go constructor field-only check | Уникальный смысл перенесён в существующий provider-refusal тест через настоящий NewExpiryWorker: проверяются отказ, ID заказа и однократный вызов, а не только non-nil поле |
+| Go unsupported old store check | Проверял конфигурацию без SalesLinkStore, которой нет у production constructor. Сняты и эта конфигурация/ветки, и её plainStoreStub/test; положительные list/link/ignore/cache сценарии сохранены |
+| Profile address smoke | Назывался проверкой подсказок после обновления, но лишь открывал форму и искал поле. Утверждение перенесено в существующий сценарий ошибки сохранения, сохранности ввода и полного повторного payload |
+| Install offer unit duplicate | Все уникальные проверки установленного приложения, пустого storage и marker перенесены в существующий StrictMode/repeated-call/reload сценарий |
+
+Дополнительно убраны три старых fixture DraftMedia.size; намеренный старый
+журнал с size сохранён как compatibility input. Проверка отсутствия оферты
+в домене теперь требует именно соответствующую ошибку, а не любой отказ по
+пустому input. В HTTP profile-default fixture используется текущий pickup.
+Новые HTTP проверки выполняют настоящий router: ignored filter, исключение/
+возврат, точные actor/ID и отказ read-only менеджеру; nil dependency остаётся 503.
+
+Статические проверки неизменяемых миграций/источников контента без доказанной
+эквивалентной замены не удалялись. Возраст, короткий тест, условный skip без
+PostgreSQL или строка в настоящем JSON-ответе не признаны основанием удаления.
+Политика качества тестов закреплена в AGENTS.md. В current-system.md убрана
+дублирующая хроника старых прогонов; осталась актуальная карта с текущими
+контрактами и границами. Полное прежнее состояние карты доступно в ревизии
+e384122, а подробные аудиты остаются в этом файле и legacy-process-retirement.md.
+Исторический план доставок явно отделён от текущих самовывоза/СДЭК.
+
+### Результат проверки
+
+Новая PostgreSQL проверка категорий исполняет CRUD, иерархию, productsCount,
+запрет удаления занятой категории, удаление пустой и сохранение public icon.
+Имя OnLiveDatabase включает её в существующий CI selector без отдельной job.
+На свежей схеме 220 прошли этот тест, CatalogueAndOrderEditing, усиленный
+CommerceLifecycle, Stage04 ledger, coordinator lease и sales worker restart.
+Isolated editor WB/Ozon/СБИС price/content publication прошли отдельно.
+
+Полные Go test/vet/build прошли. Go-достижимость всех пакетов с тестами не
+нашла дополнительных кандидатов. Frontend build/lint/format/budget прошли;
+после объединения дубля — 75 unit. Прошли 43 Python и 22 уникальных browser
+сценария (19 category/editor/PDP/Saby + 3 profile save/retry). CRM на финальном
+Go API прошёл для owner/manager в 1440/390 px с сохранением галереи и прав.
+Прямое чтение API подтвердило отсутствие четырёх снятых свойств и сохранение
+текущих SKU/externalIds/stock полей. OpenAPI — 236 операций / 91 схема.
+Новых миграций нет; БД и очереди production не менялись. Полный e2e набор
+этой итерацией не перезапускался.

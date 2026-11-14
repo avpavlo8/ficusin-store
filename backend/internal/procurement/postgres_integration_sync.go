@@ -13,10 +13,15 @@ const (
 	integrationCurrentEvery = 5 * time.Minute
 )
 
-type IntegrationSyncCoordinator interface {
-	RequestIntegrationSync(context.Context, string, string) (IntegrationSyncStatus, error)
+// IntegrationSyncRunner is the queue contract needed by background consumers.
+type IntegrationSyncRunner interface {
 	ClaimIntegrationSync(context.Context, string, string, string, time.Duration) (*SyncClaim, error)
 	FinishIntegrationSync(context.Context, SyncClaim, int, time.Time, time.Time, *time.Time, time.Duration, error) (bool, error)
+}
+
+type IntegrationSyncCoordinator interface {
+	IntegrationSyncRunner
+	RequestIntegrationSync(context.Context, string, string) (IntegrationSyncStatus, error)
 	ListIntegrationSync(context.Context) ([]IntegrationSyncStatus, error)
 }
 

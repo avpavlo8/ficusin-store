@@ -12,7 +12,6 @@ const photo = (id, source) => ({
   ...(source ? { source } : {}),
   name: id,
   type: "image/jpeg",
-  size: 1,
 });
 const shared = [photo("cover", "/cover.jpg"), photo("second", "/second.jpg")];
 const added = photo("upload");

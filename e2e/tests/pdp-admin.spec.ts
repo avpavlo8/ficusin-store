@@ -8,7 +8,6 @@ const adminOwner = {
 
 const adminProduct = {
   id: 1,
-  sabyId: "saby-1",
   slug: "1",
   name: "Аглаонема Мария",
   latinName: "Aglaonema",
@@ -23,7 +22,6 @@ const adminProduct = {
   sku: "1",
   variantLabel: "D12",
   wholesaleMinQty: 1,
-  sabyFields: ["stock"],
   sabyCode: "X100",
   catalogSection: "plants",
   categoryId: 1,
