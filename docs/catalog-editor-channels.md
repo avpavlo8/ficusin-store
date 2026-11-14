@@ -21,6 +21,8 @@ Metadata uses `CATALOG_OZON_CLIENT_ID`, `CATALOG_OZON_API_KEY`, `CATALOG_WB_API_
 The article picker keeps `linkedArticle` as its local baseline. `marketplaceOf`
 removes that UI field from both channels before strict editor-plan decoding;
 the selected `article` and explicit `replaceLink` intent remain in the request.
+Editor-plan validation failures return their actionable domain message (HTTP 400).
+Unexpected database/service errors retain the generic response.
 
 - Ozon: build `/v3/product/import` with offer ID, category/type, attribute/dictionary IDs, VAT, price, ordered photos, millimetres and grams; persist `task_id`; poll `/v1/product/import/info`; surface item errors even on HTTP 200; read back `/v3/product/info/list`, external IDs, photo availability and remote status.
 - WB: build `/content/v2/cards/upload` with subject, article, characteristics, barcode, centimetres and kilograms; reconcile asynchronous creation through the exact article, checking paginated `/content/v2/cards/error/list` batches; attach the complete photo set through `/content/v3/media/save`; submit the price and read it back before reporting completion. Check that the photo set appeared on the card.
