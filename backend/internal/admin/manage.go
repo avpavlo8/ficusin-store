@@ -103,9 +103,36 @@ func (repository *PostgresRepository) PublishDraftProducts(ctx context.Context, 
 	return result, nil
 }
 
-func (repository *PostgresRepository) ListCustomers(ctx context.Context) ([]Customer, error) {
-	page, err := repository.ListCustomersPage(ctx, "", false, 100, 0)
-	return page.Customers, err
+const adminCustomerProjection = `
+	SELECT c.id, COALESCE(c.email, ''), c.phone, c.full_name, c.last_name,
+		c.patronymic, c.delivery_address, c.account_type, c.wholesale_status,
+		c.retail_discount_bps, c.lifetime_spend_minor::DOUBLE PRECISION / 100,
+		c.is_active, COALESCE(au.role, ''), COUNT(o.id)::INTEGER, c.created_at
+	FROM customers c
+	LEFT JOIN LATERAL (
+		SELECT role FROM admin_users
+		WHERE is_active = TRUE AND customer_id = c.id LIMIT 1
+	) au ON TRUE
+	LEFT JOIN orders o ON o.customer_id = c.id
+`
+const adminCustomerGrouping = ` GROUP BY c.id, au.role `
+
+func scanAdminCustomer(row pgx.Row) (Customer, error) {
+	var item Customer
+	if err := row.Scan(
+		&item.ID, &item.Email, &item.Phone, &item.FullName, &item.LastName,
+		&item.Patronymic, &item.DeliveryAddress, &item.AccountType,
+		&item.WholesaleStatus, &item.RetailDiscountBPS, &item.LifetimeSpend,
+		&item.Active, &item.AdminRole, &item.OrdersCount, &item.CreatedAt,
+	); err != nil {
+		return Customer{}, fmt.Errorf("scan admin customer: %w", err)
+	}
+	return item, nil
+}
+
+func (repository *PostgresRepository) customerByID(ctx context.Context, id int64) (Customer, error) {
+	return scanAdminCustomer(repository.pool.QueryRow(ctx,
+		adminCustomerProjection+` WHERE c.id=$1 `+adminCustomerGrouping, id))
 }
 
 func (repository *PostgresRepository) ListCustomersPage(ctx context.Context, query string, wholesalePending bool, limit, offset int) (CustomerPage, error) {
@@ -124,22 +151,11 @@ func (repository *PostgresRepository) ListCustomersPage(ctx context.Context, que
 	`, query, wholesalePending).Scan(&total); err != nil {
 		return CustomerPage{}, fmt.Errorf("count admin customers: %w", err)
 	}
-	rows, err := repository.pool.Query(ctx, `
-		SELECT c.id, COALESCE(c.email, ''), c.phone, c.full_name, c.last_name,
-			c.patronymic, c.delivery_address, c.account_type, c.wholesale_status,
-			c.retail_discount_bps, c.lifetime_spend_minor::DOUBLE PRECISION / 100,
-			c.is_active, COALESCE(au.role, ''), COUNT(o.id)::INTEGER, c.created_at
-		FROM customers c
-		LEFT JOIN LATERAL (
-			SELECT role FROM admin_users
-			WHERE is_active = TRUE AND customer_id = c.id LIMIT 1
-		) au ON TRUE
-			LEFT JOIN orders o ON o.customer_id = c.id
-			WHERE ($1 = '' OR CONCAT_WS(' ', c.full_name, c.last_name, c.patronymic, c.phone, COALESCE(c.email, '')) ILIKE '%' || $1 || '%')
-			  AND (NOT $2 OR (c.account_type = 'wholesale' AND c.wholesale_status = 'pending'))
-			GROUP BY c.id, au.role
-			ORDER BY c.created_at DESC
-			LIMIT $3 OFFSET $4
+	rows, err := repository.pool.Query(ctx, adminCustomerProjection+`
+		WHERE ($1 = '' OR CONCAT_WS(' ', c.full_name, c.last_name, c.patronymic, c.phone, COALESCE(c.email, '')) ILIKE '%' || $1 || '%')
+		  AND (NOT $2 OR (c.account_type = 'wholesale' AND c.wholesale_status = 'pending'))
+	`+adminCustomerGrouping+`
+		ORDER BY c.created_at DESC LIMIT $3 OFFSET $4
 	`, query, wholesalePending, limit, offset)
 	if err != nil {
 		return CustomerPage{}, fmt.Errorf("query admin customers: %w", err)
@@ -147,14 +163,9 @@ func (repository *PostgresRepository) ListCustomersPage(ctx context.Context, que
 	defer rows.Close()
 	result := make([]Customer, 0)
 	for rows.Next() {
-		var item Customer
-		if err := rows.Scan(
-			&item.ID, &item.Email, &item.Phone, &item.FullName, &item.LastName,
-			&item.Patronymic, &item.DeliveryAddress, &item.AccountType,
-			&item.WholesaleStatus, &item.RetailDiscountBPS, &item.LifetimeSpend,
-			&item.Active, &item.AdminRole, &item.OrdersCount, &item.CreatedAt,
-		); err != nil {
-			return CustomerPage{}, fmt.Errorf("scan admin customer: %w", err)
+		item, err := scanAdminCustomer(rows)
+		if err != nil {
+			return CustomerPage{}, err
 		}
 		result = append(result, item)
 	}
@@ -253,16 +264,9 @@ func (repository *PostgresRepository) UpdateCustomer(
 	if err := tx.Commit(ctx); err != nil {
 		return Customer{}, fmt.Errorf("commit customer update: %w", err)
 	}
-	customers, err := repository.ListCustomers(ctx)
-	if err != nil {
-		return Customer{}, err
-	}
-	for _, customer := range customers {
-		if customer.ID == id {
-			return customer, nil
-		}
-	}
-	return Customer{}, pgx.ErrNoRows
+	// Read the updated identity directly: an older customer may be outside
+	// every currently visible page, while the write has already committed.
+	return repository.customerByID(ctx, id)
 }
 
 func (repository *PostgresRepository) ListOrders(ctx context.Context) ([]Order, error) {

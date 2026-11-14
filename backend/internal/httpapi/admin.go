@@ -20,7 +20,7 @@ import (
 
 type adminRepository interface {
 	Dashboard(context.Context) (admin.Dashboard, error)
-	ListCustomers(context.Context) ([]admin.Customer, error)
+	ListCustomersPage(context.Context, string, bool, int, int) (admin.CustomerPage, error)
 	UpdateCustomer(context.Context, admin.Actor, int64, admin.CustomerUpdate) (admin.Customer, error)
 	ListOrders(context.Context) ([]admin.Order, error)
 	UpdateOrderStatus(context.Context, admin.Actor, int64, string, string) (admin.Order, error)
@@ -100,23 +100,12 @@ func (handlers adminHandlers) customers(response http.ResponseWriter, request *h
 	if limit == 0 {
 		limit = 100
 	}
-	if pager, ok := handlers.repository.(interface {
-		ListCustomersPage(context.Context, string, bool, int, int) (admin.CustomerPage, error)
-	}); ok {
-		page, err := pager.ListCustomersPage(request.Context(), query, pendingWholesale, limit, offset)
-		if err != nil {
-			handlers.failed(response, "list admin customers", err)
-			return
-		}
-		writeJSON(response, http.StatusOK, page)
-		return
-	}
-	customers, err := handlers.repository.ListCustomers(request.Context())
+	page, err := handlers.repository.ListCustomersPage(request.Context(), query, pendingWholesale, limit, offset)
 	if err != nil {
 		handlers.failed(response, "list admin customers", err)
 		return
 	}
-	writeJSON(response, http.StatusOK, map[string]any{"customers": customers, "total": len(customers), "hasMore": false})
+	writeJSON(response, http.StatusOK, page)
 }
 
 func (handlers adminHandlers) updateCustomer(response http.ResponseWriter, request *http.Request) {

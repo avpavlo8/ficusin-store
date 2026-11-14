@@ -19,6 +19,7 @@ var BuildVersion = "development"
 
 type catalogRepository interface {
 	ListAvailable(context.Context) ([]catalog.Product, error)
+	ListForCollection(context.Context, string) ([]catalog.Product, error)
 	ListCategories(context.Context) ([]catalog.Category, error)
 	DetailBySlug(context.Context, string) (catalog.ProductDetail, error)
 }

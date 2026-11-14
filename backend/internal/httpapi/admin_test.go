@@ -67,10 +67,6 @@ func (stub *adminRepositoryStub) Dashboard(context.Context) (admin.Dashboard, er
 	return admin.Dashboard{}, nil
 }
 
-func (stub *adminRepositoryStub) ListCustomers(context.Context) ([]admin.Customer, error) {
-	return []admin.Customer{}, nil
-}
-
 func (stub *adminRepositoryStub) ListCustomersPage(_ context.Context, query string, pending bool, limit, offset int) (admin.CustomerPage, error) {
 	stub.customerPageQuery, stub.customerPagePending = query, pending
 	stub.customerPageLimit, stub.customerPageOffset = limit, offset

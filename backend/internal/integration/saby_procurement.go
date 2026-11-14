@@ -389,23 +389,17 @@ func (client *SabyClient) WithIntegrationRequestLimiter(limiter IntegrationReque
 	return client
 }
 
+// sabyDraftPayload reads only receipt identity and composition. The action's
+// original JSON retains procurement notes/costs for history; it is never
+// rebuilt from this read model or used to replay an unknown provider write.
 type sabyDraftPayload struct {
-	VerifyOnly  bool   `json:"verifyOnly"`
-	OrderID     int64  `json:"orderId"`
-	ReturnID    int64  `json:"returnId"`
-	OrderNumber string `json:"orderNumber"`
-	Supplier    struct {
-		Name  string `json:"name"`
-		TaxID string `json:"taxId"`
-		KPP   string `json:"kpp"`
-	} `json:"supplier"`
-	Lines []struct {
-		SabyID   string  `json:"sabyId"`
-		Code     string  `json:"code"`
-		Name     string  `json:"name"`
-		Quantity int     `json:"quantity"`
-		NewPrice float64 `json:"newPrice"`
-		UnitCost float64 `json:"unitCost"`
+	VerifyOnly bool  `json:"verifyOnly"`
+	OrderID    int64 `json:"orderId"`
+	ReturnID   int64 `json:"returnId"`
+	Lines      []struct {
+		SabyID   string `json:"sabyId"`
+		Name     string `json:"name"`
+		Quantity int    `json:"quantity"`
 	} `json:"lines"`
 }
 

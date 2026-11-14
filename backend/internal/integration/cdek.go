@@ -462,7 +462,6 @@ func (client *CDEKClient) CreateOrder(
 			UUID string `json:"uuid"`
 		} `json:"entity"`
 		Requests []struct {
-			State  string `json:"state"`
 			Errors []struct {
 				Message string `json:"message"`
 			} `json:"errors"`

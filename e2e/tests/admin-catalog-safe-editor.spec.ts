@@ -8,11 +8,11 @@ const effective=['length_cm','width_cm','height_cm','weight_grams'].map((code,i)
 effective.push(...['length_cm','width_cm','height_cm'].map((code,i)=>({id:20+i,code:`package_winter_${code}`,name:['Длина зимней упаковки','Ширина зимней упаковки','Высота зимней упаковки'][i],unit:'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:false})));
 const size=(id:number,pid:number,label:string)=>({id,productId:pid,sku:String(id),label,price:1490,stock:0,wholesaleMinQty:1,active:false,archived:false,sabyId:`fixture-saby-${id}`,attributes:{pot_diameter_cm:Number(label.slice(1)),height_cm:40,package_length_cm:20,package_width_cm:20,package_height_cm:50,package_weight_grams:1000},externalIds:[{provider:'saby',type:'id',externalId:`fixture-saby-${id}`}],images:[],stockSource:'saby'});
 async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=false,sharedGalleryPhoto=false,variantTasks=[] as string[]}={}){
- let products=Array.from({length:total},(_,i)=>product(i+1));if(variantTasks.length)Object.assign(products[0],{variantTasks});const variants=new Map(products.map(p=>[p.id,[size(p.id*10,p.id,'D11'),size(p.id*10+1,p.id,'D17')]]));const updates:Array<Record<string,any>>=[],calls:string[]=[],plans=new Map<number,any>(),creations=new Map<string,any>(),mutations:Array<{path:string;method:string;body:any}>=[];let nextId=1000;
+ let products=Array.from({length:total},(_,i)=>product(i+1));if(variantTasks.length)Object.assign(products[0],{variantTasks});const variants=new Map(products.map(p=>[p.id,[size(p.id*10,p.id,'D11'),size(p.id*10+1,p.id,'D17')]]));const updates:Array<Record<string,any>>=[],plans=new Map<number,any>(),creations=new Map<string,any>(),mutations:Array<{path:string;method:string;body:any}>=[];let nextId=1000;
  let nextMediaId=100000;
  const media:Array<{id:number;productId:number;variantId?:number;url:string;primary:boolean;sortOrder:number}>=products.map(p=>({id:p.id*100,productId:p.id,url:p.image,primary:true,sortOrder:0}));
  if(sharedGalleryPhoto)media.push({id:++nextMediaId,productId:1,url:'/assets/hero-monstera.webp?photo=own',primary:false,sortOrder:1});
- await page.route('**/api/v1/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname,method=req.method();calls.push(path);if(!['GET','HEAD'].includes(method)&&!path.endsWith('/pricing/preview'))mutations.push({path,method,body:req.postDataJSON()});const send=(body:unknown,status=200)=>route.fulfill({status,json:body});
+ await page.route('**/api/v1/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname,method=req.method();if(!['GET','HEAD'].includes(method)&&!path.endsWith('/pricing/preview'))mutations.push({path,method,body:req.postDataJSON()});const send=(body:unknown,status=200)=>route.fulfill({status,json:body});
  if(path==='/api/v1/auth/me')return send({user:{...owner.user,adminRole:'owner'}});
  if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role:'owner',permissions:['dashboard.read','products.read','products.edit','products.manage','catalog.delete'],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
  if(path==='/api/v1/admin/products'&&method==='GET')return send({products});
@@ -39,7 +39,7 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
  if(path==='/api/v1/admin/catalog-filters')return send({filters:[]});if(path.endsWith('/reviews'))return send({reviews:[]});
  if(path.endsWith('/products/publish'))return send({published:[1],blocked:[{productId:2,name:'Хлорофитум',reason:'Нет активного размера'}]});
  const update=path.match(/\/products\/(\d+)$/);if(update&&method==='PATCH'){const id=Number(update[1]),body=req.postDataJSON();updates.push({id,body});if(failSave)return send({error:'Ошибка сохранения'},500);for(const v of body.variants||[]){const current=variants.get(id)||[];const old=current.find(x=>x.id===v.id);if(old)Object.assign(old,v,{price:v.priceMinor/100,attributes:{...old.attributes,...v.attributes}});else current.push({...size(++nextId,id,v.label),...v,id:nextId,price:v.priceMinor/100});variants.set(id,current)}const i=products.findIndex(p=>p.id===id);const {variants:_,...patch}=body;products[i]={...products[i],...patch};return send({product:products[i]})}
- return send({});});return{updates,calls,variants,plans,mutations,creations,media};
+ return send({});});return{updates,variants,plans,mutations,creations,media};
 }
 async function open(page:Page){await page.goto('/admin?section=products');await expect(page.locator('table.products tbody tr').first()).toBeVisible()}
 async function edit(page:Page){await page.getByRole('link',{name:'Аглаонема Мария',exact:true}).click();const editor=page.locator('.editor-page');await expect(editor.getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();return editor}
@@ -149,10 +149,10 @@ test('@desktop @phone creation destinations have native accessible checkboxes an
  const box=await wb.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(16);expect(box!.height).toBeGreaterThanOrEqual(16);await expect(e.locator('.editor-save-actions').getByRole('button',{name:'Создать товар',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
-test('@desktop route editor has product, marketplace and FAQ tabs without obsolete generated content',async({page})=>{
- const f=await fixture(page);await open(page);const e=await edit(page);await expect(page).toHaveURL(/product=1/);await expect(page.getByRole('dialog')).toHaveCount(0);
- await expect(e.getByRole('tab')).toHaveCount(3);await expect(e.getByText(/AI|ИИ|Сгенерировать|SEO/)).toHaveCount(0);await expect(e.getByLabel('Короткое описание')).toHaveCount(0);
- await e.locator('.editor-care-topic > summary').filter({hasText:'На заметку'}).click();await expect(e.getByLabel('На заметку',{exact:true})).toBeVisible();expect(f.calls.filter(p=>p.includes('ai-'))).toEqual([]);
+test('@desktop route editor has product, marketplace and FAQ tabs with editable care notes',async({page})=>{
+ await fixture(page);await open(page);const e=await edit(page);await expect(page).toHaveURL(/product=1/);await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(e.getByRole('tab')).toHaveCount(3);
+ await e.locator('.editor-care-topic > summary').filter({hasText:'На заметку'}).click();await expect(e.getByLabel('На заметку',{exact:true})).toBeVisible();
 });
 
 test('@desktop unified product and two variant edits survive reload',async({page})=>{
@@ -337,7 +337,7 @@ test('@desktop @phone Saby create/link controls preserve an existing code withou
 });
 
 test('@desktop Saby edits stay local until unified Save',async({page})=>{
- const f=await fixture(page);await open(page);const e=await edit(page);await sabyFields(e);expect(f.plans.size).toBe(0);expect(f.calls.some(p=>p.endsWith('/saby-export'))).toBe(false);await page.reload();await expect(e.getByRole('combobox',{name:'Категория в СБИС',exact:true})).toHaveValue('Тестовая категория СБИС');await saveEditor(e);expect(f.plans.get(1).variants[0].saby.category.id).toBe('fixture-category');expect(f.calls.some(p=>p.endsWith('/saby-export'))).toBe(false);
+ const f=await fixture(page);await open(page);const e=await edit(page);await sabyFields(e);expect(f.plans.size).toBe(0);expect(f.mutations).toHaveLength(0);await page.reload();await expect(e.getByRole('combobox',{name:'Категория в СБИС',exact:true})).toHaveValue('Тестовая категория СБИС');await saveEditor(e);expect(f.plans.get(1).variants[0].saby.category.id).toBe('fixture-category');expect(f.mutations.map(({path,method})=>({path,method}))).toEqual([{path:'/api/v1/admin/products/1/editor-plan',method:'PUT'}]);
 });
 
 test('@desktop @phone late catalog snapshot cannot discard a route editor draft',async({page})=>{

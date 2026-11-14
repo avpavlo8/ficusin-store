@@ -69,6 +69,10 @@ func (stub authStub) UserByToken(context.Context, string) (*auth.User, error) {
 
 type orderStub struct{}
 
+func (orderStub) ListPageForCustomer(context.Context, int64, string, int, int) (order.CustomerOrderPage, error) {
+	panic("unexpected account order page")
+}
+
 func (orderStub) ListForCustomer(context.Context, int64, int) ([]order.Summary, error) {
 	return nil, nil
 }
@@ -87,6 +91,10 @@ func testDependencies(catalog catalogRepository, authentication authService) Dep
 
 func (stub catalogStub) ListAvailable(context.Context) ([]catalog.Product, error) {
 	return stub.products, stub.err
+}
+
+func (catalogStub) ListForCollection(context.Context, string) ([]catalog.Product, error) {
+	panic("unexpected collection catalog")
 }
 func (stub catalogStub) ListCategories(context.Context) ([]catalog.Category, error) {
 	return []catalog.Category{}, stub.err

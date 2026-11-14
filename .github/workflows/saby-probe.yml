@@ -11,9 +11,6 @@ on:
       receipt_id:
         description: Числовой ID существующего поступления (только чтение схемы)
         required: false
-      receipt_guid:
-        description: UUID существующего поступления (только чтение схемы)
-        required: false
 
 permissions:
   contents: read
@@ -39,5 +36,4 @@ jobs:
           SABY_APP_SECRET: ${{ secrets.SABY_APP_SECRET }}
           SABY_SECRET_KEY: ${{ secrets.SABY_SECRET_KEY }}
           SABY_RECEIPT_ID: ${{ inputs.receipt_id }}
-          SABY_RECEIPT_GUID: ${{ inputs.receipt_guid }}
         run: python3 scripts/saby-receipt-probe.py

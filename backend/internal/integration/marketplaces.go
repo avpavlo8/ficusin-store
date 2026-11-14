@@ -686,7 +686,6 @@ func (executor *MarketplaceExecutor) executeOzonGroup(ctx context.Context, items
 			OfferID string `json:"offer_id"`
 			Updated bool   `json:"updated"`
 			Errors  []struct {
-				Code    string `json:"code"`
 				Message string `json:"message"`
 			} `json:"errors"`
 		} `json:"result"`
@@ -1195,7 +1194,6 @@ func (executor *MarketplaceExecutor) fetchWBCatalog(ctx context.Context) ([]proc
 			Cursor struct {
 				UpdatedAt string `json:"updatedAt"`
 				NmID      int64  `json:"nmID"`
-				Total     int    `json:"total"`
 			} `json:"cursor"`
 		}
 		if err := executor.requestRead(ctx, http.MethodPost,

@@ -286,7 +286,6 @@ func (client *YooKassaClient) send(
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		var failure struct {
 			Description string `json:"description"`
-			Parameter   string `json:"parameter"`
 		}
 		_ = json.NewDecoder(response.Body).Decode(&failure)
 		if response.StatusCode >= http.StatusInternalServerError {

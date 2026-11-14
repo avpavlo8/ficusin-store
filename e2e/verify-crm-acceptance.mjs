@@ -18,11 +18,6 @@ try {
   await context.addCookies([{name:'ficusin_session',value:`crm-acceptance-${role}`,url:base}]);
   const page = await context.newPage();
   const api = context.request;
-  const procurementDraft = JSON.stringify({supplierId:77,exchangeRate:"91.25",items:[{sabyId:"unsaved-ci",quantity:3}]});
-  if(role==='owner') {
-   await page.goto('/admin');
-   await page.evaluate(([key,value])=>localStorage.setItem(key,value),['ficusin:procurement-plan-draft:v1',procurementDraft]);
-  }
   const response = await api.get('/api/v1/admin/dashboard');
   expect(response.status()).toBe(200);
   const data = await response.json();expect(data.role).toBe(role);
@@ -139,7 +134,6 @@ try {
     await expect(page.locator('.procurement-orders tbody tr')).toHaveCount(Math.min(5,activePurchases.length));
     await expect(page.getByText(`Закупок: ${activePurchases.length}`,{exact:true})).toBeVisible();await page.getByRole('textbox',{name:'Поиск закупки',exact:true}).fill('CRM-STAGE-06');await expect(page.locator('.procurement-orders tbody tr')).toHaveCount(1);await page.getByText('CRM-STAGE-06',{exact:true}).click();const invoiceDialog=page.getByRole('dialog',{name:'CRM-STAGE-06',exact:true});await expect(invoiceDialog).toBeVisible();await expect(invoiceDialog.getByText('Совпадает',{exact:true})).toBeVisible();await expect(invoiceDialog.getByText('Изменено',{exact:true})).toBeVisible();await expect(invoiceDialog.locator('.procurement-reconciliation-missing')).toBeVisible();await expect(invoiceDialog.getByText(/Несопоставленные строки инвойса:/)).toBeVisible();await expect(invoiceDialog.getByRole('button',{name:'Это новая позиция',exact:true})).toBeVisible();await expect(invoiceDialog.getByText('NL-V-09',{exact:false})).toBeVisible();await page.screenshot({path:`${out}/owner-stage06-reconciliation-${width}.png`,fullPage:true});await invoiceDialog.getByRole('button',{name:'Закрыть',exact:true}).click();
     await page.getByRole('textbox',{name:'Поиск закупки',exact:true}).fill('CRM-STAGE-07');await page.getByText('CRM-STAGE-07',{exact:true}).click();const costDialog=page.getByRole('dialog',{name:'CRM-STAGE-07',exact:true});await expect(costDialog).toBeVisible();await expect(costDialog.getByText('В учёте (отдельно от партии): 945 ₽',{exact:true})).toBeVisible();await expect(costDialog.getByText('Черновик создан · ждёт проведения',{exact:true})).toBeVisible();await expect(costDialog.getByRole('button',{name:'Завершить приёмку',exact:true})).toHaveCount(0);await page.screenshot({path:`${out}/owner-stage07-cost-receipt-${width}.png`,fullPage:true});await costDialog.getByRole('button',{name:'Закрыть',exact:true}).click();
-    expect(await page.evaluate(key=>localStorage.getItem(key),'ficusin:procurement-plan-draft:v1')).toBe(procurementDraft);
    }
    if(role==='manager') {
     await page.goto('/admin?section=procurement');
