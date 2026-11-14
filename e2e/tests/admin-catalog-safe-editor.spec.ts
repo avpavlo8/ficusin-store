@@ -586,8 +586,9 @@ test('@desktop a late saved plan preserves newer manual price edits including ze
 });
 
 
-test('@desktop legacy saved amounts without a price mode require manual intent until explicit Auto',async({page})=>{
- const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,ozonPrice:'4321.45',wbPrice:'3210.25'}]});await open(page);const e=await edit(page);const modes=e.getByRole('group',{name:'Режим цен маркетплейсов'});
+test('@desktop migrated saved prices retain manual intent until explicit Auto',async({page})=>{
+ // The backend migration materializes missing modes before exposing saved plans.
+ const f=await fixture(page);f.plans.set(1,{variants:[{variantId:10,priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'}]});await open(page);const e=await edit(page);const modes=e.getByRole('group',{name:'Режим цен маркетплейсов'});
  await expect(modes.getByRole('button',{name:'Вручную',exact:true})).toHaveAttribute('aria-pressed','true');await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('3210.25');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('4321.45');expect(f.mutations).toHaveLength(0);
  await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'manual',ozonPrice:'4321.45',wbPrice:'3210.25'});
  await modes.getByRole('button',{name:'Авто',exact:true}).click();await expect(e.getByLabel('Цена Wildberries, ₽',{exact:true})).toHaveValue('2490');await expect(e.getByLabel('Цена Ozon, ₽',{exact:true})).toHaveValue('2990');await saveEditor(e);expect(f.plans.get(1).variants.find((v:any)=>v.variantId===10)).toMatchObject({priceMode:'auto',ozonPrice:'2990',wbPrice:'2490'});
