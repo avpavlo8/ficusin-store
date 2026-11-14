@@ -6,7 +6,7 @@ non-business POST. Raw DB rows, articles, IDs, vendor errors and secrets stay in
 memory. Output is limited to classifications, booleans and counts.
 """
 import argparse
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import importlib.util
 import json
 import os
@@ -155,10 +155,13 @@ def reconcile_wb(row, reader):
         require(next_cursor.get('updatedAt') and next_cursor.get('batchUUID'), 'wb_error_cursor_missing')
         next_value={'limit':100,'updatedAt':next_cursor['updatedAt'],'batchUUID':next_cursor['batchUUID']}
         require(next_value!=cursor, 'wb_error_cursor_stuck');cursor=next_value
-    owned=[]
+    owned=[];provider_barcode_matches=0
     for card in cards:
         codes=[code for size in card.get('sizes') or [] if isinstance(size,dict) for code in size.get('skus') or []]
         if barcode and barcode in codes and isinstance(card.get('nmID'),int) and card['nmID']>0:owned.append(card)
+        sizes=card.get('sizes') or []
+        first_codes=sizes[0].get('skus') or [] if sizes and isinstance(sizes[0],dict) else []
+        if barcode and first_codes and first_codes[0]==barcode:provider_barcode_matches+=1
     tags=set()
     for messages,_ in matches:
         for message in messages:
@@ -167,7 +170,7 @@ def reconcile_wb(row, reader):
                 if any(term in lower for term in terms):tags.add(tag)
     classification='exact_card_barcode_ownership_confirmed' if cards_complete and len(cards)==len(owned)==1 else 'article_collision_ownership_unproven' if cards else 'no_exact_card_result_still_unknown'
     if not cards_complete or not errors_complete:classification='bounded_read_incomplete_result_unknown'
-    return {'classification':classification,'cardsComplete':cards_complete,'errorsComplete':errors_complete,'exactCardCount':len(cards),'barcodeOwnedCardCount':len(owned),'exactArticleErrorBatchCount':len(matches),'scannedErrorBatchCount':scanned_batches,'unattributedExactArticleBatchCount':unattributed_mentions,'errorTags':sorted(tags),'batchesWithTimestamp':sum(bool(stamp) for _,stamp in matches),
+    return {'classification':classification,'cardsComplete':cards_complete,'errorsComplete':errors_complete,'exactCardCount':len(cards),'barcodeOwnedCardCount':len(owned),'providerFirstBarcodeMatchCount':provider_barcode_matches,'exactArticleErrorBatchCount':len(matches),'scannedErrorBatchCount':scanned_batches,'unattributedExactArticleBatchCount':unattributed_mentions,'errorTags':sorted(tags),'batchesWithTimestamp':sum(bool(stamp) for _,stamp in matches),
             'definitiveRejectionProven':False,'savedBatchCorrelationAvailable':False,'pendingPayload':row['pending_payload'] is not None,'replayAuthorized':False}
 
 
@@ -183,6 +186,19 @@ def native_rows(value):
     return [native_record({'_type':'record','s':value.get('s'),'d':data}) for data in value['d']]
 
 
+def native_price_matches_minor(price, minor):
+    # The editor request contract is integer kopecks (priceMinor). Native
+    # PriceData.Price is rubles. Missing/nullable values are missing evidence,
+    # never zero and never an excuse to infer a differently named field.
+    if isinstance(minor, bool) or not isinstance(minor, int) or minor <= 0 or price is None or isinstance(price, bool):
+        return False
+    try:
+        value = Decimal(str(price))
+        return value.is_finite() and value > 0 and value * 100 == minor
+    except (InvalidOperation, ValueError, TypeError):
+        return False
+
+
 def saby_field_matches(card, request, progress, price_list):
     state=progress.get('native') or {};saby=request.get('saby') or {}
     fields={name: str(card.get(native,''))==str(expected) for name,native,expected in [
@@ -196,7 +212,7 @@ def saby_field_matches(card, request, progress, price_list):
     fields['images']=bool(expected_images) and len(expected_images)>=len(request.get('images') or []) and len(images)==len(expected_images) and all(c.get('id')==expected_images[i] and c.get('isMaster') is (i==0) for i,c in enumerate(images))
     if state.get('created') is True:
         prices=[p for p in native_rows(card.get('PriceData')) if p.get('PriceList')==price_list]
-        fields['createdPrice']=len(prices)==1 and Decimal(str(prices[0].get('Price')))*100==Decimal(str(request.get('priceMinor')))
+        fields['createdPrice']=len(prices)==1 and native_price_matches_minor(prices[0].get('Price'),request.get('priceMinor'))
     return fields
 
 
@@ -216,8 +232,10 @@ def reconcile_saby(row, reader, env):
     require(isinstance(card.get('Number'),str) and bool(card['Number']) and all(not code or card['Number']==code for code in expected_codes), 'saby_code_mismatch')
     fields=saby_field_matches(card,request,progress,price_list)
     state=progress.get('native') or {}
+    selected_prices=[p for p in native_rows(card.get('PriceData')) if p.get('PriceList')==price_list] if state.get('created') is True else []
+    price_evidence={'requestPriceMinorKnown':type(request.get('priceMinor')) is int and request['priceMinor']>0,'selectedNativePriceRowCount':len(selected_prices),'selectedNativePriceNotNull':len(selected_prices)==1 and selected_prices[0].get('Price') is not None}
     legacy=not str(state.get('preparedHash','')).startswith('json-v1:') or not str(state.get('preparedRequestHash','')).startswith('json-v1:')
-    return {'classification':'identity_verified_legacy_receipt_requires_explicit_reprepare' if legacy else 'identity_verified_readback_requires_receipt_review','identityVerified':True,'frozenFieldMatches':fields,'allCheckedFrozenFieldsMatch':all(fields.values()),'legacyPreparedHashes':legacy,'pendingPayload':row['pending_payload'] is not None,'replayAuthorized':False}
+    return {'classification':'identity_verified_legacy_receipt_requires_explicit_reprepare' if legacy else 'identity_verified_readback_requires_receipt_review','identityVerified':True,'frozenFieldMatches':fields,'allCheckedFrozenFieldsMatch':all(fields.values()),'legacyPreparedHashes':legacy,'priceEvidence':price_evidence,'pendingPayload':row['pending_payload'] is not None,'replayAuthorized':False}
 
 
 def main():
@@ -235,7 +253,9 @@ def main():
                 require(connection.execute("SELECT p.name FROM public.products p JOIN public.product_variants v ON v.product_id=p.id WHERE p.id=11412 AND v.id=11412 AND v.sku='877'").fetchone()==('Бонсай самшит',),'approved_product_changed')
                 with connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
                     cursor.execute(QUERY); rows=validate_rows(cursor.fetchall())
-        report={'readOnly':True,'databaseWrites':0,'businessWrites':0,'changesApplied':False}
+                pricing=connection.execute("SELECT COUNT(*) total,COUNT(*) FILTER(WHERE economics#>>'{unified,enabled}'='true') unified_enabled FROM public.procurement_pricing_settings").fetchone()
+                require(len(pricing)==2 and all(isinstance(n,int) and n>=0 for n in pricing),'pricing_inventory_shape_unknown')
+        report={'readOnly':True,'databaseWrites':0,'businessWrites':0,'changesApplied':False,'pricingModels':{'total':pricing[0],'unifiedEnabled':pricing[1],'legacyModelConfigured':pricing[0]>pricing[1]}}
         for channel,fn in [('wb',lambda reader:reconcile_wb(rows['wb'],reader)),('saby',lambda reader:reconcile_saby(rows['saby'],reader,env))]:
             reader=VendorReader(env)
             try:

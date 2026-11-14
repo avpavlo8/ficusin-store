@@ -97,6 +97,21 @@ class Tests(unittest.TestCase):
             wrong=copy.deepcopy(card);wrong[field]=newvalue
             with self.assertRaises(mod.guards.PreflightError):mod.reconcile_saby(row,Reader([('saby_read',{'result':record(wrong)})]),{})
 
+    def test_null_or_missing_prices_are_unconfirmed_not_conversion_errors(self):
+        for price,minor in [(None,123),(1.23,None),(1.23,0),(None,None),('NaN',123),('Infinity',123),('invalid',123),(True,100),(1,True)]:
+            self.assertFalse(mod.native_price_matches_minor(price,minor))
+        self.assertTrue(mod.native_price_matches_minor('1.23',123))
+        self.assertFalse(mod.native_price_matches_minor('1.23',124))
+        request=fixture()[1]['payload']
+        card={'Name':'Private product','Category':1041,'Folder':3333,'IsDraft':False,'Description':[],
+              'CodeList':rows([]),'ImageData':rows([]),'PriceData':rows([{'PriceList':6,'Price':None}])}
+        for minor in [None,123]:
+            if minor is not None:request['priceMinor']=minor
+            fields=mod.saby_field_matches(card,request,fixture()[1]['progress'],6)
+            self.assertFalse(fields['createdPrice'])
+        card['PriceData']=rows([{'PriceList':6}])
+        self.assertFalse(mod.saby_field_matches(card,request,fixture()[1]['progress'],6)['createdPrice'])
+
     def test_duplicate_saby_schema_rejected(self):
         with self.assertRaises(mod.guards.PreflightError):mod.native_record({'_type':'record','s':[{'n':'Id'},{'n':'Id'}],'d':[1,2]})
 
