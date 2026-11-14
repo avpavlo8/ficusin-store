@@ -231,6 +231,9 @@ export function ProductFlowwow({
       <p className="editor-secondary">
         Название, описание, фотографии и цена берутся с сайта. Остаток — из складского учёта сайта.
       </p>
+      <p className="editor-secondary">
+        Flowwow принимает первые 6 фотографий по порядку сайта, включая обложку.
+      </p>
       <p>
         Цена: {price || "—"} ₽ · Остаток: {stock} шт.
       </p>
