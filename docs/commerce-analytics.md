@@ -1,8 +1,9 @@
 # E-commerce analytics
 
-The canonical funnel is stored in PostgreSQL. Yandex Metrika is an optional
-acquisition and session-replay adapter; it is not the source of truth for
-orders or revenue.
+Raw browser events and order attribution are stored in PostgreSQL. Confirmed
+`sales_events` are the source of truth for the admin sales dashboard; traffic
+events and unpaid order creation are not revenue. Yandex Metrika remains an
+optional acquisition and session-replay adapter.
 
 ## Identity and attribution
 
@@ -45,9 +46,12 @@ checkout errors.
 
 ## Operations
 
-`GET /api/v1/admin/analytics?days=7|30|90` is available to owner and manager
-roles. The admin section shows funnel loss, acquisition sources, product
-performance, zero-result searches, revenue and abandoned checkouts.
+`GET /api/v1/admin/analytics?days=7|30|90` requires `analytics.read` (owner and
+administrator; a manager cannot read it). The admin section shows confirmed sales, returns, revenue, daily and
+previous-period comparisons, products, channels and reconciliation quality.
+It no longer computes the old traffic funnel, acquisition/source tables,
+zero-result searches or abandoned checkout aggregates. The raw browser event
+journal, order attribution and Metrika delivery remain separate active paths.
 
 Set the Yandex Metrika counter in the store settings panel. An empty value keeps
 the external counter disabled while first-party analytics continues to work.

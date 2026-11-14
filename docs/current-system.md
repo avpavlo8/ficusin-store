@@ -10,9 +10,13 @@
 ## Как читать документацию
 
 - Этот файл — карта текущего функционала, процессов и сохранённых зависимостей.
+- Последующее углубление по потокам данных, колонкам и качеству тестов —
+  [continued-dataflow-audit.md](continued-dataflow-audit.md).
 - Полное актуальное покрытие и решения — [whole-codebase-audit.md](whole-codebase-audit.md):
   31 backend-пакет, 177 frontend-файлов, 29 scripts, 9 workflows / 17 jobs,
-  220 миграций и 119 public-файлов. Локальная схема `public` содержит 111 relations.
+  220 миграций на исходном проходе и 119 public-файлов. Миграция 221 дополнительно
+  архивирует неиспользуемую связь заказа с организацией; рабочая схема `public`
+  сохраняет 111 relations, 1 245 колонок.
 - Предыдущие этапы очистки — [post-price-cleanup-audit.md](post-price-cleanup-audit.md);
   их результаты относятся к указанным там версиям.
 - Тематические документы ниже объясняют действующие инварианты.
@@ -108,8 +112,8 @@ worker и затем публикует готовый router. Применён�
 | Возвраты | `AdminReturns`, `ReturnIntakeDialog`, `ReturnDetails`, `admin/returns*` | Приёмка, фото, документ поступления, уценка, повторная сверка внешнего результата |
 | Маркетплейсы | `AdminMarketplaces`, `integration/marketplaces`, каталог каналов | Связи WB/Ozon, остатки зеркала, статусы интеграции и задания обмена |
 | Авито | `AdminAvito`, `avito` | Отдельный сервис объявлений, изображения, цены/наличие, связанные SKU |
-| Клиенты | `AdminSales.Customers`, `admin` | Поиск, профиль, опт, назначаемые роли с серверными ограничениями |
-| Аналитика | `AdminAnalytics`, `analytics` | События продаж, атрибуция, funnel и метрики с явными неполными данными |
+| Клиенты | `AdminSales.Customers`, `admin` | Постраничный поиск, профиль, опт, роли; после изменения читается конкретный клиент по ID, независимо от страницы |
+| Аналитика | `AdminAnalytics`, `analytics` | Подтверждённые продажи, возвраты, каналы, качество привязок, атрибуция и Метрика |
 | Настройки | `AdminSettings`, `settings`, настройки закупочных цен | Только используемые runtime-ключи; секреты не хранятся в таблице settings |
 
 Каталог и PDP используют один редактор; его журнал — localStorage, файлы
@@ -331,17 +335,20 @@ worker/cron, конфигурации, источников данных, тес
 
 ## Проверка рабочей ветки
 
-Финальные локальные Go test/vet/build, race для `httpapi/payment/procurement`,
-пять publisher suites, PostgreSQL file/chat и 12 history-guard сценариев прошли.
-Проверены CRM owner/manager, восстановление и редактирование возвратов, реальный
-чат на desktop/mobile. Frontend build/lint/format/budget, 79 frontend unit и
-43 Python прошли; полный browser run — 888/888, без skip/retry.
-OpenAPI — 236 операций / 91 схема. Изолированные БД и provider mocks не
-подтверждают реальные списания/публикации или состояние production.
+Для актуального runtime `5ab8af8` успешно завершены
+[Verify 43580879335](https://github.com/avpavlo8/ficusin-store/actions/runs/43580879335)
+и [CRM acceptance 43580882002](https://github.com/avpavlo8/ficusin-store/actions/runs/43580882002).
+Полный browser run — 895/895 без skip/retry; frontend unit 82/82, Python 41/41,
+Go test/vet/build и OpenAPI 236 операций / 91 схема прошли. Docker job проверила
+реальный image build/boot, commerce, нагрузку и dump/restore.
 
-После исправления устаревшего inline SQL успешно завершён
-[run 43574411017](https://github.com/avpavlo8/ficusin-store/actions/runs/43574411017)
-для `50e1afa`: обе browser-части и общий gate, frontend/backend/OpenAPI/Python,
-миграции и реальный Docker build/boot/commerce/load/backup-restore прошли.
-Последующий коммит меняет только документацию. Полное покрытие, сохранённые
-границы и условия удаления — в [whole-codebase-audit.md](whole-codebase-audit.md).
+Чистая установка всех 221 миграций и PG gates обеих workflow прошли. Проверены
+новые archive/identity/option/expiry/load-unit регрессии и 15 ранее пропускавшихся
+DB cases. Все 159 DB-проверок имеют нужные selectors и окружение. Реальный API
+проверен для owner/manager в 1440/390 px, возвраты и чат — отдельными browser
+сценариями. Последующий коммит меняет только документацию.
+
+Изолированные БД и provider mocks не подтверждают реальные списания/публикации
+или состояние production. Полное покрытие, причины удаления и сохранённые
+границы — в [continued-dataflow-audit.md](continued-dataflow-audit.md); исходный
+полный проход — [whole-codebase-audit.md](whole-codebase-audit.md).
