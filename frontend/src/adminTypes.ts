@@ -14,8 +14,7 @@ export type Section =
   | "collections"
   | "procurement"
   | "returns"
-  | "marketplaces"
-  | "avito";
+  | "marketplaces";
 
 export type Category = {
   id: number;

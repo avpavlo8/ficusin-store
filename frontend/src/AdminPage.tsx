@@ -23,9 +23,6 @@ const AdminMarketplaces = lazy(() =>
 const AdminReturns = lazy(() =>
   import("./AdminReturns").then((module) => ({ default: module.AdminReturns })),
 );
-const AdminAvito = lazy(() =>
-  import("./AdminAvito").then((module) => ({ default: module.AdminAvito })),
-);
 const AdminChat = lazy(() => import("./AdminChat"));
 const Customers = lazy(() =>
   import("./AdminSales").then((module) => ({ default: module.Customers })),
@@ -179,11 +176,6 @@ export default function AdminPage() {
                   fallback={<WorkspaceState kind="loading" title="Загружаем маркетплейсы…" />}
                 >
                   <AdminMarketplaces onError={setError} />
-                </Suspense>
-              )}
-              {section === "avito" && (
-                <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем Авито…" />}>
-                  <AdminAvito onError={setError} />
                 </Suspense>
               )}
               {section === "chat" && (
