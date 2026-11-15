@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { api } from "./adminShared";
+import { useEffect, useState } from "react";
+import { ConfirmDialog, api } from "./adminShared";
 import type { Product } from "./adminTypes";
 
 export type ProductRemovalResult = { productId: number; action: "deleted" | "archived" };
@@ -17,16 +17,17 @@ export function CatalogProductRemoval({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const confirmation = useRef<HTMLElement | null>(null);
-  useEffect(() => {
-    confirmation.current?.scrollIntoView({ block: "nearest" });
-    confirmation.current?.focus();
-    return () => {
-      document
-        .querySelector<HTMLButtonElement>(`button[data-catalog-remove="${product.id}"]`)
-        ?.focus();
-    };
-  }, [product.id]);
+  useEffect(
+    () => () => {
+      // Safari does not focus the trigger on tap. Restore it after modal cleanup.
+      queueMicrotask(() => {
+        document
+          .querySelector<HTMLButtonElement>(`button[data-catalog-remove="${product.id}"]`)
+          ?.focus();
+      });
+    },
+    [product.id],
+  );
   const remove = async () => {
     if (busy) return;
     setBusy(true);
@@ -52,24 +53,21 @@ export function CatalogProductRemoval({
     }
   };
   return (
-    <section
-      className="catalog-bulk-confirm"
-      aria-label="Удаление карточки"
-      ref={confirmation}
-      tabIndex={-1}
-    >
-      <strong>Удалить «{product.name}» из каталога?</strong>
-      <p>
-        Свободный черновик будет удалён. Опубликованные карточки и черновики с остатками, заказами
-        или связями попадут в архив. Карточки на площадках останутся.
-      </p>
-      {error && <p role="alert">{error}</p>}
-      <button type="button" disabled={busy} onClick={onClose}>
-        Отмена
-      </button>
-      <button type="button" className="admin-danger" disabled={busy} onClick={() => void remove()}>
-        {busy ? "Удаляем…" : "Удалить карточку"}
-      </button>
-    </section>
+    <ConfirmDialog
+      title={`Удалить «${product.name}» из каталога?`}
+      text={
+        <>
+          <p>
+            Свободный черновик будет удалён. Опубликованные карточки и черновики с остатками,
+            заказами или связями попадут в архив. Карточки на площадках останутся.
+          </p>
+          {error && <p role="alert">{error}</p>}
+        </>
+      }
+      confirmLabel={busy ? "Удаляем…" : "Удалить карточку"}
+      busy={busy}
+      onCancel={onClose}
+      onConfirm={() => void remove()}
+    />
   );
 }
