@@ -93,6 +93,90 @@ func TestEditorPricesLocalDatabase(t *testing.T) {
 		}
 		return rows[0]
 	}
+
+	t.Run("verified Saby content yields to main-price repair and resumes read-only", func(t *testing.T) {
+		p, v, _ := fixture()
+		target := "main-price-repair-" + tag
+		sabyID := fmt.Sprint(895000000 + v)
+		uuid := fmt.Sprintf("00000000-0000-4000-8000-%012d", v)
+		exec(`INSERT INTO saby_nomenclature(saby_id,code) VALUES($1,$2)`, sabyID, target)
+		exec(`UPDATE product_variants SET saby_id=$2 WHERE id=$1`, v, sabyID)
+		t.Cleanup(func() { pool.Exec(ctx, `DELETE FROM saby_nomenclature WHERE saby_id=$1`, sabyID) })
+		request := ce.Request{ProductID: p, VariantID: v, Action: "create", PriceMinor: 10000}
+		raw, _ := json.Marshal(request)
+		receipt := ce.Progress{Stage: "verify", CreateAttempted: true, Ambiguous: true, IDs: ce.RemoteIDs{ProductID: sabyID, UUID: uuid, OfferID: target}, Native: json.RawMessage(`{"created":true,"preparedData":{"unchanged":"frozen"}}`)}
+		exec(`INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,execution_mode,status,progress) VALUES($1,'saby',$2,$3,'mock','needs_attention',$4)`, v, editorPublicationFingerprint("saby", raw), raw, receipt)
+		busy, e := ce.PriceContentBusy(ctx, pool, v, "saby", "mock")
+		must(e)
+		if !busy {
+			t.Fatal("unverified content yielded its price lane")
+		}
+		receipt.Stage = "verify-main-price"
+		exec(`UPDATE catalog_editor_publications SET progress=$2 WHERE variant_id=$1 AND channel='saby'`, v, receipt)
+		busy, e = ce.PriceContentBusy(ctx, pool, v, "saby", "mock")
+		must(e)
+		if busy {
+			t.Fatal("verified content deadlocked its main-price repair")
+		}
+		for _, invalid := range []string{"not creation", "missing identity"} {
+			bad := receipt
+			if invalid == "not creation" {
+				bad.Native = json.RawMessage(`{"created":false}`)
+			} else {
+				bad.IDs.ProductID = ""
+			}
+			exec(`UPDATE catalog_editor_publications SET progress=$2 WHERE variant_id=$1 AND channel='saby'`, v, bad)
+			blocked, e := ce.PriceContentBusy(ctx, pool, v, "saby", "mock")
+			must(e)
+			if !blocked {
+				t.Fatal("invalid main-price handoff bypassed content lane", invalid)
+			}
+		}
+		exec(`UPDATE catalog_editor_publications SET progress=$2 WHERE variant_id=$1 AND channel='saby'`, v, receipt)
+		tx, e := pool.Begin(ctx)
+		must(e)
+		must(stageEditorPrice(ctx, tx, actor, p, v, "saby", target, 10000, 10000, nil, "explicit"))
+		must(tx.Commit(ctx))
+		prices, e := repo.EditorPrices(ctx, p)
+		must(e)
+		var draft EditorPricePublication
+		for _, price := range prices {
+			if price.Channel == "saby" {
+				draft = price
+			}
+		}
+		if !draft.CanApprove {
+			t.Fatal("main price repair cannot be approved", draft.BlockReason)
+		}
+		_, e = repo.ApproveEditorPrice(ctx, actor, p, draft.ID, draft.Fingerprint)
+		must(e)
+		if e = repo.RetryEditorPublication(ctx, actor, p, v, "saby"); e == nil {
+			t.Fatal("card retry ignored active price command")
+		}
+		// The adapter's dual readback is covered by HTTP tests. Complete its
+		// durable price row here and exercise the real canonical card retry.
+		exec(`UPDATE catalog_editor_price_publications SET status='synced' WHERE id=$1`, draft.ID)
+		must(repo.RetryEditorPublication(ctx, actor, p, v, "saby"))
+		var state string
+		var after ce.Progress
+		var payload []byte
+		must(pool.QueryRow(ctx, `SELECT status,progress,payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel='saby'`, v).Scan(&state, &after, &payload))
+		if state != "queued" || after.Stage != "verify-main-price" || !after.Ambiguous || after.IDs != receipt.IDs || !json.Valid(after.Native) {
+			t.Fatal("repair reset a frozen creation or returned to a write stage", state, after)
+		}
+		var beforeNative, afterNative any
+		json.Unmarshal(receipt.Native, &beforeNative)
+		json.Unmarshal(after.Native, &afterNative)
+		beforeJSON, _ := json.Marshal(beforeNative)
+		afterJSON, _ := json.Marshal(afterNative)
+		if string(beforeJSON) != string(afterJSON) {
+			t.Fatal("repair rewrote frozen native receipt")
+		}
+		var persisted ce.Request
+		if json.Unmarshal(payload, &persisted) != nil || persisted.PriceMinor != 10000 || persisted.Action != "create" {
+			t.Fatal("repair replaced original content payload")
+		}
+	})
 	t.Run("live price receipt cannot block mock content or admission", func(t *testing.T) {
 		p, v, target := fixture()
 		draft := stage(p, v, target, 25000, nil, "explicit")

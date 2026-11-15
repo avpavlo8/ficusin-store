@@ -132,6 +132,10 @@ func (c *SabyClient) readSabyEditorNativeCardWithBasePrice(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
+	return c.readSabyEditorNativeBasePrice(ctx, id, card)
+}
+
+func (c *SabyClient) readSabyEditorNativeBasePrice(ctx context.Context, id int64, card *sabyEditorNativeRecord) (*sabyEditorNativeRecord, error) {
 	base, err := c.readSabyEditorNativeProjection(ctx, id, []string{"PriceData", "Number", "Identifier"}, sabyRecord(map[string]any{}))
 	if err != nil {
 		return nil, err

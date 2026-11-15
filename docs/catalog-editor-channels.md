@@ -62,9 +62,15 @@ uneditable main-price rows stop publication. Correcting a failed, known Create
 retains its initial-price obligation while discarding stale prepared content;
 verified finished cards continue through content-only updates.
 
-Already prepared card receipts retain their original scope and payload; their
-consumer is the in-flight card publisher. Remove this compatibility only after
-those receipts are reconciled. Older cards with a missing main price use the
+Already prepared card receipts retain their original payload; their consumer
+is the in-flight card publisher. A legacy Create which sent only the retail
+list must still prove the main price before reporting `created`. After all
+frozen content and the configured price have been verified, a missing main
+price enters read-only `verify-main-price` / `needs_attention`. Only this stage
+allows a separate approved price command without a content/price deadlock.
+After price confirmation, Retry checks the same card by reads and finishes it;
+content drift revokes this exception. No frozen Update is replayed or rewritten.
+Remove the legacy receipt compatibility only after those receipts are reconciled. Older cards with a missing main price use the
 separately approved price publication lane rather than replaying Create/Update
 or changing the site price temporarily.
 

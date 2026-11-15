@@ -273,19 +273,40 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		}
 		return result("queued", "СБИС принял сохранение. Проверяем цену, описание, штрихкод и фотографии.")
 	}
-	if s.Stage == "verify" {
+	if s.Stage == "verify" || s.Stage == "verify-main-price" {
+		// Requalify the handoff on every read. Any failed receipt, identity or
+		// content check must restore exclusive ownership of the content lane.
+		s.Stage = "verify"
 		if !sabyEditorPreparedValid(native, r, s.IDs.ProductID) || native.BasePriceIncluded && !sabyEditorPreparedPricePair(native.PreparedData, p.Client.priceListID, r.PriceMinor) {
 			return result("needs_attention", "Нет полного сохранённого подтверждения отправки СБИС. Повторный запрос не выполнялся.")
 		}
-		card, err := p.readSabyEditorPublishCard(ctx, id, native.BasePriceIncluded)
+		card, err := p.Client.readSabyEditorNativeCard(ctx, id)
 		if err != nil {
 			return ce.Result{Progress: s}, err
 		}
 		if err = validateSabyEditorNativeIdentity(card, r, s.IDs); err != nil {
 			return result("needs_attention", err.Error())
 		}
-		if err = p.verifySabyEditorFields(card, r, native); err != nil {
+		// First prove every content field and configured-list price from the
+		// frozen Update, including legacy receipts which did not send a main
+		// price. Only the remaining main-price check may yield to the separate
+		// explicitly approved price lane. Never replay or rewrite that Update.
+		content := native
+		content.BasePriceIncluded = false
+		if err = p.verifySabyEditorFields(card, r, content); err != nil {
+			s.Stage = "verify" // Revoke the price-only exception on content drift.
 			return result("needs_attention", err.Error())
+		}
+		if native.Created {
+			merged, readErr := p.Client.readSabyEditorNativeBasePrice(ctx, id, card)
+			matched := false
+			if readErr == nil {
+				matched, readErr = sabyEditorBasePriceMatches(merged, r.PriceMinor)
+			}
+			if readErr != nil || !matched {
+				s.Stage = "verify-main-price"
+				return result("needs_attention", "Контент СБИС проверен, основная цена — нет. Повторите проверку или отдельно подтвердите изменение цены. Сохранение повторно не отправлялось.")
+			}
 		}
 		s.IDs.Barcode = r.Barcode
 		s.IDs.ImageCount = len(native.ImageIDs)

@@ -180,3 +180,99 @@ func TestSabyCreationReceiptCannotDropMainPriceObligation(t *testing.T) {
 		t.Fatal("receipt could downgrade main-price verification", result, err)
 	}
 }
+
+func TestSabyLegacyCreateNeedsMainPriceProofWithoutReplayingFrozenUpdate(t *testing.T) {
+	for _, drift := range []string{"none", "content", "identity"} {
+		t.Run(drift, func(t *testing.T) {
+			f := newSabyEditorNativeFixture(t)
+			publisher := f.publisher()
+			request := sabyEditorRequestFixture()
+			progress := prepareSabyEditorFixture(t, publisher, request)
+			var native sabyEditorPublishState
+			if err := json.Unmarshal(progress.Native, &native); err != nil {
+				t.Fatal(err)
+			}
+			// Model a durable pre-release receipt: the exact old frozen Update had
+			// only configured list6. Keep its IDs, photographs and request checksum.
+			data, err := parseSabyEditorNativeRecord(native.PreparedData)
+			if err != nil {
+				t.Fatal(err)
+			}
+			prices, err := parseSabyEditorNativeRecordSet(data.value("PriceData"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			prices.rows = prices.rows[:1]
+			configured, _ := prices.marshal()
+			data.values[data.fields["PriceData"]] = configured
+			values := map[string]json.RawMessage{}
+			for field := range data.fields {
+				values[field] = data.value(field)
+			}
+			native.PreparedData, err = data.selectFields(values)
+			if err != nil {
+				t.Fatal(err)
+			}
+			native.PreparedHash = sabyEditorPayloadHash(native.PreparedData)
+			cardRaw, _ := json.Marshal(f.card)
+			card, err := parseSabyEditorNativeRecord(cardRaw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			native.PreparedBaseHash, err = sabyEditorBaselineHash(card, native.PreparedData)
+			if err != nil {
+				t.Fatal(err)
+			}
+			native.BasePriceIncluded = false
+			progress.Native, _ = json.Marshal(native)
+			frozen := append(json.RawMessage(nil), progress.Native...)
+			sent, err := publisher.Advance(context.Background(), "saby", request, progress)
+			if err != nil || sent.Status != "queued" || sent.Progress.Stage != "verify" || f.updates != 1 {
+				t.Fatal("legacy send did not use its frozen payload once", sent, err)
+			}
+			missing, err := publisher.Advance(context.Background(), "saby", request, sent.Progress)
+			if err != nil || missing.Status != "needs_attention" || missing.Progress.Stage != "verify-main-price" || f.updates != 1 {
+				t.Fatal("legacy main price was silently accepted", missing, err)
+			}
+			if string(missing.Progress.Native) != string(frozen) {
+				t.Fatal("legacy receipt was rewritten instead of inspected")
+			}
+			// This is a separately approved price adapter, not a replay of Create
+			// or of the old full-content Update. Real queue admission is tested in PG.
+			price := &EditorPricePublisher{Saby: publisher.Client}
+			priceRequest := ce.Request{Action: "price", SabyID: "1101", Price: &ce.PriceRequest{TargetID: "Xfixture", PriceMinor: request.PriceMinor}}
+			priceProgress := ce.Progress{}
+			status := ""
+			for i := 0; i < 5; i++ {
+				result, err := price.Advance(context.Background(), "saby", priceRequest, priceProgress)
+				if err != nil {
+					t.Fatal(err)
+				}
+				priceProgress, status = result.Progress, result.Status
+				if status == "synced" {
+					break
+				}
+			}
+			if status != "synced" || f.updates != 2 || f.creates != 1 {
+				t.Fatal("approved price repair did not finish exactly once", status, f.updates, f.creates)
+			}
+			if drift == "content" {
+				setSabyRecordField(f.card, "Name", "External content change")
+			}
+			if drift == "identity" {
+				setSabyRecordField(f.card, "Identifier", "00000000-0000-4000-8000-000000000099")
+			}
+			verified, err := publisher.Advance(context.Background(), "saby", request, missing.Progress)
+			if err != nil || f.updates != 2 || f.creates != 1 {
+				t.Fatal("card retry replayed a write", verified, err)
+			}
+			if drift != "none" {
+				if verified.Status != "needs_attention" || verified.Progress.Stage != "verify" {
+					t.Fatal("changed content retained price-only exception", verified)
+				}
+			} else if verified.Status != "created" || verified.Progress.Stage != "done" {
+				t.Fatal("main price proof did not release original creation", verified)
+			}
+		})
+	}
+}
