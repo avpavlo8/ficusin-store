@@ -436,6 +436,29 @@ def correct_online_regulation(p,sha):
       'onlyFutureAdmissionsChanged':True,'existingRequestRewritten':False,'nativeWrites':False,'runtimeVerificationRequired':True}
 
 
+def followup_backup(p,sha):
+    env=production(p.request('GET','/apps/229223')['app'],sha)
+    report=database(env,True)
+    tag='ficusin-catalog-saby-regulation-20261115'
+    backups=p.request('GET','/dbs/4192781/backups')['backups']
+    matches=[x for x in backups if x.get('comment')==tag]
+    if len(matches)>1:raise g.PreflightError('duplicate_followup_backup_tag')
+    if matches:item=matches[0]
+    else:
+        if production(p.request('GET','/apps/229223')['app'],sha)!=env:raise g.PreflightError('runtime_changed_before_backup')
+        try:item=p.request('POST','/dbs/4192781/backups',{'comment':tag})['backup']
+        except Exception:
+            found=[x for x in p.request('GET','/dbs/4192781/backups')['backups'] if x.get('comment')==tag]
+            if len(found)!=1:raise g.PreflightError('backup_creation_unknown') from None
+            item=found[0]
+    if not isinstance(item.get('id'),int):raise g.PreflightError('backup_id_missing')
+    deadline=time.monotonic()+900
+    while item.get('status')!='done':
+        if time.monotonic()>deadline or item.get('status') in ('failed','error'):raise g.PreflightError('followup_backup_not_ready')
+        time.sleep(10);item=p.request('GET',f'/dbs/4192781/backups/{item["id"]}')['backup']
+    return {'freshRecoveryPoint':{k:item.get(k) for k in ('id','status','created_at')},'tag':tag,'database':report}
+
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -448,6 +471,7 @@ def main():
             result['apps'].append({k:app.get(k) for k in ('id','name','status','branch_name','commit_sha')})
         result['backups']=[{k:b.get(k) for k in ('id','status','created_at','comment')} for b in p.request('GET','/dbs/4192781/backups')['backups'] if b.get('comment')==TAG]
     elif op=='backup': result=backup(p)
+    elif op=='followup-backup': result=followup_backup(p,sha)
     elif op in ('order-23-audit','buyer-read','order-23-rpc','created-price-audit','created-price-default','order-23-discovery','order-23-regulations'):
         env=production(p.request('GET','/apps/229223')['app'],sha)
         result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else created_price_default_audit(env) if op=='created-price-default' else order_23_discovery(env) if op=='order-23-discovery' else order_23_regulation_read(env) if op=='order-23-regulations' else buyer_read(env)
