@@ -12,7 +12,7 @@ import urllib.request
 spec = importlib.util.spec_from_file_location('cashier_release_guards', Path(__file__).with_name('production-release-preflight.py'))
 g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
-SOURCE = '80b7e174b79412634a341a78a67906d6996935ad'
+SOURCE = 'c347c36ceecb2eb5b9f1cc70297b3db670d446db'
 OLD = '443e6f80e2ea90ce1987add53bab62dcf5ae18fc'
 STAGE_OLD = os.environ.get('EXPECTED_STAGING_COMMIT','44bfa6c5807fe1411857416c2e07755ab55b332d')
 TAG = 'ficusin-cashier-release-20261115-c661449'
