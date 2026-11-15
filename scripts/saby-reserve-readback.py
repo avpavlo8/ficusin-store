@@ -9,6 +9,8 @@ spec = importlib.util.spec_from_file_location('reads', Path(__file__).with_name(
 r = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(r)
 UUID = '01a1ddfd-3d8e-7cc1-a961-d87af3fbf7c2'
+DOC = 42864
+ROW = 175782
 
 def main():
     if os.environ.get('GITHUB_ACTIONS') != 'true':
@@ -20,13 +22,26 @@ def main():
     if not token:
         raise r.guards.PreflightError('auth_failed')
     print('::add-mask::'+token)
-    answer = r.request(r.SERVICE, {'jsonrpc':'2.0','protocol':3,'method':'СБИС.ПрочитатьДокумент','params':{'Документ':{'Идентификатор':UUID}},'id':1},token)
+    r.READS.update({'СчетСкИсх.Прочитать','СчетСкИсх.DocNomList','Reserve.ListByDn'})
+    answer = r.request(r.SERVICE, {'jsonrpc':'2.0','protocol':6,'method':'СчетСкИсх.Прочитать','params':{'ИдО':DOC,'ИмяМетода':'СчетСкИсх.Список'},'id':1},token)
     if answer.get('error'):
         error=answer['error']
         print(json.dumps({'readOnly':True,'documentUUID':UUID,'apiError':{k:error.get(k) for k in ['code','message','details']}},ensure_ascii=False))
         return 1
-    doc=answer.get('result') or {}
-    print(json.dumps({'readOnly':True,'documentUUID':UUID,'resultKeys':list(doc),'document':{k:doc.get(k) for k in ['Идентификатор','Номер','Дата','Тип','Состояние','Расширение','Регламент']},'attachmentTypes':[{k:a.get(k) for k in ['Идентификатор','Тип']} for a in doc.get('Вложение',[])]},ensure_ascii=False))
+    raw=answer.get('result') or {}
+    doc=r.fields(raw)
+    if doc.get('@Документ') != DOC or doc.get('ИдентификаторДокумента') != UUID:
+        raise r.guards.PreflightError('fixed_owned_invoice_identity_mismatch')
+    names=['@Документ','ИдентификаторДокумента','ДокументРасширение.ИдентификаторВИ','ТипДокумента','ТипДокумента.ТипДокумента','СкладскойДокумент.Склад','ДокументНашаОрганизация','Регламент','ReserveWhId','ReserveUnit','ReserveNumber','Лицо1','Дата','ДокументРасширение.Состояние']
+    print(json.dumps({'readOnly':True,'documentUUID':UUID,'header':{k:doc.get(k) for k in names},'schema':[c for c in raw.get('s',[]) if c.get('n') in names]},ensure_ascii=False))
+    lines=r.rpc('СчетСкИсх.DocNomList',{'Фильтр':r.record([('СкладскойДокумент','Число целое',DOC),('ЭтоРасходы','Логическое',False),('Раздел','Число целое',None)]),'Сортировка':None,'Навигация':r.record([('ЕстьЕще','Логическое',True),('Страница','Число целое',0),('РазмерСтраницы','Число целое',20)]),'ДопПоля':[]},token,6)
+    rows=r.rows(lines)
+    if len(rows)!=1 or rows[0].get('@НоменклатураДокумента')!=ROW or rows[0].get('Номенклатура')!=3899:
+        raise r.guards.PreflightError('fixed_owned_invoice_line_mismatch')
+    names=['@НоменклатураДокумента','Номенклатура','СкладскойДокумент','Склад','Тип','Количество','Цена','СуммаЦен','Закрыто','ЕстьРезерв','ДанныеРезерва','ДанныеРезерваПоСкладам']
+    print(json.dumps({'lines':[{k:line.get(k) for k in names} for line in rows],'lineSchema':[c for c in lines.get('s',[]) if c.get('n') in names]},ensure_ascii=False))
+    reserve=r.rpc('Reserve.ListByDn',{'DocNomIds':[ROW]},token,6)
+    print(json.dumps({'reserve':reserve},ensure_ascii=False))
     return 0
 
 if __name__=='__main__':
