@@ -101,7 +101,7 @@ func (client *SabyClient) PostOrderRealization(ctx context.Context, expected Sab
 		return result, err
 	}
 	result.Outcome = "unknown"
-	result.Receipt, result.HTTPStatus, err = client.sabyOrderRealizationWriteRPCOnce(ctx, "Документ.PostAsync", params)
+	result.Receipt, result.HTTPStatus, err = client.writeWarehouseRPCOnce(ctx, "Документ.PostAsync", params)
 	if err != nil {
 		return result, errors.New("Ответ на проведение СБИС не подтверждён; требуется проверка документа без повторной отправки")
 	}
@@ -148,11 +148,12 @@ func (client *SabyClient) PostOrderRealization(ctx context.Context, expected Sab
 // Shared with the separately captured outgoing line bindings. This transport
 // preserves the cached service session/limiter, but never refreshes/replays a
 // write or follows a redirect with credentials. Only proven methods are allowed.
-func (client *SabyClient) sabyOrderRealizationWriteRPCOnce(ctx context.Context, method string, params any) (json.RawMessage, int, error) {
+func (client *SabyClient) writeWarehouseRPCOnce(ctx context.Context, method string, params any) (json.RawMessage, int, error) {
 	switch method {
-	case "Документ.PostAsync", "Документ.CancelPosting", "РеалИсх.DocNomCreate", "РеалИсх.CustomDocNomUpdate", "РеалИсх.CustomDocNomDelete", "РеалИсх.Записать":
+	case "Документ.PostAsync", "Документ.CancelPosting", "РеалИсх.DocNomCreate", "РеалИсх.CustomDocNomUpdate", "РеалИсх.CustomDocNomDelete", "РеалИсх.Записать",
+		"СчетСкИсх.Создать", "СчетСкИсх.WriteForParticipant", "СчетСкИсх.DocNomCreate", "СчетСкИсх.CustomDocNomUpdate", "СчетСкИсх.CustomDocNomDelete", "Reserve.Apply", "Reserve.Remove":
 	default:
-		return nil, 0, errors.New("Неподдерживаемое изменение реализации СБИС")
+		return nil, 0, errors.New("Неподдерживаемое изменение складского документа СБИС")
 	}
 	if !client.Configured() {
 		return nil, 0, errors.New("Подключение СБИС не настроено")
@@ -171,7 +172,7 @@ func (client *SabyClient) sabyOrderRealizationWriteRPCOnce(ctx context.Context, 
 		return nil, status, errors.New("Ответ изменения СБИС не подтверждён")
 	}
 	if response.Error != nil {
-		return nil, status, errors.New("СБИС вернул ошибку изменения реализации")
+		return nil, status, errors.New("СБИС вернул ошибку изменения складского документа")
 	}
 	return append(json.RawMessage(nil), response.Result...), status, nil
 }

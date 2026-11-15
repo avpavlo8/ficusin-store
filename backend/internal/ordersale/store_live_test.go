@@ -274,4 +274,5 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 		t.Fatalf("view claims unsupported native capability: %+v / %v", view, e)
 	}
 	t.Run("cashier reservation cutover", func(t *testing.T) { testCashierReservations(t, pool) })
+	t.Run("native cashier reservation worker", func(t *testing.T) { testCashierNativeWorker(t, pool) })
 }

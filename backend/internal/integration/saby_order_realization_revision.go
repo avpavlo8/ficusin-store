@@ -204,7 +204,7 @@ func (p *SabyOrderRealizationProvider) StepRevision(ctx context.Context, command
 			return queue("revision-bind", "bind", "Подготовлена привязка покупателя исходного документа")
 		}
 		bind := map[string]any{"_type": "record", "s": []any{map[string]any{"n": "@Документ", "t": "Число целое"}, map[string]any{"n": "Лицо1", "t": "Связь"}}, "d": []any{identity.ID, command.Target.BuyerID}}
-		receipt.LastReceipt, _, _ = p.Client.sabyOrderRealizationWriteRPCOnce(ctx, "РеалИсх.Записать", map[string]any{"Запись": bind})
+		receipt.LastReceipt, _, _ = p.Client.writeWarehouseRPCOnce(ctx, "РеалИсх.Записать", map[string]any{"Запись": bind})
 		result.Progress.Unknown = true
 		return queue("revision-verify-bind", "bind", "Результат привязки покупателя проверяется чтением")
 	}

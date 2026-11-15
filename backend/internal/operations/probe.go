@@ -74,6 +74,14 @@ FROM (
   SELECT 'inventory_overreserved', 'warning', COUNT(*)::bigint, NULL::bigint
   FROM inventory WHERE reserved_qty > GREATEST(available_qty, 0)
   UNION ALL
+  SELECT 'cashier_reservation_review', 'warning', COUNT(*)::bigint,
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP-MIN(revision_started_at)))::bigint
+  FROM cashier_native_reservations WHERE status='needs_attention'
+  UNION ALL
+  SELECT 'cashier_reservation_overdue', 'warning', COUNT(*)::bigint,
+         EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP-MIN(revision_started_at)))::bigint
+  FROM cashier_native_reservations WHERE status='queued' AND revision_started_at<CURRENT_TIMESTAMP-INTERVAL '10 minutes'
+  UNION ALL
   SELECT 'stale_pending_payment', 'warning', COUNT(*)::bigint,
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(payment.created_at)))::bigint
   FROM payments payment

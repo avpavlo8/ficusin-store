@@ -67,7 +67,7 @@ func (client *SabyClient) PrepareOrderRealizationRow(ctx context.Context, expect
 	// The returned money fields must match it; no guessed manual-price flags.
 	setSabyRecordField(filter, "Цена", string(expected.Next.UnitPrice))
 	result.Outcome = "unknown"
-	result.Receipt, result.HTTPStatus, err = client.sabyOrderRealizationWriteRPCOnce(ctx, "РеалИсх.DocNomCreate", map[string]any{"Фильтр": filter, "ИмяМетода": nil})
+	result.Receipt, result.HTTPStatus, err = client.writeWarehouseRPCOnce(ctx, "РеалИсх.DocNomCreate", map[string]any{"Фильтр": filter, "ИмяМетода": nil})
 	if err != nil {
 		return result, err
 	}
@@ -131,7 +131,7 @@ func (client *SabyClient) SavePreparedOrderRealizationRow(ctx context.Context, e
 	}
 	additional["СкладскойДокумент"] = expected.Identity.ID
 	result.Outcome = "unknown"
-	result.Receipt, result.HTTPStatus, err = client.sabyOrderRealizationWriteRPCOnce(ctx, "РеалИсх.CustomDocNomUpdate", map[string]any{"Запись": record, "ДопПоля": additional})
+	result.Receipt, result.HTTPStatus, err = client.writeWarehouseRPCOnce(ctx, "РеалИсх.CustomDocNomUpdate", map[string]any{"Запись": record, "ДопПоля": additional})
 	if err != nil {
 		return result, err
 	}

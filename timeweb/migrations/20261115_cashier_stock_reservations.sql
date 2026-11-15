@@ -39,6 +39,42 @@ CREATE TABLE cashier_stock_layers (
 );
 CREATE INDEX cashier_stock_layers_owner ON cashier_stock_layers(reservation_id,variant_id,id);
 
+-- This is a native reservation outbox, never a sale/publication queue. A
+-- prepared command is committed before its one HTTP attempt. Unknown writes
+-- retain the command/receipt and can only be reconciled by a read.
+CREATE TABLE cashier_native_reservations (
+ reservation_id BIGINT PRIMARY KEY REFERENCES cashier_stock_reservations(id) ON DELETE RESTRICT,
+ provider_state JSONB NOT NULL DEFAULT '{}'::JSONB,
+ request JSONB,
+ pending_command JSONB,
+ command_attempted_at TIMESTAMPTZ,
+ command_reply JSONB,
+ command_error TEXT NOT NULL DEFAULT '',
+ applied_hash TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','settled','needs_attention')),
+ last_error TEXT NOT NULL DEFAULT '',
+ lease_token UUID,
+ lease_until TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+ revision_started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+ next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+ CHECK((lease_token IS NULL)=(lease_until IS NULL)),
+ CHECK(command_attempted_at IS NULL OR pending_command IS NOT NULL)
+);
+CREATE INDEX cashier_native_reservations_ready ON cashier_native_reservations(next_attempt_at,reservation_id)
+ WHERE status<>'needs_attention';
+CREATE TABLE cashier_native_attempts (
+ command_id UUID PRIMARY KEY,
+ reservation_id BIGINT NOT NULL REFERENCES cashier_native_reservations(reservation_id) ON DELETE RESTRICT,
+ request JSONB NOT NULL,
+ command JSONB NOT NULL,
+ attempted_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+ reply JSONB,
+ error TEXT NOT NULL DEFAULT '',
+ replied_at TIMESTAMPTZ
+);
+
 -- Counts are reconciled from live order rows after each edit. Added units get a
 -- new FIFO layer; a reduction releases the newest units without ageing them.
 CREATE FUNCTION cashier_stock_sync(order_id_arg BIGINT) RETURNS VOID LANGUAGE plpgsql AS $$
