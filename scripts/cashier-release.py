@@ -191,6 +191,28 @@ def native_readback(env):
           'presentationVerified':presentation,'posted':False})
     return {'verified':True,'activeInvoices':result,'readOnly':True}
 
+def ended_invoice_audit(env):
+    """Read only the previously verified reserve after its order changed state."""
+    spec=importlib.util.spec_from_file_location('ended_invoice_reads',Path(__file__).with_name('saby-realization-readback.py'))
+    r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
+    with tempfile.TemporaryDirectory() as directory:
+        with g.connect_production(env,directory) as conn:
+            row=conn.execute("""SELECT o.status,r.completed_at IS NOT NULL,r.cancelled_at IS NOT NULL,n.status,n.provider_state
+              FROM cashier_stock_reservations r JOIN orders o ON o.id=r.order_id JOIN cashier_native_reservations n ON n.reservation_id=r.id
+              WHERE o.order_number='0000-15'""").fetchone()
+    if not row:raise g.PreflightError('known_reserve_missing')
+    status,completed,cancelled,native_status,state=row
+    identity=state.get('identity') or {}
+    if identity.get('id')!=42873 or identity.get('uuid')!='01a1de70-e24d-7d26-8841-e6a2189004dc':raise g.PreflightError('known_reserve_identity_changed')
+    token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')
+    if not token:raise g.PreflightError('native_auth_failed')
+    print('::add-mask::'+token);r.READS={'СчетСкИсх.ПрочитатьДляУчастника','Reserve.ListByDn'}
+    raw=r.rpc('СчетСкИсх.ПрочитатьДляУчастника',{'ИдО':42873,'ИмяМетода':'СчетСкИсх.ListLite','ДопПоля':{'ИмяОбъекта':'СчетСкИсх'}},token,7);doc=r.fields(raw)
+    reserve=r.rpc('Reserve.ListByDn',{'DocNomIds':[175814]},token,7)
+    return {'readOnly':True,'order':'0000-15','orderStatus':status,'completed':completed,'cancelled':cancelled,'nativeStatus':native_status,
+      'documentId':doc.get('@Документ'),'nativeUUID':doc.get('ИдентификаторДокумента'),'unposted':unposted(raw,doc),
+      'reserveRows':[{k:x.get(k) for k in ('@НоменклатураДокумента','Склад','Активен','Количество','КоличествоОтгружено','ЕстьСписаниеОтгрузкой')} for x in r.rows(reserve)]}
+
 def order_23_audit(env):
     with tempfile.TemporaryDirectory() as directory:
         with g.connect_production(env,directory) as conn:
@@ -486,6 +508,8 @@ def main():
         if production(p.request('GET','/apps/229223')['app'],sha)!=env:raise g.PreflightError('production_environment_changed')
         p.request('POST','/apps/229223/deploy',{'commit_sha':sha})
         result={'deployRequested':True,'commit':sha,'flags':FLAGS,'database':report}
+    elif op=='ended-invoice-audit':
+        result=ended_invoice_audit(production(p.request('GET','/apps/229223')['app'],sha))
     elif op=='production-verify':
         env=production(p.request('GET','/apps/229223')['app'],sha)
         result={'flagsEnabled':all(env.get(k)==v for k,v in FLAGS.items()),'database':database(env,True),'nativeReadback':native_readback(env)}
