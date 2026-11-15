@@ -20,6 +20,11 @@ MIGRATION = '20261115_cashier_stock_reservations.sql'
 FLAGS = {'SABY_CASHIER_RESERVE_MODE':'live','SABY_CASHIER_RESERVE_LIVE_ENABLED':'true',
  'SABY_CASHIER_RESERVE_WAREHOUSE_ID':'283','SABY_CASHIER_RESERVE_MOVEMENT_WAREHOUSE_ID':'284',
  'SABY_CASHIER_RESERVE_ORGANIZATION_ID':'259','SABY_CASHIER_RESERVE_REGULATION_ID':'121326'}
+ONLINE_FLAGS={'ORDER_REALIZATION_MODE':'live','ORDER_REALIZATION_LIVE_ENABLED':'true',
+ 'ORDER_REALIZATION_SITE_WAREHOUSE_ID':'1','ORDER_REALIZATION_NATIVE_WAREHOUSE_ID':'283',
+ 'ORDER_REALIZATION_MOVEMENT_WAREHOUSE_ID':'284','ORDER_REALIZATION_ORGANIZATION_ID':'259',
+ 'ORDER_REALIZATION_REGULATION_ID':'122650','ORDER_REALIZATION_BUYER_ID':'18749',
+ 'SABY_CASHIER_RESERVE_BUYER_ID':'18749'}
 
 class Provider:
     def __init__(self, token):
@@ -215,6 +220,28 @@ def buyer_read(env):
     if reserve is None or r.rows(reserve):raise g.PreflightError('owned_invoice_has_reserve')
     return {'readOnly':True,'ownedInvoice':42869,'buyerId':doc.get('Лицо1'),'buyerName':doc.get('Лицо1.Название'),'comment':doc.get('ДокументРасширение.Название'),'reserveEmpty':True,'unposted':True}
 
+def activate_online(p,sha):
+    env=production(p.request('GET','/apps/229223')['app'],sha)
+    report=order_23_audit(env)
+    with tempfile.TemporaryDirectory() as directory:
+        with g.connect_production(env,directory) as conn:
+            counts=conn.execute('SELECT (SELECT count(*) FROM order_sale_publications),(SELECT count(*) FROM order_sale_intents)').fetchone()
+            warehouse=conn.execute("SELECT id FROM warehouses WHERE saby_id='saby-ryazan-main' AND is_active<>0").fetchall()
+    if counts!=(0,0):raise g.PreflightError('existing_realization_queue_needs_review_before_activation')
+    if warehouse!=[(1,)]:raise g.PreflightError('verified_site_warehouse_changed')
+    if report['order']['paymentMethod']!='online' or report['order']['paymentStatus']!='paid' or report['order']['status']!='assembling' or report['intents']:
+        raise g.PreflightError('fixed_order_changed_before_activation')
+    buyer=buyer_read(env)
+    if buyer.get('buyerId')!=18749 or buyer.get('buyerName')!='Сайт Фикусин':raise g.PreflightError('website_buyer_not_confirmed')
+    fresh=production(p.request('GET','/apps/229223')['app'],sha)
+    if fresh!=env:raise g.PreflightError('environment_changed_before_activation')
+    changed=any(env.get(k)!=v for k,v in ONLINE_FLAGS.items())
+    if changed:
+        p.request('PATCH','/apps/229223',{'envs':{**env,**ONLINE_FLAGS}})
+        if p.request('GET','/apps/229223')['app']['envs']!={**env,**ONLINE_FLAGS}:raise g.PreflightError('activation_readback_differs')
+    return {'patched':changed,'flags':ONLINE_FLAGS,'existingIntents':0,'existingPublications':0,
+      'runtimeVerificationRequired':True,'historicalOrdersEnqueued':False,'targetedRecoveryOrder':'0000-23','buyerVerified':True}
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -230,6 +257,7 @@ def main():
     elif op in ('order-23-audit','buyer-read'):
         env=production(p.request('GET','/apps/229223')['app'],sha)
         result=order_23_audit(env) if op=='order-23-audit' else buyer_read(env)
+    elif op=='online-activate':result=activate_online(p,sha)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
     elif op=='production-restart':
