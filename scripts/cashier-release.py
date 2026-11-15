@@ -358,6 +358,40 @@ def created_price_default_audit(env):
     return {'readOnly':True,'configuredPriceList':listid,'cardProjections':result}
 
 
+def order_23_discovery(env):
+    """Read-only exact native discovery; no raw headers or create payloads."""
+    spec=importlib.util.spec_from_file_location('order23_native_reads',Path(__file__).with_name('saby-realization-readback.py'))
+    r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
+    with tempfile.TemporaryDirectory() as directory:
+        with g.connect_production(env,directory) as conn:
+            row=conn.execute("""SELECT p.request->>'operationKey',p.progress->>'stage',p.progress->'native',p.status,p.create_attempted,p.post_attempted
+              FROM order_sale_publications p JOIN order_sale_intents i ON i.id=p.intent_id WHERE p.id=1 AND i.order_id=74""").fetchone()
+    if not row or row[0]!='f6d636c3-d0e3-4851-95ec-90a08ee35bc4':raise g.PreflightError('fixed_publication_changed')
+    key,stage,native,status,created,posted=row
+    if isinstance(native,str):native=json.loads(native)
+    native=native or {}
+    token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')
+    if not token:raise g.PreflightError('native_auth_failed')
+    print('::add-mask::'+token)
+    r.READS={'ДокОтгрИсх.СписокХраним','ДокОтгрИсх.Прочитать'}
+    errors=[]
+    def read(method,params):
+        reply=r.request(r.SERVICE,{'jsonrpc':'2.0','protocol':6,'method':method,'params':params,'id':1},token)
+        if reply.get('error'):
+            error=reply['error'];errors.append({'method':method,'code':error.get('code'),'message':error.get('message')});return None
+        return reply.get('result')
+    listing=read('ДокОтгрИсх.СписокХраним',{'Фильтр':r.record([('rp_doc','Логическое',True),('usePages','Строка','full'),('НазваниеТипаДокумента','Строка','ДокОтгрИсх'),('ФильтрПоЛицуИзСписка','Строка','Нет'),('ФильтрПоМаске','Строка','FCS-1')]),'Сортировка':None,'Навигация':r.record([('ЕстьЕще','Логическое',True),('РазмерСтраницы','Число целое',20),('Страница','Число целое',0)]),'ДопПоля':[]})
+    rows=r.rows(listing);headers=[]
+    if len(rows)>20:raise g.PreflightError('too_many_candidates')
+    for candidate in rows:
+        docid=candidate.get('@Документ');docid=docid[0] if isinstance(docid,list) and len(docid)==2 else docid
+        if not isinstance(docid,int) or isinstance(docid,bool) or docid<=0:raise g.PreflightError('invalid_native_id')
+        raw=read('ДокОтгрИсх.Прочитать',{'ИдО':docid,'ИмяМетода':'ДокОтгрИсх.Список'});doc=r.fields(raw)
+        names=('@Документ','ИдентификаторДокумента','ДокументРасширение.ИдентификаторВИ','Удален','ТипДокумента','ТипДокумента.ТипДокумента','Документ_','СкладскойДокумент.Склад','ДокументНашаОрганизация','Лицо1','Регламент','Дата','Номер')
+        headers.append({'header':{k:doc.get(k) for k in names},'postingFlagSchema':[x for x in (raw or {}).get('s',[]) if x.get('n')=='ДокументРасширение.Состояние'],'postingFlags':doc.get('ДокументРасширение.Состояние')})
+    return {'readOnly':True,'order':'0000-23','publicationId':1,'operationKey':key,'stage':stage,'phase':native.get('phase'),'polls':native.get('polls'),'status':status,'createAttempted':created,'postAttempted':posted,'nativeListType':type(listing).__name__,'nativeListSchema':(listing or {}).get('s'),'nativeCandidates':headers,'errors':errors}
+
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -370,9 +404,9 @@ def main():
             result['apps'].append({k:app.get(k) for k in ('id','name','status','branch_name','commit_sha')})
         result['backups']=[{k:b.get(k) for k in ('id','status','created_at','comment')} for b in p.request('GET','/dbs/4192781/backups')['backups'] if b.get('comment')==TAG]
     elif op=='backup': result=backup(p)
-    elif op in ('order-23-audit','buyer-read','order-23-rpc','created-price-audit','created-price-default'):
+    elif op in ('order-23-audit','buyer-read','order-23-rpc','created-price-audit','created-price-default','order-23-discovery'):
         env=production(p.request('GET','/apps/229223')['app'],sha)
-        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else created_price_default_audit(env) if op=='created-price-default' else buyer_read(env)
+        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else created_price_default_audit(env) if op=='created-price-default' else order_23_discovery(env) if op=='order-23-discovery' else buyer_read(env)
     elif op=='online-activate':result=activate_online(p,sha)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
