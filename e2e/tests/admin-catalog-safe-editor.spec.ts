@@ -669,3 +669,18 @@ test('@desktop legacy IndexedDB Blob is atomically backed up as exact binary byt
  await expect.poll(async()=>(await read())[0].version).toBe(1);const [current,backup]=await read();expect(current).toEqual(backup);expect(current.type).toBe('image/png');expect(current.bytes.slice(0,8)).toEqual([137,80,78,71,13,10,26,10]);await page.reload();await expect(page.getByRole('img',{name:'Сохранённое фото.png',exact:true})).toBeVisible();expect(await read()).toEqual([current,backup]);
 
 });
+
+test('@desktop @phone Flowwow-only link plan preserves default seller articles in the product editor',async({page})=>{
+ const f=await fixture(page);
+ const emptyChannel={enabled:false,mode:'',existingId:'',category:{id:'',name:''},article:''};
+ f.plans.set(1,{variants:[{variantId:10,saby:{mode:'',existingCode:'',category:{id:'',name:''},folder:{id:'',name:''}},marketplace:{article:'',name:'',description:'',brand:'',model:'',tnved:'',units:0,ozon:emptyChannel,wb:emptyChannel},flowwow:{enabled:true,mode:'link',existingId:'990000000',article:'staging-flowwow-demo',category:{id:'101',name:''}}}]});
+ await page.route('**/api/v1/admin/flowwow/references?*',route=>route.fulfill({json:{data:[]}}));
+ await open(page);const editor=await edit(page);await editor.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
+ await expect(editor.getByRole('textbox',{name:'Артикул Wildberries',exact:true})).toHaveValue('10');
+ await expect(editor.getByRole('textbox',{name:'Артикул Ozon',exact:true})).toHaveValue('10');
+ await editor.getByRole('tab',{name:'Товар',exact:true}).click();
+ await editor.getByRole('textbox',{name:'О растении',exact:true}).fill('Сохранение после подключения Flowwow');
+ await saveEditor(editor);
+ expect(f.updates.at(-1)?.body.description).toBe('Сохранение после подключения Flowwow');
+ expect(f.plans.get(1).variants[0].flowwow.existingId).toBe('990000000');
+});

@@ -411,6 +411,13 @@ export function ProductCreationPage({
           const current = latest.current;
           const hydrated = current.variants?.map((row) => {
             const saved = data.config?.variants?.find((v) => v.variantId === row.serverId);
+            // A plan first created by Flowwow linking has no WB/Ozon settings.
+            // Go's empty channel objects must not replace the editor's defaults
+            // or seller articles loaded from the existing catalogue bindings.
+            const savedMarketplace =
+              saved?.marketplace?.wb.mode || saved?.marketplace?.ozon.mode
+                ? saved.marketplace
+                : undefined;
             const linked =
               data.sabyLinks?.[String(row.serverId)] ||
               (row.sabyId
@@ -443,8 +450,8 @@ export function ProductCreationPage({
               marketplacePriceMode: row.marketplacePriceMode ?? savedPriceMode,
               marketplace: row.marketplaceInitialized
                 ? row.marketplace
-                : saved?.marketplace || row.marketplace,
-              marketplaceInitialized: row.marketplaceInitialized || Boolean(saved?.marketplace),
+                : savedMarketplace || row.marketplace,
+              marketplaceInitialized: row.marketplaceInitialized || Boolean(savedMarketplace),
               flowwow: row.flowwow || saved?.flowwow,
 
               sabyEditor,
