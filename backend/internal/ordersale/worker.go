@@ -83,7 +83,8 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, provider Provider,
 	if actual != hash || request.ExecutionMode != mode || request.IntentID != intentID {
 		return true, markInvalidClaim(ctx, tx, id, "Подтверждение сохранённого запроса не совпало; запрос в СБИС не отправлен")
 	}
-	request, err = effectivePublicationRequest(ctx, tx, id, request)
+	var approvedIdentity *approvedNativeIdentity
+	request, approvedIdentity, err = effectivePublicationRequest(ctx, tx, id, request)
 	if err != nil {
 		return true, markInvalidClaim(ctx, tx, id, "Подтверждение исправления регламента не совпало; обмен остановлен")
 	}
@@ -96,6 +97,17 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, provider Provider,
 	progress.DesiredState = desired
 	progress.CreateAttempted = createAttempted
 	progress.PostAttempted = postAttempted
+	if !approvedIdentity.matches(progress, true) {
+		conflict := approvedIdentityConflict(progress)
+		stateRaw, err = json.Marshal(conflict.Progress)
+		if err != nil {
+			return true, err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE order_sale_publications SET status='needs_attention',message=$2,progress=$3,lease_token='',lease_until=NULL,updated_at=NOW() WHERE id=$1`, id, conflict.Message, stateRaw); err != nil {
+			return true, err
+		}
+		return true, tx.Commit(ctx)
+	}
 	if cancellationBlocked {
 		return true, markInvalidClaim(ctx, tx, id, "Товар уже передан; требуется проверка физического возврата")
 	}
@@ -267,6 +279,9 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, provider Provider,
 	} else {
 		result, callErr = provider.Step(callCtx, request, progress)
 	}
+	// Preserve a mismatching returned pair even if an incomplete result falls
+	// back to the prior progress below. An empty error result is not a new pair.
+	unapprovedReturnedIdentity := approvedIdentity != nil && (result.Progress.DocumentID != "" || result.Progress.DocumentUUID != "") && !approvedIdentity.matches(result.Progress, true)
 	if result.Progress.Stage == "" {
 		result.Progress = progress
 	}
@@ -304,6 +319,9 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, provider Provider,
 			result.State = "needs_attention"
 			result.Message = ErrRetryUnsafe.Error()
 		}
+	}
+	if unapprovedReturnedIdentity || !approvedIdentity.matches(result.Progress, progress.DocumentID == "" && progress.DocumentUUID == "" && !writeStage(progress.Stage)) {
+		result = approvedIdentityConflict(progress)
 	}
 	if progress.DocumentID != "" && (result.Progress.DocumentID != progress.DocumentID || (progress.DocumentUUID != "" && result.Progress.DocumentUUID != progress.DocumentUUID)) {
 		result = Result{Progress: progress, State: "needs_attention", Message: "Идентификатор реализации изменился; обмен остановлен для сверки"}

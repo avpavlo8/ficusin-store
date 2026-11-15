@@ -199,6 +199,74 @@ func testRegulationAmendments(t *testing.T, pool *pgxpool.Pool) {
 			t.Fatal("immutable before/after progress missing")
 		}
 	})
+	for _, identityCase := range []string{"discover different ID", "discover different UUID", "different ID with incomplete progress", "wrong ID before fill"} {
+		t.Run(identityCase, func(t *testing.T) {
+			_, before, id := create()
+			original, originalHash, base, baseHash := snapshot(id)
+			a, err := ApproveRegulationAmendment(ctx, pool, 1, id, verifier)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wrongID := a.DocumentID + "9"
+			wrongUUID := "ffffffff-ffff-4fff-8fff-ffffffffffff"
+			wantID, wantUUID, wantStage := "", "", "discover"
+			if identityCase == "wrong ID before fill" {
+				wantID, wantUUID, wantStage = wrongID, a.DocumentUUID, "fill"
+				exec(`UPDATE order_sale_publications SET document_id=$2,document_uuid=$3,
+ progress=jsonb_set(jsonb_set(jsonb_set(progress,'{stage}','"fill"'),'{documentId}',to_jsonb($2::TEXT)),'{documentUUID}',to_jsonb($3::TEXT)) WHERE id=$1`, id, wrongID, a.DocumentUUID)
+			}
+			calls := 0
+			provider := publicationProviderFunc(func(_ context.Context, r Request, p Progress) (Result, error) {
+				calls++
+				if p.Stage != "discover" || r.OperationKey != before.OperationKey || r.RegulationID != 122498 {
+					t.Fatal("unexpected write or identity change", r, p)
+				}
+				p.DocumentID, p.DocumentUUID, p.Stage = a.DocumentID, a.DocumentUUID, "fill"
+				if identityCase == "different ID with incomplete progress" {
+					p.DocumentID, p.Stage = wrongID, ""
+				} else if identityCase == "discover different ID" {
+					p.DocumentID = wrongID
+				} else {
+					p.DocumentUUID = wrongUUID
+				}
+				return Result{Progress: p, State: "queued"}, nil
+			})
+			if worked, err := PublicationStep(ctx, pool, provider, "live"); err != nil || !worked {
+				t.Fatal("identity verification did not run", worked, err)
+			}
+			var raw []byte
+			var status, storedID, storedUUID string
+			if err := pool.QueryRow(ctx, `SELECT progress,status,document_id,document_uuid FROM order_sale_publications WHERE id=$1`, id).Scan(&raw, &status, &storedID, &storedUUID); err != nil {
+				t.Fatal(err)
+			}
+			var progress Progress
+			if json.Unmarshal(raw, &progress) != nil || status != "needs_attention" || !progress.IdentityConflict || progress.DocumentID != wantID || progress.DocumentUUID != wantUUID || progress.Stage != wantStage || storedID != wantID || storedUUID != wantUUID {
+				t.Fatal("unapproved native identity was adopted", status, progress, storedID, storedUUID)
+			}
+			wantCalls := 1
+			if identityCase == "wrong ID before fill" {
+				wantCalls = 0
+			}
+			if calls != wantCalls {
+				t.Fatal("unapproved native writer was called", calls, wantCalls)
+			}
+			if worked, err := PublicationStep(ctx, pool, provider, "live"); err != nil || worked || calls != wantCalls {
+				t.Fatal("identity conflict reached another provider step", worked, err, calls)
+			}
+			view, err := loadPublication(ctx, pool, a.IntentID)
+			if err != nil || view == nil || view.CanRetry {
+				t.Fatal("identity conflict offered retry", view, err)
+			}
+			after, afterHash, afterBase, afterBaseHash := snapshot(id)
+			if after != original || afterHash != originalHash || afterBase != base || afterBaseHash != baseHash {
+				t.Fatal("identity conflict rewrote immutable request")
+			}
+			var approvedID, approvedUUID, approvedHash string
+			if err := pool.QueryRow(ctx, `SELECT document_id::TEXT,document_uuid::TEXT,effective_hash FROM order_sale_regulation_amendments WHERE publication_id=$1`, id).Scan(&approvedID, &approvedUUID, &approvedHash); err != nil || approvedID != a.DocumentID || approvedUUID != a.DocumentUUID || approvedHash != a.EffectiveHash {
+				t.Fatal("approved identity changed", err, approvedID, approvedUUID)
+			}
+		})
+	}
 	for _, mode := range []string{"not owner", "unknown create", "post attempted", "owned rows", "stale proof", "nonempty lines", "posted document", "queued document", "wrong public UUID", "other proof warehouse", "progress race", "config race"} {
 		t.Run(mode, func(t *testing.T) {
 			_, _, id := create()

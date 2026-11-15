@@ -350,30 +350,48 @@ func ApproveRegulationAmendment(ctx context.Context, pool *pgxpool.Pool, actor, 
 // effectivePublicationRequest centralizes approved configuration for all
 // provider calls, revisions, cancellation and evidence validation. The original
 // request/hash must already have been verified by the caller.
-func effectivePublicationRequest(ctx context.Context, q queryer, id int64, before Request) (Request, error) {
+type approvedNativeIdentity struct{ DocumentID, DocumentUUID string }
+
+func (i *approvedNativeIdentity) matches(p Progress, allowUnbound bool) bool {
+	if i == nil {
+		return true
+	}
+	if p.DocumentID == "" && p.DocumentUUID == "" {
+		return allowUnbound && !writeStage(p.Stage)
+	}
+	return p.DocumentID == i.DocumentID && strings.EqualFold(p.DocumentUUID, i.DocumentUUID)
+}
+
+func approvedIdentityConflict(p Progress) Result {
+	p.IdentityConflict = true
+	return Result{Progress: p, State: "needs_attention", Message: "Нативный документ не совпал с согласованным исправлением регламента; обмен остановлен"}
+}
+
+func effectivePublicationRequest(ctx context.Context, q queryer, id int64, before Request) (Request, *approvedNativeIdentity, error) {
 	var originalHash, effectiveHash string
 	var originalRaw, effectiveRaw []byte
-	err := q.QueryRow(ctx, `SELECT before_request,before_hash,effective_request,effective_hash FROM order_sale_regulation_amendments WHERE publication_id=$1`, id).Scan(&originalRaw, &originalHash, &effectiveRaw, &effectiveHash)
+	var identity approvedNativeIdentity
+	err := q.QueryRow(ctx, `SELECT before_request,before_hash,effective_request,effective_hash,document_id::TEXT,document_uuid::TEXT FROM order_sale_regulation_amendments WHERE publication_id=$1`, id).Scan(&originalRaw, &originalHash, &effectiveRaw, &effectiveHash, &identity.DocumentID, &identity.DocumentUUID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return before, nil
+		return before, nil, nil
 	}
 	if err != nil {
-		return Request{}, err
+		return Request{}, nil, err
 	}
 	var original, effective Request
 	if json.Unmarshal(originalRaw, &original) != nil || json.Unmarshal(effectiveRaw, &effective) != nil || !reflect.DeepEqual(original, before) || !onlyRegulationDiff(original, effective) {
-		return Request{}, ErrConflict
+		return Request{}, nil, ErrConflict
 	}
 	actualBefore, err := requestHash(before)
 	if err != nil {
-		return Request{}, err
+		return Request{}, nil, err
 	}
 	actualAfter, err := requestHash(effective)
 	if err != nil {
-		return Request{}, err
+		return Request{}, nil, err
 	}
-	if actualBefore != originalHash || actualAfter != effectiveHash {
-		return Request{}, fmt.Errorf("configuration amendment request evidence does not match")
+	if actualBefore != originalHash || actualAfter != effectiveHash || !canonicalStockID(identity.DocumentID) || !stockProofUUID.MatchString(identity.DocumentUUID) {
+		return Request{}, nil, fmt.Errorf("configuration amendment request evidence does not match")
 	}
-	return effective, nil
+	return effective, &identity, nil
 }
