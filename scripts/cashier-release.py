@@ -392,6 +392,24 @@ def order_23_discovery(env):
     return {'readOnly':True,'order':'0000-23','publicationId':1,'operationKey':key,'stage':stage,'phase':native.get('phase'),'polls':native.get('polls'),'status':status,'createAttempted':created,'postAttempted':posted,'nativeListType':type(listing).__name__,'nativeListSchema':(listing or {}).get('s'),'nativeCandidates':headers,'errors':errors}
 
 
+def order_23_regulation_read(env):
+    spec=importlib.util.spec_from_file_location('regulation_reads',Path(__file__).with_name('saby-realization-readback.py'))
+    r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
+    token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')
+    if not token:raise g.PreflightError('auth_failed')
+    print('::add-mask::'+token);r.READS={'ДокОтгрИсх.Прочитать','СБИС.ПрочитатьДокумент'}
+    result=[]
+    for docid in (42737,42876):
+        raw=r.rpc('ДокОтгрИсх.Прочитать',{'ИдО':docid,'ИмяМетода':'ДокОтгрИсх.Список'},token,6);doc=r.fields(raw)
+        vi=doc.get('ДокументРасширение.ИдентификаторВИ')
+        item={'nativeId':doc.get('@Документ'),'nativeUUID':doc.get('ИдентификаторДокумента'),'nativeRegulationID':doc.get('Регламент'),'nativeRegulationName':doc.get('Регламент.Название'),'publicUUID':vi}
+        if isinstance(vi,str) and re.fullmatch('[a-fA-F0-9-]{36}',vi):
+            public=r.rpc('СБИС.ПрочитатьДокумент',{'Документ':{'Идентификатор':vi}},token,3)
+            reg=(public or {}).get('Регламент') or {};item['publicRegulation']={k:reg.get(k) for k in ('Название','Идентификатор')}
+        result.append(item)
+    return {'readOnly':True,'documentRegulations':result}
+
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -404,9 +422,9 @@ def main():
             result['apps'].append({k:app.get(k) for k in ('id','name','status','branch_name','commit_sha')})
         result['backups']=[{k:b.get(k) for k in ('id','status','created_at','comment')} for b in p.request('GET','/dbs/4192781/backups')['backups'] if b.get('comment')==TAG]
     elif op=='backup': result=backup(p)
-    elif op in ('order-23-audit','buyer-read','order-23-rpc','created-price-audit','created-price-default','order-23-discovery'):
+    elif op in ('order-23-audit','buyer-read','order-23-rpc','created-price-audit','created-price-default','order-23-discovery','order-23-regulations'):
         env=production(p.request('GET','/apps/229223')['app'],sha)
-        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else created_price_default_audit(env) if op=='created-price-default' else order_23_discovery(env) if op=='order-23-discovery' else buyer_read(env)
+        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else created_price_default_audit(env) if op=='created-price-default' else order_23_discovery(env) if op=='order-23-discovery' else order_23_regulation_read(env) if op=='order-23-regulations' else buyer_read(env)
     elif op=='online-activate':result=activate_online(p,sha)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
