@@ -33,8 +33,12 @@ def main():
     raw=answer.get('result') or {}
     doc=r.fields(raw)
     print(json.dumps({'schemaNames':list(doc),'identity':{k:doc.get(k) for k in ['@Документ','ИдентификаторДокумента']},'nestedShape':r.shape(doc.get('РП.Документ'))},ensure_ascii=False))
-    if doc.get('@Документ') != DOC or doc.get('ИдентификаторДокумента') != UUID:
+    if doc.get('@Документ') not in (DOC,[DOC,'СчетСкИсх']) or doc.get('ИдентификаторДокумента') != UUID:
         raise r.guards.PreflightError('fixed_owned_invoice_identity_mismatch')
+    rp=r.fields(doc.get('РП.Документ'))
+    regulation=r.fields(rp.get('Регламент'))
+    visual=regulation.get('ВизуальноеПредставление') or {}
+    print(json.dumps({'regulationKeys':list(regulation),'visual':{k:visual.get(k) for k in ['source','readMetaData','createMetaData','updateMetaData']} if isinstance(visual,dict) else type(visual).__name__},ensure_ascii=False))
     names=['@Документ','ИдентификаторДокумента','ДокументРасширение.ИдентификаторВИ','ТипДокумента','ТипДокумента.ТипДокумента','СкладскойДокумент.Склад','ДокументНашаОрганизация','Регламент','ReserveWhId','ReserveUnit','ReserveNumber','Лицо1','Дата','ДокументРасширение.Состояние']
     print(json.dumps({'readOnly':True,'documentUUID':UUID,'header':{k:doc.get(k) for k in names},'schema':[c for c in raw.get('s',[]) if c.get('n') in names]},ensure_ascii=False))
     lines=r.rpc('СчетСкИсх.DocNomList',{'Фильтр':r.record([('СкладскойДокумент','Число целое',DOC),('ЭтоРасходы','Логическое',False),('Раздел','Число целое',None)]),'Сортировка':None,'Навигация':r.record([('ЕстьЕще','Логическое',True),('Страница','Число целое',0),('РазмерСтраницы','Число целое',20)]),'ДопПоля':[]},token,6)
