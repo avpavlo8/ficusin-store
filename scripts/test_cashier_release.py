@@ -27,6 +27,14 @@ class Fake:
         return {}
 
 class ReleaseTests(unittest.TestCase):
+    def test_only_required_posting_flags_decide_unposted(self):
+        names=['Проведен','ЕстьПроводки','ОшибкиПроведения','НеактуальныеПроводки','ВОчередиНаПроведение','ВОчередиНаРасчетПроводок','ИнойФлаг']
+        raw={'s':[{'n':'ДокументРасширение.Состояние','t':{'n':'Флаги','s':{str(i):n for i,n in enumerate(names)}}}]}
+        doc={'ДокументРасширение.Состояние':[None,False,False,False,None,False,True]}
+        self.assertTrue(m.unposted(raw,doc))
+        doc['ДокументРасширение.Состояние'][0]=True
+        self.assertFalse(m.unposted(raw,doc))
+        self.assertFalse(m.unposted({},doc))
     def test_backup_id_read_is_allowed(self):
         import io
         class Response(io.BytesIO):

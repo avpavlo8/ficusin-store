@@ -129,6 +129,55 @@ def activate(p,sha):
     else: changed=False
     return {'patched':changed,'runtimeVerificationRequired':changed,'flags':FLAGS,'database':report}
 
+def unposted(raw,doc):
+    name='ДокументРасширение.Состояние';values=doc.get(name)
+    schema=[s.get('t',{}) for s in raw.get('s',[]) if s.get('n')==name]
+    if len(schema)!=1 or not isinstance(schema[0],dict) or schema[0].get('n')!='Флаги' or not isinstance(values,list):return False
+    labels=schema[0].get('s',{})
+    if not isinstance(labels,dict) or len(labels)!=len(values) or any(not k.isdigit() for k in labels):return False
+    flags={labels[k]:v for k,v in zip(sorted(labels,key=int),values)}
+    required=('Проведен','ЕстьПроводки','ОшибкиПроведения','НеактуальныеПроводки','ВОчередиНаПроведение','ВОчередиНаРасчетПроводок')
+    return all(k in flags and (flags[k] is None or flags[k] is False) for k in required)
+
+def native_readback(env):
+    """Independent read only; never calls Execute, fiscal API, posting or Reserve.Apply."""
+    spec=importlib.util.spec_from_file_location('cashier_native_reads',Path(__file__).with_name('saby-realization-readback.py'))
+    r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
+    with tempfile.TemporaryDirectory() as directory:
+        with g.connect_production(env,directory) as conn:
+            saved=conn.execute("""SELECT r.id,o.order_number,n.status,n.provider_state,n.request FROM cashier_stock_reservations r
+              JOIN orders o ON o.id=r.order_id JOIN cashier_native_reservations n ON n.reservation_id=r.id
+              WHERE r.completed_at IS NULL AND r.cancelled_at IS NULL ORDER BY r.id""").fetchall()
+    if any(row[2]!='settled' for row in saved):return {'verified':False,'reason':'worker_not_settled_yet'}
+    if not saved:return {'verified':True,'activeInvoices':[]}
+    token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')
+    if not token:raise g.PreflightError('native_read_auth_failed')
+    print('::add-mask::'+token)
+    r.READS={'СчетСкИсх.ПрочитатьДляУчастника','Reserve.ListByDn'}
+    from decimal import Decimal
+    result=[]
+    for reservation,order,status,state,request in saved:
+        identity=state.get('identity',{});doc_id=identity.get('id');uuid=identity.get('uuid');rows=state.get('rows',[])
+        if not isinstance(doc_id,int) or doc_id<=0 or not rows:raise g.PreflightError('native_identity_not_saved')
+        raw=r.rpc('СчетСкИсх.ПрочитатьДляУчастника',{'ИдО':doc_id,'ИмяМетода':'СчетСкИсх.ListLite','ДопПоля':{'ИмяОбъекта':'СчетСкИсх'}},token,7)
+        doc=r.fields(raw)
+        expected={'@Документ':doc_id,'ИдентификаторДокумента':uuid,'ТипДокумента':231,'ТипДокумента.ТипДокумента':'СчетИсх',
+          'ДокументНашаОрганизация':259,'СкладскойДокумент.Склад':283,'Регламент':121326,'Удален':False,'Номер':f'FCR-{reservation}'}
+        if any(doc.get(k)!=v for k,v in expected.items()):raise g.PreflightError('native_header_readback_mismatch')
+        if not unposted(raw,doc):raise g.PreflightError('native_invoice_posted_or_unverified')
+        for row in rows:
+            raw=r.rpc('Reserve.ListByDn',{'DocNomIds':[row['id']]},token,7)
+            reserves=r.rows(raw)
+            if raw is None or len(reserves)!=1:raise g.PreflightError('native_reserve_missing_or_ambiguous')
+            reserve=reserves[0]
+            if (reserve.get('@НоменклатураДокумента')!=row['id'] or reserve.get('Склад')!=283
+              or reserve.get('Активен') is not True or reserve.get('ByBaseWh') is not True
+              or reserve.get('ЕстьСписаниеОтгрузкой') is not False
+              or Decimal(str(reserve.get('Количество')))!=Decimal(str(row['line']['quantity']))
+              or Decimal(str(reserve.get('КоличествоОтгружено')))!=0):raise g.PreflightError('native_reserve_quantity_mismatch')
+        result.append({'orderNumber':order,'documentId':doc_id,'documentUUID':uuid,'verifiedRows':len(rows),'posted':False})
+    return {'verified':True,'activeInvoices':result,'readOnly':True}
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -145,7 +194,7 @@ def main():
     elif op=='production-activate': result=activate(p,sha)
     elif op=='production-verify':
         env=production(p.request('GET','/apps/229223')['app'],sha)
-        result={'flagsEnabled':all(env.get(k)==v for k,v in FLAGS.items()),'database':database(env,True)}
+        result={'flagsEnabled':all(env.get(k)==v for k,v in FLAGS.items()),'database':database(env,True),'nativeReadback':native_readback(env)}
     else: raise g.PreflightError('invalid_release_operation')
     print(json.dumps(result,ensure_ascii=False),flush=True)
 
