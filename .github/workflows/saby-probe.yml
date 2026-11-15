@@ -11,6 +11,11 @@ on:
         description: Exact currently deployed main commit
         type: string
         required: true
+      expected_staging_commit:
+        description: Exact active staging revision for the temporary cashier check
+        type: string
+        required: false
+        default: '44bfa6c5807fe1411857416c2e07755ab55b332d'
 permissions:
   contents: read
 jobs:
@@ -255,4 +260,5 @@ jobs:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           CASHIER_RELEASE_OPERATION: ${{ inputs.operation }}
+          EXPECTED_STAGING_COMMIT: ${{ inputs.expected_staging_commit }}
         run: python3 scripts/cashier-release.py

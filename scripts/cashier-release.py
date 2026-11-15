@@ -14,7 +14,7 @@ g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
 SOURCE = 'c661449e2b6c300cda6766828154fc7c27d92cea'
 OLD = '443e6f80e2ea90ce1987add53bab62dcf5ae18fc'
-STAGE_OLD = '78f06acec98cd19cddf69b162a908463c66adb0f'
+STAGE_OLD = os.environ.get('EXPECTED_STAGING_COMMIT','44bfa6c5807fe1411857416c2e07755ab55b332d')
 TAG = 'ficusin-cashier-release-20261115-c661449'
 MIGRATION = '20261115_cashier_stock_reservations.sql'
 FLAGS = {'SABY_CASHIER_RESERVE_MODE':'live','SABY_CASHIER_RESERVE_LIVE_ENABLED':'true',
@@ -53,7 +53,7 @@ def stage(app):
     branch=app.get('branch_name') or app.get('branch')
     if isinstance(branch,dict): branch=branch.get('name')
     db=urllib.parse.urlsplit(env.get('DATABASE_URL',''))
-    if (app.get('id')!=280757 or branch!='staging' or env.get('APP_ENV')!='staging'
+    if (app.get('id')!=280757 or app.get('status')!='active' or branch!='staging' or env.get('APP_ENV')!='staging'
         or db.path!='/ficusin_staging_20261031' or db.username!='ficusin_stage_20261031'
         or app.get('health_check') not in (None,'') or not env.get('STAGING_ACCESS_TOKEN')):
         raise g.PreflightError('staging_isolation_not_verified')

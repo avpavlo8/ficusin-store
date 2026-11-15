@@ -75,6 +75,10 @@ class ReleaseTests(unittest.TestCase):
         app=stage();app['envs']['DATABASE_URL']=prod()['envs']['DATABASE_URL'];p=Fake(app)
         with self.assertRaises(m.g.PreflightError):m.deploy_stage(p)
         self.assertEqual(len(p.calls),1)
+    def test_stage_building_is_never_interrupted(self):
+        app=stage();app['status']='building';p=Fake(app)
+        with self.assertRaises(m.g.PreflightError):m.deploy_stage(p)
+        self.assertEqual(len(p.calls),1)
     def test_stage_rejects_concurrent_unrecognized_commit(self):
         app=stage();app['commit_sha']='a'*40;p=Fake(app)
         with self.assertRaises(m.g.PreflightError):m.deploy_stage(p)
