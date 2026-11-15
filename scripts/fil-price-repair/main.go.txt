@@ -22,7 +22,11 @@ type private struct {
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Println(`{"ok":false,"reason":"fixed_price_repair_guard_or_service_failed"}`)
+        reason := "fixed_price_repair_guard_or_service_failed"
+        for _, known := range []string{"actions only","no blind replay","private database config missing","database or TLS scope","database identity"} {
+            if err.Error()==known { reason=known;break }
+        }
+        _ = json.NewEncoder(os.Stdout).Encode(map[string]any{"ok":false,"reason":reason,"errorType":fmt.Sprintf("%T",err)})
 		os.Exit(1)
 	}
 }
