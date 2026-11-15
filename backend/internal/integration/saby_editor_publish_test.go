@@ -21,11 +21,13 @@ func (sabyEditorImageRoundTrip) RoundTrip(r *http.Request) (*http.Response, erro
 }
 
 type sabyEditorNativeFixture struct {
-	t                                *testing.T
-	server                           *httptest.Server
-	card                             map[string]any
-	creates, updates, uploads, reads int
-	lostCreate, lostUpdate           bool
+	t                                      *testing.T
+	server                                 *httptest.Server
+	card                                   map[string]any
+	basePrices                             map[string]any
+	ignoreBasePrice, ignoreConfiguredPrice bool
+	creates, updates, uploads, reads       int
+	lostCreate, lostUpdate                 bool
 }
 
 func newSabyEditorNativeFixture(t *testing.T) *sabyEditorNativeFixture {
@@ -43,6 +45,9 @@ func newSabyEditorNativeFixture(t *testing.T) *sabyEditorNativeFixture {
 	prices := native([]string{"Id", "PriceList", "Price", "CanEdit", "MeasureUnit", "IsUpdated"}, []any{"Строка", "Число целое", map[string]any{"n": "Деньги", "p": 2}, "Логическое", "Строка", "Логическое"}, []any{})
 	prices["_type"] = "recordset"
 	prices["d"] = []any{[]any{"6_base", float64(6), float64(100), true, nil, nil}}
+	baseJSON, _ := json.Marshal(prices)
+	json.Unmarshal(baseJSON, &f.basePrices)
+	f.basePrices["d"] = []any{[]any{"None_base", nil, nil, true, nil, nil}}
 	imageFields := []string{"id", "url", "fullUrl", "fileName", "title", "size", "isMaster", "canDelete", "canEdit", "UrlVideo", "isMarketImage", "marketImageId", "coords", "readFromDisk"}
 	imageTypes := []any{"Строка", "Строка", "Строка", "Строка", "Строка", "Число целое", "Логическое", "Логическое", "Логическое", "Строка", "Логическое", "Число целое", "Строка", "Логическое"}
 	images := native(imageFields, imageTypes, []any{})
@@ -80,10 +85,20 @@ func newSabyEditorNativeFixture(t *testing.T) *sabyEditorNativeFixture {
 			}
 			option, _ := req.Params["Option"].(map[string]any)
 			lists, _ := sabyRecordField(option, "PriceList").([]any)
-			if len(lists) != 1 || lists[0] != float64(6) {
-				t.Error("price list was not explicitly scoped")
+			if len(lists) == 0 && len(option["s"].([]any)) == 0 {
+				// Native Saby's unscoped projection returns the main Price,
+				// not the configured retail list. Model this independently.
+				copyJSON, _ := json.Marshal(f.card)
+				var baseCard map[string]any
+				json.Unmarshal(copyJSON, &baseCard)
+				setSabyRecordField(baseCard, "PriceData", f.basePrices)
+				reply(baseCard)
+			} else {
+				if len(lists) != 1 || lists[0] != float64(6) {
+					t.Error("price list was not explicitly scoped")
+				}
+				reply(f.card)
 			}
-			reply(f.card)
 		case "Nomenclature.Create":
 			f.creates++
 			data, _ := req.Params["Data"].(map[string]any)
@@ -114,6 +129,30 @@ func newSabyEditorNativeFixture(t *testing.T) *sabyEditorNativeFixture {
 				name, _ := field["n"].(string)
 				if name == "IsDraft" {
 					t.Error("invented finalization mutation")
+				}
+				if name == "PriceData" {
+					priceSet, _ := sabyRecordField(data, name).(map[string]any)
+					incoming, _ := priceSet["d"].([]any)
+					for _, row := range incoming {
+						values, _ := row.([]any)
+						if len(values) < 2 {
+							t.Error("price row incomplete")
+							continue
+						}
+						switch values[1] {
+						case nil:
+							if !f.ignoreBasePrice {
+								f.basePrices["d"] = []any{values}
+							}
+						case float64(6):
+							if !f.ignoreConfiguredPrice {
+								sabyRecordField(f.card, "PriceData").(map[string]any)["d"] = []any{values}
+							}
+						default:
+							t.Error("unmanaged price list changed")
+						}
+					}
+					continue
 				}
 				if !setSabyRecordField(f.card, name, sabyRecordField(data, name)) {
 					t.Errorf("unknown update field %s", name)
@@ -320,5 +359,52 @@ func TestSabyEditorVerifyRejectsLegacyIncompleteReceiptWithoutWriting(t *testing
 	result, err := f.publisher().Advance(context.Background(), "saby", r, ce.Progress{Stage: "verify", IDs: ce.RemoteIDs{ProductID: "1101"}})
 	if err != nil || result.Status != "needs_attention" || f.updates+f.uploads+f.creates != 0 {
 		t.Fatalf("legacy receipt fabricated verification or wrote: %+v/%v", result, err)
+	}
+}
+
+func TestSabyEditorFailedCreationRevisionStillPublishesInitialPrice(t *testing.T) {
+	f := newSabyEditorNativeFixture(t)
+	p := f.publisher()
+	before := sabyEditorRequestFixture()
+	before.ProductID, before.VariantID = 11, 12
+	prepared := prepareSabyEditorFixture(t, p, before)
+	// The prior attempt has only created a draft and prepared its Update.
+	// It has not sent its first price or finalized the card.
+	if f.creates != 1 || f.updates != 0 {
+		t.Fatal("fixture crossed the first save boundary")
+	}
+	next := before
+	next.Action, next.SabyID = "update", "1101"
+	next.PriceMinor, next.Description = 259099, "Corrected creation content"
+	fresh, ok := ce.SabyPublicationRevision("failed", before, next, prepared)
+	if !ok {
+		t.Fatal("known draft correction rejected")
+	}
+	result := driveSabyEditorFixture(t, p, next, fresh)
+	cardJSON, _ := json.Marshal(f.card)
+	card, err := parseSabyEditorNativeRecord(cardJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched, err := sabyEditorPriceMatches(card, 6, next.PriceMinor)
+	if result.Status != "created" || !matched || err != nil || f.creates != 1 || f.updates != 1 {
+		t.Fatalf("draft correction lost initial price or repeated Create: %+v price=%t/%v creates=%d updates=%d", result, matched, err, f.creates, f.updates)
+	}
+	// Once creation is verified, later content saves cannot silently change price.
+	finished := next
+	finished.PriceMinor, finished.Description = 999099, "Later content edit"
+	ordinary, ok := ce.SabyPublicationRevision("created", next, finished, result.Progress)
+	if !ok {
+		t.Fatal("finished content revision rejected")
+	}
+	updated := driveSabyEditorFixture(t, p, finished, ordinary)
+	cardJSON, _ = json.Marshal(f.card)
+	card, err = parseSabyEditorNativeRecord(cardJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched, err = sabyEditorPriceMatches(card, 6, next.PriceMinor)
+	if updated.Status != "synced" || !matched || err != nil || f.creates != 1 {
+		t.Fatal("content edit rewrote a finished card price", updated, matched, err)
 	}
 }

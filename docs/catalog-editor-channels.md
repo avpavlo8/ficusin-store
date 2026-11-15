@@ -52,6 +52,22 @@ An explicit Save/Create in enabled production queues Saby through the same durab
 
 The frozen Saby request includes the selected native category/folder, site name with a pot-size suffix only when applicable, description, current site price, public photos, canonical attributes and a stable generated 200-prefixed EAN-13. Saby's numeric integration ID, native business number, UUID and EAN remain separate identifiers. Existing numeric links always mean Update, including when a recovered browser draft still says `mode:create`. Unchanged saves retain their finished receipt.
 
+Saby's main `Цена` is a separate native price row (`PriceList:null`, currently
+`Id:None_base`), not the configured retail list. New card saves read both the
+unscoped main-price projection and `SABY_PRICE_LIST_ID`, validate the same card
+identity and compatible native schemas, and save both prices in one prepared
+Update. Completion requires both values to match the site price. Other lists,
+units, row IDs and money schemas remain unchanged; missing, ambiguous or
+uneditable main-price rows stop publication. Correcting a failed, known Create
+retains its initial-price obligation while discarding stale prepared content;
+verified finished cards continue through content-only updates.
+
+Already prepared card receipts retain their original scope and payload; their
+consumer is the in-flight card publisher. Remove this compatibility only after
+those receipts are reconciled. Older cards with a missing main price use the
+separately approved price publication lane rather than replaying Create/Update
+or changing the site price temporarily.
+
 Native Create creates a server draft. The worker records the irreversible boundary before POST, then durably saves the returned draft ID before later updates or media work. An unknown Create response without a recoverable ID requires manual review; neither automatic retry nor a changed editor mode/name may create it again. Verified completion alone updates canonical Saby IDs and activates the Saby stock source. Binding is not a stock confirmation: a real inventory exchange must still provide fresh quantities.
 
 Native Save prepares its exact managed payload, expected image IDs and verification evidence in a separate durable step before sending Update. If a process dies during Update, its expired lease resumes verification, not another POST. An interrupted Move likewise reads its result back first. An interrupted temporary image upload pauses for manual review because its unknown attachment ID cannot be safely recreated. Incomplete older Save evidence also pauses rather than reporting an unverified success.

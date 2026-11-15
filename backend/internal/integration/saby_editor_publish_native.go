@@ -105,6 +105,10 @@ func (c *SabyClient) readSabyEditorNativeCard(ctx context.Context, id int64) (*s
 	if c.priceListID > 0 {
 		option = map[string]any{"_type": "record", "s": []any{map[string]any{"n": "PriceList", "t": map[string]any{"n": "Массив", "t": "Число целое"}}}, "d": []any{[]int64{c.priceListID}}}
 	}
+	return c.readSabyEditorNativeProjection(ctx, id, fields, option)
+}
+
+func (c *SabyClient) readSabyEditorNativeProjection(ctx context.Context, id int64, fields []string, option any) (*sabyEditorNativeRecord, error) {
 	var raw json.RawMessage
 	if err := c.rpc(ctx, "Nomenclature.Read", map[string]any{"Id": id, "AdditionalFields": fields, "Option": option}, &raw); err != nil {
 		return nil, err
@@ -118,6 +122,33 @@ func (c *SabyClient) readSabyEditorNativeCard(ctx context.Context, id int64) (*s
 		return nil, errors.New("Идентификатор карточки СБИС не совпал при чтении")
 	}
 	return record, nil
+}
+
+// Saby exposes the main "Цена" under the null price-list key, separately
+// from the explicitly selected retail price list. Read both exact projections;
+// never invent a None_base row or overwrite another list/unit.
+func (c *SabyClient) readSabyEditorNativeCardWithBasePrice(ctx context.Context, id int64) (*sabyEditorNativeRecord, error) {
+	card, err := c.readSabyEditorNativeCard(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	base, err := c.readSabyEditorNativeProjection(ctx, id, []string{"PriceData", "Number", "Identifier"}, sabyRecord(map[string]any{}))
+	if err != nil {
+		return nil, err
+	}
+	for _, field := range []string{"Id", "Identifier", "Number"} {
+		left, e := card.scalarString(field)
+		right, f := base.scalarString(field)
+		if e != nil || f != nil || left == "" || left != right {
+			return nil, errors.New("Связь СБИС изменилась при чтении основной цены")
+		}
+	}
+	prices, err := sabyEditorMergeBasePrice(card.value("PriceData"), base.value("PriceData"))
+	if err != nil {
+		return nil, err
+	}
+	card.values[card.fields["PriceData"]] = prices
+	return card, nil
 }
 
 // SbisService.call(...).getRow() accepts one native record or a one-row

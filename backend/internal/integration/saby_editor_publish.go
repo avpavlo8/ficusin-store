@@ -27,6 +27,7 @@ type sabyEditorUploadedImage struct {
 	Result json.RawMessage `json:"result"`
 }
 type sabyEditorPublishState struct {
+	BasePriceIncluded   bool                      `json:"basePriceIncluded,omitempty"`
 	Created             bool                      `json:"created"`
 	Images              []sabyEditorUploadedImage `json:"images,omitempty"`
 	ImageIDs            []string                  `json:"imageIds,omitempty"`
@@ -49,6 +50,9 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		if json.Unmarshal(s.Native, &native) != nil {
 			return result("needs_attention", "Повреждён сохранённый результат СБИС. Повторное создание не выполнялось.")
 		}
+	}
+	if native.BasePriceIncluded && !native.Created {
+		return result("needs_attention", "Подтверждение начальной цены СБИС не относится к созданию карточки")
 	}
 	saveState := func() { s.Native, _ = json.Marshal(native) }
 	if s.Stage == "reconcile" && s.IDs.ProductID == "" {
@@ -212,7 +216,8 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		return result("queued", "Фотографии подготовлены. Сохраняем сведения карточки СБИС.")
 	}
 	if s.Stage == "save" {
-		card, err := p.Client.readSabyEditorNativeCard(ctx, id)
+		native.BasePriceIncluded = native.Created
+		card, err := p.readSabyEditorPublishCard(ctx, id, native.BasePriceIncluded)
 		if err != nil {
 			return ce.Result{Progress: s}, err
 		}
@@ -244,10 +249,10 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		return result("queued", "Данные сохранения СБИС подготовлены. Отправляем после сохранения подтверждения операции.")
 	}
 	if s.Stage == "send-save" {
-		if !sabyEditorPreparedValid(native, r, s.IDs.ProductID) {
+		if !sabyEditorPreparedValid(native, r, s.IDs.ProductID) || native.BasePriceIncluded && !sabyEditorPreparedPricePair(native.PreparedData, p.Client.priceListID, r.PriceMinor) {
 			return result("needs_attention", "Подтверждение подготовленного сохранения СБИС не совпало. Запрос не отправлен.")
 		}
-		card, err := p.Client.readSabyEditorNativeCard(ctx, id)
+		card, err := p.readSabyEditorPublishCard(ctx, id, native.BasePriceIncluded)
 		if err != nil {
 			return ce.Result{Progress: s}, err
 		}
@@ -269,10 +274,10 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		return result("queued", "СБИС принял сохранение. Проверяем цену, описание, штрихкод и фотографии.")
 	}
 	if s.Stage == "verify" {
-		if !sabyEditorPreparedValid(native, r, s.IDs.ProductID) {
+		if !sabyEditorPreparedValid(native, r, s.IDs.ProductID) || native.BasePriceIncluded && !sabyEditorPreparedPricePair(native.PreparedData, p.Client.priceListID, r.PriceMinor) {
 			return result("needs_attention", "Нет полного сохранённого подтверждения отправки СБИС. Повторный запрос не выполнялся.")
 		}
-		card, err := p.Client.readSabyEditorNativeCard(ctx, id)
+		card, err := p.readSabyEditorPublishCard(ctx, id, native.BasePriceIncluded)
 		if err != nil {
 			return ce.Result{Progress: s}, err
 		}
@@ -342,6 +347,9 @@ func sabyEditorPayloadHash(data []byte) string {
 	return "json-v1:" + hex.EncodeToString(sum[:])
 }
 func sabyEditorPreparedValid(native sabyEditorPublishState, r ce.Request, id string) bool {
+	if !native.BasePriceIncluded && sabyEditorPreparedContainsBasePrice(native.PreparedData) {
+		return false
+	}
 	requestData, _ := json.Marshal(r)
 	return len(native.PreparedData) > 0 && native.PreparedHash != "" && native.PreparedRequestHash != "" && native.PreparedID == id && sabyEditorPayloadHash(native.PreparedData) == native.PreparedHash && sabyEditorPayloadHash(requestData) == native.PreparedRequestHash && len(r.Images) > 0 && len(native.ImageIDs) >= len(r.Images)
 }
@@ -403,4 +411,11 @@ func sabyEditorBaselineHash(card *sabyEditorNativeRecord, prepared json.RawMessa
 		return "", err
 	}
 	return sabyEditorPayloadHash(baseline), nil
+}
+
+func (p *SabyEditorPublisher) readSabyEditorPublishCard(ctx context.Context, id int64, basePrice bool) (*sabyEditorNativeRecord, error) {
+	if basePrice {
+		return p.Client.readSabyEditorNativeCardWithBasePrice(ctx, id)
+	}
+	return p.Client.readSabyEditorNativeCard(ctx, id)
 }
