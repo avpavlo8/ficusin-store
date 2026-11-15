@@ -200,6 +200,8 @@ def ended_invoice_audit(env):
             row=conn.execute("""SELECT o.status,r.completed_at IS NOT NULL,r.cancelled_at IS NOT NULL,n.status,n.provider_state
               FROM cashier_stock_reservations r JOIN orders o ON o.id=r.order_id JOIN cashier_native_reservations n ON n.reservation_id=r.id
               WHERE o.order_number='0000-15'""").fetchone()
+            attempts=conn.execute("""SELECT command->>'kind',command->'params',reply,error,replied_at::text
+              FROM cashier_native_attempts WHERE reservation_id=1 ORDER BY attempted_at DESC LIMIT 2""").fetchall()
     if not row:raise g.PreflightError('known_reserve_missing')
     status,completed,cancelled,native_status,state=row
     identity=state.get('identity') or {}
@@ -211,6 +213,8 @@ def ended_invoice_audit(env):
     reserve=r.rpc('Reserve.ListByDn',{'DocNomIds':[175814]},token,7)
     return {'readOnly':True,'order':'0000-15','orderStatus':status,'completed':completed,'cancelled':cancelled,'nativeStatus':native_status,
       'documentId':doc.get('@Документ'),'nativeUUID':doc.get('ИдентификаторДокумента'),'unposted':unposted(raw,doc),
+      'progress':{k:state.get(k) for k in ('phase','index','polls','identity')},
+      'attempts':[{'kind':a[0],'rpc':(a[1] or {}).get('rpc'),'guardIdentity':((a[1] or {}).get('guard') or {}).get('identity'),'reply':a[2] if a[0]=='remove' else '[header result omitted]','error':a[3],'repliedAt':a[4]} for a in attempts],
       'reserveRows':[{k:x.get(k) for k in ('@НоменклатураДокумента','Склад','Активен','Количество','КоличествоОтгружено','ЕстьСписаниеОтгрузкой')} for x in r.rows(reserve)]}
 
 def order_23_audit(env):
