@@ -148,7 +148,7 @@ func (p *SabyOrderRealizationProvider) StepRevision(ctx context.Context, command
 		return attention("Не подтверждены товары, количества или цены редакции")
 	}
 	var origin sabyRealizationProviderReceipt
-	if json.Unmarshal(progress.Native, &origin) != nil || origin.Version != 1 || origin.RequestHash != sabyRevisionHash(command.Origin) || !sabyRealizationProviderPreparedCreateMatches(origin.CreatePayload, command.Origin) {
+	if json.Unmarshal(progress.Native, &origin) != nil || origin.Version != 1 || origin.RequestHash != sabyRevisionHash(command.Origin) || !sabyRealizationProviderPreparedCreateMatches(origin.CreatePayload, command.Origin, p.PublicRegulationUUID) {
 		return attention("Исходное подтверждение документа повреждено; редакция не отправлялась")
 	}
 	if len(progress.RevisionNative) == 0 {

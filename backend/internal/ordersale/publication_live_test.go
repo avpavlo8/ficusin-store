@@ -368,6 +368,47 @@ func testPublicationFoundation(t *testing.T, pool *pgxpool.Pool) {
 			t.Fatal("durable create attempt ignored by retry command", err)
 		}
 	})
+	t.Run("acknowledged discovery retry retains the same request and attempt boundary", func(t *testing.T) {
+		e := create(724)
+		operationKey := key(e)
+		state := Progress{Stage: "discover", CreateAttempted: true, Native: json.RawMessage(`{"frozen_receipt":"untouched"}`)}
+		force(e, state, "needs_attention")
+		exec(`UPDATE order_sale_publications SET create_attempted=TRUE,attempts=3 WHERE intent_id=$1`, e.IntentID)
+		view := publication(e)
+		if !view.CanRetry {
+			t.Fatal("acknowledged discovery has no read-only retry")
+		}
+		var beforeRequest, beforeHash string
+		if err := pool.QueryRow(ctx, `SELECT request::TEXT,request_hash FROM order_sale_publications WHERE intent_id=$1`, e.IntentID).Scan(&beforeRequest, &beforeHash); err != nil {
+			t.Fatal(err)
+		}
+		if err := RetryPublication(ctx, pool, view.ID); err != nil {
+			t.Fatal(err)
+		}
+		reads := 0
+		fake := publicationProviderFunc(func(_ context.Context, r Request, p Progress) (Result, error) {
+			var receipt map[string]string
+			if p.Stage != "discover" || !p.CreateAttempted || p.PostAttempted || p.Unknown ||
+				r.OperationKey != operationKey || json.Unmarshal(p.Native, &receipt) != nil || receipt["frozen_receipt"] != "untouched" || len(receipt) != 1 {
+				t.Fatal("discovery retry lost its frozen operation or would recreate", r, p)
+			}
+			reads++
+			return Result{Progress: p, State: "needs_attention", Message: "operation mismatch remains"}, nil
+		})
+		step(fake, "mock")
+		var afterRequest, afterHash string
+		var created, posted bool
+		if err := pool.QueryRow(ctx, `SELECT request::TEXT,request_hash,create_attempted,post_attempted FROM order_sale_publications WHERE intent_id=$1`, e.IntentID).Scan(&afterRequest, &afterHash, &created, &posted); err != nil {
+			t.Fatal(err)
+		}
+		if reads != 1 || beforeRequest != afterRequest || beforeHash != afterHash || !created || posted || publication(e).Attempts != 4 {
+			t.Fatal("discovery retry rewrote the request, history or write flags")
+		}
+		exec(`UPDATE order_sale_publications SET post_attempted=TRUE WHERE intent_id=$1`, e.IntentID)
+		if publication(e).CanRetry || RetryPublication(ctx, pool, view.ID) != ErrRetryUnsafe {
+			t.Fatal("durable post attempt was ignored")
+		}
+	})
 	t.Run("safe retry of known unknown posting stays read-only", func(t *testing.T) {
 		e := create(710)
 		force(e, Progress{Stage: "post", DocumentID: fmt.Sprintf("STG-SALE-%d", e.IntentID), DocumentUUID: key(e), Unknown: true}, "needs_attention")

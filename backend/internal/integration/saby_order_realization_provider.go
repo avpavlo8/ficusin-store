@@ -74,13 +74,21 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 		if json.Unmarshal(progress.Native, &receipt) != nil || receipt.Version != 1 || receipt.RequestHash != requestHash || len(receipt.CreatePayload) == 0 || receipt.Polls < 0 || receipt.Polls > 10 || receipt.CancelPolls < 0 || receipt.CancelPolls > 10 || receipt.LineIndex < 0 || receipt.LineIndex > len(plan) {
 			return attention("Сохранённое подтверждение реализации повреждено или относится к другому заказу")
 		}
-		if !sabyRealizationProviderPreparedCreateMatches(receipt.CreatePayload, request) {
+		if !sabyRealizationProviderPreparedCreateMatches(receipt.CreatePayload, request, p.PublicRegulationUUID) {
 			return attention("Сохранённый запрос создания не совпал с операцией; запись не выполнялась")
 		}
 	} else if progress.DesiredState == "cancelled" && !progress.CreateAttempted && !progress.PostAttempted && progress.DocumentID == "" && progress.DocumentUUID == "" && len(progress.OwnedRowIDs) == 0 {
 		return sabyRealizationProviderCancelled(result, receipt, "no_remote", nil)
 	} else if progress.Stage != "inspect" || progress.DocumentID != "" || progress.Unknown {
 		return attention("Отсутствует сохранённое подтверждение этапа; повторная запись не выполнялась")
+	}
+	if progress.Stage == "discover" && progress.CreateAttempted && !progress.Unknown {
+		var ack struct {
+			ID string `json:"Идентификатор"`
+		}
+		if json.Unmarshal(receipt.LastReceipt, &ack) != nil || !strings.EqualFold(ack.ID, request.OperationKey) {
+			return attention("Нет подтверждённого ответа создания для этого UUID; повторная запись не выполнялась")
+		}
 	}
 	// Matching SKU/price totals cannot establish ownership of a new row after
 	// a lost save reply. Without its positive ID neither posting nor cancellation
@@ -159,6 +167,10 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 		}
 		snapshot, found, findErr := p.discover(ctx, request, receipt.CreatePayload)
 		if findErr != nil {
+			var mismatch *sabyRealizationRegulationMismatch
+			if errors.As(findErr, &mismatch) {
+				return attention(mismatch.Error())
+			}
 			return wait("Не удалось однозначно проверить нативную реализацию СБИС")
 		}
 		if !found {
@@ -483,6 +495,12 @@ func sabyRealizationProviderSameLineIDs(base []SabyOrderRealizationLine, priced 
 	return len(seen) == 0
 }
 
+type sabyRealizationRegulationMismatch struct{ Expected, Actual int64 }
+
+func (e *sabyRealizationRegulationMismatch) Error() string {
+	return fmt.Sprintf("Операция СБИС не совпала: в документе регламент %d, в сохранённом задании %d; проведение остановлено", e.Actual, e.Expected)
+}
+
 func (p *SabyOrderRealizationProvider) validateHeader(s SabyOrderRealizationSnapshot, r ordersale.Request, payload json.RawMessage) error {
 	var doc map[string]any
 	if json.Unmarshal(payload, &doc) != nil {
@@ -490,8 +508,11 @@ func (p *SabyOrderRealizationProvider) validateHeader(s SabyOrderRealizationSnap
 	}
 	date, _ := doc["Дата"].(string)
 	parsed, e := time.Parse("02.01.2006", date)
-	if e != nil || s.OrganizationID != r.OrganizationID || s.RegulationID != r.RegulationID || !strings.EqualFold(s.PublicUUID, r.OperationKey) || sabyRecordField(s.document, "Дата") != parsed.Format("2006-01-02") {
+	if e != nil || s.OrganizationID != r.OrganizationID || !strings.EqualFold(s.PublicUUID, r.OperationKey) || sabyRecordField(s.document, "Дата") != parsed.Format("2006-01-02") {
 		return errors.New("realization identity changed")
+	}
+	if s.RegulationID != r.RegulationID {
+		return &sabyRealizationRegulationMismatch{Expected: r.RegulationID, Actual: s.RegulationID}
 	}
 	return nil
 }
@@ -529,7 +550,7 @@ func (p *SabyOrderRealizationProvider) prepareCreate(ctx context.Context, r orde
 		now = p.Now()
 	}
 	number := fmt.Sprintf("FCS-%d", r.IntentID)
-	return json.Marshal(map[string]any{"Идентификатор": r.OperationKey, "Тип": "ДокОтгрИсх", "Регламент": map[string]any{"Название": "Реализация"}, "Дата": now.In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"), "Номер": number, "Название": "Фикусин: реализация заказа " + r.Event.OrderNumber, "Примечание": "FICUSIN-SALE " + r.OperationKey + " " + r.Event.Fingerprint, "НашаОрганизация": map[string]any{"СвФЛ": map[string]any{"ИНН": inn}}})
+	return json.Marshal(map[string]any{"Идентификатор": r.OperationKey, "Тип": "ДокОтгрИсх", "Регламент": map[string]any{"Название": "Реализация", "Идентификатор": p.PublicRegulationUUID}, "Дата": now.In(time.FixedZone("MSK", 3*60*60)).Format("02.01.2006"), "Номер": number, "Название": "Фикусин: реализация заказа " + r.Event.OrderNumber, "Примечание": "FICUSIN-SALE " + r.OperationKey + " " + r.Event.Fingerprint, "НашаОрганизация": map[string]any{"СвФЛ": map[string]any{"ИНН": inn}}})
 }
 
 func (p *SabyOrderRealizationProvider) publicMatches(doc map[string]any, r ordersale.Request, payload json.RawMessage) bool {
@@ -541,14 +562,22 @@ func (p *SabyOrderRealizationProvider) publicMatches(doc map[string]any, r order
 	return strings.EqualFold(sabyValue(doc["Идентификатор"]), r.OperationKey) && doc["Тип"] == "ДокОтгрИсх" && strings.EqualFold(sabyValue(reg["Идентификатор"]), p.PublicRegulationUUID) && reg["Название"] == "Реализация" && doc["Номер"] == expected["Номер"] && doc["Примечание"] == expected["Примечание"]
 }
 
-func sabyRealizationProviderPreparedCreateMatches(payload json.RawMessage, r ordersale.Request) bool {
+func sabyRealizationProviderPreparedCreateMatches(payload json.RawMessage, r ordersale.Request, publicRegulationUUID string) bool {
 	var doc map[string]any
 	if len(payload) > 64<<10 || json.Unmarshal(payload, &doc) != nil || len(doc) != 8 || doc["Идентификатор"] != r.OperationKey || doc["Тип"] != "ДокОтгрИсх" || doc["Номер"] != fmt.Sprintf("FCS-%d", r.IntentID) || doc["Примечание"] != "FICUSIN-SALE "+r.OperationKey+" "+r.Event.Fingerprint || doc["Название"] != "Фикусин: реализация заказа "+r.Event.OrderNumber {
 		return false
 	}
 	reg, ok := doc["Регламент"].(map[string]any)
-	if !ok || len(reg) != 1 || reg["Название"] != "Реализация" {
+	if !ok || reg["Название"] != "Реализация" || len(reg) != 1 && len(reg) != 2 {
 		return false
+	}
+	// Existing immutable name-only receipts remain readable. New requests pin
+	// the verified public UUID and may not substitute another operation.
+	if len(reg) == 2 {
+		id, ok := reg["Идентификатор"].(string)
+		if !ok || !sabyOrderRealizationUUID.MatchString(id) || !strings.EqualFold(id, publicRegulationUUID) {
+			return false
+		}
 	}
 	date, ok := doc["Дата"].(string)
 	if !ok {
@@ -693,8 +722,11 @@ func (p *SabyOrderRealizationProvider) discover(ctx context.Context, r ordersale
 			}
 			uuid, _ := sabyRecordField(doc, "ИдентификаторДокумента").(string)
 			snapshot, e := p.Client.ReadOrderRealization(ctx, SabyOrderRealizationIdentity{ID: id, UUID: uuid, WarehouseID: r.NativeWarehouseID, MovementWarehouseID: r.MovementWarehouseID})
-			if e != nil || p.validateHeader(snapshot, r, payload) != nil {
-				return SabyOrderRealizationSnapshot{}, false, errors.New("native identity mismatch")
+			if e != nil {
+				return SabyOrderRealizationSnapshot{}, false, e
+			}
+			if e = p.validateHeader(snapshot, r, payload); e != nil {
+				return SabyOrderRealizationSnapshot{}, false, e
 			}
 			if found != nil {
 				return SabyOrderRealizationSnapshot{}, false, errors.New("ambiguous public UUID")
@@ -823,6 +855,10 @@ func (p *SabyOrderRealizationProvider) cancelStep(ctx context.Context, request o
 		}
 		snapshot, found, err := p.discover(ctx, request, receipt.CreatePayload)
 		if err != nil || !found {
+			var mismatch *sabyRealizationRegulationMismatch
+			if errors.As(err, &mismatch) {
+				return attention(mismatch.Error())
+			}
 			return wait("Ищем точную нативную привязку отменяемой операции; новые документы не создаются")
 		}
 		result.Progress.DocumentID = strconv.FormatInt(snapshot.ID, 10)
