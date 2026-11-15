@@ -997,11 +997,15 @@ export function ProductCreationPage({
           );
         }
         const cover = items.find((item) => item.type.startsWith("image/"));
-        if (cover?.serverId && !synced.find((item) => item.id === cover.serverId)?.primary)
+        if (cover?.serverId && !synced.find((item) => item.id === cover.serverId)?.primary) {
           await api(`${path}/${cover.serverId}/primary`, {
             method: primaryMethod,
             ...(primaryMethod === "PATCH" ? { body: "{}" } : {}),
           });
+          // Keep the acknowledgement in the save cache. Otherwise changing
+          // back to an earlier first photo incorrectly skips its next write.
+          for (const item of synced) item.primary = item.id === cover.serverId;
+        }
         return synced;
       };
       serverMedia.current = await syncGallery(
