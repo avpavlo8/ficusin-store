@@ -81,7 +81,7 @@ func testCashierNativeWorker(t *testing.T, pool *pgxpool.Pool) {
 	}
 	step := func(t *testing.T, provider cashierstock.Provider) {
 		t.Helper()
-		worked, err := cashierstock.Step(ctx, pool, provider, config)
+		worked, err := cashierstock.Step(ctx, pool, provider, config, 18749)
 		if err != nil || !worked {
 			t.Fatalf("native worker step: worked=%t err=%v", worked, err)
 		}
@@ -99,9 +99,9 @@ func testCashierNativeWorker(t *testing.T, pool *pgxpool.Pool) {
 		provider := &cashierWorkerFixture{pool: pool, t: t, entered: make(chan struct{}), release: make(chan struct{})}
 		step(t, provider) // durable preparation
 		result := make(chan error, 1)
-		go func() { _, err := cashierstock.Step(ctx, pool, provider, config); result <- err }()
+		go func() { _, err := cashierstock.Step(ctx, pool, provider, config, 18749); result <- err }()
 		<-provider.entered
-		worked, err := cashierstock.Step(ctx, pool, provider, config)
+		worked, err := cashierstock.Step(ctx, pool, provider, config, 18749)
 		if err != nil || worked {
 			t.Fatalf("second worker claimed running command: %t %v", worked, err)
 		}

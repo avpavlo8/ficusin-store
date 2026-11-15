@@ -259,7 +259,7 @@ func main() {
 		go cashierstock.Run(ctx, pool, &integration.SabyCashierReserveProvider{Client: sabyProcurementClient}, cashierstock.Config{
 			WarehouseID: reserve.WarehouseID, MovementWarehouseID: reserve.MovementWarehouseID,
 			OrganizationID: reserve.OrganizationID, RegulationID: reserve.RegulationID,
-		}, logger)
+		}, reserve.BuyerID, logger)
 	}
 	if cfg.Environment == "staging" {
 		stock, err := saby.NewStagingStockRefresher(ctx, pool)

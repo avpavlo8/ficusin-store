@@ -33,6 +33,7 @@ type Request struct {
 	Terminal      string `json:"terminal,omitempty"`
 	Lines         []Line `json:"lines"`
 	Config        Config `json:"config"`
+	BuyerID       int64  `json:"buyerId,omitempty"`
 }
 type Command struct {
 	ID     string          `json:"id"`
@@ -67,8 +68,8 @@ func Fingerprint(value any) string {
 	return hex.EncodeToString(h[:])
 }
 
-func ReadRequest(ctx context.Context, tx pgx.Tx, id int64, config Config) (Request, error) {
-	r := Request{ReservationID: id, Config: config, Lines: []Line{}}
+func ReadRequest(ctx context.Context, tx pgx.Tx, id int64, config Config, buyerID int64) (Request, error) {
+	r := Request{ReservationID: id, Config: config, BuyerID: buyerID, Lines: []Line{}}
 	var status, method, payment string
 	err := tx.QueryRow(ctx, `SELECT o.id,o.order_number,o.status,o.payment_method,COALESCE(o.payment_status,'')
  FROM cashier_stock_reservations r JOIN orders o ON o.id=r.order_id WHERE r.id=$1 FOR SHARE OF o`, id).Scan(&r.OrderID, &r.OrderNumber, &status, &method, &payment)
@@ -144,7 +145,7 @@ func ReadRequest(ctx context.Context, tx pgx.Tx, id int64, config Config) (Reque
 
 // Step retains a command before sending it and never replays an attempted one.
 // A lost process/HTTP reply is passed to Provider.Next for read-only recovery.
-func Step(ctx context.Context, pool *pgxpool.Pool, provider Provider, config Config) (bool, error) {
+func Step(ctx context.Context, pool *pgxpool.Pool, provider Provider, config Config, buyerID int64) (bool, error) {
 	if provider == nil {
 		return false, errors.New("Не подключён обработчик резервов СБИС")
 	}
@@ -173,7 +174,7 @@ func Step(ctx context.Context, pool *pgxpool.Pool, provider Provider, config Con
 	if err != nil {
 		return false, err
 	}
-	desired, readErr := ReadRequest(ctx, tx, id, config)
+	desired, readErr := ReadRequest(ctx, tx, id, config, buyerID)
 	if readErr != nil {
 		_, err = tx.Exec(ctx, `UPDATE cashier_native_reservations SET status='needs_attention',last_error=$2,updated_at=clock_timestamp() WHERE reservation_id=$1`, id, "Не удалось проверить состав и привязки кассового заказа")
 		if err != nil {
@@ -294,7 +295,7 @@ func Step(ctx context.Context, pool *pgxpool.Pool, provider Provider, config Con
 	return true, err
 }
 
-func Run(ctx context.Context, pool *pgxpool.Pool, provider Provider, config Config, logger *slog.Logger) {
+func Run(ctx context.Context, pool *pgxpool.Pool, provider Provider, config Config, buyerID int64, logger *slog.Logger) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {
@@ -303,7 +304,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, provider Provider, config Conf
 			return
 		case <-timer.C:
 		}
-		worked, err := Step(ctx, pool, provider, config)
+		worked, err := Step(ctx, pool, provider, config, buyerID)
 		if err != nil {
 			logger.Error("cashier Saby reservation step failed", "error", err)
 		}
