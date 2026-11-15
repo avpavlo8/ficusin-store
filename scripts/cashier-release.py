@@ -132,7 +132,7 @@ def activate(p,sha):
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
-    op=os.environ['CASHIER_RELEASE_OPERATION'];sha=os.environ['EXPECTED_COMMIT']
+    op=os.environ['CASHIER_RELEASE_OPERATION'].removeprefix('cashier-');sha=os.environ['EXPECTED_COMMIT']
     if not re.fullmatch('[0-9a-f]{40}',sha): raise g.PreflightError('invalid_sha')
     if op=='backup': result=backup(p)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
