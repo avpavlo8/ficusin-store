@@ -1,0 +1,33 @@
+name: Approved cashier reservation release
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        type: choice
+        options: [backup, staging-deploy, staging-restore, production-activate, production-verify]
+        required: true
+      expected_commit:
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: fixed-cashier-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install 'psycopg[binary]==3.2.13'
+      - run: python3 -m unittest discover -s scripts -p 'test_cashier_release.py'
+      - name: Execute fixed owner-approved release operation
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CASHIER_RELEASE_OPERATION: ${{ inputs.operation }}
+        run: python3 scripts/cashier-release.py
