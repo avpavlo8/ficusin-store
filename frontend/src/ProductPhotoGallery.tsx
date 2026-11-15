@@ -267,6 +267,7 @@ export function ProductPhotoGallery({
               onPointerUp={pointerUp}
               onPointerCancel={cleanup}
               onKeyDown={(event) => {
+                if (locked) return;
                 if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
                   event.preventDefault();
                   const index = items.findIndex((photo) => photo.id === item.id);

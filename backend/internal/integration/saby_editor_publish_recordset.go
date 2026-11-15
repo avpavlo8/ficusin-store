@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -139,6 +140,9 @@ func sabyEditorSetPrice(raw json.RawMessage, priceListID, minor int64) (json.Raw
 	}
 	selected := -1
 	for i := range set.rows {
+		if bytes.Equal(bytes.TrimSpace(set.cell(i, "PriceList")), []byte("null")) {
+			continue
+		}
 		list, e := sabyEditorNativeInt(set.cell(i, "PriceList"))
 		if e != nil {
 			return nil, e
@@ -167,6 +171,89 @@ func sabyEditorSetPrice(raw json.RawMessage, priceListID, minor int64) (json.Raw
 	}
 	return set.marshal()
 }
+func sabyEditorMergeBasePrice(configured, base json.RawMessage) (json.RawMessage, error) {
+	selected, err := parseSabyEditorNativeRecordSet(configured)
+	if err != nil {
+		return nil, err
+	}
+	defaults, err := parseSabyEditorNativeRecordSet(base)
+	if err != nil {
+		return nil, err
+	}
+	if !sabyEditorJSONEqual(selected.raw["s"], defaults.raw["s"]) {
+		return nil, errors.New("Схемы основной цены и прайса СБИС различаются")
+	}
+	baseIndex, err := sabyEditorBasePriceIndex(defaults)
+	if err != nil {
+		return nil, err
+	}
+	for i := range selected.rows {
+		if bytes.Equal(bytes.TrimSpace(selected.cell(i, "PriceList")), []byte("null")) {
+			return nil, errors.New("СБИС вернул основную цену в неоднозначной проекции прайса")
+		}
+	}
+	selected.rows = append(selected.rows, defaults.rows[baseIndex])
+	return selected.marshal()
+}
+
+func sabyEditorBasePriceIndex(set *sabyEditorNativeRecordSet) (int, error) {
+	found := -1
+	for i := range set.rows {
+		list := bytes.TrimSpace(set.cell(i, "PriceList"))
+		if len(list) == 0 {
+			return -1, errors.New("СБИС не вернул тип основной цены")
+		}
+		if !bytes.Equal(list, []byte("null")) {
+			continue
+		}
+		var id string
+		if json.Unmarshal(set.cell(i, "Id"), &id) != nil || id == "" {
+			return -1, errors.New("СБИС не вернул идентификатор основной цены")
+		}
+		if found >= 0 {
+			return -1, errors.New("В СБИС несколько единиц основной цены: нужна проверка")
+		}
+		found = i
+	}
+	if found < 0 {
+		return -1, errors.New("СБИС не вернул основную цену карточки")
+	}
+	return found, nil
+}
+
+func sabyEditorSetPricePair(raw json.RawMessage, listID, minor int64) (json.RawMessage, error) {
+	configured, err := sabyEditorSetPrice(raw, listID, minor)
+	if err != nil {
+		return nil, err
+	}
+	set, err := parseSabyEditorNativeRecordSet(configured)
+	if err != nil {
+		return nil, err
+	}
+	selected, err := sabyEditorBasePriceIndex(set)
+	if err != nil {
+		return nil, err
+	}
+	for i := range set.rows {
+		list, e := sabyEditorNativeInt(set.cell(i, "PriceList"))
+		if e == nil && list == listID && !sabyEditorJSONEqual(set.cell(i, "MeasureUnit"), set.cell(selected, "MeasureUnit")) {
+			return nil, errors.New("Основная цена и прайс СБИС заданы в разных или неизвестных единицах")
+		}
+	}
+	var editable bool
+	if json.Unmarshal(set.cell(selected, "CanEdit"), &editable) != nil || !editable {
+		return nil, errors.New("СБИС запрещает изменение основной цены")
+	}
+	price := json.Number(strconv.FormatInt(minor/100, 10) + "." + leftPad2(minor%100))
+	if err = set.set(selected, "Price", price); err != nil {
+		return nil, err
+	}
+	if err = set.set(selected, "IsUpdated", true); err != nil {
+		return nil, err
+	}
+	return set.marshal()
+}
+
 func leftPad2(n int64) string {
 	if n < 10 {
 		return "0" + strconv.FormatInt(n, 10)

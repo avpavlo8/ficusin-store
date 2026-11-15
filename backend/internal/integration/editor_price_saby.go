@@ -25,11 +25,11 @@ func (p *EditorPricePublisher) advanceSabyPrice(ctx context.Context, r ce.Reques
 	if err != nil || id <= 0 {
 		return result("needs_attention", "Для цены СБИС нужна существующая числовая связь")
 	}
-	card, err := p.Saby.readSabyEditorNativeCard(ctx, id)
+	card, err := p.Saby.readSabyEditorNativeCardWithBasePrice(ctx, id)
 	if err != nil {
 		return ce.Result{Progress: s}, err
 	}
-	identity := ce.Request{SabyID: target, SabyUUID: r.SabyUUID}
+	identity := ce.Request{Action: "update", SabyID: target, SabyUUID: r.SabyUUID}
 	if r.SabyID != "" {
 		identity.Saby.ExistingCode = r.Price.TargetID
 	}
@@ -42,7 +42,7 @@ func (p *EditorPricePublisher) advanceSabyPrice(ctx context.Context, r ce.Reques
 	}
 	requestJSON, _ := json.Marshal(r.Price)
 	if s.Stage == "price-send" {
-		prices, e := sabyEditorSetPrice(card.value("PriceData"), p.Saby.priceListID, r.Price.PriceMinor)
+		prices, e := sabyEditorSetPricePair(card.value("PriceData"), p.Saby.priceListID, r.Price.PriceMinor)
 		if e != nil {
 			return ce.Result{Progress: s}, e
 		}
@@ -54,13 +54,17 @@ func (p *EditorPricePublisher) advanceSabyPrice(ctx context.Context, r ce.Reques
 		if e != nil {
 			return ce.Result{Progress: s}, e
 		}
+		state.SabyBasePriceIncluded = true
 		state.RequestHash = sabyEditorPayloadHash(requestJSON)
 		state.PreparedHash = sabyEditorPayloadHash(state.PreparedData)
 		s.Native, _ = json.Marshal(state)
 		s.Stage = "price-native-send"
-		return result("queued", "Подготовлен точный прайс СБИС; остальные поля карточки не меняются")
+		return result("queued", "Подготовлены основная цена и выбранный прайс СБИС; остальные поля карточки не меняются")
 	}
 	if s.Stage == "price-native-send" {
+		if !state.SabyBasePriceIncluded || !sabyEditorPreparedPricePair(state.PreparedData, p.Saby.priceListID, r.Price.PriceMinor) {
+			return result("needs_attention", "Подготовленный запрос СБИС не включает основную цену. Нужна проверка перед новой отправкой")
+		}
 		if len(state.PreparedData) == 0 || state.RequestHash != sabyEditorPayloadHash(requestJSON) || state.PreparedHash != sabyEditorPayloadHash(state.PreparedData) {
 			return result("needs_attention", "Подтверждение запроса цены СБИС повреждено. Отправка остановлена")
 		}
@@ -73,13 +77,14 @@ func (p *EditorPricePublisher) advanceSabyPrice(ctx context.Context, r ce.Reques
 			s.Ambiguous = true
 			return result("queued", "Ответ СБИС не получен. Проверяем цену без повторного Update")
 		}
-		return result("queued", "Цена передана в СБИС. Проверяем выбранный прайс")
+		return result("queued", "Цена передана в СБИС. Проверяем основную цену и выбранный прайс")
 	}
 	matched, e := sabyEditorPriceMatches(card, p.Saby.priceListID, r.Price.PriceMinor)
-	if e == nil && matched {
+	baseMatched, baseErr := sabyEditorBasePriceMatches(card, r.Price.PriceMinor)
+	if e == nil && matched && baseErr == nil && baseMatched {
 		s.Stage = "done"
 		s.Ambiguous = false
-		return result("synced", "Цена СБИС подтверждена чтением прайса")
+		return result("synced", "Основная цена и прайс СБИС подтверждены чтением")
 	}
 	s.Checks++
 	if s.Checks >= 90 {
@@ -108,4 +113,53 @@ func sabyEditorPriceMatches(card *sabyEditorNativeRecord, listID, minor int64) (
 		matches = e == nil && got == minor
 	}
 	return count == 1 && matches, nil
+}
+
+func sabyEditorBasePriceMatches(card *sabyEditorNativeRecord, minor int64) (bool, error) {
+	prices, err := parseSabyEditorNativeRecordSet(card.value("PriceData"))
+	if err != nil {
+		return false, err
+	}
+	index, err := sabyEditorBasePriceIndex(prices)
+	if err != nil {
+		return false, err
+	}
+	var number json.Number
+	if json.Unmarshal(prices.cell(index, "Price"), &number) != nil {
+		return false, errors.New("СБИС не вернул основную цену")
+	}
+	value, err := money.Parse(string(number))
+	return err == nil && value == minor, err
+}
+
+func sabyEditorPreparedPricePair(raw json.RawMessage, listID, minor int64) bool {
+	card, err := parseSabyEditorNativeRecord(raw)
+	if err != nil {
+		return false
+	}
+	configured, err := sabyEditorPriceMatches(card, listID, minor)
+	if err != nil || !configured {
+		return false
+	}
+	main, err := sabyEditorBasePriceMatches(card, minor)
+	return err == nil && main
+}
+
+func sabyEditorPreparedContainsBasePrice(raw json.RawMessage) bool {
+	card, err := parseSabyEditorNativeRecord(raw)
+	if err != nil {
+		return false
+	}
+	prices, err := parseSabyEditorNativeRecordSet(card.value("PriceData"))
+	if err != nil {
+		return false
+	}
+	for i := range prices.rows {
+		var value any
+		cell := prices.cell(i, "PriceList")
+		if len(cell) > 0 && json.Unmarshal(cell, &value) == nil && value == nil {
+			return true
+		}
+	}
+	return false
 }

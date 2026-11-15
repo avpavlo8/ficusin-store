@@ -24,6 +24,11 @@ import {
 } from "./adminCatalogLogic";
 import type { Category, CategoryAttribute, Product, ReviewModerationItem } from "./adminTypes";
 
+import type { ProductRemovalResult } from "./CatalogProductRemoval";
+const CatalogProductRemoval = lazy(() =>
+  import("./CatalogProductRemoval").then((module) => ({ default: module.CatalogProductRemoval })),
+);
+
 const ProductCreationPage = lazy(() =>
   import("./ProductCreationPage").then((module) => ({ default: module.ProductCreationPage })),
 );
@@ -386,6 +391,8 @@ export function Products({
   const [selected, setSelected] = useState<number[]>([]);
   const [confirmation, setConfirmation] = useState<"publish" | "delete" | null>(null);
   const [busy, setBusy] = useState(false);
+  const [removing, setRemoving] = useState<Product | null>(null);
+  const [notice, setNotice] = useState("");
   const [result, setResult] = useState<{
     published: number[];
     blocked: Array<{ productId: number; name: string; reason: string }>;
@@ -406,6 +413,7 @@ export function Products({
   const loadSequence = useRef(0);
   const mutationRevision = useRef(0);
   const locallyUpdated = useRef(new Map<number, number>());
+  const locallyDeleted = useRef(new Set<number>());
   const reload = useCallback(async () => {
     const request = ++loadSequence.current;
     const revision = mutationRevision.current;
@@ -421,7 +429,12 @@ export function Products({
           (item) => (locallyUpdated.current.get(item.id) || 0) > revision,
         );
         const ids = new Set(updated.map((item) => item.id));
-        return [...updated, ...(data.products || []).filter((item) => !ids.has(item.id))];
+        return [
+          ...updated,
+          ...(data.products || []).filter(
+            (item) => !ids.has(item.id) && !locallyDeleted.current.has(item.id),
+          ),
+        ];
       });
       setSelected([]);
     } catch (error) {
@@ -548,6 +561,7 @@ export function Products({
     () =>
       items.filter((x) => {
         if (
+          (filters.status === "all" && x.status === "archived") ||
           (filters.status !== "all" && x.status !== filters.status) ||
           (filters.stock === "positive" && (x.totalStock ?? x.stock) <= 0) ||
           (filters.stock === "nonpositive" && (x.totalStock ?? x.stock) > 0)
@@ -612,10 +626,38 @@ export function Products({
     editorURL.current = location.href;
   };
   const close = () => {
+    setCreating(false);
     setEditingId(null);
     editorDirty.current = false;
-    history.replaceState(null, "", catalogURL({ product: null, tab: null }));
+    history.replaceState(
+      null,
+      "",
+      catalogURL({ product: null, tab: null, create: null, editor: null }),
+    );
     editorURL.current = location.href;
+  };
+  const saved = (product: Product, message: string) => {
+    locallyUpdated.current.set(product.id, ++mutationRevision.current);
+    setItems((current) =>
+      current.some((item) => item.id === product.id)
+        ? current.map((item) => (item.id === product.id ? product : item))
+        : [product, ...current],
+    );
+    setNotice(message);
+    close();
+  };
+  const removed = (result: ProductRemovalResult, message: string) => {
+    if (!removing) return;
+    locallyUpdated.current.set(removing.id, ++mutationRevision.current);
+    if (result.action === "deleted") locallyDeleted.current.add(removing.id);
+    setItems((current) =>
+      result.action === "deleted"
+        ? current.filter((item) => item.id !== removing.id)
+        : current.map((item) => (item.id === removing.id ? { ...item, status: "archived" } : item)),
+    );
+    setSelected((current) => current.filter((id) => id !== removing.id));
+    setNotice(message);
+    setRemoving(null);
   };
   const publish = async () => {
     if (!selectedAreDrafts || busy) return;
@@ -677,12 +719,13 @@ export function Products({
     scoped.filter((x) => readiness.get(x.id)?.codes.includes(code)).length;
   const stockOf = (x: Product) => x.totalStock ?? x.stock;
   const base = { status: "all", stock: "all", quality: "all" };
+  const activeItems = items.filter((item) => item.status !== "archived");
   const statusTabs = [
     {
       id: "all",
       label: "Все",
       filters: base,
-      count: items.length,
+      count: activeItems.length,
       active: filters.status === "all" && filters.stock === "all" && filters.quality === "all",
     },
     {
@@ -704,14 +747,14 @@ export function Products({
       id: "attention",
       label: "Нужно доделать",
       filters: { ...base, quality: "attention" },
-      count: items.filter((x) => readiness.get(x.id)?.tasks.length).length,
+      count: activeItems.filter((x) => readiness.get(x.id)?.tasks.length).length,
       active: filters.quality === "attention",
     },
     {
       id: "stock",
       label: "Нет в наличии",
       filters: { ...base, stock: "nonpositive" },
-      count: items.filter((x) => stockOf(x) <= 0).length,
+      count: activeItems.filter((x) => stockOf(x) <= 0).length,
       active: filters.stock === "nonpositive",
     },
     {
@@ -736,36 +779,14 @@ export function Products({
           product={editing}
           canManage={can("products.manage")}
           onClose={close}
-          onSaved={(product) => {
-            locallyUpdated.current.set(product.id, ++mutationRevision.current);
-            setItems((current) => current.map((item) => (item.id === product.id ? product : item)));
-          }}
+          onSaved={saved}
         />
       </Suspense>
     );
   if (creating)
     return (
       <Suspense fallback={<p role="status">Загружаем редактор товара…</p>}>
-        <ProductCreationPage
-          canManage={can("products.manage")}
-          onSaved={(product) => {
-            setItems((current) =>
-              current.some((item) => item.id === product.id)
-                ? current.map((item) => (item.id === product.id ? product : item))
-                : [product, ...current],
-            );
-            setCreating(false);
-            setEditingId(product.id);
-            const url = new URL(location.href);
-            url.searchParams.delete("create");
-            url.searchParams.set("product", String(product.id));
-            history.replaceState(null, "", url);
-          }}
-          onClose={() => {
-            history.pushState(null, "", "/admin?section=products");
-            setCreating(false);
-          }}
-        />
+        <ProductCreationPage canManage={can("products.manage")} onSaved={saved} onClose={close} />
       </Suspense>
     );
   return (
@@ -863,6 +884,22 @@ export function Products({
       )}
       {view === "catalog" ? (
         <>
+          {notice && (
+            <p className="catalog-action-notice" role="status">
+              {notice}
+            </p>
+          )}
+          {removing && (
+            <Suspense fallback={<p role="status">Загружаем…</p>}>
+              <CatalogProductRemoval
+                key={removing.id}
+                product={removing}
+                onClose={() => setRemoving(null)}
+                onRemoved={removed}
+                onBusyChange={setBusy}
+              />
+            </Suspense>
+          )}
           <nav className="catalog-status-tabs" aria-label="Состояние товаров">
             {statusTabs.map((tab) => (
               <button
@@ -1261,6 +1298,31 @@ export function Products({
                                   aria-hidden="true"
                                 >
                                   <path d="M4 20h4L19 9l-4-4L4 16z" />
+                                </svg>
+                              </button>
+                            )}
+                            {can("catalog.delete") && product.status !== "archived" && (
+                              <button
+                                type="button"
+                                className="catalog-icon-button catalog-remove-button"
+                                aria-label={`Удалить ${product.name}`}
+                                data-catalog-remove={product.id}
+                                title="Удалить"
+                                disabled={busy}
+                                onClick={() => {
+                                  setRemoving(product);
+                                }}
+                              >
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  width="16"
+                                  height="16"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  aria-hidden="true"
+                                >
+                                  <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" />
                                 </svg>
                               </button>
                             )}

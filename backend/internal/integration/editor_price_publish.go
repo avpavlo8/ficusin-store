@@ -41,11 +41,12 @@ type EditorPricePublisher struct {
 	Mock         bool
 }
 type editorPriceState struct {
-	OperationID  string          `json:"operationId,omitempty"`
-	PreparedData json.RawMessage `json:"preparedData,omitempty"`
-	PreparedHash string          `json:"preparedHash,omitempty"`
-	BaselineHash string          `json:"baselineHash,omitempty"`
-	RequestHash  string          `json:"requestHash,omitempty"`
+	SabyBasePriceIncluded bool            `json:"sabyBasePriceIncluded,omitempty"`
+	OperationID           string          `json:"operationId,omitempty"`
+	PreparedData          json.RawMessage `json:"preparedData,omitempty"`
+	PreparedHash          string          `json:"preparedHash,omitempty"`
+	BaselineHash          string          `json:"baselineHash,omitempty"`
+	RequestHash           string          `json:"requestHash,omitempty"`
 }
 
 func (p *EditorPricePublisher) Advance(ctx context.Context, ch string, r ce.Request, s ce.Progress) (ce.Result, error) {

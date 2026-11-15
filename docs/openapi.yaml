@@ -4286,6 +4286,41 @@ paths:
         default:
           $ref: "#/components/responses/ValidationError"
   /admin/products/{id}:
+    delete:
+      operationId: delete_admin_products_id
+      x-source: backend/internal/httpapi/admin_product_removal.go#removeProduct
+      tags: [Administration]
+      security:
+        - Session: []
+      x-permissions: [catalog.delete]
+      description: >-
+        Removes a free never-published draft. Published cards or drafts with stock,
+        reservations, external links, reviews or historical references are archived
+        locally. Photos, order history and external marketplace/Saby cards are preserved
+        for archived products. No external delete is called.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Local removal result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [productId, action]
+                properties:
+                  productId:
+                    type: integer
+                  action:
+                    type: string
+                    enum: [deleted, archived]
+        default:
+          $ref: "#/components/responses/ValidationError"
     patch:
       operationId: patch_admin_products_id
       responses:

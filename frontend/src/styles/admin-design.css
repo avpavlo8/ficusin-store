@@ -2512,6 +2512,17 @@
   background: var(--ws-soft);
   color: var(--ws-ink);
 }
+.admin-page .ws-main .catalog-remove-button {
+  color: var(--ws-rust);
+}
+.admin-page .ws-main .catalog-icon-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.admin-page .ws-main .catalog-action-notice {
+  margin: 0 0 16px;
+  color: var(--ws-ink);
+}
 @media (max-width: 700px) {
   .admin-page .ws-main .catalog-page-heading {
     flex-direction: row;
@@ -2592,8 +2603,18 @@
     grid-column: 3;
     font-size: 13px;
   }
-  .admin-page .ws-main table.products :is(.catalog-channels-cell, .catalog-actions-cell) {
+  .admin-page .ws-main table.products .catalog-channels-cell {
     display: none;
+  }
+  .admin-page .ws-main table.products .catalog-actions-cell {
+    display: flex;
+    justify-content: flex-end;
+    grid-column: 4;
+    grid-row: 3;
+  }
+  .admin-page .ws-main .catalog-actions-cell .catalog-icon-button {
+    width: 40px;
+    height: 40px;
   }
 }
 

@@ -34,6 +34,7 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 		{"POST", "/api/v1/admin/products/import", `{"codes":["a"]}`},
 		{"POST", "/api/v1/admin/products/merge", "{}"},
 		{"DELETE", "/api/v1/admin/products", `{"productIds":[1]}`},
+		{"DELETE", "/api/v1/admin/products/1", ""},
 		{"DELETE", "/api/v1/admin/categories/1", ""},
 
 		{"DELETE", "/api/v1/admin/collection-definitions/1", ""},

@@ -13,9 +13,24 @@ func TestSabyRevisionRetainsIdentityBeforeBusinessCodeExists(t *testing.T) {
 	receipt := Progress{Stage: "hydrate", CreateAttempted: true, IDs: ids, Native: json.RawMessage(`{"created":true,"preparedHash":"old","images":[{}]}`), UpdateRequest: &before}
 	for _, status := range []string{"failed", "synced"} {
 		fresh, ok := PendingPublicationProgress("saby", status, before, next, receipt)
-		if !ok || fresh.Stage != "hydrate" || fresh.IDs != ids || !fresh.CreateAttempted || len(fresh.Native) != 0 || fresh.UpdateRequest != nil {
+		if !ok || fresh.Stage != "hydrate" || fresh.IDs != ids || !fresh.CreateAttempted || fresh.UpdateRequest != nil {
 			t.Fatalf("%s revision lost native identity or reused old content: %+v/%t", status, fresh, ok)
 		}
+		var initial struct {
+			Created bool `json:"created"`
+		}
+		if len(fresh.Native) > 0 {
+			if err := json.Unmarshal(fresh.Native, &initial); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if initial.Created != (status == "failed") {
+			t.Fatalf("initial price obligation lost or reintroduced after %s: %s", status, fresh.Native)
+		}
+		if status == "failed" && string(fresh.Native) != `{"created":true}` {
+			t.Fatal("old prepared state survived revision", string(fresh.Native))
+		}
+
 	}
 	for _, scenario := range []string{"ambiguous", "different variant", "different native id", "different link", "invalid id"} {
 		t.Run(scenario, func(t *testing.T) {

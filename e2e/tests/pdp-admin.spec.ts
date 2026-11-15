@@ -70,7 +70,7 @@ test("@desktop владелец открывает из PDP общий реда�
   await expect(editor.getByRole('tab')).toHaveCount(3);
   await editor.getByRole('textbox',{name:'О растении',exact:true}).fill('Новое описание из PDP');
   await editor.getByRole('button',{name:'Сохранить',exact:true}).click();
-  await expect(editor.locator('.editor-notice')).toContainText('Изменения товара сохранены');
+  await expect(editor).toHaveCount(0);await expect(page.locator('.catalog-action-notice')).toContainText('Изменения товара сохранены');await page.goto('/admin?section=products&product=1&editor=media');await expect(editor.getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();
   expect(update?.description).toBe('Новое описание из PDP');
   await page.reload();
   await expect(editor.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Новое описание из PDP');
@@ -140,11 +140,11 @@ for(const role of ['owner','manager'] as const)test(`@desktop @phone ${role} ope
   await page.goto('/product/1');await page.getByRole('button',{name:'Фотографии',exact:true}).click();
   await expect(editor.getByRole('tab',{name:'Товар',exact:true})).toHaveAttribute('aria-selected','true');
   await expect(gallery).toBeFocused();await expect(gallery.locator('.editor-gallery-cover img')).toHaveAttribute('alt','plant.png');expect(f.uploadCount).toBe(0);
-  await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(editor.locator('.editor-notice')).toContainText('Изменения товара сохранены');
+  await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(editor).toHaveCount(0);await expect(page.locator('.catalog-action-notice')).toContainText('Изменения товара сохранены');await page.goto('/admin?section=products&product=1&editor=media');await expect(editor.getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();
   expect(f.uploadCount).toBe(1);const cover=f.media.find(photo=>photo.variantId===undefined&&photo.primary)!;expect(cover.url).toContain('uploaded=');
   await expect(gallery.locator('.editor-gallery-cover img')).toHaveAttribute('src',cover.url);
   await gallery.getByRole('button',{name:/^Удалить фото /}).first().click();
-  await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect.poll(()=>f.mutations.filter(req=>req.method==='DELETE').length).toBe(1);
+  await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(editor).toHaveCount(0);await expect.poll(()=>f.mutations.filter(req=>req.method==='DELETE').length).toBe(1);await page.goto('/admin?section=products&product=1&editor=media');
   expect(f.mutations.find(req=>req.method==='DELETE')!.path).toMatch(/^\/api\/v1\/admin\/variants\/10\/media\/\d+$/);
   await page.reload();await expect(gallery).toBeFocused();await expect(gallery.locator('.editor-gallery-cover img')).toHaveAttribute('src',cover.url);
 });
@@ -156,7 +156,7 @@ test('@desktop administrator opens the same PDP photo editor with upload access 
   await expect(gallery.getByRole('button',{name:'Удалить обложку',exact:true})).toBeDisabled();
   await gallery.locator('input[type="file"]').setInputFiles({name:'admin.png',mimeType:'image/png',buffer:png});
   await expect(gallery.getByRole('button',{name:/^Фото \d+: admin.png\./})).toBeVisible();expect(f.uploadCount).toBe(0);
-  await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(editor.locator('.editor-notice')).toContainText('Изменения товара сохранены');
+  await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(editor).toHaveCount(0);await expect(page.locator('.catalog-action-notice')).toContainText('Изменения товара сохранены');await page.goto('/admin?section=products&product=1&editor=media');await expect(editor.getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();
   expect(f.uploadCount).toBe(1);expect(f.mutations.filter(req=>req.method==='DELETE')).toHaveLength(0);
   expect(f.mutations.filter(req=>req.path.endsWith('/editor-plan')&&req.method==='PUT')).toHaveLength(0);
   expect(f.mutations.filter(req=>req.path.endsWith('/editor-plan/sync-existing'))).toHaveLength(1);
