@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify, cashier-inspect, cashier-backup, cashier-followup-backup, cashier-staging-deploy, cashier-staging-restore, cashier-production-activate, cashier-production-restart, cashier-production-verify, cashier-ended-invoice-audit, cashier-order-23-audit, cashier-order-23-rpc, cashier-order-23-discovery, cashier-order-23-regulations, cashier-created-price-audit, cashier-created-price-default, cashier-buyer-read, native-buyer-go-verify, cashier-online-activate, cashier-online-regulation-correct, order-23-prepare, order-23-enqueue, fil-price-inspect, fil-price-prepare, fil-price-approve, order-74-amendment-read, order-74-amendment-apply]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify, cashier-inspect, cashier-backup, cashier-followup-backup, cashier-staging-deploy, cashier-staging-restore, cashier-production-activate, cashier-production-restart, cashier-production-verify, cashier-ended-invoice-audit, cashier-order-23-audit, cashier-order-23-rpc, cashier-order-23-discovery, cashier-order-23-regulations, cashier-created-price-audit, cashier-created-price-default, cashier-buyer-read, native-buyer-go-verify, cashier-online-activate, cashier-online-regulation-correct, order-23-prepare, order-23-enqueue, fil-price-inspect, fil-price-prepare, fil-price-approve, order-74-amendment-read, order-74-amendment-apply, order-15-resume-inspect, order-15-resume-apply]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -395,3 +395,31 @@ jobs:
           RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
           ORDER74_AMENDMENT_OPERATION: ${{ inputs.operation }}
         run: python3 scripts/order-74-amendment.py
+
+  order-15-resume:
+    if: startsWith(inputs.operation, 'order-15-resume-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: fixed-order15-readonly-reconciliation
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_commit }}
+          path: release-source
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: release-source/backend/go.mod
+          cache-dependency-path: release-source/backend/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify native operator release and resume read-only reconciliation
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
+          CASHIER_RESUME_OPERATION: ${{ inputs.operation }}
+        run: python3 scripts/cashier-resume.py

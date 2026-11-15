@@ -1,0 +1,188 @@
+// Temporary fixed-order operations command. Do not ship this command.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"time"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/cashierstock"
+	"github.com/avpavlo8/ficusin-store/backend/internal/config"
+	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/store"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type private struct {
+	DatabaseURL, CA                               string
+	VerifyTLS                                     bool
+	SabyAppClientID, SabyAppSecret, SabySecretKey string
+	SabyPointID, SabyPriceListID                  int64
+}
+type snapshot struct {
+	Native, Request, State json.RawMessage
+	History, AttemptID     string
+	OrderID                int64
+}
+type queryer interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+// Native row is locked FIRST on apply, matching the worker lock order. The
+// whole native row and immutable attempt history are compared, not rewritten.
+func readSnapshot(ctx context.Context, q queryer) (snapshot, error) {
+	var s snapshot
+	var valid bool
+	err := q.QueryRow(ctx, `SELECT to_jsonb(n),n.request,n.provider_state,o.id,
+ n.status='needs_attention' AND n.lease_token IS NULL AND n.lease_until IS NULL
+ AND n.pending_command IS NULL AND n.command_attempted_at IS NULL AND n.command_reply IS NULL AND n.command_error=''
+ AND r.cancelled_at IS NOT NULL AND r.completed_at IS NULL AND o.status='cancelled' AND o.payment_method='on_delivery'
+ AND (SELECT count(*) FROM cashier_native_attempts WHERE reservation_id=r.id)=7
+ AND a.command->>'kind'='remove' AND a.reply IS NULL AND a.replied_at IS NULL AND a.error=''
+ AND EXISTS(SELECT 1 FROM admin_users au JOIN customers c ON c.id=au.customer_id WHERE au.customer_id=1 AND au.role='owner' AND au.is_active AND c.is_active),
+ a.command_id::TEXT,
+ (SELECT md5(jsonb_agg(to_jsonb(h) ORDER BY attempted_at,command_id)::TEXT) FROM cashier_native_attempts h WHERE h.reservation_id=r.id)
+ FROM cashier_native_reservations n JOIN cashier_stock_reservations r ON r.id=n.reservation_id JOIN orders o ON o.id=r.order_id
+ JOIN LATERAL(SELECT * FROM cashier_native_attempts WHERE reservation_id=r.id ORDER BY attempted_at DESC,command_id DESC LIMIT 1)a ON TRUE
+ WHERE r.id=1 AND o.order_number='0000-15'`).Scan(&s.Native, &s.Request, &s.State, &s.OrderID, &valid, &s.AttemptID, &s.History)
+	if err != nil || !valid || len(s.Request) == 0 || len(s.State) == 0 {
+		return s, errors.New("fixed cancelled operation or owner changed")
+	}
+	return s, nil
+}
+func open(ctx context.Context, input private, readOnly bool) (*pgxpool.Pool, error) {
+	parsed, err := url.Parse(input.DatabaseURL)
+	if err != nil || parsed.Path != "/default_db" || parsed.User == nil || parsed.User.Username() == "" {
+		return nil, errors.New("database scope")
+	}
+	query := parsed.Query()
+	if readOnly {
+		query.Set("default_transaction_read_only", "on")
+	} else {
+		query.Set("default_transaction_read_only", "off")
+	}
+	if input.VerifyTLS {
+		query.Set("sslmode", "verify-full")
+	} else {
+		query.Set("sslmode", "require")
+	}
+	parsed.RawQuery = query.Encode()
+	pool, err := store.Open(ctx, config.Database{URL: parsed.String(), CA: input.CA, VerifyTLS: input.VerifyTLS, MaxConnections: 1})
+	if err != nil {
+		return nil, errors.New("database connect failed")
+	}
+	var db, user, ro string
+	var encrypted bool
+	err = pool.QueryRow(ctx, `SELECT current_database(),current_user,current_setting('transaction_read_only'),(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid())`).Scan(&db, &user, &ro, &encrypted)
+	want := "off"
+	if readOnly {
+		want = "on"
+	}
+	if err != nil || db != "default_db" || user != parsed.User.Username() || ro != want || !encrypted {
+		pool.Close()
+		return nil, errors.New("database encrypted session guard failed")
+	}
+	return pool, nil
+}
+func main() {
+	if err := run(); err != nil {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"ok": false, "reason": "fixed_cashier_reconciliation_failed", "errorType": fmt.Sprintf("%T", err), "guard": err.Error()})
+		os.Exit(1)
+	}
+}
+func run() error {
+	apply := len(os.Args) == 2 && os.Args[1] == "--apply"
+	if os.Getenv("GITHUB_ACTIONS") != "true" || len(os.Args) != 1 && !apply || apply && os.Getenv("GITHUB_RUN_ATTEMPT") != "1" {
+		return errors.New("actions first attempt only")
+	}
+	var input private
+	if json.NewDecoder(os.Stdin).Decode(&input) != nil || input.SabyPointID != 278 || input.SabyPriceListID != 6 {
+		return errors.New("private input scope")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+	ro, err := open(ctx, input, true)
+	if err != nil {
+		return err
+	}
+	s, err := readSnapshot(ctx, ro)
+	ro.Close()
+	if err != nil {
+		return err
+	}
+	var request cashierstock.Request
+	if json.Unmarshal(s.Request, &request) != nil || request.OrderID != s.OrderID {
+		return errors.New("frozen request scope")
+	}
+	client := integration.NewSabyClient(input.SabyAppClientID, input.SabyAppSecret, input.SabySecretKey, input.SabyPointID, input.SabyPriceListID)
+	proof, err := integration.ApprovedCashierCancellationReadback(ctx, client, request, s.State)
+	if err != nil {
+		return err
+	}
+	proofTime := time.Now()
+	output := map[string]any{"ok": true, "operation": "inspect", "order": "0000-15", "reservationId": 1, "actorCustomerId": 1, "attemptCount": 7, "preservedUnknownAttemptId": s.AttemptID, "proof": proof, "wouldQueueReadOnlyVerification": true, "nativeWrites": false}
+	if !apply {
+		return json.NewEncoder(os.Stdout).Encode(output)
+	}
+	rw, err := open(ctx, input, false)
+	if err != nil {
+		return err
+	}
+	defer rw.Close()
+	tx, err := rw.Begin(ctx)
+	if err != nil {
+		return errors.New("begin failed")
+	}
+	defer tx.Rollback(context.Background())
+	if _, err = tx.Exec(ctx, `SET LOCAL lock_timeout='3s'`); err != nil {
+		return errors.New("transaction guard failed")
+	}
+	var id int64
+	if err = tx.QueryRow(ctx, `SELECT reservation_id FROM cashier_native_reservations WHERE reservation_id=1 FOR UPDATE`).Scan(&id); err != nil || id != 1 {
+		return errors.New("native lock failed")
+	}
+	fresh, err := readSnapshot(ctx, tx)
+	if err != nil {
+		return err
+	}
+	// Compare JSONB in PostgreSQL: do not depend on map ordering or whitespace.
+	var same bool
+	if err = tx.QueryRow(ctx, `SELECT $1::jsonb=$2::jsonb`, fresh.Native, s.Native).Scan(&same); err != nil || !same || fresh.History != s.History || fresh.AttemptID != s.AttemptID || fresh.OrderID != s.OrderID {
+		return errors.New("snapshot changed; no metadata written")
+	}
+	canonical, err := cashierstock.ReadRequest(ctx, tx, 1, request.Config, request.BuyerID)
+	if err != nil || cashierstock.Fingerprint(canonical) != cashierstock.Fingerprint(request) {
+		return errors.New("canonical current request changed")
+	}
+	// Lock existing actor so permissions cannot be revoked halfway through audit.
+	var actor int64
+	if err = tx.QueryRow(ctx, `SELECT au.customer_id FROM admin_users au JOIN customers c ON c.id=au.customer_id WHERE au.customer_id=1 AND au.role='owner' AND au.is_active AND c.is_active FOR SHARE OF au,c`).Scan(&actor); err != nil || actor != 1 {
+		return errors.New("owner changed")
+	}
+	if time.Since(proofTime) > 30*time.Second {
+		return errors.New("native proof expired")
+	}
+	tag, err := tx.Exec(ctx, `UPDATE cashier_native_reservations n SET status='queued',next_attempt_at=clock_timestamp() WHERE reservation_id=1 AND to_jsonb(n)=$1::jsonb`, s.Native)
+	if err != nil || tag.RowsAffected() != 1 {
+		return errors.New("native row CAS failed")
+	}
+	before, _ := json.Marshal(map[string]any{"status": "needs_attention", "phase": "verify-remove", "polls": 10, "unknownAttemptId": s.AttemptID, "historyFingerprint": s.History})
+	after, _ := json.Marshal(map[string]any{"status": "queued", "reason": "operator_removed_exact_native_reserve", "proof": proof, "preservedRequestFingerprint": cashierstock.Fingerprint(request), "preservedProviderStateFingerprint": cashierstock.Fingerprint(json.RawMessage(s.State)), "nativeWrites": false, "removeReplay": false})
+	if _, err = tx.Exec(ctx, `INSERT INTO admin_audit_log(actor_customer_id,actor_role,action,entity_type,entity_id,before_data,after_data) VALUES(1,'owner','cashier.reserve.reconciliation.resume','cashier_reservation','1',$1,$2)`, before, after); err != nil {
+		return errors.New("audit failed; metadata rolled back")
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return errors.New("metadata commit uncertain; inspect before retry")
+	}
+	output["operation"] = "resume"
+	output["metadataResumed"] = true
+	output["onlyChangedNativeColumns"] = []string{"status", "next_attempt_at"}
+	output["originalAttemptPreserved"] = true
+	output["removeReplayed"] = false
+	return json.NewEncoder(os.Stdout).Encode(output)
+}

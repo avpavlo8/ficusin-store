@@ -1,0 +1,93 @@
+// Temporary operations-only diagnostics. Never ship or commit this file.
+package integration
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/cashierstock"
+)
+
+type cashierReadOnlyGuardTransport struct {
+	base          http.RoundTripper
+	auth, service string
+	mu            sync.Mutex
+	reads         []string
+	blocked       string
+}
+
+func (t *cashierReadOnlyGuardTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if req.Method != http.MethodPost {
+		return nil, errors.New("diagnostic HTTP method blocked")
+	}
+	if req.URL.String() == t.auth {
+		return t.base.RoundTrip(req)
+	}
+	if req.URL.String() != t.service {
+		return nil, errors.New("diagnostic endpoint blocked")
+	}
+	body, err := io.ReadAll(io.LimitReader(req.Body, (1<<20)+1))
+	if err != nil {
+		return nil, err
+	}
+	req.Body.Close()
+	if len(body) > 1<<20 {
+		return nil, errors.New("diagnostic request too large")
+	}
+	var rpc struct {
+		Method string `json:"method"`
+	}
+	if json.Unmarshal(body, &rpc) != nil || rpc.Method == "" {
+		return nil, errors.New("diagnostic invalid RPC")
+	}
+	switch rpc.Method {
+	case "СчетСкИсх.ПрочитатьДляУчастника", "СчетСкИсх.DocNomList", "Reserve.ListByDn":
+		t.reads = append(t.reads, rpc.Method)
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		return t.base.RoundTrip(req)
+	default:
+		t.blocked = rpc.Method
+		return nil, errors.New("diagnostic mutation blocked before transport")
+	}
+}
+
+// ApprovedCashierCancellationReadback executes the canonical read-only Next,
+// never Execute. Its proposed receipt is checked but never written by this helper.
+func ApprovedCashierCancellationReadback(ctx context.Context, client *SabyClient, request cashierstock.Request, native json.RawMessage) (map[string]any, error) {
+	var state cashierReserveReceipt
+	if client == nil || !client.Configured() || json.Unmarshal(native, &state) != nil {
+		return nil, errors.New("invalid native scope")
+	}
+	wantedConfig := cashierstock.Config{WarehouseID: 283, MovementWarehouseID: 284, OrganizationID: 259, RegulationID: 121326}
+	if request.ReservationID != 1 || request.OrderID <= 0 || request.OrderNumber != "0000-15" || request.Terminal != "cancelled" || len(request.Lines) != 0 || request.BuyerID != 18749 || request.Config != wantedConfig || state.Version != 1 || state.RequestHash != cashierstock.Fingerprint(request) || state.Phase != "verify-remove" || state.Index != 0 || state.Polls != 10 || state.Pending != nil {
+		return nil, errors.New("request or progress changed")
+	}
+	if state.Identity.ID != 42873 || state.Identity.UUID != "01a1de70-e24d-7d26-8841-e6a2189004dc" || state.Identity.BuyerID != 18749 || state.Identity.Config != wantedConfig || state.Number != "FCR-1" || state.Marker != "Резерв заказа 0000-15" || len(state.Rows) != 1 || state.Rows[0].ID != 175814 || state.Rows[0].Line.Quantity != 1 || state.Rows[0].Line.UnitPrice != "5550.00" || state.Rows[0].Line.NomenclatureID <= 0 {
+		return nil, errors.New("fixed invoice changed")
+	}
+	old := client.client
+	base := old.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	transport := &cashierReadOnlyGuardTransport{base: base, auth: client.authURL, service: client.serviceURL}
+	client.client = &http.Client{Transport: transport, Timeout: old.Timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	defer func() { client.client = old }()
+	plan, err := (&SabyCashierReserveProvider{Client: client}).Next(ctx, request, cashierstock.Progress{Native: native})
+	if err != nil {
+		return nil, errors.New("native readback failed")
+	}
+	var next cashierReserveReceipt
+	if plan.Attention || plan.Done || plan.Command != nil || plan.Message != "" || plan.RetryAfter != 0 || json.Unmarshal(plan.Native, &next) != nil || next.Phase != "release" || next.Index != 1 || next.Polls != 0 || next.Pending != nil || next.RequestHash != state.RequestHash || next.Identity != state.Identity || !cashierSameRows(state.Rows, next.Rows) || next.Marker != state.Marker || next.Number != state.Number || transport.blocked != "" {
+		return nil, errors.New("canonical readback did not confirm empty reserve")
+	}
+	return map[string]any{"readOnly": true, "nativeWrites": false, "invoiceId": 42873, "rowId": 175814, "buyerId": 18749, "unposted": true, "sameOwnedRow": true, "reserveEmpty": true, "fromPhase": state.Phase, "nextPhase": next.Phase, "nextCommand": false, "verifiedAt": time.Now().UTC(), "readMethods": transport.reads}, nil
+}
