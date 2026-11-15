@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -202,5 +202,36 @@ jobs:
         with:
           name: owned-native-invoice-edit-${{ github.run_id }}
           path: saby-owned-invoice-edit.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+  native-go-verify:
+    if: inputs.operation == 'native-go-verify'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 46d95fb74c2e9c5c133b1dd700d40222f1bbed29
+          path: release-source
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.11"
+          cache-dependency-path: release-source/backend/go.sum
+      - name: Verify exact candidate native reserve adapter only on owned test SKU
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
+        run: python3 scripts/saby-owned-reserve-go-verify.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owned-native-go-reserve-${{ github.run_id }}
+          path: saby-owned-reserve-go-evidence.json
           if-no-files-found: ignore
           retention-days: 30
