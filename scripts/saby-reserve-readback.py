@@ -25,10 +25,10 @@ def main():
     if not token:
         raise r.guards.PreflightError('auth_failed')
     print('::add-mask::'+token)
-    r.READS.update({'Документ.ПрочитатьДляУчастника','СчетСкИсх.DocNomList','Reserve.ListByDn'})
+    r.READS.update({'СчетСкИсх.ПрочитатьДляУчастника','СчетСкИсх.DocNomList','Reserve.ListByDn'})
     reserve=r.rpc('Reserve.ListByDn',{'DocNomIds':[ROW]},token,7)
     print(json.dumps({'readOnly':True,'ownedRow':ROW,'reserve':reserve},ensure_ascii=False))
-    answer = r.request(r.SERVICE, {'jsonrpc':'2.0','protocol':7,'method':'Документ.ПрочитатьДляУчастника','params':{'ИдО':DOC,'ИмяМетода':'Документ.СписокХраним','ДопПоля':{'ИмяОбъекта':'СчетСкИсх'}},'id':1},token)
+    answer = r.request(r.SERVICE, {'jsonrpc':'2.0','protocol':7,'method':'СчетСкИсх.ПрочитатьДляУчастника','params':{'ИдО':DOC,'ИмяМетода':'СчетСкИсх.ListLite','ДопПоля':{'ИмяОбъекта':'СчетСкИсх'}},'id':1},token)
     if answer.get('error'):
         error=answer['error']
         print(json.dumps({'readOnly':True,'documentUUID':UUID,'apiError':{k:error.get(k) for k in ['code','message','details']}},ensure_ascii=False))
@@ -53,6 +53,18 @@ def main():
     print(json.dumps({'lines':[{k:line.get(k) for k in names} for line in rows],'lineSchema':[c for c in lines.get('s',[]) if c.get('n') in names]},ensure_ascii=False))
     reserve=r.rpc('Reserve.ListByDn',{'DocNomIds':[ROW]},token,6)
     print(json.dumps({'reserve':reserve},ensure_ascii=False))
+    if os.environ.get('NATIVE_RESERVE_ACTION')=='invoice-template':
+        if os.environ.get('GITHUB_RUN_ATTEMPT')!='1':raise r.guards.PreflightError('first_attempt_only')
+        filter_record=r.record([('ВызовИзБраузера','Логическое',True),('ИмяОбъекта','Строка','СчетСкИсх'),('ТипДокумента','Число целое',231),('Регламент','Число целое',121326),('ДокументНашаОрганизация','Связь',259)])
+        attempt={'method':'СчетСкИсх.Создать','params':{'Фильтр':filter_record,'ИмяМетода':'СчетСкИсх.ListLite'},'paymentRequested':False,'fiscalRequested':False,'firstAttempt':True}
+        path=Path('saby-owned-invoice-template.json');path.write_text(json.dumps({'attempt':attempt},ensure_ascii=False))
+        r.READS.add('СчетСкИсх.Создать')
+        reply=r.request(r.SERVICE,{'jsonrpc':'2.0','protocol':7,'method':attempt['method'],'params':attempt['params'],'id':1},token)
+        path.write_text(json.dumps({'attempt':attempt,'reply':reply},ensure_ascii=False))
+        if reply.get('error'):
+            print(json.dumps({'templateError':reply['error']},ensure_ascii=False));return 1
+        template=reply.get('result') or {};values=r.fields(template)
+        print(json.dumps({'templateSchema':template.get('s'),'templateIdentity':{k:values.get(k) for k in ['@Документ','ИдентификаторДокумента','ТипДокумента','ТипДокумента.ТипДокумента','ДокументНашаОрганизация','СкладскойДокумент.Склад','Лицо1','Регламент','Дата','Номер','Удален']}},ensure_ascii=False))
     if os.environ.get('NATIVE_RESERVE_ACTION')=='cycle':
         if os.environ.get('GITHUB_RUN_ATTEMPT')!='1' or r.rows(reserve):
             raise r.guards.PreflightError('owned_cycle_requires_first_attempt_empty_reserve')

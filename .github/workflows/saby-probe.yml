@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -132,7 +132,7 @@ jobs:
         run: python3 scripts/production-cashier-audit.py
 
   native-reserve-read:
-    if: inputs.operation == 'native-reserve-read' || inputs.operation == 'native-reserve-cycle'
+    if: inputs.operation == 'native-reserve-read' || inputs.operation == 'native-reserve-cycle' || inputs.operation == 'native-invoice-prepare'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -144,12 +144,19 @@ jobs:
         env:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-          NATIVE_RESERVE_ACTION: ${{ inputs.operation == 'native-reserve-cycle' && 'cycle' || 'read' }}
+          NATIVE_RESERVE_ACTION: ${{ inputs.operation == 'native-reserve-cycle' && 'cycle' || inputs.operation == 'native-invoice-prepare' && 'invoice-template' || 'read' }}
         run: python3 scripts/saby-reserve-readback.py
       - uses: actions/upload-artifact@v4
         if: always() && inputs.operation == 'native-reserve-cycle'
         with:
           name: owned-native-reserve-cycle-${{ github.run_id }}
           path: saby-owned-reserve-cycle.json
+          if-no-files-found: ignore
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.operation == 'native-invoice-prepare'
+        with:
+          name: owned-native-invoice-template-${{ github.run_id }}
+          path: saby-owned-invoice-template.json
           if-no-files-found: ignore
           retention-days: 30
