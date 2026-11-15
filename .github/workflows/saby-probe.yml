@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify, cashier-inspect, cashier-backup, cashier-staging-deploy, cashier-staging-restore, cashier-production-activate, cashier-production-restart, cashier-production-verify, cashier-order-23-audit, cashier-order-23-rpc, cashier-order-23-discovery, cashier-order-23-regulations, cashier-created-price-audit, cashier-created-price-default, cashier-buyer-read, native-buyer-go-verify, cashier-online-activate, cashier-online-regulation-correct, order-23-prepare, order-23-enqueue, fil-price-inspect, fil-price-prepare, fil-price-approve]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify, cashier-inspect, cashier-backup, cashier-staging-deploy, cashier-staging-restore, cashier-production-activate, cashier-production-restart, cashier-production-verify, cashier-order-23-audit, cashier-order-23-rpc, cashier-order-23-discovery, cashier-order-23-regulations, cashier-created-price-audit, cashier-created-price-default, cashier-buyer-read, native-buyer-go-verify, cashier-online-activate, cashier-online-regulation-correct, order-23-prepare, order-23-enqueue, fil-price-inspect, fil-price-prepare, fil-price-approve, order-74-amendment-read, order-74-amendment-apply]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -367,3 +367,31 @@ jobs:
           FIL_REPAIR_DRAFT_ID: ${{ inputs.price_draft_id }}
           FIL_REPAIR_FINGERPRINT: ${{ inputs.price_fingerprint }}
         run: python3 scripts/fil-price-repair.py
+
+  order-74-amendment:
+    if: startsWith(inputs.operation, 'order-74-amendment-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: fixed-order74-amendment
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.operation == 'order-74-amendment-read' && '358bddc2528438822f1d38595b750306100c1dea' || inputs.expected_commit }}
+          path: release-source
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: release-source/backend/go.mod
+          cache-dependency-path: release-source/backend/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify or approve the exact fixed realization configuration
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
+          ORDER74_AMENDMENT_OPERATION: ${{ inputs.operation }}
+        run: python3 scripts/order-74-amendment.py

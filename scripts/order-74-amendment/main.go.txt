@@ -1,0 +1,133 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/url"
+	"os"
+	"time"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/config"
+	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
+	"github.com/avpavlo8/ficusin-store/backend/internal/store"
+)
+
+type private struct {
+	DatabaseURL, CA                               string
+	VerifyTLS                                     bool
+	SabyAppClientID, SabyAppSecret, SabySecretKey string
+	SabyPointID, SabyPriceListID                  int64
+}
+
+type fixedVerifier struct {
+	Provider *integration.SabyOrderRealizationProvider
+}
+
+func (v fixedVerifier) VerifyRegulationAmendment(ctx context.Context, before, effective ordersale.Request, p ordersale.Progress) (ordersale.RegulationAmendmentVerification, error) {
+	var empty ordersale.RegulationAmendmentVerification
+	if before.IntentID != 1 || before.Event.OrderID != 74 || before.Event.OrderNumber != "0000-23" || before.OperationKey != "f6d636c3-d0e3-4851-95ec-90a08ee35bc4" || before.RegulationID != 122650 || effective.RegulationID != 122498 || before.ExecutionMode != "live" || before.SiteWarehouseID != 1 || before.NativeWarehouseID != 283 || before.MovementWarehouseID != 284 || before.OrganizationID != 259 || before.BuyerID != 18749 || len(before.Event.Lines) != 1 {
+		return empty, errors.New("scope")
+	}
+	line := before.Event.Lines[0]
+	if line.VariantID != 59 || line.SabyID != "1117" || line.Quantity != 1 || line.UnitPrice != "3827.00" {
+		return empty, errors.New("line scope")
+	}
+	result, err := v.Provider.VerifyRegulationAmendment(ctx, before, effective, p)
+	if err != nil {
+		return result, err
+	}
+	if result.Proof.DocumentID != "42876" || result.Proof.DocumentUUID != "77c786ec-67d3-4417-93eb-30c60df0ef85" || result.Proof.RegulationID != 122498 || result.Proof.PublicRegulationUUID != "8861254e-4354-11e1-9d64-005056a63fed" || result.Proof.PublicRegulationName != "Реализация" || !result.Proof.EmptyLines {
+		return empty, errors.New("native scope")
+	}
+	return result, nil
+}
+
+func main() {
+	if err := run(); err != nil {
+        reason:="fixed_order74_regulation_amendment_failed"
+        for _,known:=range []string{"actions only","invalid mode","first attempt only","private input missing","environment scope","database scope","fixed publication changed","owner identity ambiguous","scope","line scope","native scope","encrypted transport required"} { if err.Error()==known {reason=known;break} }
+        _=json.NewEncoder(os.Stdout).Encode(map[string]string{"ok":"false","reason":reason,"errorType":fmt.Sprintf("%T",err)})
+		os.Exit(1)
+	}
+}
+func run() error {
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		return errors.New("actions only")
+	}
+	apply := len(os.Args) == 2 && os.Args[1] == "--apply"
+	if len(os.Args) > 1 && !apply {
+		return errors.New("invalid mode")
+	}
+	if apply && os.Getenv("GITHUB_RUN_ATTEMPT") != "1" {
+		return errors.New("first attempt only")
+	}
+	var input private
+	if json.NewDecoder(os.Stdin).Decode(&input) != nil {
+		return errors.New("private input missing")
+	}
+	parsed, err := url.Parse(input.DatabaseURL)
+	if err != nil || parsed.Path != "/default_db" || parsed.User == nil || input.SabyPointID != 278 || input.SabyPriceListID != 6 {
+		return errors.New("environment scope")
+	}
+    tlsOptions:=parsed.Query()
+    if input.VerifyTLS { tlsOptions.Set("sslmode","verify-full") } else { tlsOptions.Set("sslmode","require") }
+    parsed.RawQuery=tlsOptions.Encode()
+	if !apply {
+		query := parsed.Query()
+		query.Set("default_transaction_read_only", "on")
+		parsed.RawQuery = query.Encode()
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 110*time.Second)
+	defer cancel()
+	pool, err := store.Open(ctx, config.Database{URL: parsed.String(), CA: input.CA, VerifyTLS: input.VerifyTLS, MaxConnections: 2})
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	var database, user, readonly string
+	if err = pool.QueryRow(ctx, `SELECT current_database(),current_user,current_setting('transaction_read_only')`).Scan(&database, &user, &readonly); err != nil || database != "default_db" || user != parsed.User.Username() || !apply && readonly != "on" {
+		return errors.New("database scope")
+	}
+    var encrypted bool
+    if err=pool.QueryRow(ctx,"SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()").Scan(&encrypted);err!=nil || !encrypted {return errors.New("encrypted transport required")}
+	var orderID int64
+	var key, regulation string
+	if err = pool.QueryRow(ctx, `SELECT i.order_id,p.request->>'operationKey',p.request->>'regulationId' FROM order_sale_publications p JOIN order_sale_intents i ON i.id=p.intent_id WHERE p.id=1 AND i.id=1`).Scan(&orderID, &key, &regulation); err != nil || orderID != 74 || key != "f6d636c3-d0e3-4851-95ec-90a08ee35bc4" || regulation != "122650" {
+		return errors.New("fixed publication changed")
+	}
+	owners, err := pool.Query(ctx, `SELECT customer_id FROM admin_users WHERE role='owner' AND is_active AND customer_id IS NOT NULL ORDER BY customer_id`)
+	if err != nil {
+		return err
+	}
+	var actor int64
+	count := 0
+	for owners.Next() {
+		if err = owners.Scan(&actor); err != nil {
+			owners.Close()
+			return err
+		}
+		count++
+	}
+	err = owners.Err()
+	owners.Close()
+	if err != nil || count != 1 {
+		return errors.New("owner identity ambiguous")
+	}
+	client := integration.NewSabyClient(input.SabyAppClientID, input.SabyAppSecret, input.SabySecretKey, input.SabyPointID, input.SabyPriceListID)
+	verifier := fixedVerifier{Provider: &integration.SabyOrderRealizationProvider{Client: client, PublicRegulationUUID: "8861254e-4354-11e1-9d64-005056a63fed"}}
+	if !apply {
+		plan, err := ordersale.InspectRegulationAmendment(ctx, pool, actor, 1, verifier)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{"readOnly": true, "order": "0000-23", "publicationId": 1, "intentId": 1, "actorCustomerId": actor, "beforeHash": plan.BeforeHash, "effectiveHash": plan.EffectiveHash, "beforeRegulation": 122650, "effectiveRegulation": 122498, "proof": plan.Verification.Proof, "nativeWrites": false, "paymentsRequested": false, "receiptsRequested": false})
+	}
+	approval, err := ordersale.ApproveRegulationAmendment(ctx, pool, actor, 1, verifier)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(map[string]any{"approved": true, "order": "0000-23", "actorCustomerId": actor, "approval": approval, "originalRequestChanged": false, "nativeWritesFromCLI": false, "sameNativeDocument": 42876, "sameNativeUUID": "77c786ec-67d3-4417-93eb-30c60df0ef85", "paymentsRequested": false, "receiptsRequested": false, "nextWorkerStep": "read-only discover"})
+}
