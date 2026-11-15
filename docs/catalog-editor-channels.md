@@ -97,3 +97,5 @@ WB/Ozon content. Price and stock changes are additionally handled by the
 Flowwow service. See [flowwow.md](flowwow.md) for setup, supported product types,
 full-update rules, duplicate protection, database and browser validation, and
 remaining order/reservation scope.
+
+В строке каталога доступно удаление карточки (право `catalog.delete`). Свободный черновик удаляется; опубликованная карточка или черновик с остатками, заказами, внешними связями либо историей сохраняются в архиве. Архив исключён из активного списка, фотографии и ссылки заказов остаются. Внешние карточки СБИС и маркетплейсов не удаляются. Явное успешное сохранение полностью завершает все шаги редактора, закрывает его и показывает результат и предупреждения обмена в каталоге; ошибка оставляет редактор и черновик открытыми.

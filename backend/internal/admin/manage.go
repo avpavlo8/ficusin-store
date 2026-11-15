@@ -648,23 +648,41 @@ func (repository *PostgresRepository) DeleteDraftProducts(ctx context.Context, a
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var safeCount int
-	if err = tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM products p
-		WHERE p.id = ANY($1::bigint[]) AND p.status = 'draft'
-		AND NOT EXISTS(SELECT 1 FROM catalog_editor_price_publications price JOIN product_variants v ON v.id=price.variant_id WHERE v.product_id=p.id)
-		AND NOT EXISTS(SELECT 1 FROM product_variants v JOIN catalog_external_operation_history e ON e.variant_id=v.id WHERE v.product_id=p.id AND e.protects_identity)
-		AND NOT EXISTS (
-			SELECT 1 FROM product_variants pv
-			JOIN order_items oi ON oi.variant_id = pv.id
-			WHERE pv.product_id = p.id
-		)
-	`, ids).Scan(&safeCount); err != nil {
-		return 0, fmt.Errorf("validate draft products: %w", err)
+	rows, err := tx.Query(ctx, `SELECT id,status FROM products WHERE id=ANY($1::bigint[]) ORDER BY id FOR UPDATE`, ids)
+	if err != nil {
+		return 0, err
 	}
-	if safeCount != len(ids) {
-		return 0, fmt.Errorf("%w: удалять можно только непроданные черновики без отправки в СБИС; остальные можно архивировать", ErrInvalidInput)
+	selected := []int64{}
+	safe := true
+	for rows.Next() {
+		var id int64
+		var status string
+		if err = rows.Scan(&id, &status); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		selected = append(selected, id)
+		safe = safe && status == "draft"
 	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return 0, err
+	}
+	if len(selected) != len(ids) {
+		safe = false
+	}
+	for _, id := range selected {
+		protected, e := productRemovalProtected(ctx, tx, id)
+		if e != nil {
+			return 0, e
+		}
+		safe = safe && !protected
+	}
+	if !safe {
+		return 0, fmt.Errorf("%w: удалять можно только свободные черновики; остальные можно архивировать", ErrInvalidInput)
+	}
+
 	tag, err := tx.Exec(ctx, `DELETE FROM products WHERE id = ANY($1::bigint[])`, ids)
 	if err != nil {
 		return 0, fmt.Errorf("delete draft products: %w", err)
