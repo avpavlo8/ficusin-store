@@ -14,7 +14,7 @@ g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
 SOURCE = 'c661449e2b6c300cda6766828154fc7c27d92cea'
 OLD = '443e6f80e2ea90ce1987add53bab62dcf5ae18fc'
-STAGE_OLD = 'a8adff0a1625d92b77987d054431f8e2156d2bbd'
+STAGE_OLD = '78f06acec98cd19cddf69b162a908463c66adb0f'
 TAG = 'ficusin-cashier-release-20261115-c661449'
 MIGRATION = '20261115_cashier_stock_reservations.sql'
 FLAGS = {'SABY_CASHIER_RESERVE_MODE':'live','SABY_CASHIER_RESERVE_LIVE_ENABLED':'true',
@@ -192,6 +192,13 @@ def main():
     elif op=='backup': result=backup(p)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
+    elif op=='production-restart':
+        env=production(p.request('GET','/apps/229223')['app'],sha)
+        if any(env.get(k)!=v for k,v in FLAGS.items()):raise g.PreflightError('native_flags_not_enabled')
+        report=database(env,True)
+        if production(p.request('GET','/apps/229223')['app'],sha)!=env:raise g.PreflightError('production_environment_changed')
+        p.request('POST','/apps/229223/deploy',{'commit_sha':sha})
+        result={'deployRequested':True,'commit':sha,'flags':FLAGS,'database':report}
     elif op=='production-verify':
         env=production(p.request('GET','/apps/229223')['app'],sha)
         result={'flagsEnabled':all(env.get(k)==v for k,v in FLAGS.items()),'database':database(env,True),'nativeReadback':native_readback(env)}
