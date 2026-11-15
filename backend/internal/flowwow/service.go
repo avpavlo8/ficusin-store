@@ -124,7 +124,15 @@ func (s *Service) List(ctx context.Context) (any, error) {
 		}
 		items = append(items, i)
 	}
-	return map[string]any{"items": items, "configured": s.Configured(), "publicationMode": s.Mode, "shopId": s.Client.ShopID()}, rows.Err()
+	if e = rows.Err(); e != nil {
+		return nil, e
+	}
+	rows.Close()
+	preview, e := s.LinkPreview(ctx)
+	if e != nil {
+		return nil, e
+	}
+	return map[string]any{"items": items, "configured": s.Configured(), "publicationMode": s.Mode, "shopId": s.Client.ShopID(), "preview": preview}, nil
 }
 func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	if s.Mode != "live" || !s.Configured() {

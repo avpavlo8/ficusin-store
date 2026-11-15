@@ -563,7 +563,7 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [integrations.edit]
-      description: Read-only Flowwow list. Credentials stay in server environment. No seller writes.
+      description: Read-only Flowwow list. Credentials stay in server environment. No seller writes. In mock mode an optional preview contains a read-only production-link snapshot (shopId, capturedAt, items with SKU, remoteId, offerId, observed price/stock/status and optional locally resolved productId). This snapshot never creates executable links or publications.
       responses:
         2XX: { description: Current Flowwow data. }
         default: { $ref: "#/components/responses/ValidationError" }

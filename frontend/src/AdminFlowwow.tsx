@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./adminShared";
 import { WorkspaceState, WorkspaceTable } from "./WorkspaceUI";
+import { FlowwowLinkPreview, type FlowwowPreview } from "./FlowwowLinkPreview";
 type Item = {
   variantId: number;
   productId: number;
@@ -14,7 +15,13 @@ type Item = {
   message: string;
   lastError: string;
 };
-type State = { items: Item[]; configured: boolean; publicationMode: string; shopId: string };
+type State = {
+  items: Item[];
+  configured: boolean;
+  publicationMode: string;
+  shopId: string;
+  preview?: FlowwowPreview | null;
+};
 type Remote = {
   productId: number;
   offerId: string;
@@ -74,6 +81,14 @@ export default function AdminFlowwow() {
           .toLowerCase()
           .includes(search.toLowerCase()),
     ) || [];
+  const previewItems =
+    data?.preview?.items.filter(
+      (i) =>
+        (filter !== "attention" || ["failed", "needs_attention"].includes(i.status)) &&
+        `${i.name} ${i.sku} ${i.offerId} ${i.remoteId}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    ) || [];
   return (
     <section className="workspace-panel" aria-label="Flowwow">
       <div className="admin-section-head">
@@ -104,15 +119,21 @@ export default function AdminFlowwow() {
       {data && (
         <>
           <p role="status">
-            {data.configured
-              ? `API подключён · Магазин ${data.shopId}`
-              : "API не подключён. Добавьте FLOWWOW_API_TOKEN и FLOWWOW_SHOP_ID в окружение сервера."}{" "}
-            ·{" "}
-            {data.publicationMode === "live"
-              ? "Отправка включена"
-              : data.publicationMode === "mock"
-                ? "Локальная проверка. Реальный магазин не меняется."
-                : "Отправка выключена. Карточки сохраняются для подготовки."}
+            {data.preview ? (
+              "СТГ · Локальная проверка. Реальный магазин не меняется."
+            ) : (
+              <>
+                {data.configured
+                  ? `API подключён · Магазин ${data.shopId}`
+                  : "API не подключён. Добавьте FLOWWOW_API_TOKEN и FLOWWOW_SHOP_ID в окружение сервера."}{" "}
+                ·{" "}
+                {data.publicationMode === "live"
+                  ? "Отправка включена"
+                  : data.publicationMode === "mock"
+                    ? "Локальная проверка. Реальный магазин не меняется."
+                    : "Отправка выключена. Карточки сохраняются для подготовки."}
+              </>
+            )}
           </p>
           <div className="admin-toolbar">
             <label>
@@ -136,9 +157,10 @@ export default function AdminFlowwow() {
               disabled={busy || !data.configured}
               onClick={() => void browse(0)}
             >
-              Карточки в Flowwow
+              {data.preview ? "Тестовые карточки" : "Карточки в Flowwow"}
             </button>
           </div>
+          {data.preview && <FlowwowLinkPreview preview={data.preview} items={previewItems} />}
           {items.length ? (
             <WorkspaceTable label="Связанные товары Flowwow">
               <thead>
@@ -198,7 +220,7 @@ export default function AdminFlowwow() {
                 ))}
               </tbody>
             </WorkspaceTable>
-          ) : (
+          ) : !data.preview ? (
             <WorkspaceState
               kind="empty"
               title={
@@ -211,7 +233,7 @@ export default function AdminFlowwow() {
                 </a>
               }
             />
-          )}
+          ) : null}
           {remote && (
             <section>
               <h3>Карточки магазина Flowwow</h3>

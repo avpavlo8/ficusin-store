@@ -17,3 +17,27 @@ test('@desktop @phone Flowwow shows links, errors and existing seller cards',asy
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
  await page.screenshot({path:testInfo.outputPath('flowwow.png'),fullPage:true});
 });
+
+test('@desktop @phone Flowwow production observations stay read-only on staging',async({page},testInfo)=>{
+ await mockApi(page,owner);
+ await page.route('**/api/v1/admin/dashboard',route=>route.fulfill({json:{user:{fullName:'Александр'},role:'owner',permissions:['dashboard.read','products.read','products.manage','integrations.edit'],dashboard:{}}}));
+ await page.route('**/api/v1/admin/flowwow',route=>route.fulfill({json:{configured:true,shopId:'1',publicationMode:'mock',items:[],preview:{shopId:'255831',capturedAt:'2026-11-15T08:30:00Z',items:[{productId:42,name:'Фикус Бенджамина Наташа',sku:'210',remoteId:'77577298',offerId:'210',priceMinor:55000,stock:40,status:'synced',message:'Название, описание, цена и фотографии отправлены в Flowwow'}]}}}));
+ const writes:string[]=[];
+ page.on('request',request=>{if(request.method()!=='GET'&&/flowwow|editor-publications/.test(request.url()))writes.push(request.url())});
+ await page.goto('/admin?section=flowwow');
+ await expect(page.getByRole('heading',{name:'Реальные связки · 1',exact:true})).toBeVisible();
+ await expect(page.getByText(/Снимок рабочего магазина 255831/)).toBeVisible();
+ await expect(page.getByText('Товаров Flowwow пока нет',{exact:true})).toHaveCount(0);
+ const real=page.getByRole('region',{name:'Реальные связки Flowwow',exact:true});
+ await expect(real.getByRole('link',{name:'ID 77577298',exact:true})).toHaveAttribute('href','https://flowwow.com/admin/products/77577298');
+ await expect(real.getByRole('link',{name:'Фикус Бенджамина Наташа',exact:true})).toHaveAttribute('href','/admin?section=products&product=42&editor=channels');
+ await expect(real.getByRole('button')).toHaveCount(0);
+ await page.getByRole('searchbox',{name:'Найти товар',exact:true}).fill('77577298');
+ await expect(real.getByText('Артикул сайта: 210',{exact:true})).toBeVisible();
+ await page.getByRole('searchbox',{name:'Найти товар',exact:true}).fill('Нет такого');
+ await expect(page.getByText('Связи по запросу не найдены',{exact:true})).toBeVisible();
+ await page.getByRole('searchbox',{name:'Найти товар',exact:true}).fill('');
+ expect(writes).toEqual([]);
+ expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+ await page.screenshot({path:testInfo.outputPath('flowwow-real-links.png'),fullPage:true});
+});
