@@ -1,0 +1,71 @@
+package main
+
+import (
+ "context"
+ "encoding/json"
+ "fmt"
+ "os"
+ "path/filepath"
+ "time"
+ "github.com/avpavlo8/ficusin-store/backend/internal/cashierstock"
+ "github.com/avpavlo8/ficusin-store/backend/internal/integration"
+)
+
+func main(){if err:=run();err!=nil{fmt.Println("Owned native reserve verification stopped; inspect retained evidence without rerunning creation.");os.Exit(1)}}
+func run()error{
+ ctx,cancel:=context.WithTimeout(context.Background(),8*time.Minute);defer cancel()
+ client:=integration.NewSabyClient(os.Getenv("SABY_APP_CLIENT_ID"),os.Getenv("SABY_APP_SECRET"),os.Getenv("SABY_SECRET_KEY"),278,19)
+ provider:=&integration.SabyCashierReserveProvider{Client:client}
+ request:=cashierstock.Request{ReservationID:2026111502,OrderID:2026111502,OrderNumber:"API-TEST-BUYER-20261115",Config:cashierstock.Config{WarehouseID:283,MovementWarehouseID:284,OrganizationID:259,RegulationID:121326},Lines:[]cashierstock.Line{{NomenclatureID:3899,Quantity:1,UnitPrice:"1.00"}}}
+ report:=map[string]any{"candidate":os.Getenv("VERIFIED_SOURCE_COMMIT"),"testNomenclatureID":3899,"siteDatabaseUsed":false,"paymentRequested":false,"fiscalRequested":false,"postingRequested":false,"commands":[]any{},"revisions":[]any{}}
+ path:=os.Getenv("EVIDENCE_PATH");if path==""{return fmt.Errorf("evidence path required")}
+ save:=func()error{raw,e:=json.Marshal(report);if e!=nil{return e};return os.WriteFile(path,raw,0600)}
+ progress:=cashierstock.Progress{};docID:=int64(0);var initialRowsHash string
+ for revision:=0;revision<4;revision++{
+  if revision==1{request.BuyerID=18749}
+  if revision==2{request.Lines[0].Quantity=2}
+  if revision==3{request.Terminal="cancelled";request.Lines=[]cashierstock.Line{}}
+  done:=false
+  for step:=0;step<100;step++{
+   plan,err:=provider.Next(ctx,request,progress)
+   if err!=nil{report["readFailed"]=true;save();return err}
+   var state map[string]any;json.Unmarshal(plan.Native,&state);report["state"]=state;report["phase"]=state["phase"]
+   if err=save();err!=nil{return err}
+   if plan.Attention{report["attention"]=plan.Message;save();return fmt.Errorf("native state requires attention")}
+   progress=cashierstock.Progress{Native:plan.Native}
+   if plan.Done{
+    identity,_:=state["identity"].(map[string]any);current,_:=identity["id"].(float64)
+    if int64(current)<=0||docID!=0&&int64(current)!=docID{return fmt.Errorf("native document identity changed across revision")};docID=int64(current)
+    if revision==0{initialRowsHash=cashierstock.Fingerprint(state["rows"])}
+    if revision==1{
+     if cashierstock.Fingerprint(state["rows"])!=initialRowsHash || identity["buyerId"]!=float64(18749) || state["marker"]!="Резерв заказа API-TEST-BUYER-20261115" {return fmt.Errorf("buyer presentation changed row identity or was not acknowledged")}
+     count:=0
+     for _,c:=range report["commands"].([]any){command:=c.(map[string]any);if command["revision"]==1{count++;if command["kind"]!="header"{return fmt.Errorf("presentation changed native stock")}}}
+     if count!=1{return fmt.Errorf("presentation did not use exactly one header write")}
+     report["presentationOnlyVerified"]=true;report["buyerID"]=18749
+    }
+    report["revisions"]=append(report["revisions"].([]any),map[string]any{"revision":revision,"documentID":docID,"documentUUID":identity["uuid"],"terminal":request.Terminal,"rows":state["rows"]});save()
+    fmt.Printf("Verified owned native reservation revision %d, document %d, terminal=%s\n",revision,docID,request.Terminal)
+    done=true;break
+   }
+   if plan.Command!=nil{
+    command:=*plan.Command
+    // This private runner file is the attempt boundary. Only the sanitized
+    // report is uploaded; native headers can contain organization bank data.
+    command.ID=fmt.Sprintf("owned-%d-%d",revision,step)
+    progress.Command=&command;progress.Attempted=true
+    raw,_:=json.Marshal(map[string]any{"request":request,"progress":progress});if err=os.WriteFile(filepath.Join(filepath.Dir(path),"private-native-command.json"),raw,0600);err!=nil{return err}
+    report["commands"]=append(report["commands"].([]any),map[string]any{"revision":revision,"step":step,"kind":command.Kind,"fingerprint":cashierstock.Fingerprint(command)});save()
+    reply,callErr:=provider.Execute(ctx,command);progress.Reply=reply
+    if callErr!=nil{progress.Error="unconfirmed native write"}
+    // Keep a private exact reply for in-process reconciliation and sanitize
+    // evidence before publishing the proof artifact.
+    raw,_=json.Marshal(map[string]any{"request":request,"progress":progress});os.WriteFile(filepath.Join(filepath.Dir(path),"private-native-command.json"),raw,0600)
+   }
+   delay:=plan.RetryAfter;if delay<=0{delay=100*time.Millisecond}
+   select{case <-ctx.Done():return ctx.Err();case <-time.After(delay):}
+  }
+  if !done{return fmt.Errorf("native revision exceeded bounded steps")}
+ }
+ report["verified"]=true;report["documentID"]=docID;return save()
+}
