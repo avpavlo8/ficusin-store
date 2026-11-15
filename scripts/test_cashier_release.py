@@ -27,6 +27,15 @@ class Fake:
         return {}
 
 class ReleaseTests(unittest.TestCase):
+    def test_backup_id_read_is_allowed(self):
+        import io
+        class Response(io.BytesIO):
+            def __enter__(self):return self
+            def __exit__(self,*args):self.close()
+        class Opener:
+            def open(self,req,timeout):return Response(b'{"backup":{"id":42}}')
+        p=m.Provider('fixture');p.opener=Opener()
+        self.assertEqual(p.request('GET','/dbs/4192781/backups/42'),{'backup':{'id':42}})
     def test_activate_changes_only_six_flags(self):
         p=Fake(prod())
         with patch.object(m,'database',return_value={'migrationApplied':True}): result=m.activate(p,m.SOURCE)

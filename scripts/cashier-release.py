@@ -28,7 +28,7 @@ class Provider:
         self.opener = urllib.request.build_opener(g.NoRedirect())
         self.writes = set()
     def request(self, method, path, body=None):
-        allowed = method == 'GET' and (path in ('/apps/229223','/apps/280757','/dbs/4192781/backups') or re.fullmatch(r'/dbs/4192781/backups/[0-9]+', path))
+        allowed = method == 'GET' and (path in ('/apps/229223','/apps/280757','/dbs/4192781/backups') or bool(re.fullmatch(r'/dbs/4192781/backups/[0-9]+', path)))
         allowed |= method == 'POST' and path in ('/apps/229223/deploy','/apps/280757/deploy','/dbs/4192781/backups')
         allowed |= method == 'PATCH' and path == '/apps/229223' and set(body or {}) == {'envs'}
         if not allowed: raise g.PreflightError('release_path_not_allowed')
@@ -134,7 +134,13 @@ def main():
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
     op=os.environ['CASHIER_RELEASE_OPERATION'].removeprefix('cashier-');sha=os.environ['EXPECTED_COMMIT']
     if not re.fullmatch('[0-9a-f]{40}',sha): raise g.PreflightError('invalid_sha')
-    if op=='backup': result=backup(p)
+    if op=='inspect':
+        result={'apps':[]}
+        for app_id in (229223,280757):
+            app=p.request('GET',f'/apps/{app_id}')['app']
+            result['apps'].append({k:app.get(k) for k in ('id','name','status','branch_name','commit_sha')})
+        result['backups']=[{k:b.get(k) for k in ('id','status','created_at','comment')} for b in p.request('GET','/dbs/4192781/backups')['backups'] if b.get('comment')==TAG]
+    elif op=='backup': result=backup(p)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
     elif op=='production-verify':
@@ -146,5 +152,8 @@ def main():
 if __name__=='__main__':
     try: main()
     except Exception as exc:
-        print(json.dumps(g.safe_failure(exc,{'phase':'cashier_release'})))
+        import traceback
+        report=g.safe_failure(exc,{'phase':'cashier_release'})
+        report['locations']=[{'file':Path(f.filename).name,'line':f.lineno} for f in traceback.extract_tb(exc.__traceback__)[-3:]]
+        print(json.dumps(report))
         raise SystemExit(1)

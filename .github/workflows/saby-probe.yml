@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify, cashier-backup, cashier-staging-deploy, cashier-staging-restore, cashier-production-activate, cashier-production-verify]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify, cashier-inspect, cashier-backup, cashier-staging-deploy, cashier-staging-restore, cashier-production-activate, cashier-production-verify]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
