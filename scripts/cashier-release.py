@@ -280,6 +280,63 @@ def activate_online(p,sha):
     return {'patched':changed,'flags':ONLINE_FLAGS,'existingIntents':0,'existingPublications':0,
       'runtimeVerificationRequired':True,'historicalOrdersEnqueued':False,'targetedRecoveryOrder':'0000-23','buyerVerified':True}
 
+def created_price_audit(env):
+    """Bounded read of latest site Saby publications and their native price data."""
+    import urllib.error
+    with tempfile.TemporaryDirectory() as directory:
+        with g.connect_production(env,directory) as conn:
+            if conn.execute("SELECT current_database(),current_setting('transaction_read_only')").fetchone()!=('default_db','on'):
+                raise g.PreflightError('wrong_readonly_database')
+            publications=conn.execute("""SELECT v.id,v.product_id,p.name,v.created_at::text,v.base_price_minor,v.saby_id,
+              c.status,c.message,c.execution_mode,c.attempts,c.updated_at::text,c.payload,c.progress,
+              c.pending_payload IS NOT NULL
+              FROM catalog_editor_publications c JOIN product_variants v ON v.id=c.variant_id JOIN products p ON p.id=v.product_id
+              WHERE c.channel='saby' ORDER BY v.created_at DESC,v.id DESC LIMIT 3""").fetchall()
+            recent=conn.execute("""SELECT v.id,v.product_id,p.name,v.created_at::text,v.base_price_minor,v.saby_id
+              FROM product_variants v JOIN products p ON p.id=v.product_id ORDER BY v.created_at DESC,v.id DESC LIMIT 5""").fetchall()
+            variants=[x[0] for x in publications]
+            prices=conn.execute("""SELECT variant_id,target_id,expected_site_price_minor,price_minor,status,message,execution_mode,attempts,updated_at::text,progress->>'stage'
+              FROM catalog_editor_price_publications WHERE channel='saby' AND variant_id=ANY(%s) ORDER BY id DESC LIMIT 8""",(variants,)).fetchall() if variants else []
+    spec=importlib.util.spec_from_file_location('created_price_reads',Path(__file__).with_name('saby-realization-readback.py'))
+    r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
+    token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')
+    if not token:raise g.PreflightError('native_auth_failed')
+    print('::add-mask::'+token)
+    listid=int(env.get('SABY_PRICE_LIST_ID') or '6')
+    def price_shape(value):
+        return {'schema':value.get('s',[]),'rows':[{k:x.get(k) for k in ('Id','PriceList','Price','CanEdit','MeasureUnit','IsUpdated')} for x in r.rows(value)]} if isinstance(value,dict) else {'type':type(value).__name__}
+    result=[]
+    for row in publications:
+        variant,product,name,created,siteprice,sabyid,status,message,mode,attempts,updated,payload,progress,pending=row
+        state=progress.get('native') or {};ids=progress.get('ids') or {}
+        if isinstance(state,str):state=json.loads(state)
+        prepared=state.get('preparedData') or {};prepared_fields=r.fields(prepared)
+        item={'variantId':variant,'productId':product,'name':name,'createdAt':created,'sitePriceMinor':siteprice,'sabyId':sabyid,
+          'status':status,'message':message,'mode':mode,'attempts':attempts,'updatedAt':updated,
+          'action':payload.get('action'),'requestPriceMinor':payload.get('priceMinor'),'stage':progress.get('stage'),
+          'nativeCreated':state.get('created'),'ids':{k:ids.get(k) for k in ('productId','offerId','uuid')},'pending':pending,
+          'preparedPriceData':price_shape(prepared_fields.get('PriceData'))}
+        nativeid=ids.get('productId') or sabyid or ''
+        if not str(nativeid).isdigit():
+            result.append(item);continue
+        body={'jsonrpc':'2.0','protocol':6,'method':'Nomenclature.Read','params':{'Id':int(nativeid),
+          'AdditionalFields':['PriceData','Number','Identifier','IsDraft'],
+          'Option':{'_type':'record','s':[{'n':'PriceList','t':{'n':'Массив','t':'Число целое'}}],'d':[[listid]]}},'id':1}
+        request=urllib.request.Request(r.SERVICE,method='POST',headers={'Content-Type':'application/json-rpc;charset=utf-8','Accept':'application/json','X-SBISAccessToken':token},data=json.dumps(body).encode())
+        try:response=urllib.request.build_opener(g.NoRedirect()).open(request,timeout=35)
+        except urllib.error.HTTPError as error:response=error
+        with response:
+            raw=response.read((1<<20)+1);httpstatus=response.status;charset=response.headers.get_content_charset() or 'utf-8'
+        if len(raw)>1<<20:raise g.PreflightError('native_read_oversized')
+        reply=json.loads(raw.decode(charset));error=reply.get('error') or {};card=r.fields(reply.get('result'))
+        item['nativeRead']={'httpStatus':httpstatus,'rpcErrorCode':error.get('code'),'rpcErrorMessage':error.get('message'),
+          'id':card.get('Id'),'number':card.get('Number'),'uuid':card.get('Identifier'),'isDraft':card.get('IsDraft'),'priceData':price_shape(card.get('PriceData'))}
+        result.append(item)
+    return {'readOnly':True,'configuredPriceList':listid,'publications':result,
+      'recentVariants':[dict(zip(['variantId','productId','name','createdAt','sitePriceMinor','sabyId'],x)) for x in recent],
+      'pricePublications':[dict(zip(['variantId','targetId','sitePriceMinor','priceMinor','status','message','mode','attempts','updatedAt','stage'],x)) for x in prices]}
+
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -292,9 +349,9 @@ def main():
             result['apps'].append({k:app.get(k) for k in ('id','name','status','branch_name','commit_sha')})
         result['backups']=[{k:b.get(k) for k in ('id','status','created_at','comment')} for b in p.request('GET','/dbs/4192781/backups')['backups'] if b.get('comment')==TAG]
     elif op=='backup': result=backup(p)
-    elif op in ('order-23-audit','buyer-read','order-23-rpc'):
+    elif op in ('order-23-audit','buyer-read','order-23-rpc','created-price-audit'):
         env=production(p.request('GET','/apps/229223')['app'],sha)
-        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else buyer_read(env)
+        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else buyer_read(env)
     elif op=='online-activate':result=activate_online(p,sha)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
