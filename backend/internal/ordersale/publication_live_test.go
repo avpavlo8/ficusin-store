@@ -329,6 +329,45 @@ func testPublicationFoundation(t *testing.T, pool *pgxpool.Pool) {
 			t.Fatal("receipt test did not finish")
 		}
 	})
+	t.Run("initial inspect retry preserves the frozen operation", func(t *testing.T) {
+		e := create(719)
+		var beforeRequest, beforeHash []byte
+		if err := pool.QueryRow(ctx, `SELECT convert_to(request::text,'UTF8'),convert_to(request_hash,'UTF8') FROM order_sale_publications WHERE intent_id=$1`, e.IntentID).Scan(&beforeRequest, &beforeHash); err != nil {
+			t.Fatal(err)
+		}
+		fake := publicationProviderFunc(func(_ context.Context, r Request, p Progress) (Result, error) {
+			if p.Stage != "inspect" || p.CreateAttempted || p.PostAttempted || p.DocumentID != "" {
+				t.Fatal("unexpected retry phase", p)
+			}
+			return Result{Progress: p, State: "needs_attention", Message: "read unavailable"}, nil
+		})
+		step(fake, "mock")
+		view := publication(e)
+		if !view.CanRetry {
+			t.Fatal("initial read retry missing")
+		}
+		if err := RetryPublication(ctx, pool, view.ID); err != nil {
+			t.Fatal(err)
+		}
+		var afterRequest, afterHash []byte
+		if err := pool.QueryRow(ctx, `SELECT convert_to(request::text,'UTF8'),convert_to(request_hash,'UTF8') FROM order_sale_publications WHERE intent_id=$1`, e.IntentID).Scan(&afterRequest, &afterHash); err != nil {
+			t.Fatal(err)
+		}
+		if string(beforeRequest) != string(afterRequest) || string(beforeHash) != string(afterHash) {
+			t.Fatal("retry replaced frozen request")
+		}
+		step(fake, "mock")
+		if publication(e).Attempts != 2 {
+			t.Fatal("retry erased attempt history")
+		}
+		exec(`UPDATE order_sale_publications SET create_attempted=TRUE WHERE intent_id=$1`, e.IntentID)
+		if publication(e).CanRetry {
+			t.Fatal("durable create attempt ignored by retry view")
+		}
+		if err := RetryPublication(ctx, pool, view.ID); err != ErrRetryUnsafe {
+			t.Fatal("durable create attempt ignored by retry command", err)
+		}
+	})
 	t.Run("safe retry of known unknown posting stays read-only", func(t *testing.T) {
 		e := create(710)
 		force(e, Progress{Stage: "post", DocumentID: fmt.Sprintf("STG-SALE-%d", e.IntentID), DocumentUUID: key(e), Unknown: true}, "needs_attention")

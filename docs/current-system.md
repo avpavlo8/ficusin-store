@@ -456,3 +456,5 @@ DB cases. Все 159 DB-проверок имеют нужные selectors и о
 [flowwow.md](flowwow.md). Полная действующая архитектура остальных разделов:
 [business-logic.md](business-logic.md), [catalog-editor-channels.md](catalog-editor-channels.md),
 [procurement.md](procurement.md), [commerce-audit-remediation.md](commerce-audit-remediation.md).
+
+Начальная проверка реализации СБИС распознаёт точный UUID-зависимый ответ «документ не найден» и при HTTP 500; повтор этой проверки до первой записи сохраняет исходное задание и историю. Остальные ошибки блокируют создание.
