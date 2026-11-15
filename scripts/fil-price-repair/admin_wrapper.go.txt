@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+ "os"
 
 	ce "github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
 	"github.com/jackc/pgx/v5"
@@ -12,7 +13,7 @@ import (
 )
 
 func ApprovedFilPriceRepair(ctx context.Context, pool *pgxpool.Pool, operation string, draftID int64, fingerprint string) (map[string]any, error) {
-	fail := func(reason string) (map[string]any, error) { return nil, errors.New(reason) }
+	fail := func(reason string) (map[string]any, error) { _ = json.NewEncoder(os.Stdout).Encode(map[string]string{"guard":reason}); return nil, errors.New(reason) }
 	if operation != "inspect" && operation != "prepare" && operation != "approve" {
 		return fail("invalid_operation")
 	}
