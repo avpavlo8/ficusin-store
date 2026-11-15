@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageHeading, api } from "./adminShared";
+import AdminFlowwow from "./AdminFlowwow";
 import { WorkspaceState } from "./WorkspaceUI";
 import type { IntegrationSyncStatus, ProcurementData } from "./adminTypes";
 
@@ -18,7 +19,7 @@ const statusName = (value: string) =>
 const when = (value?: string) =>
   value ? new Date(value).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }) : "не было";
 
-export function AdminMarketplaces({ onError }: { onError: (value: string) => void }) {
+function MarketplaceOverview({ onError }: { onError: (value: string) => void }) {
   const [data, setData] = useState<ProcurementData | null>(null);
   const [queued, setQueued] = useState<string[]>([]);
   const load = useCallback(
@@ -196,6 +197,26 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
         границами периода и датой последнего события. СБИС и Ozon дополнительно проводят глубокую
         сверку; Wildberries перечитывает 90-дневное окно продаж при каждом обмене.
       </p>
+    </>
+  );
+}
+
+export function AdminMarketplaces({ onError }: { onError: (value: string) => void }) {
+  const flowwow = new URLSearchParams(window.location.search).get("channel") === "flowwow";
+  return (
+    <>
+      <nav className="workspace-catalog-nav" aria-label="Маркетплейсы">
+        <a href="/admin?section=marketplaces" aria-current={!flowwow ? "page" : undefined}>
+          Обзор обмена
+        </a>
+        <a
+          href="/admin?section=marketplaces&channel=flowwow"
+          aria-current={flowwow ? "page" : undefined}
+        >
+          Flowwow
+        </a>
+      </nav>
+      {flowwow ? <AdminFlowwow /> : <MarketplaceOverview onError={onError} />}
     </>
   );
 }

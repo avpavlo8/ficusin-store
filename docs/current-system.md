@@ -447,3 +447,10 @@ DB cases. Все 159 DB-проверок имеют нужные selectors и о
 [flowwow.md](flowwow.md). Полная действующая архитектура остальных разделов:
 [business-logic.md](business-logic.md), [catalog-editor-channels.md](catalog-editor-channels.md),
 [procurement.md](procurement.md), [commerce-audit-remediation.md](commerce-audit-remediation.md).
+
+
+Flowwow доступен в «Маркетплейсы → Flowwow»: подтверждаемая привязка конкретного
+варианта, фоновый контент и независимый обмен ценой/остатком через общую очередь.
+СТГ проверяет цикл в сохраняемом эмуляторе; рабочий снимок остаётся только для
+просмотра. Старые ссылки Flowwow ведут во вкладку маркетплейсов. Подробнее —
+`docs/flowwow.md`.

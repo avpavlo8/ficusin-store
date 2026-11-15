@@ -21,6 +21,10 @@ type EditorSyncResult struct {
 // SyncExistingEditorPlan never consumes an editor draft. Only an established
 // publication supplies vendor configuration; only saved content is refreshed.
 func (r *PostgresRepository) SyncExistingEditorPlan(ctx context.Context, actor Actor, productID int64) (EditorSyncResult, error) {
+	return r.syncExistingEditorPlan(ctx, actor, productID, []string{"saby", "wb", "ozon", "flowwow"}, true)
+}
+
+func (r *PostgresRepository) syncExistingEditorPlan(ctx context.Context, actor Actor, productID int64, channels []string, audit bool) (EditorSyncResult, error) {
 	out := EditorSyncResult{Warnings: []string{}}
 	if !Can(actor.Role, PermissionProductsEdit) {
 		return out, ErrForbidden
@@ -67,7 +71,7 @@ func (r *PostgresRepository) SyncExistingEditorPlan(ctx context.Context, actor A
 			return out, e
 		}
 		links["saby"] = sabyID
-		for _, channel := range []string{"saby", "wb", "ozon", "flowwow"} {
+		for _, channel := range channels {
 			linked := strings.TrimSpace(links[channel])
 			if linked == "" {
 				continue
@@ -76,7 +80,7 @@ func (r *PostgresRepository) SyncExistingEditorPlan(ctx context.Context, actor A
 				skip(channel, "несколько связей; владелец должен проверить настройку")
 				continue
 			}
-			if priceErr := ce.GuardContentPriceConflict(ctx, tx, variant, r.editorPublicationMode); priceErr != nil {
+			if priceErr := ce.GuardContentPriceConflict(ctx, tx, variant, r.editorPublicationMode); channel != "flowwow" && priceErr != nil {
 				if !errors.Is(priceErr, ce.ErrPricePublicationBusy) {
 					return out, priceErr
 				}
@@ -109,7 +113,7 @@ func (r *PostgresRepository) SyncExistingEditorPlan(ctx context.Context, actor A
 			finished := status == "created" || status == "synced" || status == "linked" || status == "simulated"
 			// A nonterminal creation/link or an ambiguous failure belongs to its
 			// original owner operation. Content saving must not restart it.
-			if !finished && (prior.Action != "update" || status == "failed" || status == "needs_attention" || progress.Ambiguous) {
+			if !finished && (prior.Action != "update" || status == "failed" && channel != "flowwow" || status == "needs_attention" || progress.Ambiguous) {
 				skip(channel, "предыдущая отправка требует проверки; новые данные сохранены на сайте")
 				continue
 			}
@@ -148,8 +152,10 @@ func (r *PostgresRepository) SyncExistingEditorPlan(ctx context.Context, actor A
 			out.Queued++
 		}
 	}
-	if err = insertAudit(ctx, tx, actor, "catalog.editor.sync-existing", "product", fmt.Sprint(productID), nil, out); err != nil {
-		return out, err
+	if audit {
+		if err = insertAudit(ctx, tx, actor, "catalog.editor.sync-existing", "product", fmt.Sprint(productID), nil, out); err != nil {
+			return out, err
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return out, err
@@ -217,6 +223,13 @@ func editorSyncContent(ctx context.Context, tx pgx.Tx, raw []byte, productID, va
 		return nil, err
 	}
 	payload["images"] = images
+	if channel == "flowwow" {
+		var price int64
+		if err = tx.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, variant).Scan(&price); err != nil {
+			return nil, err
+		}
+		payload["priceMinor"] = price
+	}
 	if channel != "saby" {
 		var season string
 		var length, width, height, weight float64

@@ -152,7 +152,7 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 			result.Status = "queued"
 		}
 	}
-	if attempts > 250 && result.Status == "queued" {
+	if attempts > 250 && result.Status == "queued" && !(channel == "flowwow" && result.Progress.Stage == "wait-stock") {
 		result.Status = "needs_attention"
 		result.Message = "Площадка долго не подтверждает операцию. Отправка повторной карточки не выполнялась."
 	}

@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	ce "github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
@@ -29,6 +31,8 @@ const stockSQL = `CASE WHEN p.status='published' AND v.is_active=1 AND v.archive
  JOIN warehouses w ON w.id=i.warehouse_id AND w.saby_id='saby-ryazan-main' AND w.is_active=1
  JOIN saby_nomenclature n ON n.saby_id=v.saby_id AND n.missing_since IS NULL
  WHERE i.variant_id=v.id AND 'stock'=ANY(p.saby_fields) AND i.synced_at>=NOW()-INTERVAL '2 hours'),0)::int ELSE 0 END`
+
+const SiteStockSQL = stockSQL
 
 func (s *Service) Advance(ctx context.Context, ch string, r ce.Request, p ce.Progress) (ce.Result, error) {
 	if s.Mode != "live" && s.Mode != "mock" {
@@ -54,7 +58,7 @@ func (s *Service) Advance(ctx context.Context, ch string, r ce.Request, p ce.Pro
 			conn.Conn().Close(clean)
 		}
 	}()
-	if p.Stage == "" || p.Stage == "create" || p.Stage == "update" {
+	if p.Stage == "" || p.Stage == "create" || p.Stage == "update" || p.Stage == "wait-stock" {
 		var stock int
 		if e = conn.QueryRow(ctx, `SELECT `+stockSQL+` FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.id=$1`, r.VariantID).Scan(&stock); e != nil {
 			return ce.Result{}, e
@@ -66,15 +70,23 @@ func (s *Service) Advance(ctx context.Context, ch string, r ce.Request, p ce.Pro
 		delete(attrs, "productionTime")
 		if stock > 0 {
 			attrs["stock"] = stock
-		} else if p.Stage == "" && r.Action != "link" && r.Action != "update" {
-			return ce.Result{}, errors.New("Flowwow: у товара нет свежего остатка для создания. Обновите остатки и повторите отправку")
+		} else if p.Stage == "create" || p.Stage == "update" || p.Stage == "wait-stock" || p.Stage == "" && r.Action != "link" && r.Action != "update" {
+			// A full update may require stock>=1. Never temporarily reopen a
+			// sold-out listing merely to replace its description or photos.
+			p.Stage = "wait-stock"
+			p.CreateAttempted = false
+			p.Native = nil
+			return ce.Result{Progress: p, Status: "queued", Message: "Контент ожидает свежего положительного остатка. Нулевое наличие отправляется отдельно."}, nil
+		}
+		if p.Stage == "wait-stock" {
+			p.Stage = ""
 		}
 		r.Channel.Attributes = attrs
 	}
 	// The independent inventory worker may already have applied a newer site
 	// price while photos were being processed. Verify that current price instead
 	// of waiting forever for an obsolete frozen amount to reappear.
-	if s.Mode == "live" && p.Stage == "verify" {
+	if p.Stage == "verify" {
 		if e = conn.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, r.VariantID).Scan(&r.PriceMinor); e != nil {
 			return ce.Result{}, e
 		}
@@ -97,21 +109,25 @@ func (s *Service) Remote(ctx context.Context, page int) (any, error) {
 }
 
 type Item struct {
-	VariantID  int64  `json:"variantId"`
-	ProductID  int64  `json:"productId"`
-	Name       string `json:"name"`
-	SKU        string `json:"sku"`
-	PriceMinor int64  `json:"priceMinor"`
-	Stock      int    `json:"stock"`
-	RemoteID   string `json:"remoteId"`
-	OfferID    string `json:"offerId"`
-	Status     string `json:"status"`
-	Message    string `json:"message"`
-	LastError  string `json:"lastError"`
+	VariantID         int64      `json:"variantId"`
+	ProductID         int64      `json:"productId"`
+	Name              string     `json:"name"`
+	SKU               string     `json:"sku"`
+	PriceMinor        int64      `json:"priceMinor"`
+	Stock             int        `json:"stock"`
+	RemoteID          string     `json:"remoteId"`
+	OfferID           string     `json:"offerId"`
+	Status            string     `json:"status"`
+	Message           string     `json:"message"`
+	LastError         string     `json:"lastError"`
+	ContentUpdatedAt  time.Time  `json:"contentUpdatedAt"`
+	InventorySyncedAt *time.Time `json:"inventorySyncedAt"`
+	InventoryPrice    *int64     `json:"inventoryPriceMinor"`
+	InventoryStock    *int       `json:"inventoryStock"`
 }
 
 func (s *Service) List(ctx context.Context) (any, error) {
-	rows, e := s.Pool.Query(ctx, `SELECT v.id,p.id,p.name,v.sku,v.base_price_minor,`+stockSQL+`,COALESCE(l.remote_id,''),COALESCE(l.offer_id,''),pub.status,pub.message,COALESCE(sync.last_error,'') FROM catalog_editor_publications pub JOIN product_variants v ON v.id=pub.variant_id JOIN products p ON p.id=v.product_id LEFT JOIN catalog_editor_remote_links l ON l.variant_id=v.id AND l.channel='flowwow' AND l.execution_mode=pub.execution_mode LEFT JOIN flowwow_inventory_sync sync ON sync.variant_id=v.id WHERE pub.channel='flowwow' ORDER BY p.name,v.id LIMIT 1000`)
+	rows, e := s.Pool.Query(ctx, `SELECT v.id,p.id,p.name,v.sku,v.base_price_minor,`+stockSQL+`,COALESCE(l.remote_id,''),COALESCE(l.offer_id,''),pub.status,pub.message,COALESCE(sync.last_error,''),pub.updated_at,sync.synced_at,sync.price_minor,sync.stock FROM catalog_editor_publications pub JOIN product_variants v ON v.id=pub.variant_id JOIN products p ON p.id=v.product_id LEFT JOIN catalog_editor_remote_links l ON l.variant_id=v.id AND l.channel='flowwow' AND l.execution_mode=pub.execution_mode LEFT JOIN flowwow_inventory_sync sync ON sync.variant_id=v.id WHERE pub.channel='flowwow' AND pub.execution_mode=$1 ORDER BY p.name,v.id LIMIT 1000`, s.Mode)
 	if e != nil {
 		return nil, e
 	}
@@ -119,7 +135,7 @@ func (s *Service) List(ctx context.Context) (any, error) {
 	items := []Item{}
 	for rows.Next() {
 		var i Item
-		if e = rows.Scan(&i.VariantID, &i.ProductID, &i.Name, &i.SKU, &i.PriceMinor, &i.Stock, &i.RemoteID, &i.OfferID, &i.Status, &i.Message, &i.LastError); e != nil {
+		if e = rows.Scan(&i.VariantID, &i.ProductID, &i.Name, &i.SKU, &i.PriceMinor, &i.Stock, &i.RemoteID, &i.OfferID, &i.Status, &i.Message, &i.LastError, &i.ContentUpdatedAt, &i.InventorySyncedAt, &i.InventoryPrice, &i.InventoryStock); e != nil {
 			return nil, e
 		}
 		items = append(items, i)
@@ -135,7 +151,7 @@ func (s *Service) List(ctx context.Context) (any, error) {
 	return map[string]any{"items": items, "configured": s.Configured(), "publicationMode": s.Mode, "shopId": s.Client.ShopID(), "preview": preview}, nil
 }
 func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
-	if s.Mode != "live" || !s.Configured() {
+	if (s.Mode != "live" && s.Mode != "mock") || !s.Configured() {
 		return
 	}
 	ticker := time.NewTicker(30 * time.Second)
@@ -152,7 +168,7 @@ func (s *Service) Run(ctx context.Context, logger *slog.Logger) {
 	}
 }
 func (s *Service) InventoryStep(ctx context.Context) error {
-	if s.Mode != "live" || !s.Configured() {
+	if (s.Mode != "live" && s.Mode != "mock") || !s.Configured() {
 		return nil
 	}
 	if e := s.checkShop(ctx); e != nil {
@@ -163,8 +179,8 @@ func (s *Service) InventoryStep(ctx context.Context) error {
 		return e
 	}
 	defer conn.Release()
-	// Only finished live cards qualify. Disabled/mock preparations are never promoted.
-	rows, e := conn.Query(ctx, `SELECT v.id,v.base_price_minor,`+stockSQL+`,l.offer_id FROM catalog_editor_remote_links l JOIN product_variants v ON v.id=l.variant_id JOIN products p ON p.id=v.product_id JOIN catalog_editor_publications pub ON pub.variant_id=v.id AND pub.channel='flowwow' AND pub.execution_mode='live'  LEFT JOIN flowwow_inventory_sync sync ON sync.variant_id=v.id WHERE l.channel='flowwow' AND l.execution_mode='live' AND (sync.next_attempt_at IS NULL OR sync.next_attempt_at<=NOW()) ORDER BY v.id`)
+	// Only existing links in the current execution mode qualify. Content errors do not block availability.
+	rows, e := conn.Query(ctx, `SELECT v.id,v.base_price_minor,`+stockSQL+`,l.offer_id FROM catalog_editor_remote_links l JOIN product_variants v ON v.id=l.variant_id JOIN products p ON p.id=v.product_id JOIN catalog_editor_publications pub ON pub.variant_id=v.id AND pub.channel='flowwow' AND pub.execution_mode=$1  LEFT JOIN flowwow_inventory_sync sync ON sync.variant_id=v.id WHERE l.channel='flowwow' AND l.execution_mode=$1 AND (sync.next_attempt_at IS NULL OR sync.next_attempt_at<=NOW()) ORDER BY v.id`, s.Mode)
 	if e != nil {
 		return e
 	}
@@ -216,9 +232,6 @@ func (s *Service) InventoryStep(ctx context.Context) error {
 				if same {
 					return nil
 				}
-				if x.price <= 0 {
-					return errors.New("Цена сайта должна быть положительной")
-				}
 				if e := s.Client.SyncInventory(ctx, x.offer, x.price, x.stock); e != nil {
 					return e
 				}
@@ -257,4 +270,47 @@ func (s *Service) checkShop(ctx context.Context) error {
 		return errors.New("FLOWWOW_SHOP_ID изменён: существующие связи относятся к другому магазину. Проверьте настройку перед обменом")
 	}
 	return nil
+}
+
+type Candidate struct {
+	VariantID  int64  `json:"variantId"`
+	ProductID  int64  `json:"productId"`
+	Name       string `json:"name"`
+	Label      string `json:"label"`
+	SKU        string `json:"sku"`
+	PriceMinor int64  `json:"priceMinor"`
+	Stock      int    `json:"stock"`
+}
+
+func (s *Service) Candidates(ctx context.Context, query string) ([]Candidate, error) {
+	if len([]rune(query)) > 128 {
+		return nil, fmt.Errorf("Запрос слишком длинный")
+	}
+	rows, e := s.Pool.Query(ctx, `SELECT v.id,p.id,p.name,v.label,v.sku,v.base_price_minor,`+stockSQL+` FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.archived_at IS NULL AND (p.name ILIKE '%'||$1||'%' OR v.sku=$1) AND NOT EXISTS(SELECT 1 FROM catalog_editor_remote_links l WHERE l.variant_id=v.id AND l.channel='flowwow' AND l.execution_mode=$2) ORDER BY p.name,v.id LIMIT 50`, query, s.Mode)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []Candidate{}
+	for rows.Next() {
+		var i Candidate
+		if e = rows.Scan(&i.VariantID, &i.ProductID, &i.Name, &i.Label, &i.SKU, &i.PriceMinor, &i.Stock); e != nil {
+			return nil, e
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+func (s *Service) Resolve(ctx context.Context, id int64) (integration.FlowwowProduct, string, error) {
+	if id <= 0 || (s.Mode != "mock" && s.Mode != "live") || !s.Configured() {
+		return integration.FlowwowProduct{}, "", fmt.Errorf("Flowwow не подключён для отправки")
+	}
+	cards, _, e := s.Client.Products(ctx, map[string]any{"productIds": []int64{id}, "extended": true, "withArchive": false, "limit": 2})
+	if e != nil {
+		return integration.FlowwowProduct{}, "", e
+	}
+	if len(cards) != 1 || cards[0].ProductID != id || cards[0].Type != 1 {
+		return integration.FlowwowProduct{}, "", fmt.Errorf("Обычная карточка Flowwow %s не найдена", strconv.FormatInt(id, 10))
+	}
+	return cards[0], s.Client.ShopID(), nil
 }

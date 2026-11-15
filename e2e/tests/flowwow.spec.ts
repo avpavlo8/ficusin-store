@@ -42,3 +42,31 @@ test('@desktop @phone Flowwow production observations stay read-only on staging'
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
  await page.screenshot({path:testInfo.outputPath('flowwow-real-links.png'),fullPage:true});
 });
+
+test('@desktop @phone Flowwow links a selected variant after reviewing saved site content',async({page},testInfo)=>{
+ await mockApi(page,owner);
+ await page.route('**/api/v1/admin/dashboard',route=>route.fulfill({json:{user:{fullName:'Александр'},role:'owner',permissions:['dashboard.read','products.read','products.manage','integrations.edit'],dashboard:{}}}));
+ await page.route('**/api/v1/admin/flowwow',route=>route.fulfill({json:{configured:true,shopId:'1',publicationMode:'mock',items:[]}}));
+ await page.route('**/api/v1/admin/flowwow/products?page=0',route=>route.fulfill({json:{items:[{productId:900001,offerId:'FW-NATASHA',name:'Тестовая Наташа',price:'100.00',stock:1,type:1}],total:1}}));
+ await page.route('**/api/v1/admin/flowwow/candidates?q=*',route=>route.fulfill({json:{items:[{variantId:210,productId:20,name:'Фикус Наташа',label:'D10',sku:'210',priceMinor:55000,stock:40}]}}));
+ const site={variantId:210,name:'Фикус Наташа',description:'Описание сохранено на сайте',sku:'210',priceMinor:55000,images:['https://images.example.test/a.jpg']};
+ const writes:unknown[]=[];
+ await page.route('**/api/v1/admin/flowwow/links/preview',route=>{expect(route.request().postDataJSON()).toEqual({variantId:210,remoteId:900001});return route.fulfill({json:{site,remote:{productId:900001,offerId:'FW-NATASHA'},stock:40,fingerprint:'proof',executionMode:'mock',shopId:'1'}})});
+ await page.route('**/api/v1/admin/flowwow/links',route=>{writes.push(route.request().postDataJSON());return route.fulfill({json:{queued:true}})});
+ await page.goto('/admin?section=flowwow');
+ await expect(page).toHaveURL(/section=marketplaces&channel=flowwow/);
+ await expect(page.getByRole('navigation',{name:'Разделы управления'}).getByRole('link',{name:'Flowwow',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Карточки в Flowwow',exact:true}).click();
+ await page.getByRole('button',{name:'Связать с товаром',exact:true}).click();
+ await page.getByRole('searchbox',{name:'Название или артикул сайта',exact:true}).fill('210');
+ await page.getByRole('button',{name:'Найти вариант',exact:true}).click();
+ await page.getByRole('button',{name:'Проверить связь: Фикус Наташа · D10 · SKU 210',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Проверка перед привязкой'}).getByText('Описание сохранено на сайте',{exact:true})).toBeVisible();
+ expect(writes).toEqual([]);
+ await page.evaluate(()=>window.scrollTo({top:0,left:0,behavior:"instant"}));
+ await page.screenshot({path:testInfo.outputPath('flowwow-link-review.png'),fullPage:true});
+ await page.getByRole('button',{name:'Подтвердить связь и включить обмен',exact:true}).click();
+ expect(writes).toEqual([{variantId:210,remoteId:900001,fingerprint:'proof'}]);
+ await expect(page.getByText('Связь подтверждена. Автоматический обмен поставлен в очередь.',{exact:true})).toBeVisible();
+ expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});

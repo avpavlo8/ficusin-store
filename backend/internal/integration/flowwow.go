@@ -58,7 +58,7 @@ func (c *FlowwowClient) call(ctx context.Context, method, path string, body any,
 	req.Header.Set("Content-Type", "application/json")
 	resp, e := c.client.Do(req)
 	if e != nil {
-		return errors.New("Flowwow: не получен ответ API; проверьте результат операции")
+		return &FlowwowError{Status: 503, Message: "Не получен ответ API; результат операции будет сверен"}
 	}
 	defer resp.Body.Close()
 	data, e := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -466,13 +466,17 @@ type FlowwowField struct {
 }
 
 func (c *FlowwowClient) SyncInventory(ctx context.Context, offer string, price int64, stock int) error {
-	if price <= 0 || stock < 0 {
-		return errors.New("Flowwow: неверные цена или остаток")
+	if stock < 0 {
+		return errors.New("Flowwow: неверный остаток")
 	}
-	if _, e := c.batch(ctx, "PUT", "prices/put", "offers", map[string]any{"offerId": offer, "price": fmt.Sprintf("%d.%02d", price/100, price%100), "discount": "0"}); e != nil {
+	// Availability, especially zero, must not wait for acceptance of a price.
+	if _, e := c.batch(ctx, "PUT", "stocks/put", "offers", map[string]any{"offerId": offer, "stock": stock}); e != nil {
 		return e
 	}
-	if _, e := c.batch(ctx, "PUT", "stocks/put", "offers", map[string]any{"offerId": offer, "stock": stock}); e != nil {
+	if price <= 0 {
+		return errors.New("Flowwow: остаток отправлен, но цена сайта должна быть положительной")
+	}
+	if _, e := c.batch(ctx, "PUT", "prices/put", "offers", map[string]any{"offerId": offer, "price": fmt.Sprintf("%d.%02d", price/100, price%100), "discount": "0"}); e != nil {
 		return e
 	}
 	remote, e := c.find(ctx, offer, "")

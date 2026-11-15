@@ -313,3 +313,31 @@ func TestFlowwowDefinitiveCreateRejectionCanBeCorrected(t *testing.T) {
 		}
 	}
 }
+
+func TestFlowwowZeroStockStillSentWhenPriceRejected(t *testing.T) {
+	ctx := context.Background()
+	client := NewMockFlowwowClient()
+	request := flowwowFixtureRequest()
+	progress := ce.Progress{}
+	for i := 0; i < 3; i++ {
+		result, e := client.Advance(ctx, "flowwow", request, progress)
+		if e != nil {
+			t.Fatal(e)
+		}
+		progress = result.Progress
+	}
+	transport := client.client.Transport
+	client.client.Transport = flowwowRoundTrip(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/apiseller/prices/put" {
+			return &http.Response{StatusCode: 400, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"message":"price rejected"}`)), Request: r}, nil
+		}
+		return transport.RoundTrip(r)
+	})
+	if e := client.SyncInventory(ctx, request.SKU, 99900, 0); e == nil {
+		t.Fatal("price error hidden")
+	}
+	card, e := client.find(ctx, request.SKU, "")
+	if e != nil || card == nil || card.Stock != 0 {
+		t.Fatalf("zero stock blocked by price: %+v %v", card, e)
+	}
+}
