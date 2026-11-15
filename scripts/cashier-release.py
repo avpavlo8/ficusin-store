@@ -180,6 +180,41 @@ def native_readback(env):
         result.append({'orderNumber':order,'documentId':doc_id,'documentUUID':uuid,'verifiedRows':len(rows),'posted':False})
     return {'verified':True,'activeInvoices':result,'readOnly':True}
 
+def order_23_audit(env):
+    with tempfile.TemporaryDirectory() as directory:
+        with g.connect_production(env,directory) as conn:
+            if conn.execute("SELECT current_database(),current_setting('transaction_read_only')").fetchone()!=('default_db','on'):
+                raise g.PreflightError('wrong_readonly_database')
+            order=conn.execute("SELECT id,order_number,status,payment_method,payment_status,delivery_method,created_at::text FROM orders WHERE id=74 AND order_number='0000-23'").fetchone()
+            if not order:raise g.PreflightError('fixed_order_missing')
+            control=conn.execute("SELECT execution_mode,enabled,site_warehouse_id,native_warehouse_id,movement_warehouse_id,organization_id,regulation_id,buyer_id FROM order_sale_dispatch_control WHERE singleton").fetchone()
+            lines=conn.execute("""SELECT oi.variant_id,oi.quantity,oi.unit_price::text,v.saby_id,
+              (SELECT jsonb_agg(jsonb_build_object('type',e.id_type,'id',e.external_id)) FROM product_external_ids e WHERE e.variant_id=oi.variant_id AND e.provider='saby' AND e.status='active'),
+              (SELECT jsonb_agg(jsonb_build_object('warehouse',i.warehouse_id,'available',i.available_qty,'observedAt',i.stock_observed_at)) FROM inventory i WHERE i.variant_id=oi.variant_id)
+              FROM order_items oi JOIN product_variants v ON v.id=oi.variant_id WHERE oi.order_id=74 ORDER BY oi.id""").fetchall()
+            intents=conn.execute("""SELECT i.id,i.event_trigger,i.state,p.execution_mode,p.status,p.document_id,p.document_uuid,p.create_attempted,p.post_attempted,p.stock_verified,p.cancellation_verified
+              FROM order_sale_intents i LEFT JOIN order_sale_publications p ON p.intent_id=i.id WHERE i.order_id=74 ORDER BY i.id""").fetchall()
+            return {'readOnly':True,'order':dict(zip(['id','number','status','paymentMethod','paymentStatus','deliveryMethod','createdAt'],order)),
+              'control':dict(zip(['mode','enabled','siteWarehouse','nativeWarehouse','movementWarehouse','organization','regulation','buyer'],control)),
+              'lines':[dict(zip(['variant','quantity','price','sabyId','mappings','inventory'],x)) for x in lines],
+              'intents':[dict(zip(['id','trigger','state','mode','status','documentId','documentUUID','createAttempted','postAttempted','stockVerified','cancellationVerified'],x)) for x in intents],
+              'configuredOrderRealization':{k:env.get(k,'') for k in ['ORDER_REALIZATION_MODE','ORDER_REALIZATION_LIVE_ENABLED','ORDER_REALIZATION_BUYER_ID','ORDER_REALIZATION_SITE_WAREHOUSE_ID','ORDER_REALIZATION_NATIVE_WAREHOUSE_ID','ORDER_REALIZATION_MOVEMENT_WAREHOUSE_ID','ORDER_REALIZATION_ORGANIZATION_ID','ORDER_REALIZATION_REGULATION_ID']}}
+
+def buyer_read(env):
+    spec=importlib.util.spec_from_file_location('buyer_native_reads',Path(__file__).with_name('saby-realization-readback.py'))
+    r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
+    token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')
+    if not token:raise g.PreflightError('native_auth_failed')
+    print('::add-mask::'+token)
+    r.READS={'СчетСкИсх.ПрочитатьДляУчастника','Reserve.ListByDn'}
+    raw=r.rpc('СчетСкИсх.ПрочитатьДляУчастника',{'ИдО':42869,'ИмяМетода':'СчетСкИсх.ListLite','ДопПоля':{'ИмяОбъекта':'СчетСкИсх'}},token,7)
+    doc=r.fields(raw)
+    if doc.get('@Документ')!=42869 or doc.get('ИдентификаторДокумента')!='01a1de39-6356-700b-8077-56876977c9b5' or not unposted(raw,doc):
+        raise g.PreflightError('owned_invoice_mismatch')
+    reserve=r.rpc('Reserve.ListByDn',{'DocNomIds':[175806]},token,7)
+    if reserve is None or r.rows(reserve):raise g.PreflightError('owned_invoice_has_reserve')
+    return {'readOnly':True,'ownedInvoice':42869,'buyerId':doc.get('Лицо1'),'buyerName':doc.get('Лицо1.Название'),'comment':doc.get('ДокументРасширение.Название'),'reserveEmpty':True,'unposted':True}
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -192,6 +227,9 @@ def main():
             result['apps'].append({k:app.get(k) for k in ('id','name','status','branch_name','commit_sha')})
         result['backups']=[{k:b.get(k) for k in ('id','status','created_at','comment')} for b in p.request('GET','/dbs/4192781/backups')['backups'] if b.get('comment')==TAG]
     elif op=='backup': result=backup(p)
+    elif op in ('order-23-audit','buyer-read'):
+        env=production(p.request('GET','/apps/229223')['app'],sha)
+        result=order_23_audit(env) if op=='order-23-audit' else buyer_read(env)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
     elif op=='production-restart':
