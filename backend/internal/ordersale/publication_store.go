@@ -78,6 +78,11 @@ func loadPublication(ctx context.Context, q queryer, intentID int64) (*Publicati
 	return &v, nil
 }
 func ensurePublication(ctx context.Context, tx pgx.Tx, e *Event, warehouseID int64, explicit bool) error {
+	if cashier, err := cashierOwnsSale(ctx, tx, e.OrderID); err != nil {
+		return err
+	} else if cashier {
+		return ErrNotReady
+	}
 	c, err := readDispatchControl(ctx, tx, true)
 	if err != nil {
 		return err

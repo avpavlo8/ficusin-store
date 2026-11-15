@@ -109,6 +109,11 @@ func TestCreationRealizationHooksPostgres(t *testing.T) {
 		}
 		exec(string(raw))
 	}
+	cashierMigration, err := os.ReadFile("../../../timeweb/migrations/20261115_cashier_stock_reservations.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exec(string(cashierMigration))
 	service := NewService(pool, nil, creationRealizationSettings{}, quietLogger())
 	checkout := func(method string) int64 {
 		t.Helper()
@@ -178,6 +183,12 @@ func TestCreationRealizationHooksPostgres(t *testing.T) {
 		t.Fatal("capture racing expiry cancelled a paid order or released its hold", status, paymentStatus, desired, undoRequested, released, retainedQuantity, providerCalls, err)
 	}
 	cash := checkout("on_delivery")
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM order_sale_intents WHERE order_id=$1`, cash).Scan(&count); err != nil || count != 0 {
+		t.Fatal("cash checkout enqueued a second warehouse sale", count, err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT COALESCE(SUM(l.quantity-l.released_quantity),0) FROM cashier_stock_reservations r JOIN cashier_stock_layers l ON l.reservation_id=r.id WHERE r.order_id=$1`, cash).Scan(&count); err != nil || count != 2 {
+		t.Fatal("cash checkout did not reserve its physical units", count, err)
+	}
 	exec(`UPDATE orders SET created_at=now()-INTERVAL '25 hours' WHERE id=$1`, cash)
 	worker.process(ctx)
 	if err = pool.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1`, cash).Scan(&status); err != nil || strings.EqualFold(status, "cancelled") {
@@ -201,19 +212,30 @@ func TestCreationRealizationHooksPostgres(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM order_sale_publications`).Scan(&afterJobs); err != nil || rejectedOrders != 0 || afterJobs != beforeJobs {
 		t.Fatal("failed checkout left dispatchable stock hold", rejectedOrders, beforeJobs, afterJobs, err)
 	}
+	var beforeCash int
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM cashier_stock_reservations`).Scan(&beforeCash); err != nil {
+		t.Fatal(err)
+	}
+	_, rejected = service.Create(ctx, CreateInput{Customer: CustomerInput{Name: "Rejected counter checkout", Phone: "+79990000003", Email: "reject@example.invalid"}, Delivery: "pickup", Items: []ItemInput{{ID: "1", Quantity: 1}}, PaymentMethod: "on_delivery", OnlinePaymentReady: true, Consent: true, OfferAccepted: true})
+	if rejected == nil {
+		t.Fatal("expected cash checkout transaction rollback")
+	}
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM cashier_stock_reservations`).Scan(&count); err != nil || count != beforeCash {
+		t.Fatal("rejected cash checkout left a reserve", count, err)
+	}
 	// Both checkouts load the same published SKU before entering their
 	// transaction. The sorted variant lock makes only the first availability
 	// decision immediately fulfilable when there is one last pair of plants.
 	exec(`INSERT INTO products VALUES(2,'Concurrent test plant','published',ARRAY['stock']);INSERT INTO product_variants VALUES(2,2,'4000','2','D13',123456,1,NULL);INSERT INTO saby_nomenclature VALUES('4000',NULL);INSERT INTO inventory(warehouse_id,variant_id,available_qty,reserved_qty,synced_at)VALUES(1,2,2,0,now())`)
 	var group sync.WaitGroup
 	results := make(chan error, 2)
-	for range 2 {
+	for _, method := range []string{"online", "on_delivery"} {
 		group.Add(1)
-		go func() {
+		go func(method string) {
 			defer group.Done()
-			_, err := service.Create(ctx, CreateInput{Customer: CustomerInput{Name: "Concurrent synthetic", Phone: "+79990000002", Email: "concurrent@example.invalid"}, Delivery: "pickup", Items: []ItemInput{{ID: "2", Quantity: 2}}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, OfferAccepted: true})
+			_, err := service.Create(ctx, CreateInput{Customer: CustomerInput{Name: "Concurrent synthetic", Phone: "+79990000002", Email: "concurrent@example.invalid"}, Delivery: "pickup", Items: []ItemInput{{ID: "2", Quantity: 2}}, PaymentMethod: method, OnlinePaymentReady: true, Consent: true, OfferAccepted: true})
 			results <- err
-		}()
+		}(method)
 	}
 	group.Wait()
 	close(results)

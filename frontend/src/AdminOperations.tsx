@@ -22,6 +22,14 @@ type OperationsResponse = {
       productName: string;
       error: string;
     }>;
+    cashierReservations?: Array<{
+      orderId: number;
+      orderNumber: string;
+      status: string;
+      message: string;
+      documentId: string;
+      documentUUID: string;
+    }>;
   };
 };
 
@@ -29,6 +37,8 @@ type OperationsResponse = {
 // нужен не код, а что случилось и что с этим делать.
 const checkLabels: Record<string, string> = {
   inventory_overreserved: "Зарезервировано больше, чем есть в СБИС",
+  cashier_reservation_review: "СБИС: резервы заказов требуют сверки",
+  cashier_reservation_overdue: "СБИС: подтверждение резервов задерживается",
   stale_pending_payment: "Заказы давно ждут оплаты",
   metrika_delivery_review: "Метрика: нужно проверить отправку",
   metrika_delivery_overdue: "Метрика: события не отправлены вовремя",
@@ -116,6 +126,21 @@ export function AdminOperations({ onOpenProcurement }: { onOpenProcurement: () =
                 <button type="button" onClick={onOpenProcurement}>
                   Открыть закупки ↗
                 </button>
+              </div>
+            </article>
+          ))}
+          {operations.diagnostics?.cashierReservations?.map((item) => (
+            <article key={item.orderId} className="admin-alert">
+              <div>
+                <strong>Резерв СБИС · заказ {item.orderNumber}</strong>
+                <p>{item.message}</p>
+                {item.documentId && <p>Счёт СБИС: {item.documentId}.</p>}
+                <a
+                  className="admin-alert-link"
+                  href={`/admin?section=orders&order=${item.orderId}`}
+                >
+                  Открыть заказ
+                </a>
               </div>
             </article>
           ))}

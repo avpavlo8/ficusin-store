@@ -289,7 +289,7 @@ func TestSabyOrderRealizationPostSameSKUTotalCannotHideDifferentPrice(t *testing
 
 func TestSabyOrderRealizationWriteOnceRejectsUnprovenMethod(t *testing.T) {
 	client, writes := orderRealizationPostClient(t, orderRealizationPostFixture(), orderRealizationLineFixture(), func(http.ResponseWriter, *http.Request, map[string]json.RawMessage) { t.Error("unexpected write") })
-	if _, _, err := client.sabyOrderRealizationWriteRPCOnce(context.Background(), "Документ.ПроизвольноеИзменение", nil); err == nil || writes.Load() != 0 {
+	if _, _, err := client.writeWarehouseRPCOnce(context.Background(), "Документ.ПроизвольноеИзменение", nil); err == nil || writes.Load() != 0 {
 		t.Fatal("unproven method was accepted")
 	}
 }

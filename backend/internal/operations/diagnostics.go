@@ -9,8 +9,18 @@ import (
 // Diagnostics is available only through the authenticated admin endpoint.
 // It intentionally does not change reservations or retry provider actions.
 type Diagnostics struct {
-	Overreserved   []OverreservedStock `json:"overreserved"`
-	FailedReceipts []FailedReceipt     `json:"failedReceipts"`
+	Overreserved        []OverreservedStock            `json:"overreserved"`
+	FailedReceipts      []FailedReceipt                `json:"failedReceipts"`
+	CashierReservations []CashierReservationDiagnostic `json:"cashierReservations"`
+}
+
+type CashierReservationDiagnostic struct {
+	OrderID      int64  `json:"orderId"`
+	OrderNumber  string `json:"orderNumber"`
+	Status       string `json:"status"`
+	Message      string `json:"message"`
+	DocumentID   string `json:"documentId"`
+	DocumentUUID string `json:"documentUUID"`
 }
 
 type OverreservedStock struct {
@@ -35,7 +45,7 @@ type FailedReceipt struct {
 }
 
 func (probe *Probe) Diagnose(ctx context.Context) (Diagnostics, error) {
-	result := Diagnostics{Overreserved: []OverreservedStock{}, FailedReceipts: []FailedReceipt{}}
+	result := Diagnostics{Overreserved: []OverreservedStock{}, FailedReceipts: []FailedReceipt{}, CashierReservations: []CashierReservationDiagnostic{}}
 	rows, err := probe.pool.Query(ctx, `
 		SELECT variant.id, product.name, variant.label, warehouse.name,
 		       stock.available_qty, stock.reserved_qty, stock.synced_at,
@@ -96,6 +106,29 @@ func (probe *Probe) Diagnose(ctx context.Context) (Diagnostics, error) {
 		result.FailedReceipts = append(result.FailedReceipts, item)
 	}
 	if err := rows.Err(); err != nil {
+		return Diagnostics{}, err
+	}
+	rows.Close()
+	rows, err = probe.pool.Query(ctx, `SELECT o.id,o.order_number,n.status,n.last_error,
+ COALESCE(n.provider_state->'identity'->>'id',''),COALESCE(n.provider_state->'identity'->>'uuid','')
+ FROM cashier_native_reservations n JOIN cashier_stock_reservations r ON r.id=n.reservation_id JOIN orders o ON o.id=r.order_id
+ WHERE n.status='needs_attention' OR n.status='queued' AND n.revision_started_at<CURRENT_TIMESTAMP-INTERVAL '10 minutes'
+ ORDER BY n.revision_started_at,n.reservation_id LIMIT 100`)
+	if err != nil {
+		return Diagnostics{}, fmt.Errorf("query cashier reservations: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item CashierReservationDiagnostic
+		if err = rows.Scan(&item.OrderID, &item.OrderNumber, &item.Status, &item.Message, &item.DocumentID, &item.DocumentUUID); err != nil {
+			return Diagnostics{}, err
+		}
+		if item.Message == "" {
+			item.Message = "Резерв СБИС не подтверждён более 10 минут"
+		}
+		result.CashierReservations = append(result.CashierReservations, item)
+	}
+	if err = rows.Err(); err != nil {
 		return Diagnostics{}, err
 	}
 	return result, nil

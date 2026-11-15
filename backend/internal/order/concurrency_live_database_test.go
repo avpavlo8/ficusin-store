@@ -13,7 +13,8 @@ import (
 )
 
 // TestConcurrentCheckoutDoesNotOversellOnLiveDatabase puts real concurrent
-// transactions through checkout. Orders no longer reserve any stock.
+// transactions through checkout. Counter reservations serialize the last units
+// without modifying the physical Saby balance or resurrecting legacy columns.
 func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -64,6 +65,8 @@ func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 		t.Fatalf("seed inventory: %v", err)
 	}
 	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM cashier_stock_layers WHERE reservation_id IN (SELECT r.id FROM cashier_stock_reservations r JOIN orders o ON o.id=r.order_id WHERE o.email LIKE $1)`, emailPattern)
+		_, _ = pool.Exec(ctx, `DELETE FROM cashier_stock_reservations WHERE order_id IN (SELECT id FROM orders WHERE email LIKE $1)`, emailPattern)
 		_, _ = pool.Exec(ctx, `DELETE FROM stock_movements WHERE order_id IN (SELECT id FROM orders WHERE email LIKE $1)`, emailPattern)
 		_, _ = pool.Exec(ctx, `DELETE FROM consent_events WHERE order_id IN (SELECT id FROM orders WHERE email LIKE $1)`, emailPattern)
 		_, _ = pool.Exec(ctx, `DELETE FROM procurement_requests WHERE customer_order_id IN (SELECT id FROM orders WHERE email LIKE $1)`, emailPattern)
@@ -115,7 +118,11 @@ func TestConcurrentCheckoutDoesNotOversellOnLiveDatabase(t *testing.T) {
 	`, emailPattern, warehouseID, variantID).Scan(&orders, &itemReservations, &inventoryReservations, &preorders); err != nil {
 		t.Fatal(err)
 	}
-	if orders != buyers || itemReservations != 0 || inventoryReservations != 0 || preorders != 0 {
-		t.Fatalf("checkout reserved stock or marked an available product as preorder: orders=%d item_reserved=%d inventory_reserved=%d preorders=%d", orders, itemReservations, inventoryReservations, preorders)
+	if orders != buyers || itemReservations != 0 || inventoryReservations != 0 || preorders != buyers-3 {
+		t.Fatalf("counter checkouts oversold last units or reused legacy columns: orders=%d item_reserved=%d inventory_reserved=%d preorders=%d", orders, itemReservations, inventoryReservations, preorders)
+	}
+	var physical, held, free int
+	if err := pool.QueryRow(ctx, `SELECT i.available_qty,COALESCE((SELECT SUM(l.quantity-l.released_quantity) FROM cashier_stock_layers l JOIN cashier_stock_reservations r ON r.id=l.reservation_id WHERE l.variant_id=$1),0),GREATEST(v.available_qty,0) FROM inventory i JOIN order_sale_inventory v ON v.id=i.id WHERE i.variant_id=$1`, variantID).Scan(&physical, &held, &free); err != nil || physical != 3 || held != buyers || free != 0 {
+		t.Fatal("counter reserve changed physical stock or left units for another buyer", physical, held, free, err)
 	}
 }

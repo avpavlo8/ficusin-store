@@ -71,6 +71,15 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, provider Provider,
 	if err != nil {
 		return true, err
 	}
+	if desired != "cancelled" {
+		cashier, e := cashierOwnsSale(ctx, tx, request.Event.OrderID)
+		if e != nil {
+			return true, e
+		}
+		if cashier {
+			return true, markInvalidClaim(ctx, tx, id, "Оплата при получении: списание выполняет касса. Сначала сверьте старую реализацию и кассовый чек; автоматическое проведение остановлено")
+		}
+	}
 	if actual != hash || request.ExecutionMode != mode || request.IntentID != intentID {
 		return true, markInvalidClaim(ctx, tx, id, "Подтверждение сохранённого запроса не совпало; запрос в СБИС не отправлен")
 	}

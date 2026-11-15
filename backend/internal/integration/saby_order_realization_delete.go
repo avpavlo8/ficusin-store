@@ -64,7 +64,7 @@ func (client *SabyClient) DeleteOrderRealizationRow(ctx context.Context, expecte
 	delete(additional, "init_vat_in_init_price")
 	additional["new_list"], additional["СкладскойДокумент"] = true, expected.Identity.ID
 	result.Outcome = "unknown"
-	result.Receipt, result.HTTPStatus, err = client.sabyOrderRealizationWriteRPCOnce(ctx, "РеалИсх.CustomDocNomDelete", map[string]any{"ИдО": []string{strconv.FormatInt(expected.RowID, 10)}, "ДопПоля": additional})
+	result.Receipt, result.HTTPStatus, err = client.writeWarehouseRPCOnce(ctx, "РеалИсх.CustomDocNomDelete", map[string]any{"ИдО": []string{strconv.FormatInt(expected.RowID, 10)}, "ДопПоля": additional})
 	if err != nil {
 		return result, errors.New("Ответ удаления неизвестен; повторная запись запрещена")
 	}

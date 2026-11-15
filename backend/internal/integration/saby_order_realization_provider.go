@@ -253,7 +253,7 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 				return attention("В реализации уже выбран другой покупатель")
 			}
 			bind := map[string]any{"_type": "record", "s": []any{map[string]any{"n": "@Документ", "t": "Число целое"}, map[string]any{"n": "Лицо1", "t": "Связь"}}, "d": []any{identity.ID, request.BuyerID}}
-			reply, _, bindErr := p.Client.sabyOrderRealizationWriteRPCOnce(ctx, "РеалИсх.Записать", map[string]any{"Запись": bind})
+			reply, _, bindErr := p.Client.writeWarehouseRPCOnce(ctx, "РеалИсх.Записать", map[string]any{"Запись": bind})
 			receipt.LastReceipt = reply
 			var returned json.Number
 			if bindErr != nil || json.Unmarshal(reply, &returned) != nil || string(returned) != progress.DocumentID {

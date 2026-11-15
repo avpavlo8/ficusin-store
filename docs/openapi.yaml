@@ -2088,7 +2088,10 @@ paths:
         - dashboard.read
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
-        the operation: dashboard.read."
+        the operation: dashboard.read. Diagnostics include cashierReservations requiring
+        review or waiting more than ten minutes: orderId, orderNumber, status, message,
+        documentId and documentUUID. No native commands, credentials or fiscal requests
+        are exposed, and this read-only endpoint never retries external writes."
   /admin/order-realizations:
     get:
       operationId: get_admin_order_realizations

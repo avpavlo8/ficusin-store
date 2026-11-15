@@ -11,6 +11,11 @@ import (
 // EnqueueCreated must run inside the new-order transaction, after all items.
 // Enabling the dispatcher never scans or promotes existing orders.
 func EnqueueCreated(ctx context.Context, tx pgx.Tx, orderID int64) (Event, error) {
+	if cashier, err := cashierOwnsSale(ctx, tx, orderID); err != nil {
+		return Event{}, err
+	} else if cashier {
+		return readEvent(ctx, tx, orderID, 0)
+	}
 	c, err := readDispatchControl(ctx, tx, true)
 	if err != nil {
 		return Event{}, err

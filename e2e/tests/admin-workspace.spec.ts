@@ -24,6 +24,25 @@ async function setup(page: Page) {
 // Приветствие зависит от времени суток.
 const greeting = /^(Доброе утро|Добрый день|Добрый вечер|Доброй ночи), /;
 
+test("@desktop @phone native Saby reservation failures identify the order without a retry mutation", async ({ page }) => {
+  await setup(page);
+  await page.route("**/api/v1/admin/operations",route=>route.fulfill({json:{
+    operations:{status:"degraded",checks:[{code:"cashier_reservation_review",affected:1}]},
+    diagnostics:{overreserved:[],failedReceipts:[],cashierReservations:[{
+      orderId:77,orderNumber:"0000-77",status:"needs_attention",documentId:"42866",documentUUID:"01a1de0d-4726-7e92-98d8-5478ead64c28",
+      message:"Неизвестен ответ создания строки СБИС; повторное добавление заблокировано до сверки.",
+    }]},
+  }}));
+  await page.goto("/admin");
+  const diagnostics=page.getByRole("region",{name:"Операционная диагностика"});
+  await expect(diagnostics.getByText("СБИС: резервы заказов требуют сверки",{exact:true})).toBeVisible();
+  await expect(diagnostics.getByText("Резерв СБИС · заказ 0000-77",{exact:true})).toBeVisible();
+  await expect(diagnostics.getByText("Счёт СБИС: 42866.",{exact:true})).toBeVisible();
+  await expect(diagnostics.getByRole("link",{name:"Открыть заказ",exact:true})).toHaveAttribute("href","/admin?section=orders&order=77");
+  await expect(diagnostics.getByRole("button",{name:/повторить|создать/i})).toHaveCount(0);
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+});
+
 test("@desktop @phone workspace preserves real navigation and filters recent orders", async ({ page }) => {
   await setup(page);
   await page.goto("/admin");

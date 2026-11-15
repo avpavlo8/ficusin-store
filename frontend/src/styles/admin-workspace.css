@@ -481,6 +481,16 @@
   line-height: 1.6;
   margin-top: 7px;
 }
+.workspace-panel .admin-alert-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 .workspace-shortcuts > div {
   display: grid;
