@@ -145,9 +145,11 @@ def native_readback(env):
     r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
     with tempfile.TemporaryDirectory() as directory:
         with g.connect_production(env,directory) as conn:
+            active=conn.execute("SELECT count(*) FROM orders WHERE payment_method='on_delivery' AND status NOT IN ('completed','cancelled')").fetchone()[0]
             saved=conn.execute("""SELECT r.id,o.order_number,n.status,n.provider_state,n.request FROM cashier_stock_reservations r
-              JOIN orders o ON o.id=r.order_id JOIN cashier_native_reservations n ON n.reservation_id=r.id
+              JOIN orders o ON o.id=r.order_id LEFT JOIN cashier_native_reservations n ON n.reservation_id=r.id
               WHERE r.completed_at IS NULL AND r.cancelled_at IS NULL ORDER BY r.id""").fetchall()
+    if len(saved)!=active:return {'verified':False,'reason':'native_reservation_headers_missing'}
     if any(row[2]!='settled' for row in saved):return {'verified':False,'reason':'worker_not_settled_yet'}
     if not saved:return {'verified':True,'activeInvoices':[]}
     token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')

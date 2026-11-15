@@ -27,6 +27,26 @@ class Fake:
         return {}
 
 class ReleaseTests(unittest.TestCase):
+    def test_native_runtime_without_jobs_cannot_pass(self):
+        class Conn:
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def execute(self,*args):return self
+            def fetchone(self):return (1,)
+            def fetchall(self):return []
+        with patch.object(m.g,'connect_production',return_value=Conn()):
+            result=m.native_readback({})
+        self.assertEqual(result,{'verified':False,'reason':'native_reservation_headers_missing'})
+    def test_native_runtime_with_unprocessed_job_cannot_pass(self):
+        class Conn:
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def execute(self,*args):return self
+            def fetchone(self):return (1,)
+            def fetchall(self):return [(1,'0000-15',None,None,None)]
+        with patch.object(m.g,'connect_production',return_value=Conn()):
+            result=m.native_readback({})
+        self.assertEqual(result,{'verified':False,'reason':'worker_not_settled_yet'})
     def test_only_required_posting_flags_decide_unposted(self):
         names=['Проведен','ЕстьПроводки','ОшибкиПроведения','НеактуальныеПроводки','ВОчередиНаПроведение','ВОчередиНаРасчетПроводок','ИнойФлаг']
         raw={'s':[{'n':'ДокументРасширение.Состояние','t':{'n':'Флаги','s':{str(i):n for i,n in enumerate(names)}}}]}
