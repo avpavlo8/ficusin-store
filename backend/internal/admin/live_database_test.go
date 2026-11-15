@@ -42,6 +42,8 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 	defer func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, staffID)
 		_, _ = pool.Exec(ctx, `DELETE FROM stock_movements WHERE order_id IN ($1,$2)`, orderID, pickupID)
+		_, _ = pool.Exec(ctx, `DELETE FROM cashier_stock_layers WHERE reservation_id IN (SELECT id FROM cashier_stock_reservations WHERE order_id IN ($1,$2))`, orderID, pickupID)
+		_, _ = pool.Exec(ctx, `DELETE FROM cashier_stock_reservations WHERE order_id IN ($1,$2)`, orderID, pickupID)
 		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id IN ($1,$2)`, orderID, pickupID)
 		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id IN ($1,$2)`, productID, draftID)
 		_, _ = pool.Exec(ctx, `DELETE FROM categories WHERE id=$1`, draftCategoryID)
@@ -464,6 +466,10 @@ func TestCatalogueAndOrderEditingOnLiveDatabase(t *testing.T) {
 		}
 		if status != "completed" || paymentStatus != "paid" {
 			t.Fatalf("после выдачи: status=%q payment=%q", status, paymentStatus)
+		}
+		var physical, held, documents int
+		if err := pool.QueryRow(ctx, `SELECT i.available_qty,COALESCE((SELECT SUM(l.quantity-l.released_quantity) FROM cashier_stock_reservations r JOIN cashier_stock_layers l ON l.reservation_id=r.id WHERE r.order_id=$1),0),(SELECT COUNT(*) FROM order_sale_intents WHERE order_id=$1) FROM inventory i WHERE i.warehouse_id=$2 AND i.variant_id=$3`, pickupID, warehouseID, largeVariant).Scan(&physical, &held, &documents); err != nil || physical != 10 || held != 1 || documents != 0 {
+			t.Fatal("pickup handover changed stock, released before import, or created a second sale", physical, held, documents, err)
 		}
 	})
 

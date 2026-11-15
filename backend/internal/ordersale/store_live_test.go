@@ -58,7 +58,7 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 	exec(`CREATE TABLE inventory(id BIGSERIAL PRIMARY KEY,warehouse_id BIGINT,variant_id BIGINT,available_qty INTEGER,reserved_qty INTEGER NOT NULL DEFAULT 0,synced_at TIMESTAMPTZ);
  CREATE TABLE customers(id BIGINT PRIMARY KEY);INSERT INTO customers VALUES(1);
  CREATE TABLE warehouses(id BIGINT PRIMARY KEY,name TEXT,is_active INTEGER,saby_id TEXT DEFAULT 'saby-ryazan-main');INSERT INTO warehouses VALUES(1,'Warehouse',1),(2,'Other warehouse',1);
- CREATE TABLE orders(id BIGINT PRIMARY KEY,order_number TEXT,status TEXT,delivery_method TEXT,cdek_status TEXT,created_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT '',cdek_cancel_state TEXT DEFAULT '',subtotal NUMERIC);
+ CREATE TABLE orders(id BIGINT PRIMARY KEY,payment_method TEXT DEFAULT 'online',payment_status TEXT DEFAULT 'pending',order_number TEXT,status TEXT,delivery_method TEXT,cdek_status TEXT,created_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT '',cdek_cancel_state TEXT DEFAULT '',subtotal NUMERIC);
  CREATE TABLE product_external_ids(variant_id BIGINT,provider TEXT,id_type TEXT,status TEXT,external_id TEXT);
  CREATE TABLE products(id BIGINT PRIMARY KEY,saby_fields TEXT[]);INSERT INTO products VALUES(1,ARRAY['stock']);
  CREATE TABLE saby_nomenclature(saby_id TEXT PRIMARY KEY,missing_since TIMESTAMPTZ);INSERT INTO saby_nomenclature VALUES('3980',NULL),('3981',NULL),('4000',NULL);
@@ -273,4 +273,5 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 	if e != nil || len(view.Events) != 1 || view.ExternalWritesEnabled || view.Warehouses[0].NativeMappingConfirmed {
 		t.Fatalf("view claims unsupported native capability: %+v / %v", view, e)
 	}
+	t.Run("cashier reservation cutover", func(t *testing.T) { testCashierReservations(t, pool) })
 }
