@@ -70,6 +70,11 @@ test("real staging: route editor draft, photos, seasonal boxes and outbound isol
   expect(product.status).toBe("draft");
   const planResponse = await submitted;
   expect(planResponse.ok(), await planResponse.text()).toBeTruthy();
+  await expect(editor).toHaveCount(0);
+  await expect(page.locator(".catalog-action-notice")).toContainText("Изменения товара сохранены");
+  await expect(page).not.toHaveURL(/[?&]product=/);
+  // Reopen explicitly: a completed Save now returns to the catalogue.
+  await page.goto(`/admin?section=products&product=${product.id}`);
   await expect(page).toHaveURL(new RegExp(`product=${product.id}`));
   await expect(editor.getByRole("button", {name:"Сохранить", exact:true})).toBeEnabled();
   expect(creates).toBe(1);
