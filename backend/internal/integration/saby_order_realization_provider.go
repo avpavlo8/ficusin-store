@@ -569,28 +569,55 @@ func sabyRealizationProviderPreparedCreateMatches(payload json.RawMessage, r ord
 	return ok && sabyRealizationINN.MatchString(inn)
 }
 
-func (p *SabyOrderRealizationProvider) readPublic(ctx context.Context, key string) (map[string]any, bool, error) {
-	var reply struct {
-		Result json.RawMessage `json:"result"`
-		Error  *struct {
-			Code    json.Number `json:"code"`
-			Message string      `json:"message"`
-			Details string      `json:"details"`
-			Data    struct {
-				ClassID   string      `json:"classid"`
-				ErrorCode json.Number `json:"error_code"`
-			} `json:"data"`
-		} `json:"error"`
+// Only this read envelope may interpret Saby's HTTP 500 as a typed absence.
+// Write replies, transport failures and all unrelated RPC errors stay failures.
+type sabyDocumentReadReply struct {
+	key    string
+	Result json.RawMessage `json:"result"`
+	Error  *struct {
+		Code    json.Number `json:"code"`
+		Message string      `json:"message"`
+		Details string      `json:"details"`
+		Data    struct {
+			ClassID   string      `json:"classid"`
+			ErrorCode json.Number `json:"error_code"`
+		} `json:"data"`
+	} `json:"error"`
+}
+
+func (r *sabyDocumentReadReply) documentAbsent() bool {
+	if r.Error == nil || len(r.Result) != 0 || !sabyOrderRealizationUUID.MatchString(r.key) {
+		return false
 	}
+	e := r.Error
+	message := strings.ToLower(strings.TrimSpace(e.Message + " " + e.Details))
+	knownClass := e.Data.ClassID == "" || strings.EqualFold(e.Data.ClassID, "{00000000-0000-0000-0000-1fa000010007}")
+	knownErrorCode := e.Data.ErrorCode == "" || e.Data.ErrorCode == "-1"
+	return e.Code == "-32000" && knownClass && knownErrorCode &&
+		strings.HasPrefix(message, "не найден документ с идентификатором '"+strings.ToLower(r.key)+"'") &&
+		strings.Contains(message, "https://saby.ru/help/integration/api/error_solution/not_doc")
+}
+
+func (r *sabyDocumentReadReply) acceptSabyHTTPError(status int, content []byte) bool {
+	if status != http.StatusInternalServerError {
+		return false
+	}
+	candidate := sabyDocumentReadReply{key: r.key}
+	if json.Unmarshal(content, &candidate) != nil || !candidate.documentAbsent() || !strings.EqualFold(candidate.Error.Data.ClassID, "{00000000-0000-0000-0000-1fa000010007}") || candidate.Error.Data.ErrorCode != "-1" {
+		return false
+	}
+	*r = candidate
+	return true
+}
+
+func (p *SabyOrderRealizationProvider) readPublic(ctx context.Context, key string) (map[string]any, bool, error) {
+	reply := sabyDocumentReadReply{key: key}
 	request := map[string]any{"jsonrpc": "2.0", "protocol": 3, "method": "СБИС.ПрочитатьДокумент", "params": map[string]any{"Документ": map[string]any{"Идентификатор": key}}, "id": 1}
 	if err := p.Client.authorizedJSON(ctx, http.MethodPost, p.Client.serviceURL, request, &reply); err != nil {
 		return nil, false, err
 	}
 	if reply.Error != nil {
-		message := strings.ToLower(strings.TrimSpace(reply.Error.Message + " " + reply.Error.Details))
-		knownClass := reply.Error.Data.ClassID == "" || strings.EqualFold(reply.Error.Data.ClassID, "{00000000-0000-0000-0000-1fa000010007}")
-		knownErrorCode := reply.Error.Data.ErrorCode == "" || reply.Error.Data.ErrorCode == "-1"
-		if reply.Error.Code == "-32000" && knownClass && knownErrorCode && strings.HasPrefix(message, "не найден документ с идентификатором ") && strings.Contains(message, strings.ToLower(key)) && strings.Contains(message, "https://saby.ru/help/integration/api/error_solution/not_doc") {
+		if reply.documentAbsent() {
 			return nil, false, nil
 		}
 		return nil, false, errors.New("Не удалось проверить существующий документ СБИС")

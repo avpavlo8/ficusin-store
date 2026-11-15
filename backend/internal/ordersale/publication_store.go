@@ -46,8 +46,8 @@ func loadPublication(ctx context.Context, q queryer, intentID int64) (*Publicati
 	var raw []byte
 	var enabled bool
 	var mode string
-	var cancellationBlocked bool
-	err := q.QueryRow(ctx, `SELECT p.id,p.execution_mode,p.status,p.message,p.document_id,p.document_uuid,p.attempts,p.updated_at,p.progress,c.enabled,c.execution_mode,(p.request->>'siteWarehouseId')::BIGINT,p.stock_verified,p.desired_state,p.cancellation_verified,p.stock_verified_at,p.cancellation_verified_at,p.cancellation_blocked,COALESCE(p.cancellation_proof->>'kind','') FROM order_sale_publications p CROSS JOIN order_sale_dispatch_control c WHERE p.intent_id=$1 AND c.singleton`, intentID).Scan(&v.ID, &v.ExecutionMode, &v.Status, &v.Message, &v.DocumentID, &v.DocumentUUID, &v.Attempts, &v.UpdatedAt, &raw, &enabled, &mode, &v.SiteWarehouseID, &v.StockVerified, &v.DesiredState, &v.CancellationVerified, &v.StockVerifiedAt, &v.CancellationVerifiedAt, &cancellationBlocked, &v.CancellationKind)
+	var cancellationBlocked, createAttempted, postAttempted bool
+	err := q.QueryRow(ctx, `SELECT p.id,p.execution_mode,p.status,p.message,p.document_id,p.document_uuid,p.attempts,p.updated_at,p.progress,c.enabled,c.execution_mode,(p.request->>'siteWarehouseId')::BIGINT,p.stock_verified,p.desired_state,p.cancellation_verified,p.stock_verified_at,p.cancellation_verified_at,p.cancellation_blocked,COALESCE(p.cancellation_proof->>'kind',''),p.create_attempted,p.post_attempted FROM order_sale_publications p CROSS JOIN order_sale_dispatch_control c WHERE p.intent_id=$1 AND c.singleton`, intentID).Scan(&v.ID, &v.ExecutionMode, &v.Status, &v.Message, &v.DocumentID, &v.DocumentUUID, &v.Attempts, &v.UpdatedAt, &raw, &enabled, &mode, &v.SiteWarehouseID, &v.StockVerified, &v.DesiredState, &v.CancellationVerified, &v.StockVerifiedAt, &v.CancellationVerifiedAt, &cancellationBlocked, &v.CancellationKind, &createAttempted, &postAttempted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -59,6 +59,8 @@ func loadPublication(ctx context.Context, q queryer, intentID int64) (*Publicati
 		return nil, err
 	}
 	progress.DesiredState = v.DesiredState
+	progress.CreateAttempted = progress.CreateAttempted || createAttempted
+	progress.PostAttempted = progress.PostAttempted || postAttempted
 	v.TestMode = v.ExecutionMode == "mock"
 	v.CanRetry = !cancellationBlocked && enabled && mode == v.ExecutionMode && retrySafe(v.Status, progress)
 	if v.CanRetry && v.DesiredState == "cancelled" {
@@ -183,10 +185,10 @@ func RetryPublication(ctx context.Context, pool *pgxpool.Pool, id int64) error {
 		return err
 	}
 	var status, mode string
-	var cancellationBlocked bool
+	var cancellationBlocked, createAttempted, postAttempted bool
 	var desired string
 	var raw []byte
-	err = tx.QueryRow(ctx, `SELECT status,execution_mode,progress,cancellation_blocked,desired_state FROM order_sale_publications WHERE id=$1 FOR UPDATE`, id).Scan(&status, &mode, &raw, &cancellationBlocked, &desired)
+	err = tx.QueryRow(ctx, `SELECT status,execution_mode,progress,cancellation_blocked,desired_state,create_attempted,post_attempted FROM order_sale_publications WHERE id=$1 FOR UPDATE`, id).Scan(&status, &mode, &raw, &cancellationBlocked, &desired, &createAttempted, &postAttempted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrInput
 	}
@@ -214,6 +216,8 @@ func RetryPublication(ctx context.Context, pool *pgxpool.Pool, id int64) error {
 		}
 	}
 	p.DesiredState = desired
+	p.CreateAttempted = p.CreateAttempted || createAttempted
+	p.PostAttempted = p.PostAttempted || postAttempted
 	if !retrySafe(status, p) {
 		return ErrRetryUnsafe
 	}

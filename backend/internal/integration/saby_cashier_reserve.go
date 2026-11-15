@@ -13,22 +13,24 @@ import (
 )
 
 type cashierInvoiceIdentity struct {
-	ID     int64               `json:"id"`
-	UUID   string              `json:"uuid"`
-	Config cashierstock.Config `json:"config"`
+	ID      int64               `json:"id"`
+	UUID    string              `json:"uuid"`
+	Config  cashierstock.Config `json:"config"`
+	BuyerID int64               `json:"buyerId,omitempty"`
 }
 type cashierInvoiceRow struct {
 	ID   int64             `json:"id"`
 	Line cashierstock.Line `json:"line"`
 }
 type cashierInvoiceGuard struct {
-	Identity     cashierInvoiceIdentity `json:"identity"`
-	Rows         []cashierInvoiceRow    `json:"rows"`
-	Number       string                 `json:"number"`
-	Marker       string                 `json:"marker"`
-	TargetMarker string                 `json:"targetMarker"`
-	TargetNumber string                 `json:"targetNumber"`
-	NextLine     *cashierstock.Line     `json:"nextLine,omitempty"`
+	Identity      cashierInvoiceIdentity `json:"identity"`
+	Rows          []cashierInvoiceRow    `json:"rows"`
+	Number        string                 `json:"number"`
+	Marker        string                 `json:"marker"`
+	TargetMarker  string                 `json:"targetMarker"`
+	TargetNumber  string                 `json:"targetNumber"`
+	TargetBuyerID int64                  `json:"targetBuyerId,omitempty"`
+	NextLine      *cashierstock.Line     `json:"nextLine,omitempty"`
 }
 type cashierNativeParams struct {
 	Guard cashierInvoiceGuard `json:"guard"`
@@ -84,7 +86,22 @@ func cashierHeader(raw json.RawMessage, expected cashierInvoiceIdentity) (map[st
 		}
 	}
 	expected.ID, expected.UUID = id, uuid
+	expected.BuyerID, err = cashierBuyer(record)
+	if err != nil {
+		return nil, expected, err
+	}
 	return record, expected, nil
+}
+
+func cashierBuyer(record map[string]any) (int64, error) {
+	if sabyRecordField(record, "Лицо1") == nil {
+		return 0, nil
+	}
+	id, err := sabyInt64Field(record, "Лицо1")
+	if err != nil || id < 0 {
+		return 0, errors.New("Не подтверждён покупатель резервного счёта")
+	}
+	return id, nil
 }
 
 func (c *SabyClient) cashierHeader(ctx context.Context, id cashierInvoiceIdentity) (map[string]any, error) {
@@ -209,6 +226,10 @@ func (c *SabyClient) cashierCheckGuard(ctx context.Context, guard cashierInvoice
 	if sabyValue(sabyRecordField(header, "Номер")) != guard.Number || sabyValue(sabyRecordField(header, "ДокументРасширение.Название")) != guard.Marker {
 		return errors.New("Резервный счёт изменён вне сайта")
 	}
+	buyer, err := cashierBuyer(header)
+	if err != nil || buyer != guard.Identity.BuyerID {
+		return errors.New("Покупатель резервного счёта изменён вне сайта")
+	}
 	rows, err := c.cashierRows(ctx, guard.Identity)
 	if err != nil {
 		return err
@@ -292,8 +313,14 @@ func cashierField(name, kind string, value any) struct {
 func cashierCreateParams(r cashierstock.Request, marker string) any {
 	return map[string]any{"Фильтр": cashierTyped(cashierField("ВызовИзБраузера", "Логическое", true), cashierField("ИмяОбъекта", "Строка", "СчетСкИсх"), cashierField("ТипДокумента", "Число целое", int64(231)), cashierField("Регламент", "Число целое", r.Config.RegulationID), cashierField("ДокументНашаОрганизация", "Связь", r.Config.OrganizationID), cashierField("СкладскойДокумент.Склад", "Связь", r.Config.WarehouseID), cashierField("ДокументРасширение.Название", "Строка", marker)), "ИмяМетода": "СчетСкИсх.ListLite"}
 }
-func cashierHeaderParams(id cashierInvoiceIdentity, number, marker string) any {
-	return map[string]any{"Запись": cashierTyped(cashierField("@Документ", "Число целое", id.ID), cashierField("ИдентификаторДокумента", "UUID", id.UUID), cashierField("Номер", "Строка", number), cashierField("ДокументРасширение.Название", "Строка", marker)), "ДопПоля": map[string]any{"ИмяОбъекта": "СчетСкИсх"}}
+func cashierHeaderParams(id cashierInvoiceIdentity, number, marker string, buyerID int64) any {
+	record := cashierTyped(cashierField("@Документ", "Число целое", id.ID), cashierField("ИдентификаторДокумента", "UUID", id.UUID), cashierField("Номер", "Строка", number), cashierField("ДокументРасширение.Название", "Строка", marker))
+	// Zero is only an already-frozen request from the previous release. Its
+	// exact write payload stays unchanged until read-only recovery finishes.
+	if buyerID > 0 {
+		record = cashierTyped(cashierField("@Документ", "Число целое", id.ID), cashierField("ИдентификаторДокумента", "UUID", id.UUID), cashierField("Номер", "Строка", number), cashierField("ДокументРасширение.Название", "Строка", marker), cashierField("Лицо1", "Связь", buyerID))
+	}
+	return map[string]any{"Запись": record, "ДопПоля": map[string]any{"ИмяОбъекта": "СчетСкИсх"}}
 }
 func cashierPrepareRowParams(id cashierInvoiceIdentity, line cashierstock.Line) any {
 	return map[string]any{"Фильтр": cashierTyped(cashierField("ВызовИзБраузера", "Логическое", true), cashierField("СкладскойДокумент", "Число целое", id.ID), cashierField("Номенклатура", "Число целое", line.NomenclatureID), cashierField("Количество", "Число целое", line.Quantity), cashierField("Цена", "Строка", line.UnitPrice)), "ИмяМетода": nil}
@@ -301,6 +328,16 @@ func cashierPrepareRowParams(id cashierInvoiceIdentity, line cashierstock.Line) 
 
 func cashierNumber(reservationID int64) string { return "FCR-" + strconv.FormatInt(reservationID, 10) }
 func cashierMarker(r cashierstock.Request) string {
+	if r.BuyerID > 0 {
+		prefix := "Резерв заказа "
+		if r.Terminal == "completed" {
+			prefix = "Выдан заказ "
+		}
+		if r.Terminal == "cancelled" {
+			prefix = "Отменён резерв заказа "
+		}
+		return prefix + r.OrderNumber
+	}
 	state := "Резерв"
 	if r.Terminal == "completed" {
 		state = "Выдан кассой"

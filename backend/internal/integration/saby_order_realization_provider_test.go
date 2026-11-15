@@ -26,6 +26,7 @@ type realizationProviderHarness struct {
 	loseCreate, loseSave, foreignOnly bool
 	provider                          *SabyOrderRealizationProvider
 	publicReadError                   map[string]any
+	publicReadStatus                  int
 	calls                             []string
 	cancelRequested                   bool
 	loseCancel                        bool
@@ -73,6 +74,10 @@ func newRealizationProviderHarness(t *testing.T) *realizationProviderHarness {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.mu.Lock()
 		defer h.mu.Unlock()
+		if r.URL.Path == "/auth/" {
+			json.NewEncoder(w).Encode(map[string]string{"token": "fixture-token"})
+			return
+		}
 		var q struct {
 			Protocol int             `json:"protocol"`
 			Method   string          `json:"method"`
@@ -99,6 +104,9 @@ func newRealizationProviderHarness(t *testing.T) *realizationProviderHarness {
 				failure := h.publicReadError
 				if failure == nil {
 					failure = map[string]any{"code": -32000, "data": map[string]any{"classid": "{00000000-0000-0000-0000-1fa000010007}", "error_code": -1}, "message": "Не найден документ с идентификатором '" + realizationProviderRequest().OperationKey + "', подробнее в базе знаний (https://saby.ru/help/integration/api/error_solution/not_doc)"}
+				}
+				if h.publicReadStatus != 0 {
+					w.WriteHeader(h.publicReadStatus)
 				}
 				json.NewEncoder(w).Encode(map[string]any{"error": failure})
 				return
@@ -594,13 +602,24 @@ func TestSabyRealizationProviderAcknowledgedRowCannotBeReplacedByEqualGroup(t *t
 }
 
 func TestSabyRealizationProviderOnlyActualDocumentNotFoundPermitsCreate(t *testing.T) {
-	for _, mode := range []string{"actual", "wrong-code", "wrong-class", "different-uuid", "auth", "unrelated-not-found"} {
+	for _, mode := range []string{"actual", "http500-actual", "http503-actual", "http401-actual", "missing-class", "missing-error-code", "wrong-code", "wrong-class", "different-uuid", "auth", "unrelated-not-found"} {
 		t.Run(mode, func(t *testing.T) {
 			h := newRealizationProviderHarness(t)
 			r := realizationProviderRequest()
 			errorData := map[string]any{"classid": "{00000000-0000-0000-0000-1fa000010007}", "error_code": -1}
 			errorBody := map[string]any{"code": -32000, "data": errorData, "message": "Не найден документ с идентификатором '" + r.OperationKey + "', подробнее в базе знаний (https://saby.ru/help/integration/api/error_solution/not_doc)"}
+			h.publicReadStatus = http.StatusInternalServerError
 			switch mode {
+			case "actual":
+				h.publicReadStatus = http.StatusOK
+			case "http503-actual":
+				h.publicReadStatus = http.StatusServiceUnavailable
+			case "http401-actual":
+				h.publicReadStatus = http.StatusUnauthorized
+			case "missing-class":
+				delete(errorData, "classid")
+			case "missing-error-code":
+				delete(errorData, "error_code")
 			case "wrong-code":
 				errorBody["code"] = -32001
 			case "wrong-class":
@@ -614,7 +633,7 @@ func TestSabyRealizationProviderOnlyActualDocumentNotFoundPermitsCreate(t *testi
 			}
 			h.publicReadError = errorBody
 			result := runProviderStep(t, h, r, ordersale.Progress{Stage: "inspect"})
-			if mode == "actual" {
+			if mode == "actual" || mode == "http500-actual" {
 				if result.Progress.Stage != "create" || result.State != "queued" {
 					t.Fatal("verified vendor absence did not prepare creation", result)
 				}
@@ -830,5 +849,19 @@ func TestSabyRealizationProviderCancelMissingAcknowledgedRowCannotUndoReplacemen
 	result := providerCancelUntilStopped(t, h, r, p)
 	if result.State != "needs_attention" || result.CancellationVerified || h.writeCount("Документ.CancelPosting") != 0 || len(result.Progress.OwnedRowIDs) != 1 || result.Progress.OwnedRowIDs[0] != 700001 {
 		t.Fatal("cancelled another row with identical totals", result)
+	}
+}
+
+func TestSabyDocumentAbsenceDoesNotRelaxOtherHTTPReplyTypes(t *testing.T) {
+	h := newRealizationProviderHarness(t)
+	h.publicReadStatus = http.StatusInternalServerError
+	var reply sabyRPCResponse
+	err := h.provider.Client.authorizedJSON(context.Background(), http.MethodPost, h.provider.Client.serviceURL,
+		map[string]any{"method": "СБИС.ПрочитатьДокумент", "params": map[string]any{}}, &reply)
+	if err == nil {
+		t.Fatal("ordinary RPC envelope ignored HTTP 500")
+	}
+	if providerWriteCount(h) != 0 {
+		t.Fatal("read check wrote a document")
 	}
 }
