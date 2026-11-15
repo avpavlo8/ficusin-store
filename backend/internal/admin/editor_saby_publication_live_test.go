@@ -192,7 +192,7 @@ func TestSabyEditorPublicationLocalDatabase(t *testing.T) {
 			if ch != "saby" || p.Stage != "hydrate" || p.IDs != ids || !p.CreateAttempted {
 				t.Fatalf("revision would create another native card: %+v", p)
 			}
-			if calls > 1 && (len(p.Native) != 0 || r.Description != "Pending corrected content") {
+			if calls > 1 && (!sabyTestInitialPricePending(p) || r.Description != "Pending corrected content") {
 				t.Fatal("revision reused old prepared content")
 			}
 			return ce.Result{Progress: p}, errors.New("isolated native Read failure before Number is available")
@@ -201,7 +201,7 @@ func TestSabyEditorPublicationLocalDatabase(t *testing.T) {
 		var progress ce.Progress
 		var state string
 		must(pool.QueryRow(ctx, `SELECT status,progress,pending_payload IS NOT NULL FROM catalog_editor_publications WHERE variant_id=$1 AND channel='saby'`, variant).Scan(&state, &progress, &pending))
-		if state != "prepared" || pending || progress.IDs != ids || progress.Stage != "hydrate" || len(progress.Native) != 0 {
+		if state != "prepared" || pending || progress.IDs != ids || progress.Stage != "hydrate" || !sabyTestInitialPricePending(progress) {
 			t.Fatalf("failed draft dropped its only native identity: %s/%+v", state, progress)
 		}
 		step(boundary)
@@ -215,7 +215,7 @@ func TestSabyEditorPublicationLocalDatabase(t *testing.T) {
 		_, e = repo.SaveEditorPlan(ctx, actor, product.ID, plan, true)
 		must(e)
 		must(pool.QueryRow(ctx, `SELECT status,progress FROM catalog_editor_publications WHERE variant_id=$1 AND channel='saby'`, variant).Scan(&state, &progress))
-		if state != "prepared" || progress.Stage != "hydrate" || progress.IDs != ids || len(progress.Native) != 0 {
+		if state != "prepared" || progress.Stage != "hydrate" || progress.IDs != ids || !sabyTestInitialPricePending(progress) {
 			t.Fatal("explicit changed Save discarded a known native Id")
 		}
 		// Unknown writes cannot become fresh content merely because an Id exists.
@@ -463,4 +463,15 @@ func (f *sabyReceiptFixture) Advance(ctx context.Context, ch string, r ce.Reques
 	b, _ := json.Marshal(p)
 	f.t.Fatalf("unexpected fixture stage: %s", b)
 	return ce.Result{}, nil
+}
+
+// JSONB may insert whitespace; assert the retained obligation and absence of
+// stale content receipts rather than comparing raw serialization bytes.
+func sabyTestInitialPricePending(progress ce.Progress) bool {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(progress.Native, &fields) != nil || len(fields) != 1 {
+		return false
+	}
+	var created bool
+	return json.Unmarshal(fields["created"], &created) == nil && created
 }

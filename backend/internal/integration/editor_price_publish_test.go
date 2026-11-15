@@ -155,7 +155,7 @@ func TestEditorSabyPriceOnlyPreservesCardAndNeverReplaysLostReply(t *testing.T) 
 			break
 		}
 	}
-	if status != "synced" || f.updates != 1 || f.creates != 0 || f.uploads != 0 {
+	if status != "synced" || f.updates != 1 || f.creates != 0 || f.uploads != 0 || fixtureBasePrice(t, f) != 149099 {
 		t.Fatalf("wrong price flow %s %+v writes%d creates%d", status, s, f.updates, f.creates)
 	}
 	codes, _ := json.Marshal(sabyRecordField(f.card, "CodeList"))

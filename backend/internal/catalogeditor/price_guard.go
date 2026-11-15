@@ -104,9 +104,23 @@ func avitoPriceCurrent(ctx context.Context, q PriceQuery, variant int64, target 
 	return "", nil
 }
 
+// verify-main-price is a read-only handoff after all frozen card content has
+// been verified. It must not block an explicitly approved repair price command;
+// every other unresolved/unknown content stage continues to own the write lane.
 func PriceContentBusy(ctx context.Context, q PriceQuery, variant int64, channel, mode string) (bool, error) {
 	var busy bool
-	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_editor_publications WHERE variant_id=$1 AND channel=$2 AND execution_mode=$3 AND (status IN('prepared','queued','processing','needs_attention') OR (status NOT IN('synced','created','linked','cancelled') AND (progress->>'ambiguous'='true' OR progress->>'createAttempted'='true'))))`, variant, channel, mode).Scan(&busy)
+	err := q.QueryRow(ctx, `SELECT EXISTS(
+        SELECT 1 FROM catalog_editor_publications
+        WHERE variant_id=$1 AND channel=$2 AND execution_mode=$3
+        AND (status IN('prepared','queued','processing','needs_attention')
+          OR (status NOT IN('synced','created','linked','cancelled')
+            AND (progress->>'ambiguous'='true' OR progress->>'createAttempted'='true')))
+        AND NOT(channel='saby' AND status='needs_attention'
+          AND COALESCE(progress->>'stage','')='verify-main-price'
+          AND COALESCE(progress#>>'{native,created}','')='true'
+          AND COALESCE(progress#>>'{ids,productId}','')~'^[1-9][0-9]*$'
+          AND COALESCE(progress#>>'{ids,uuid}','')<>'')
+    )`, variant, channel, mode).Scan(&busy)
 	return busy, err
 }
 

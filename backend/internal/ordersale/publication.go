@@ -154,6 +154,15 @@ func retrySafe(status string, progress Progress) bool {
 		!progress.RevisionPostAttempted && !progress.RevisionUnpostAttempted {
 		return true
 	}
+	// An acknowledged create can resume only native identity discovery. The
+	// provider validates the frozen receipt/hash and ACK UUID before any RPC;
+	// discover itself only reads, and a mismatch cannot reach fill.
+	if status == "needs_attention" && progress.Stage == "discover" && progress.CreateAttempted && !progress.Unknown &&
+		!progress.PostAttempted && progress.DocumentID == "" && progress.DocumentUUID == "" && len(progress.Native) > 0 &&
+		len(progress.OwnedRowIDs) == 0 && len(progress.ActiveOwnedRowIDs) == 0 && len(progress.RevisionNative) == 0 &&
+		progress.ActiveRevisionID == 0 && progress.TargetRevisionID == 0 && !progress.RevisionPostAttempted && !progress.RevisionUnpostAttempted {
+		return true
+	}
 	if status == "needs_attention" && progress.StockBlocked && (!progress.PostAttempted || progress.ActiveRevisionID > 0 && !progress.RevisionPostAttempted) {
 		return true
 	}

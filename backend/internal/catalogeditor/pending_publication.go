@@ -17,7 +17,7 @@ func PendingPublicationProgress(channel, status string, previous, next Request, 
 		if status != "created" && status != "synced" && status != "linked" && status != "failed" {
 			return Progress{}, false
 		}
-		return SabyPublicationRevision(previous, next, receipt)
+		return SabyPublicationRevision(status, previous, next, receipt)
 	}
 	if status == "created" || status == "synced" || status == "linked" {
 		return Progress{}, true

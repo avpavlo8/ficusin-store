@@ -62,7 +62,11 @@ func (p *SabyEditorPublisher) buildSabyEditorFields(card *sabyEditorNativeRecord
 	// Existing-card content saves do not approve a price change. Omit the
 	// unmanaged price list so only the explicit price publication can alter it.
 	if state.Created {
-		fields["PriceData"], err = sabyEditorSetPrice(card.value("PriceData"), p.Client.priceListID, r.PriceMinor)
+		if state.BasePriceIncluded {
+			fields["PriceData"], err = sabyEditorSetPricePair(card.value("PriceData"), p.Client.priceListID, r.PriceMinor)
+		} else {
+			fields["PriceData"], err = sabyEditorSetPrice(card.value("PriceData"), p.Client.priceListID, r.PriceMinor)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
@@ -194,6 +198,12 @@ func (p *SabyEditorPublisher) verifySabyEditorFields(card *sabyEditorNativeRecor
 	}
 	if !barcodeFound {
 		return errors.New("СБИС не подтвердил штрихкод EAN-13")
+	}
+	if state.Created && state.BasePriceIncluded {
+		matched, err := sabyEditorBasePriceMatches(card, r.PriceMinor)
+		if err != nil || !matched {
+			return errors.New("Основная цена СБИС не совпала с ценой сайта")
+		}
 	}
 	if state.Created {
 		prices, err := parseSabyEditorNativeRecordSet(card.value("PriceData"))

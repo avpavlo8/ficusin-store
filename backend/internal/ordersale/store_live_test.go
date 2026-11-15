@@ -57,6 +57,7 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 	}
 	exec(`CREATE TABLE inventory(id BIGSERIAL PRIMARY KEY,warehouse_id BIGINT,variant_id BIGINT,available_qty INTEGER,reserved_qty INTEGER NOT NULL DEFAULT 0,synced_at TIMESTAMPTZ);
  CREATE TABLE customers(id BIGINT PRIMARY KEY);INSERT INTO customers VALUES(1);
+ CREATE TABLE admin_users(customer_id BIGINT PRIMARY KEY REFERENCES customers(id),role TEXT NOT NULL,is_active BOOLEAN NOT NULL);
  CREATE TABLE warehouses(id BIGINT PRIMARY KEY,name TEXT,is_active INTEGER,saby_id TEXT DEFAULT 'saby-ryazan-main');INSERT INTO warehouses VALUES(1,'Warehouse',1),(2,'Other warehouse',1);
  CREATE TABLE orders(id BIGINT PRIMARY KEY,payment_method TEXT DEFAULT 'online',payment_status TEXT DEFAULT 'pending',order_number TEXT,status TEXT,delivery_method TEXT,cdek_status TEXT,created_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT '',cdek_cancel_state TEXT DEFAULT '',subtotal NUMERIC);
  CREATE TABLE product_external_ids(variant_id BIGINT,provider TEXT,id_type TEXT,status TEXT,external_id TEXT);
@@ -81,7 +82,7 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 		t.Fatal(err)
 	}
 	exec(string(buyerMigration))
-	for _, name := range []string{"20261113_order_sale_publications_lifecycle.sql", "20261113_order_sale_zz_stock_visibility.sql", "20261114_order_sale_revisions.sql", "20261114_order_sale_z_revision_stock.sql"} {
+	for _, name := range []string{"20261113_order_sale_publications_lifecycle.sql", "20261113_order_sale_zz_stock_visibility.sql", "20261114_order_sale_revisions.sql", "20261114_order_sale_z_revision_stock.sql", "20261115_order_sale_regulation_amendments.sql"} {
 		raw, e := os.ReadFile("../../../timeweb/migrations/" + name)
 		if e != nil {
 			t.Fatal(e)
@@ -275,4 +276,5 @@ func TestRealizationIntentsPostgres(t *testing.T) {
 	}
 	t.Run("cashier reservation cutover", func(t *testing.T) { testCashierReservations(t, pool) })
 	t.Run("native cashier reservation worker", func(t *testing.T) { testCashierNativeWorker(t, pool) })
+	t.Run("owner regulation amendment", func(t *testing.T) { testRegulationAmendments(t, pool) })
 }

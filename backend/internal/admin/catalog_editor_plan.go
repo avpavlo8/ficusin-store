@@ -483,7 +483,7 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 			if channel == "saby" && priorStatus == "failed" && priorHash != hash && priorMode == mode {
 				var previous, next catalogeditor.Request
 				if json.Unmarshal(priorPayload, &previous) == nil && json.Unmarshal(raw, &next) == nil {
-					if retry, ok := catalogeditor.SabyPublicationRevision(previous, next, priorProgress); ok {
+					if retry, ok := catalogeditor.SabyPublicationRevision(priorStatus, previous, next, priorProgress); ok {
 						resetProgress, _ = json.Marshal(retry)
 						sabyRevision = true
 					}

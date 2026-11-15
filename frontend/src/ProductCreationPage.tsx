@@ -5,7 +5,7 @@ import {
   replaceMarketplaceCard,
   type RemoteMarketplaceCard,
 } from "./marketplaceAutofill";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, money } from "./adminShared";
 import { useProductMarketplacePricing } from "./useProductMarketplacePricing";
 import { EditorPricePublications } from "./EditorPricePublications";
@@ -13,7 +13,7 @@ import { NumericInput } from "./NumericInput";
 import { AutoTextarea } from "./AutoTextarea";
 import { categoryVariantName } from "./variantNaming";
 import { CategoryPicker } from "./CategoryPicker";
-import { rootCategory } from "./adminCatalogLogic";
+import { channelLabels, rootCategory } from "./adminCatalogLogic";
 import { plantEditorSchema } from "./plantCharacteristicSchema";
 import { PlantCharacteristicsEditor } from "./PlantCharacteristicsEditor";
 import { ProductPackagingEditor } from "./ProductPackagingEditor";
@@ -61,6 +61,38 @@ import {
 import { productToDraft, variantToDraft, seedVariant, attributeDelta } from "./productEditorModel";
 import "./styles/product-creation.css";
 
+// Native controls inherit disabled; inert also covers custom focus, pointer and
+// drag controls. Saving may update the draft internally without admitting edits.
+function EditorSaveLock({
+  saving,
+  blocked,
+  children,
+}: {
+  saving: boolean;
+  blocked: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      {saving && (
+        <span className="editor-save-announcement" role="status">
+          Сохраняем товар…
+        </span>
+      )}
+      <fieldset
+        className="product-creation-page editor-page"
+        aria-label="Редактор товара"
+        aria-busy={saving}
+        disabled={saving}
+        inert={saving}
+        data-refresh-blocked={blocked ? "true" : undefined}
+      >
+        {children}
+      </fieldset>
+    </>
+  );
+}
+
 export function ProductCreationPage({
   onClose,
   product,
@@ -69,7 +101,7 @@ export function ProductCreationPage({
 }: {
   onClose: () => void;
   product?: Product;
-  onSaved?: (product: Product) => void;
+  onSaved: (product: Product, message: string) => void;
   canManage: boolean;
 }) {
   const productId = product?.id;
@@ -113,7 +145,6 @@ export function ProductCreationPage({
   const [catalogError, setCatalogError] = useState("");
   const [schemaError, setSchemaError] = useState("");
   const [remoteError, setRemoteError] = useState("");
-  const [remoteNotice, setRemoteNotice] = useState("");
   const [loading, setLoading] = useState(Boolean(product));
   const [remoteLoaded, setRemoteLoaded] = useState(!product);
   useEffect(() => {
@@ -780,7 +811,6 @@ export function ProductCreationPage({
     }
     setSaving(true);
     setRemoteError("");
-    setRemoteNotice("");
     try {
       const base = original.current!;
       const body: Record<string, unknown> = {};
@@ -872,7 +902,6 @@ export function ProductCreationPage({
           },
         );
         original.current = result.product;
-        if (!created) onSaved?.(result.product);
       }
       const rows = await api<{ variants: AdminVariant[] }>(
         `/api/v1/admin/products/${targetProduct.id}/variants`,
@@ -1030,7 +1059,6 @@ export function ProductCreationPage({
       const primary = commonCover(latest.current);
       if (original.current && primary?.source) {
         original.current = { ...original.current, image: primary.source };
-        if (!created) onSaved?.(original.current);
       }
       for (const [collectionId, included] of Object.entries(
         latest.current.collectionMemberships || {},
@@ -1040,6 +1068,7 @@ export function ProductCreationPage({
           body: JSON.stringify({ included }),
         });
       }
+      const syncWarnings: string[] = [];
       const planVariants = (latest.current.variants || [])
         .filter((row) => row.serverId && !row.archived && !row.removePending)
         .map((row) => ({
@@ -1052,17 +1081,25 @@ export function ProductCreationPage({
           flowwow: row.flowwow || blankFlowwow(),
         }));
       if (canManage) {
-        await api(`/api/v1/admin/products/${targetProduct.id}/editor-plan`, {
+        const submitted = await api<{
+          publications?: Array<{ channel: string; status: string; message: string }>;
+        }>(`/api/v1/admin/products/${targetProduct.id}/editor-plan`, {
           method: "PUT",
           body: JSON.stringify({ config: { variants: planVariants }, submit: true }),
         });
+        for (const publication of submitted.publications || []) {
+          if (["failed", "needs_attention", "blocked"].includes(publication.status))
+            syncWarnings.push(
+              `${channelLabels[publication.channel] || publication.channel}: ${publication.message || "требуется проверка обмена"}`,
+            );
+        }
       } else {
         try {
           const sync = await api<{ warnings?: string[] }>(
             `/api/v1/admin/products/${targetProduct.id}/editor-plan/sync-existing`,
             { method: "POST", body: "{}" },
           );
-          if (sync.warnings?.length) setRemoteError(sync.warnings.join(" "));
+          if (sync.warnings?.length) syncWarnings.push(...sync.warnings);
         } catch (cause) {
           throw new Error(
             `Изменения товара сохранены. Не удалось поставить обновление площадок в очередь: ${(cause as Error).message}. Повторите сохранение.`,
@@ -1089,11 +1126,11 @@ export function ProductCreationPage({
         // The receipt remains recoverable until every creation step succeeds.
         // Afterwards the next new card needs its own draft and creation identity.
         localStorage.removeItem(draftStorageKey);
-        onSaved?.(original.current || targetProduct);
       }
-      setRemoteNotice(
-        `Изменения товара сохранены.${deleted.length ? ` Удалено вариантов: ${deleted.length}.` : ""}${archived.length ? ` В архиве из-за связей: ${archived.map((item) => item.label || item.sku).join(", ")}.` : ""}${canManage ? " Запущена подготовка выбранных площадок." : ""}`,
-      );
+      const message = `Изменения товара сохранены.${deleted.length ? ` Удалено вариантов: ${deleted.length}.` : ""}${archived.length ? ` В архиве из-за связей: ${archived.map((item) => item.label || item.sku).join(", ")}.` : ""}${canManage ? " Запущена подготовка выбранных площадок." : ""}${syncWarnings.length ? ` ${syncWarnings.join(" ")}` : ""}`;
+      // Only the completed explicit save may close the editor. Product PATCH,
+      // media uploads and draft autosaves are intermediate steps.
+      onSaved(original.current || targetProduct, message);
     } catch (cause) {
       setRemoteError((cause as Error).message);
     } finally {
@@ -1292,16 +1329,13 @@ export function ProductCreationPage({
       </div>
     );
   return (
-    <div
-      className="product-creation-page editor-page"
-      data-refresh-blocked={saving || mediaBusy || !!saveError ? "true" : undefined}
-    >
+    <EditorSaveLock saving={saving} blocked={saving || mediaBusy || !!saveError}>
       <header className="editor-heading">
         <div>
           <h1>{product ? draft.name || "Редактирование товара" : "Новый товар"}</h1>
           <p>
             {product
-              ? `Артикул ${variant.sku || product.sku} · ${product.status === "published" ? "Опубликован" : "Черновик"}`
+              ? `Артикул ${variant.sku || product.sku} · ${product.status === "published" ? "Опубликован" : product.status === "archived" ? "В архиве" : "Черновик"}`
               : "Черновик · ещё не опубликован"}
           </p>
         </div>
@@ -1353,11 +1387,6 @@ export function ProductCreationPage({
               Повторить загрузку
             </button>
           )}
-        </p>
-      )}
-      {remoteNotice && (
-        <p role="status" className="editor-notice">
-          {remoteNotice}
         </p>
       )}
       <div className="editor-tabs" role="tablist" aria-label="Разделы товара">
@@ -2072,6 +2101,6 @@ export function ProductCreationPage({
           {saving ? "Сохраняем…" : product ? "Сохранить" : "Создать товар"}
         </button>
       </footer>
-    </div>
+    </EditorSaveLock>
   );
 }
