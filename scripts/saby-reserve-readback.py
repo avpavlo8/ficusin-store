@@ -22,16 +22,17 @@ def main():
     if not token:
         raise r.guards.PreflightError('auth_failed')
     print('::add-mask::'+token)
-    r.READS.update({'СчетИсх.Прочитать','СчетСкИсх.DocNomList','Reserve.ListByDn'})
+    r.READS.update({'Документ.ПрочитатьДляУчастника','СчетСкИсх.DocNomList','Reserve.ListByDn'})
     reserve=r.rpc('Reserve.ListByDn',{'DocNomIds':[ROW]},token,7)
     print(json.dumps({'readOnly':True,'ownedRow':ROW,'reserve':reserve},ensure_ascii=False))
-    answer = r.request(r.SERVICE, {'jsonrpc':'2.0','protocol':7,'method':'СчетИсх.Прочитать','params':{'ИдО':DOC,'ИмяМетода':'СчетИсх.Список'},'id':1},token)
+    answer = r.request(r.SERVICE, {'jsonrpc':'2.0','protocol':7,'method':'Документ.ПрочитатьДляУчастника','params':{'ИдО':DOC,'ИмяМетода':'Документ.СписокХраним','ДопПоля':{'ИмяОбъекта':'СчетСкИсх'}},'id':1},token)
     if answer.get('error'):
         error=answer['error']
         print(json.dumps({'readOnly':True,'documentUUID':UUID,'apiError':{k:error.get(k) for k in ['code','message','details']}},ensure_ascii=False))
         return 1
     raw=answer.get('result') or {}
     doc=r.fields(raw)
+    print(json.dumps({'schemaNames':list(doc),'identity':{k:doc.get(k) for k in ['@Документ','ИдентификаторДокумента']},'nestedShape':r.shape(doc.get('РП.Документ'))},ensure_ascii=False))
     if doc.get('@Документ') != DOC or doc.get('ИдентификаторДокумента') != UUID:
         raise r.guards.PreflightError('fixed_owned_invoice_identity_mismatch')
     names=['@Документ','ИдентификаторДокумента','ДокументРасширение.ИдентификаторВИ','ТипДокумента','ТипДокумента.ТипДокумента','СкладскойДокумент.Склад','ДокументНашаОрганизация','Регламент','ReserveWhId','ReserveUnit','ReserveNumber','Лицо1','Дата','ДокументРасширение.Состояние']
