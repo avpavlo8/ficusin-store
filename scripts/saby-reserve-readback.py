@@ -22,10 +22,10 @@ def main():
     if not token:
         raise r.guards.PreflightError('auth_failed')
     print('::add-mask::'+token)
-    r.READS.update({'СчетСкИсх.Прочитать','СчетСкИсх.DocNomList','Reserve.ListByDn'})
+    r.READS.update({'СчетИсх.Прочитать','СчетСкИсх.DocNomList','Reserve.ListByDn'})
     reserve=r.rpc('Reserve.ListByDn',{'DocNomIds':[ROW]},token,7)
     print(json.dumps({'readOnly':True,'ownedRow':ROW,'reserve':reserve},ensure_ascii=False))
-    answer = r.request(r.SERVICE, {'jsonrpc':'2.0','protocol':7,'method':'СчетСкИсх.Прочитать','params':{'ИдО':DOC},'id':1},token)
+    answer = r.request(r.SERVICE, {'jsonrpc':'2.0','protocol':7,'method':'СчетИсх.Прочитать','params':{'ИдО':DOC,'ИмяМетода':'СчетИсх.Список'},'id':1},token)
     if answer.get('error'):
         error=answer['error']
         print(json.dumps({'readOnly':True,'documentUUID':UUID,'apiError':{k:error.get(k) for k in ['code','message','details']}},ensure_ascii=False))
