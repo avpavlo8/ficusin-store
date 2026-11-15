@@ -1187,6 +1187,12 @@ func (client *SabyClient) requestJSON(ctx context.Context, method, endpoint stri
 		return response.StatusCode, fmt.Errorf("read Saby response: %w", err)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		// The realization read envelope recognizes only the vendor's exact,
+		// UUID-bound "document absent" JSON-RPC reply, delivered as HTTP 500.
+		// Bounded complete bodies only; no other target can ignore HTTP errors.
+		if decoder, ok := target.(interface{ acceptSabyHTTPError(int, []byte) bool }); ok && int64(len(content)) <= limit && decoder.acceptSabyHTTPError(response.StatusCode, content) {
+			return response.StatusCode, nil
+		}
 		remote := &remoteError{Status: response.StatusCode, Message: sabyErrorMessage(content), RetryAfter: marketplaceRetryAfter(response)}
 		if response.StatusCode == http.StatusTooManyRequests && client.requestLimiter != nil {
 			delay := remote.RetryAfter

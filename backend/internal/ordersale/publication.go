@@ -146,6 +146,14 @@ func retrySafe(status string, progress Progress) bool {
 	if progress.IdentityConflict {
 		return false
 	}
+	// A failed initial read has no external write to replay. Retry the same
+	// frozen operation through inspect; never relax unknown creation recovery.
+	if status == "needs_attention" && progress.Stage == "inspect" && !progress.Unknown &&
+		!progress.CreateAttempted && !progress.PostAttempted && progress.DocumentID == "" && progress.DocumentUUID == "" &&
+		len(progress.Native) == 0 && len(progress.OwnedRowIDs) == 0 && len(progress.ActiveOwnedRowIDs) == 0 && len(progress.RevisionNative) == 0 && progress.ActiveRevisionID == 0 && progress.TargetRevisionID == 0 &&
+		!progress.RevisionPostAttempted && !progress.RevisionUnpostAttempted {
+		return true
+	}
 	if status == "needs_attention" && progress.StockBlocked && (!progress.PostAttempted || progress.ActiveRevisionID > 0 && !progress.RevisionPostAttempted) {
 		return true
 	}

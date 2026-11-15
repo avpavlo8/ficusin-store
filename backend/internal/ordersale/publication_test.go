@@ -35,3 +35,22 @@ func TestStagingProviderCannotPublishOrProveLiveStock(t *testing.T) {
 		t.Fatal("empty stock evidence accepted")
 	}
 }
+
+func TestOnlyUnwrittenInspectCanRetryAttention(t *testing.T) {
+	if !retrySafe("needs_attention", Progress{Stage: "inspect", DesiredState: "posted"}) {
+		t.Fatal("initial read cannot retry")
+	}
+	cases := []Progress{
+		{Stage: "inspect", Unknown: true}, {Stage: "inspect", CreateAttempted: true},
+		{Stage: "inspect", PostAttempted: true}, {Stage: "inspect", DocumentID: "123"},
+		{Stage: "inspect", DocumentUUID: "uuid"}, {Stage: "inspect", OwnedRowIDs: []int64{1}},
+		{Stage: "inspect", Native: json.RawMessage(`{}`)}, {Stage: "inspect", IdentityConflict: true},
+		{Stage: "inspect", ActiveRevisionID: 1}, {Stage: "inspect", RevisionPostAttempted: true},
+		{Stage: "inspect", RevisionUnpostAttempted: true}, {Stage: "create"}, {Stage: "discover"},
+	}
+	for _, p := range cases {
+		if retrySafe("needs_attention", p) {
+			t.Fatalf("unsafe initial retry: %+v", p)
+		}
+	}
+}
