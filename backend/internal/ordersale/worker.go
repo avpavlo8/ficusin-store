@@ -83,6 +83,10 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, provider Provider,
 	if actual != hash || request.ExecutionMode != mode || request.IntentID != intentID {
 		return true, markInvalidClaim(ctx, tx, id, "Подтверждение сохранённого запроса не совпало; запрос в СБИС не отправлен")
 	}
+	request, err = effectivePublicationRequest(ctx, tx, id, request)
+	if err != nil {
+		return true, markInvalidClaim(ctx, tx, id, "Подтверждение исправления регламента не совпало; обмен остановлен")
+	}
 	if mode == "live" && request.BuyerID <= 0 {
 		return true, markInvalidClaim(ctx, tx, id, "Не указан покупатель исходной реализации; требуется ручная сверка")
 	}
