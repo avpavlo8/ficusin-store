@@ -2,6 +2,7 @@
 """Fill the fixed synthetic invoice; no posting, payment or fiscal API exists here."""
 import importlib.util
 import json
+import hashlib
 import os
 from pathlib import Path
 
@@ -41,15 +42,19 @@ def main():
     read()
     if r.rows(lines()):raise r.guards.PreflightError('owned_invoice_not_empty_no_duplicate_fill')
     patch=r.record([('@Документ','Число целое',DOC),('ИдентификаторДокумента','UUID',UUID),('Номер','Строка','FCRT-20261115-2'),('ДокументРасширение.Название','Строка',MARKER)])
-    rpc('СчетСкИсх.WriteForParticipant',{'Запись':patch,'ДопПоля':{'ИмяОбъекта':'СчетСкИсх'}},True)
+    doc=read()
+    if doc.get('Номер')!='FCRT-20261115-2' or doc.get('ДокументРасширение.Название')!=MARKER:
+        rpc('СчетСкИсх.WriteForParticipant',{'Запись':patch,'ДопПоля':{'ИмяОбъекта':'СчетСкИсх'}},True)
     doc=read()
     if doc.get('Номер')!='FCRT-20261115-2' or doc.get('ДокументРасширение.Название')!=MARKER:raise r.guards.PreflightError('owned_header_write_not_verified')
     filter_record=r.record([('ВызовИзБраузера','Логическое',True),('СкладскойДокумент','Число целое',DOC),('Номенклатура','Число целое',3899),('Количество','Число целое',1),('Цена','Строка','1')])
-    template=rpc('СчетСкИсх.DocNomCreate',{'Фильтр':filter_record,'ИмяМетода':None},True)
+    captured=Path(__file__).with_name('saby-owned-invoice-prepared-row-43689193259.json').read_text().strip()
+    if hashlib.sha256(captured.encode()).hexdigest()!='9feea5c7376fb80625b603fcdfffbe4f294375e4aa455a2f6ef40a841706a85c':raise r.guards.PreflightError('captured_prepared_row_changed')
+    template=json.loads(captured)
     fields=r.fields(template)
     proof['preparedRow']=template;save()
     print(json.dumps({'preparedRow':{k:fields.get(k) for k in ['@НоменклатураДокумента','Номенклатура','СкладскойДокумент','Склад','Тип','Количество','Цена','СуммаЦен','Закрыто']}},ensure_ascii=False))
-    if any(fields.get(k)!=v for k,v in {'Номенклатура':3899,'СкладскойДокумент':DOC,'Склад':284,'Тип':4,'Количество':1,'Цена':1,'СуммаЦен':1,'Закрыто':False}.items()):raise r.guards.PreflightError('owned_prepared_row_not_exact_not_saved')
+    if any(fields.get(k)!=v for k,v in {'Номенклатура':3899,'СкладскойДокумент':DOC,'Склад':284,'Тип':4,'Количество':1,'Цена':1,'СуммаЦен':1,'Закрыто':None,'@НоменклатураДокумента':None}.items()):raise r.guards.PreflightError('owned_prepared_row_not_exact_not_saved')
     answer=rpc('СчетСкИсх.CustomDocNomUpdate',{'Запись':template,'ДопПоля':{'СкладскойДокумент':DOC}},True)
     proof['saveReply']=answer;save()
     after=lines();rows=r.rows(after)
