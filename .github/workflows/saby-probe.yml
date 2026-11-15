@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -114,3 +114,19 @@ jobs:
           RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
           APPROVED_SUPPORT_TICKET: "31489326"
         run: python3 scripts/production-seven-settlements.py --expected-commit "$EXPECTED_COMMIT" --apply
+
+  cashier-audit:
+    if: inputs.operation == 'cashier-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m pip install 'psycopg[binary]==3.2.13'
+      - name: Read existing cash orders without changing documents or stock
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: python3 scripts/production-cashier-audit.py
