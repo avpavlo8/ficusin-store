@@ -21,13 +21,14 @@ test('@desktop @phone Flowwow shows links, errors and existing seller cards',asy
 test('@desktop @phone Flowwow production observations stay read-only on staging',async({page},testInfo)=>{
  await mockApi(page,owner);
  await page.route('**/api/v1/admin/dashboard',route=>route.fulfill({json:{user:{fullName:'Александр'},role:'owner',permissions:['dashboard.read','products.read','products.manage','integrations.edit'],dashboard:{}}}));
- await page.route('**/api/v1/admin/flowwow',route=>route.fulfill({json:{configured:true,shopId:'1',publicationMode:'mock',items:[],preview:{shopId:'255831',capturedAt:'2026-11-15T08:30:00Z',items:[{productId:42,name:'Фикус Бенджамина Наташа',sku:'210',remoteId:'77577298',offerId:'210',priceMinor:55000,stock:40,status:'synced',message:'Название, описание, цена и фотографии отправлены в Flowwow'}]}}}));
+ await page.route('**/api/v1/admin/flowwow',route=>route.fulfill({json:{configured:true,shopId:'1',publicationMode:'mock',items:[{variantId:10,productId:1,name:'Тестовый фикус',sku:'999',priceMinor:99900,stock:2,remoteId:'mock-999',offerId:'999',status:'synced',message:'Локальная проверка',lastError:''}],preview:{shopId:'255831',capturedAt:'2026-11-15T08:30:00Z',items:[{productId:42,name:'Фикус Бенджамина Наташа',sku:'210',remoteId:'77577298',offerId:'210',priceMinor:55000,stock:40,status:'synced',message:'Название, описание, цена и фотографии отправлены в Flowwow'}]}}}));
  const writes:string[]=[];
  page.on('request',request=>{if(request.method()!=='GET'&&/flowwow|editor-publications/.test(request.url()))writes.push(request.url())});
  await page.goto('/admin?section=flowwow');
  await expect(page.getByRole('heading',{name:'Реальные связки · 1',exact:true})).toBeVisible();
  await expect(page.getByText(/Снимок рабочего магазина 255831/)).toBeVisible();
  await expect(page.getByText('Товаров Flowwow пока нет',{exact:true})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'Тестовые связки СТГ',exact:true})).toBeVisible();
  const real=page.getByRole('region',{name:'Реальные связки Flowwow',exact:true});
  await expect(real.getByRole('link',{name:'ID 77577298',exact:true})).toHaveAttribute('href','https://flowwow.com/admin/products/77577298');
  await expect(real.getByRole('link',{name:'Фикус Бенджамина Наташа',exact:true})).toHaveAttribute('href','/admin?section=products&product=42&editor=channels');

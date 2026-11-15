@@ -162,64 +162,69 @@ export default function AdminFlowwow() {
           </div>
           {data.preview && <FlowwowLinkPreview preview={data.preview} items={previewItems} />}
           {items.length ? (
-            <WorkspaceTable label="Связанные товары Flowwow">
-              <thead>
-                <tr>
-                  <th>Товар на сайте</th>
-                  <th>Карточка Flowwow</th>
-                  <th>Цена сайта</th>
-                  <th>Остаток сайта</th>
-                  <th>Обмен</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((i) => (
-                  <tr key={i.variantId}>
-                    <td>
-                      <a href={`/admin?section=products&product=${i.productId}&editor=channels`}>
-                        {i.name}
-                      </a>
-                      <small>{i.sku}</small>
-                    </td>
-                    <td>
-                      {i.remoteId ? `ID ${i.remoteId}` : "Ещё не связана"}
-                      <small>{i.offerId}</small>
-                    </td>
-                    <td>{(i.priceMinor / 100).toLocaleString("ru-RU")} ₽</td>
-                    <td>{i.stock} шт.</td>
-                    <td>
-                      <span role="status">{i.lastError || i.message}</span>
-                      {["failed", "needs_attention"].includes(i.status) && (
-                        <button
-                          type="button"
-                          className="admin-action"
-                          disabled={busy}
-                          onClick={async () => {
-                            setBusy(true);
-                            try {
-                              await api(
-                                `/api/v1/admin/products/${i.productId}/editor-publications/flowwow/retry`,
-                                {
-                                  method: "POST",
-                                  body: JSON.stringify({ variantId: i.variantId }),
-                                },
-                              );
-                              await load();
-                            } catch (e) {
-                              setError((e as Error).message);
-                            } finally {
-                              setBusy(false);
-                            }
-                          }}
-                        >
-                          Повторить проверку
-                        </button>
-                      )}
-                    </td>
+            <>
+              {data.preview && <h3>Тестовые связки СТГ</h3>}
+              <WorkspaceTable
+                label={data.preview ? "Тестовые связки СТГ" : "Связанные товары Flowwow"}
+              >
+                <thead>
+                  <tr>
+                    <th>Товар на сайте</th>
+                    <th>Карточка Flowwow</th>
+                    <th>Цена сайта</th>
+                    <th>Остаток сайта</th>
+                    <th>Обмен</th>
                   </tr>
-                ))}
-              </tbody>
-            </WorkspaceTable>
+                </thead>
+                <tbody>
+                  {items.map((i) => (
+                    <tr key={i.variantId}>
+                      <td>
+                        <a href={`/admin?section=products&product=${i.productId}&editor=channels`}>
+                          {i.name}
+                        </a>
+                        <small>{i.sku}</small>
+                      </td>
+                      <td>
+                        {i.remoteId ? `ID ${i.remoteId}` : "Ещё не связана"}
+                        <small>{i.offerId}</small>
+                      </td>
+                      <td>{(i.priceMinor / 100).toLocaleString("ru-RU")} ₽</td>
+                      <td>{i.stock} шт.</td>
+                      <td>
+                        <span role="status">{i.lastError || i.message}</span>
+                        {["failed", "needs_attention"].includes(i.status) && (
+                          <button
+                            type="button"
+                            className="admin-action"
+                            disabled={busy}
+                            onClick={async () => {
+                              setBusy(true);
+                              try {
+                                await api(
+                                  `/api/v1/admin/products/${i.productId}/editor-publications/flowwow/retry`,
+                                  {
+                                    method: "POST",
+                                    body: JSON.stringify({ variantId: i.variantId }),
+                                  },
+                                );
+                                await load();
+                              } catch (e) {
+                                setError((e as Error).message);
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          >
+                            Повторить проверку
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </WorkspaceTable>
+            </>
           ) : !data.preview ? (
             <WorkspaceState
               kind="empty"
