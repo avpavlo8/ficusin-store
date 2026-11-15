@@ -701,3 +701,26 @@ test('@desktop successful Save waits for all steps and then closes; draft autosa
 test('@desktop stored marketplace publication warnings remain visible after successful editor close',async({page})=>{
  await fixture(page);await page.route('**/api/v1/admin/products/1/editor-plan',route=>route.request().method()==='PUT'?route.fulfill({json:{publications:[{channel:'saby',status:'failed',message:'Цена не подтверждена СБИС'}]}}):route.fallback());await open(page);const e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Сохранено вместе с предупреждением');await e.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(e).toHaveCount(0);await expect(page.locator('.catalog-action-notice')).toContainText('СБИС: Цена не подтверждена СБИС');
 });
+
+test('@desktop @phone delayed PATCH locks text, custom controls and photo changes until completed Save',async({page})=>{
+ const f=await fixture(page,{sharedGalleryPhoto:true});f.media.push({id:100002,productId:1,url:'/assets/hero-monstera.webp?second-shared',primary:false,sortOrder:2});let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);let started=false;
+ await page.route('**/api/v1/admin/products/1',async route=>{if(route.request().method()==='PATCH'){started=true;await gate}await route.fallback()});
+ await open(page);const e=await edit(page),description=e.getByRole('textbox',{name:'О растении',exact:true,includeHidden:true});await description.fill('Отправленное описание');
+ const cover=e.locator('.editor-gallery-cover'),coverURL=await cover.locator('img').getAttribute('src');const photo=e.locator('.editor-photo-item').first(),photoID=await photo.getAttribute('data-photo-drop');const orderBefore=await e.locator('.editor-photo-item').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('data-photo-drop')));
+ await e.getByRole('button',{name:'Сохранить',exact:true}).click();await expect.poll(()=>started).toBe(true);
+ await expect(e).toHaveAttribute('inert','');await expect(e).toHaveAttribute('aria-busy','true');await expect(description).toBeDisabled();
+ await expect(description.fill('Новая потерянная правка',{timeout:300})).rejects.toThrow();await expect(description).toHaveValue('Отправленное описание');
+ await expect(e.locator('.editor-add-variant')).toBeDisabled();await expect(e.locator('.editor-photo-thumb').first()).toBeDisabled();await expect(e.locator('input[type="file"]')).toBeDisabled();await expect(cover).toHaveAttribute('draggable','false');
+ const transfer=await page.evaluateHandle(id=>{const data=new DataTransfer();data.setData('application/x-ficusin-photo',id!);return data},photoID);
+ await cover.dispatchEvent('drop',{dataTransfer:transfer});await e.locator('.editor-photo-thumb').first().dispatchEvent('keydown',{altKey:true,key:'ArrowRight'});await expect(cover.locator('img')).toHaveAttribute('src',coverURL!);expect(await e.locator('.editor-photo-item').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('data-photo-drop')))).toEqual(orderBefore);
+ await e.locator('.editor-tabs button').nth(1).click({force:true});await expect(e.locator('.editor-tabs button').first()).toHaveAttribute('aria-selected','true');
+ release();await expect(e).toHaveCount(0,{timeout:15000});expect(f.updates).toHaveLength(1);expect(f.updates[0].body.description).toBe('Отправленное описание');
+ await page.getByRole('link',{name:'Аглаонема Мария',exact:true}).click();await expect(description).toBeEnabled();await expect(description).toHaveValue('Отправленное описание');await expect(cover.locator('img')).toHaveAttribute('src',coverURL!);
+});
+
+test('@desktop failed delayed Save unlocks the editor and permits another autosaved edit',async({page})=>{
+ await fixture(page,{failSave:true});let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);let started=false;
+ await page.route('**/api/v1/admin/products/1',async route=>{if(route.request().method()==='PATCH'){started=true;await gate}await route.fallback()});
+ await open(page);const e=await edit(page),description=e.getByRole('textbox',{name:'О растении',exact:true,includeHidden:true});await description.fill('Первая правка');await e.getByRole('button',{name:'Сохранить',exact:true}).click();await expect.poll(()=>started).toBe(true);await expect(description).toBeDisabled();release();
+ await expect(e.getByRole('alert')).toContainText('Ошибка сохранения');await expect(e).not.toHaveAttribute('inert','');await expect(description).toBeEnabled();await description.fill('После ошибки правка сохранена');await page.reload();await expect(description).toHaveValue('После ошибки правка сохранена');
+});

@@ -39,7 +39,7 @@ func TestProductRemovalOnLiveDatabase(t *testing.T) {
 	defer pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customer)
 	repo := NewPostgresRepository(pool)
 	actor := Actor{CustomerID: customer, Role: RoleOwner}
-	for _, kind := range []string{"free", "stock", "reserved", "negative-stock", "saby", "wb", "history", "order", "published"} {
+	for _, kind := range []string{"free", "stock", "reserved", "negative-stock", "saby", "wb", "avito", "flowwow", "relink-history", "history", "order", "published"} {
 		t.Run(kind, func(t *testing.T) {
 			creationID := ""
 			if kind == "free" {
@@ -55,6 +55,8 @@ func TestProductRemovalOnLiveDatabase(t *testing.T) {
 			}
 			v := rows[0].ID
 			var order, reservation int64
+			var associationSQL string
+			var associationID int64
 			must := func(err error) {
 				t.Helper()
 				if err != nil {
@@ -67,6 +69,7 @@ func TestProductRemovalOnLiveDatabase(t *testing.T) {
 				pool.Exec(ctx, `DELETE FROM cashier_stock_reservations WHERE id=$1`, reservation)
 				pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, order)
 				pool.Exec(ctx, `DELETE FROM stock_movements WHERE variant_id=$1`, v)
+				pool.Exec(ctx, `DELETE FROM avito_listings WHERE item_id=$1`, "removal-"+tag)
 				pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, p.ID)
 				pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, customer)
 			}()
@@ -93,6 +96,19 @@ func TestProductRemovalOnLiveDatabase(t *testing.T) {
 				exec(`UPDATE product_variants SET saby_id='removal-'||id::text WHERE id=$1`, v)
 			case "wb":
 				exec(`INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id) VALUES($1,$2,'wb','nm_id',$3)`, p.ID, v, tag)
+			case "avito":
+				exec(`INSERT INTO avito_listings(item_id,title,status) VALUES($1,'Do not lose association','active')`, "removal-"+tag)
+				exec(`INSERT INTO avito_listing_products(item_id,product_id) VALUES($1,$2)`, "removal-"+tag, p.ID)
+				associationSQL = `SELECT to_jsonb(link)::text FROM avito_listing_products link WHERE product_id=$1`
+				associationID = p.ID
+			case "flowwow":
+				exec(`INSERT INTO flowwow_inventory_sync(variant_id,shop_id,offer_id,price_minor,stock,synced_at) VALUES($1,'test-shop',$2,10000,0,NOW())`, v, "removal-"+tag)
+				associationSQL = `SELECT to_jsonb(link)::text FROM flowwow_inventory_sync link WHERE variant_id=$1`
+				associationID = v
+			case "relink-history":
+				exec(`INSERT INTO catalog_editor_link_history(variant_id,channel,execution_mode,old_remote_id,old_offer_id,new_remote_id,new_offer_id) VALUES($1,'ozon','live','old-id','old-offer','new-id','new-offer')`, v)
+				associationSQL = `SELECT to_jsonb(link)::text FROM catalog_editor_link_history link WHERE variant_id=$1`
+				associationID = v
 			case "history":
 				exec(`INSERT INTO stock_movements(variant_id,kind,quantity) VALUES($1,'test',1)`, v)
 			case "order":
@@ -101,10 +117,23 @@ func TestProductRemovalOnLiveDatabase(t *testing.T) {
 			case "published":
 				exec(`UPDATE products SET status='published' WHERE id=$1`, p.ID)
 			}
+			association := func() string {
+				t.Helper()
+				if associationSQL == "" {
+					return ""
+				}
+				var result string
+				must(pool.QueryRow(ctx, associationSQL, associationID).Scan(&result))
+				return result
+			}
+			beforeAssociation := association()
 			if kind != "free" && kind != "published" {
 				if _, err = repo.DeleteDraftProducts(ctx, actor, []int64{p.ID}); !errors.Is(err, ErrInvalidInput) {
 					t.Fatalf("bulk delete bypassed references: %v", err)
 				}
+			}
+			if association() != beforeAssociation {
+				t.Fatal("bulk deletion changed marketplace association")
 			}
 			result, err := repo.RemoveProduct(ctx, actor, p.ID)
 			must(err)
@@ -126,6 +155,9 @@ func TestProductRemovalOnLiveDatabase(t *testing.T) {
 					t.Fatal("deleted draft recreated", err)
 				}
 				return
+			}
+			if association() != beforeAssociation {
+				t.Fatal("single removal changed marketplace association")
 			}
 			if result.Action != "archived" {
 				t.Fatal(result)

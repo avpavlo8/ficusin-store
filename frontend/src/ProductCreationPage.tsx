@@ -5,7 +5,7 @@ import {
   replaceMarketplaceCard,
   type RemoteMarketplaceCard,
 } from "./marketplaceAutofill";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, money } from "./adminShared";
 import { useProductMarketplacePricing } from "./useProductMarketplacePricing";
 import { EditorPricePublications } from "./EditorPricePublications";
@@ -60,6 +60,38 @@ import {
 } from "./productCreationDraft";
 import { productToDraft, variantToDraft, seedVariant, attributeDelta } from "./productEditorModel";
 import "./styles/product-creation.css";
+
+// Native controls inherit disabled; inert also covers custom focus, pointer and
+// drag controls. Saving may update the draft internally without admitting edits.
+function EditorSaveLock({
+  saving,
+  blocked,
+  children,
+}: {
+  saving: boolean;
+  blocked: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      {saving && (
+        <span className="editor-save-announcement" role="status">
+          Сохраняем товар…
+        </span>
+      )}
+      <fieldset
+        className="product-creation-page editor-page"
+        aria-label="Редактор товара"
+        aria-busy={saving}
+        disabled={saving}
+        inert={saving}
+        data-refresh-blocked={blocked ? "true" : undefined}
+      >
+        {children}
+      </fieldset>
+    </>
+  );
+}
 
 export function ProductCreationPage({
   onClose,
@@ -1297,10 +1329,7 @@ export function ProductCreationPage({
       </div>
     );
   return (
-    <div
-      className="product-creation-page editor-page"
-      data-refresh-blocked={saving || mediaBusy || !!saveError ? "true" : undefined}
-    >
+    <EditorSaveLock saving={saving} blocked={saving || mediaBusy || !!saveError}>
       <header className="editor-heading">
         <div>
           <h1>{product ? draft.name || "Редактирование товара" : "Новый товар"}</h1>
@@ -2072,6 +2101,6 @@ export function ProductCreationPage({
           {saving ? "Сохраняем…" : product ? "Сохранить" : "Создать товар"}
         </button>
       </footer>
-    </div>
+    </EditorSaveLock>
   );
 }

@@ -115,11 +115,16 @@ func productRemovalProtected(ctx context.Context, tx pgx.Tx, id int64) (bool, er
 			return true, nil
 		}
 	}
+	// Marketplace CASCADE links still own remote identity/history. They must
+	// force archival even when the generic historical-FK scan permits deletion.
 	var external bool
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_external_ids WHERE product_id=$1 AND provider<>'ficusin')
  OR EXISTS(SELECT 1 FROM catalog_external_operation_history e JOIN product_variants v ON v.id=e.variant_id WHERE v.product_id=$1)
  OR EXISTS(SELECT 1 FROM catalog_plan_format_history WHERE product_id=$1)
- OR EXISTS(SELECT 1 FROM product_reviews WHERE product_id=$1)`, id).Scan(&external); err != nil {
+ OR EXISTS(SELECT 1 FROM product_reviews WHERE product_id=$1)
+ OR EXISTS(SELECT 1 FROM avito_listing_products WHERE product_id=$1)
+ OR EXISTS(SELECT 1 FROM flowwow_inventory_sync f JOIN product_variants v ON v.id=f.variant_id WHERE v.product_id=$1)
+ OR EXISTS(SELECT 1 FROM catalog_editor_link_history h JOIN product_variants v ON v.id=h.variant_id WHERE v.product_id=$1)`, id).Scan(&external); err != nil {
 		return false, err
 	}
 	refs, err := catalogueHistoricalReferences(ctx, tx, "products", id)
