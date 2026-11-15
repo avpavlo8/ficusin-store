@@ -337,6 +337,27 @@ def created_price_audit(env):
       'pricePublications':[dict(zip(['variantId','targetId','sitePriceMinor','priceMinor','status','message','mode','attempts','updatedAt','stage'],x)) for x in prices]}
 
 
+def created_price_default_audit(env):
+    """Exactly one known site-created card, two read projections, no writes."""
+    spec=importlib.util.spec_from_file_location('created_price_default_reads',Path(__file__).with_name('saby-realization-readback.py'))
+    r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
+    token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')
+    if not token:raise g.PreflightError('native_auth_failed')
+    print('::add-mask::'+token)
+    listid=int(env.get('SABY_PRICE_LIST_ID') or '6');r.READS={'Nomenclature.Read'}
+    result=[]
+    for scope in ('default','configured'):
+        option={'_type':'record','s':[],'d':[]} if scope=='default' else {'_type':'record','s':[{'n':'PriceList','t':{'n':'Массив','t':'Число целое'}}],'d':[[listid]]}
+        raw=r.rpc('Nomenclature.Read',{'Id':3984,'AdditionalFields':['PriceData','Number','Identifier','IsDraft'],'Option':option},token,6)
+        card=r.fields(raw)
+        if card.get('Id')!=3984 or card.get('Number')!='X946056863' or card.get('Identifier')!='681a4876-f3a8-4dc3-a35d-2590b89ebbf5':raise g.PreflightError('known_created_card_changed')
+        price=card.get('PriceData') or {}
+        result.append({'scope':scope,'id':3984,'number':card.get('Number'),'isDraft':card.get('IsDraft'),
+          'priceDataSchema':price.get('s'),
+          'prices':[{k:p.get(k) for k in ('Id','PriceList','PriceListName','Price','CanEdit','MeasureUnit','IsUpdated','RestrictionData','IsAutoPrice')} for p in r.rows(price)]})
+    return {'readOnly':True,'configuredPriceList':listid,'cardProjections':result}
+
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -349,9 +370,9 @@ def main():
             result['apps'].append({k:app.get(k) for k in ('id','name','status','branch_name','commit_sha')})
         result['backups']=[{k:b.get(k) for k in ('id','status','created_at','comment')} for b in p.request('GET','/dbs/4192781/backups')['backups'] if b.get('comment')==TAG]
     elif op=='backup': result=backup(p)
-    elif op in ('order-23-audit','buyer-read','order-23-rpc','created-price-audit'):
+    elif op in ('order-23-audit','buyer-read','order-23-rpc','created-price-audit','created-price-default'):
         env=production(p.request('GET','/apps/229223')['app'],sha)
-        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else buyer_read(env)
+        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else created_price_default_audit(env) if op=='created-price-default' else buyer_read(env)
     elif op=='online-activate':result=activate_online(p,sha)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
