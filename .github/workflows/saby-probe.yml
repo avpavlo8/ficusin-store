@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -130,3 +130,18 @@ jobs:
           TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
         run: python3 scripts/production-cashier-audit.py
+
+  native-reserve-read:
+    if: inputs.operation == 'native-reserve-read'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read only the synthetic reserve invoice
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: python3 scripts/saby-reserve-readback.py
