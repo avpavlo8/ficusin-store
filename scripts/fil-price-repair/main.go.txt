@@ -23,7 +23,7 @@ type private struct {
 func main() {
 	if err := run(); err != nil {
         reason := "fixed_price_repair_guard_or_service_failed"
-        for _, known := range []string{"actions only","no blind replay","private database config missing","database or TLS scope","database identity"} {
+        for _, known := range []string{"actions only","no blind replay","private database config missing","database or TLS scope","database identity","encrypted database transport required"} {
             if err.Error()==known { reason=known;break }
         }
         _ = json.NewEncoder(os.Stdout).Encode(map[string]any{"ok":false,"reason":reason,"errorType":fmt.Sprintf("%T",err)})
@@ -46,9 +46,13 @@ func run() error {
 		return errors.New("private database config missing")
 	}
 	parsed, err := url.Parse(input.DatabaseURL)
-	if err != nil || parsed.Path != "/default_db" || parsed.User == nil || !input.VerifyTLS {
-		return errors.New("database or TLS scope")
-	}
+	if err != nil || parsed.Path != "/default_db" || parsed.User == nil { return errors.New("database or TLS scope") }
+    // Keep the deployed application's verification setting; require encrypted
+    // transport explicitly and never allow pgx's plaintext fallback.
+    options := parsed.Query()
+    if input.VerifyTLS { options.Set("sslmode","verify-full") } else { options.Set("sslmode","require") }
+    parsed.RawQuery=options.Encode()
+    input.DatabaseURL=parsed.String()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	pool, err := store.Open(ctx, config.Database{URL: input.DatabaseURL, CA: input.CA, VerifyTLS: input.VerifyTLS, MaxConnections: 1})
@@ -60,9 +64,9 @@ func run() error {
 	if err = pool.QueryRow(ctx, "SELECT current_database(),current_user").Scan(&db, &user); err != nil {
 		return err
 	}
-	if db != "default_db" || user != parsed.User.Username() {
-		return errors.New("database identity")
-	}
+	if db != "default_db" || user != parsed.User.Username() { return errors.New("database identity") }
+    var encrypted bool
+    if err=pool.QueryRow(ctx,"SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()").Scan(&encrypted);err!=nil || !encrypted { return errors.New("encrypted database transport required") }
 	report, err := admin.ApprovedFilPriceRepair(ctx, pool, *operation, *draftID, *fingerprint)
 	if err != nil {
 		return err
