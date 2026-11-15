@@ -54,3 +54,31 @@ func TestOnlyUnwrittenInspectCanRetryAttention(t *testing.T) {
 		}
 	}
 }
+
+func TestOnlyAcknowledgedUnboundDiscoveryCanRetryAttention(t *testing.T) {
+	base := Progress{Stage: "discover", CreateAttempted: true, Native: json.RawMessage(`{"version":1}`)}
+	if !retrySafe("needs_attention", base) {
+		t.Fatal("acknowledged native identity read cannot retry")
+	}
+	for _, change := range []func(*Progress){
+		func(p *Progress) { p.Unknown = true },
+		func(p *Progress) { p.CreateAttempted = false },
+		func(p *Progress) { p.PostAttempted = true },
+		func(p *Progress) { p.Native = nil },
+		func(p *Progress) { p.Stage = "create" },
+		func(p *Progress) { p.Stage = "reconcile-create" },
+		func(p *Progress) { p.DocumentID = "123" },
+		func(p *Progress) { p.DocumentUUID = "uuid" },
+		func(p *Progress) { p.OwnedRowIDs = []int64{1} },
+		func(p *Progress) { p.IdentityConflict = true },
+		func(p *Progress) { p.ActiveRevisionID = 1 },
+		func(p *Progress) { p.TargetRevisionID = 1 },
+		func(p *Progress) { p.RevisionPostAttempted = true },
+	} {
+		p := base
+		change(&p)
+		if retrySafe("needs_attention", p) {
+			t.Fatalf("unsafe discovery retry exposed: %+v", p)
+		}
+	}
+}

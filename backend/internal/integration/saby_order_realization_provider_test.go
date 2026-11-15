@@ -490,7 +490,7 @@ func TestSabyRealizationProviderAcknowledgedSaveNeverReaddsAfterTenStalePolls(t 
 }
 
 func TestSabyRealizationProviderPreparedCreateCannotSmuggleDifferentUUIDOrPosting(t *testing.T) {
-	for _, key := range []string{"Идентификатор", "Провести"} {
+	for _, key := range []string{"Идентификатор", "Регламент", "Провести"} {
 		t.Run(key, func(t *testing.T) {
 			h := newRealizationProviderHarness(t)
 			r := realizationProviderRequest()
@@ -501,6 +501,8 @@ func TestSabyRealizationProviderPreparedCreateCannotSmuggleDifferentUUIDOrPostin
 			json.Unmarshal(native.CreatePayload, &doc)
 			if key == "Идентификатор" {
 				doc[key] = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+			} else if key == "Регламент" {
+				doc[key].(map[string]any)["Идентификатор"] = "ffffffff-ffff-4fff-8fff-ffffffffffff"
 			} else {
 				doc[key] = "Да"
 			}
