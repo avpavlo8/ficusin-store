@@ -5,7 +5,7 @@ on:
       operation:
         description: Read-only inventory or fresh tagged backup of fixed production database
         type: choice
-        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify, cashier-inspect, cashier-backup, cashier-staging-deploy, cashier-staging-restore, cashier-production-activate, cashier-production-restart, cashier-production-verify, cashier-order-23-audit, cashier-order-23-rpc, cashier-order-23-discovery, cashier-order-23-regulations, cashier-created-price-audit, cashier-created-price-default, cashier-buyer-read, native-buyer-go-verify, cashier-online-activate, cashier-online-regulation-correct, order-23-prepare, order-23-enqueue]
+        options: [inspect, backup, static-assets, receipts, seven-prepare, seven-create, cashier-audit, native-reserve-read, native-reserve-cycle, native-invoice-prepare, native-invoice-fill, native-invoice-edit, native-go-verify, cashier-inspect, cashier-backup, cashier-staging-deploy, cashier-staging-restore, cashier-production-activate, cashier-production-restart, cashier-production-verify, cashier-order-23-audit, cashier-order-23-rpc, cashier-order-23-discovery, cashier-order-23-regulations, cashier-created-price-audit, cashier-created-price-default, cashier-buyer-read, native-buyer-go-verify, cashier-online-activate, cashier-online-regulation-correct, order-23-prepare, order-23-enqueue, fil-price-inspect, fil-price-prepare, fil-price-approve]
         required: true
       expected_commit:
         description: Exact currently deployed main commit
@@ -16,6 +16,15 @@ on:
         type: string
         required: false
         default: '44bfa6c5807fe1411857416c2e07755ab55b332d'
+      price_draft_id:
+        description: Exact prepared fixed card price draft ID
+        type: string
+        required: false
+      price_fingerprint:
+        description: Exact prepared fixed card price fingerprint
+        type: string
+        required: false
+
 permissions:
   contents: read
 jobs:
@@ -328,3 +337,33 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
         run: python3 scripts/order-23-recovery.py --apply
+
+  fil-price-repair:
+    if: startsWith(inputs.operation, 'fil-price-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: fixed-fil-price-repair
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_commit }}
+          path: release-source
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: release-source/backend/go.mod
+          cache-dependency-path: release-source/backend/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fixed canonical missing main price recovery
+        env:
+          TIMEWEB_CLOUD_TOKEN: ${{ secrets.TIMEWEB_CLOUD_TOKEN }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SOURCE_DIR: ${{ github.workspace }}/release-source
+          FIL_REPAIR_OPERATION: ${{ inputs.operation }}
+          FIL_REPAIR_DRAFT_ID: ${{ inputs.price_draft_id }}
+          FIL_REPAIR_FINGERPRINT: ${{ inputs.price_fingerprint }}
+        run: python3 scripts/fil-price-repair.py

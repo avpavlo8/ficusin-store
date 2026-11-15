@@ -1,0 +1,171 @@
+// Temporary operations-only wrapper; do not ship or commit to the product tree.
+package admin
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+
+	ce "github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+func ApprovedFilPriceRepair(ctx context.Context, pool *pgxpool.Pool, operation string, draftID int64, fingerprint string) (map[string]any, error) {
+	fail := func(reason string) (map[string]any, error) { return nil, errors.New(reason) }
+	if operation != "inspect" && operation != "prepare" && operation != "approve" {
+		return fail("invalid_operation")
+	}
+	options := pgx.TxOptions{AccessMode: pgx.ReadOnly}
+	if operation == "prepare" {
+		options.AccessMode = pgx.ReadWrite
+	}
+	tx, err := pool.BeginTx(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var db, access string
+	if err = tx.QueryRow(ctx, "SELECT current_database(),current_setting('transaction_read_only')").Scan(&db, &access); err != nil {
+		return nil, err
+	}
+	if db != "default_db" || (operation == "prepare" && access != "off") || (operation != "prepare" && access != "on") {
+		return fail("database_scope")
+	}
+	if operation == "prepare" {
+		var locked int64
+		if err = tx.QueryRow(ctx, "SELECT id FROM products WHERE id=11413 FOR UPDATE").Scan(&locked); err != nil {
+			return nil, err
+		}
+		if err = tx.QueryRow(ctx, "SELECT id FROM product_variants WHERE id=11413 AND product_id=11413 FOR UPDATE").Scan(&locked); err != nil {
+			return nil, err
+		}
+	}
+	var price int64
+	var native, code string
+	var active bool
+	if err = tx.QueryRow(ctx, `SELECT v.base_price_minor,COALESCE(v.saby_id,''),COALESCE(n.code,''),v.archived_at IS NULL
+ FROM product_variants v LEFT JOIN saby_nomenclature n ON n.saby_id=v.saby_id
+ WHERE v.id=11413 AND v.product_id=11413`).Scan(&price, &native, &code, &active); err != nil {
+		return nil, err
+	}
+	if price != 100000 || native != "3984" || code != "X946056863" || !active {
+		return fail("fixed_card_or_site_price_changed")
+	}
+	var canonical bool
+	if err = tx.QueryRow(ctx, `SELECT
+ EXISTS(SELECT 1 FROM product_external_ids WHERE variant_id=11413 AND provider='saby' AND id_type='alias' AND status='active' AND external_id='681a4876-f3a8-4dc3-a35d-2590b89ebbf5')
+ AND NOT EXISTS(SELECT 1 FROM product_external_ids WHERE variant_id=11413 AND provider='saby' AND status='active' AND ((id_type='id' AND external_id<>'3984') OR(id_type='code' AND external_id<>'X946056863') OR(id_type='alias' AND external_id~*'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' AND external_id<>'681a4876-f3a8-4dc3-a35d-2590b89ebbf5')))
+ AND EXISTS(SELECT 1 FROM catalog_editor_remote_links WHERE variant_id=11413 AND channel='saby' AND execution_mode='live' AND remote_id='3984' AND offer_id='X946056863')`).Scan(&canonical); err != nil {
+		return nil, err
+	}
+	if !canonical {
+		return fail("canonical_link_changed")
+	}
+	var publicationStatus, publicationMode string
+	var progress ce.Progress
+	var pending bool
+	if err = tx.QueryRow(ctx, `SELECT status,execution_mode,progress,pending_payload IS NOT NULL FROM catalog_editor_publications WHERE variant_id=11413 AND channel='saby'`).Scan(&publicationStatus, &publicationMode, &progress, &pending); err != nil {
+		return nil, err
+	}
+	if (publicationStatus != "created" && publicationStatus != "synced") || publicationMode != "live" || pending || progress.Stage != "done" || progress.Ambiguous || progress.IDs.ProductID != "3984" || progress.IDs.OfferID != "X946056863" || progress.IDs.UUID != "681a4876-f3a8-4dc3-a35d-2590b89ebbf5" {
+		return fail("content_publication_not_confirmed")
+	}
+	var actorID int64
+	if err = tx.QueryRow(ctx, `SELECT customer_id FROM admin_users WHERE is_active=TRUE AND role='owner' AND customer_id IS NOT NULL ORDER BY customer_id LIMIT 1`).Scan(&actorID); err != nil {
+		return nil, err
+	}
+	actor := Actor{CustomerID: actorID, Role: RoleOwner}
+	var busy bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_editor_price_publications WHERE channel='saby' AND target_id='X946056863' AND status IN('queued','processing','needs_attention'))`).Scan(&busy); err != nil {
+		return nil, err
+	}
+	if busy {
+		return fail("price_operation_already_submitted_or_unknown")
+	}
+	plan := ce.Request{Action: "price", ProductID: 11413, VariantID: 11413, PriceMinor: 100000, SabyID: "3984", Price: &ce.PriceRequest{TargetID: "X946056863", PriceMinor: 100000}}
+	reason, err := ce.PriceSnapshotCurrent(ctx, tx, plan, "saby", "live", "explicit")
+	if err != nil {
+		return nil, err
+	}
+	if reason != "" {
+		return fail("price_snapshot_changed")
+	}
+	blocked, err := ce.PriceContentBusy(ctx, tx, 11413, "saby", "live")
+	if err != nil {
+		return nil, err
+	}
+	if blocked {
+		return fail("content_busy")
+	}
+	report := map[string]any{"readOnly": operation == "inspect", "operation": operation, "productId": 11413, "variantId": 11413, "nativeId": "3984", "code": "X946056863", "uuid": "681a4876-f3a8-4dc3-a35d-2590b89ebbf5", "sitePriceMinor": 100000, "priceMinor": 100000, "channel": "saby", "ownerActorId": actorID, "sitePriceChanged": false, "newCardCreated": false, "otherChannelsTouched": false, "externalAPIsCalled": false, "plannedPayload": plan}
+	if operation == "inspect" {
+		return report, nil
+	}
+	if operation == "prepare" {
+		if err = stageEditorPrice(ctx, tx, actor, 11413, 11413, "saby", "X946056863", 100000, 100000, nil, "explicit"); err != nil {
+			return nil, err
+		}
+		rows, err := tx.Query(ctx, `SELECT id,fingerprint,payload FROM catalog_editor_price_publications WHERE product_id=11413 AND variant_id=11413 AND channel='saby' AND target_id='X946056863' AND status='draft' AND expected_site_price_minor=100000 AND price_minor=100000 AND price_origin='explicit' ORDER BY id`)
+		if err != nil {
+			return nil, err
+		}
+		count := 0
+		var payload []byte
+		for rows.Next() {
+			count++
+			err = rows.Scan(&draftID, &fingerprint, &payload)
+			if err != nil {
+				rows.Close()
+				return nil, err
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		if count != 1 {
+			return fail("draft_not_unique")
+		}
+		var frozen ce.Request
+		if json.Unmarshal(payload, &frozen) != nil || frozen.Action != "price" || frozen.ProductID != 11413 || frozen.VariantID != 11413 || frozen.SabyID != "3984" || frozen.PriceMinor != 100000 || frozen.Price == nil || frozen.Price.TargetID != "X946056863" || frozen.Price.PriceMinor != 100000 || frozen.Price.CompareAtMinor != nil {
+			return fail("frozen_payload_changed")
+		}
+		if err = insertAudit(ctx, tx, actor, "editor.price.repair.prepare", "editor_price", code, nil, map[string]any{"priceId": draftID, "fingerprint": fingerprint, "reason": "missing_main_saby_price", "sitePriceChanged": false}); err != nil {
+			return nil, err
+		}
+		if err = tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		report["frozenRequest"] = frozen
+        report["draftId"] = draftID
+		report["fingerprint"] = fingerprint
+		report["status"] = "draft"
+		return report, nil
+	}
+	if draftID <= 0 || fingerprint == "" {
+		return fail("exact_draft_confirmation_required")
+	}
+	var status, storedFingerprint string
+	var frozen ce.Request
+	if err = tx.QueryRow(ctx, `SELECT status,fingerprint,payload FROM catalog_editor_price_publications WHERE id=$1 AND product_id=11413 AND variant_id=11413 AND channel='saby' AND target_id='X946056863' AND expected_site_price_minor=100000 AND price_minor=100000 AND price_origin='explicit'`, draftID).Scan(&status, &storedFingerprint, &frozen); err != nil {
+		return nil, err
+	}
+	if status != "draft" || storedFingerprint != fingerprint || frozen.Action != "price" || frozen.SabyID != "3984" || frozen.PriceMinor != 100000 || frozen.Price == nil || frozen.Price.TargetID != "X946056863" || frozen.Price.PriceMinor != 100000 {
+		return fail("draft_confirmation_changed")
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	repo := NewPostgresRepository(pool).WithEditorPublicationMode("live").WithPriceChannelsConfigured(map[string]bool{"saby": true})
+	approved, err := repo.ApproveEditorPrice(ctx, actor, 11413, draftID, fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	report["draftId"] = approved.ID
+	report["fingerprint"] = approved.Fingerprint
+	report["status"] = approved.Status
+	report["workerWillRun"] = true
+	return report, nil
+}

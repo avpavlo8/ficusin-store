@@ -1,0 +1,67 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"net/url"
+	"os"
+	"time"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
+	"github.com/avpavlo8/ficusin-store/backend/internal/config"
+	"github.com/avpavlo8/ficusin-store/backend/internal/store"
+)
+
+type private struct {
+	DatabaseURL, CA string
+	VerifyTLS       bool
+}
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Println(`{"ok":false,"reason":"fixed_price_repair_guard_or_service_failed"}`)
+		os.Exit(1)
+	}
+}
+func run() error {
+	operation := flag.String("operation", "inspect", "inspect, prepare or approve")
+	draftID := flag.Int64("draft-id", 0, "exact prepared ID")
+	fingerprint := flag.String("fingerprint", "", "exact prepared fingerprint")
+	flag.Parse()
+	if flag.NArg() != 0 || os.Getenv("GITHUB_ACTIONS") != "true" {
+		return errors.New("actions only")
+	}
+	if *operation != "inspect" && os.Getenv("GITHUB_RUN_ATTEMPT") != "1" {
+		return errors.New("no blind replay")
+	}
+	var input private
+	if json.NewDecoder(os.Stdin).Decode(&input) != nil {
+		return errors.New("private database config missing")
+	}
+	parsed, err := url.Parse(input.DatabaseURL)
+	if err != nil || parsed.Path != "/default_db" || parsed.User == nil || !input.VerifyTLS {
+		return errors.New("database or TLS scope")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	pool, err := store.Open(ctx, config.Database{URL: input.DatabaseURL, CA: input.CA, VerifyTLS: input.VerifyTLS, MaxConnections: 1})
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	var db, user string
+	if err = pool.QueryRow(ctx, "SELECT current_database(),current_user").Scan(&db, &user); err != nil {
+		return err
+	}
+	if db != "default_db" || user != parsed.User.Username() {
+		return errors.New("database identity")
+	}
+	report, err := admin.ApprovedFilPriceRepair(ctx, pool, *operation, *draftID, *fingerprint)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(report)
+}
