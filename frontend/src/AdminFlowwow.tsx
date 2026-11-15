@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./adminShared";
 import { WorkspaceState, WorkspaceTable } from "./WorkspaceUI";
+import { FlowwowBinding, type FlowwowRemote } from "./FlowwowBinding";
+import { FlowwowLinkPreview, type FlowwowPreview } from "./FlowwowLinkPreview";
 type Item = {
   variantId: number;
   productId: number;
@@ -13,22 +15,27 @@ type Item = {
   status: string;
   message: string;
   lastError: string;
+  contentUpdatedAt?: string;
+  inventorySyncedAt?: string;
+  inventoryPriceMinor?: number;
+  inventoryStock?: number;
 };
-type State = { items: Item[]; configured: boolean; publicationMode: string; shopId: string };
-type Remote = {
-  productId: number;
-  offerId: string;
-  name: string;
-  price: string;
-  stock: number;
-  type: number;
+type State = {
+  items: Item[];
+  configured: boolean;
+  publicationMode: string;
+  shopId: string;
+  preview?: FlowwowPreview | null;
 };
+type Remote = FlowwowRemote;
 export default function AdminFlowwow() {
   const [data, setData] = useState<State | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [binding, setBinding] = useState<Remote | null>(null);
+  const [notice, setNotice] = useState("");
   const [remote, setRemote] = useState<Remote[] | null>(null);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
@@ -69,7 +76,16 @@ export default function AdminFlowwow() {
       (i) =>
         (filter !== "attention" ||
           i.lastError ||
-          ["failed", "needs_attention"].includes(i.status)) &&
+          ["failed", "needs_attention"].includes(i.status) ||
+          Boolean(i.lastError)) &&
+        `${i.name} ${i.sku} ${i.offerId} ${i.remoteId}`
+          .toLowerCase()
+          .includes(search.toLowerCase()),
+    ) || [];
+  const previewItems =
+    data?.preview?.items.filter(
+      (i) =>
+        (filter !== "attention" || ["failed", "needs_attention"].includes(i.status)) &&
         `${i.name} ${i.sku} ${i.offerId} ${i.remoteId}`
           .toLowerCase()
           .includes(search.toLowerCase()),
@@ -101,18 +117,25 @@ export default function AdminFlowwow() {
         />
       )}
       {!data && !error && <WorkspaceState kind="loading" title="Загружаем состояние Flowwow…" />}
+      {notice && <p role="status">{notice}</p>}
       {data && (
         <>
           <p role="status">
-            {data.configured
-              ? `API подключён · Магазин ${data.shopId}`
-              : "API не подключён. Добавьте FLOWWOW_API_TOKEN и FLOWWOW_SHOP_ID в окружение сервера."}{" "}
-            ·{" "}
-            {data.publicationMode === "live"
-              ? "Отправка включена"
-              : data.publicationMode === "mock"
-                ? "Локальная проверка. Реальный магазин не меняется."
-                : "Отправка выключена. Карточки сохраняются для подготовки."}
+            {data.preview ? (
+              "СТГ · Локальная проверка. Реальный магазин не меняется."
+            ) : (
+              <>
+                {data.configured
+                  ? `API подключён · Магазин ${data.shopId}`
+                  : "API не подключён. Добавьте FLOWWOW_API_TOKEN и FLOWWOW_SHOP_ID в окружение сервера."}{" "}
+                ·{" "}
+                {data.publicationMode === "live"
+                  ? "Отправка включена"
+                  : data.publicationMode === "mock"
+                    ? "Локальная проверка. Реальный магазин не меняется."
+                    : "Отправка выключена. Карточки сохраняются для подготовки."}
+              </>
+            )}
           </p>
           <div className="admin-toolbar">
             <label>
@@ -136,73 +159,104 @@ export default function AdminFlowwow() {
               disabled={busy || !data.configured}
               onClick={() => void browse(0)}
             >
-              Карточки в Flowwow
+              {data.preview ? "Тестовые карточки" : "Карточки в Flowwow"}
             </button>
           </div>
+          {data.preview && <FlowwowLinkPreview preview={data.preview} items={previewItems} />}
           {items.length ? (
-            <WorkspaceTable label="Связанные товары Flowwow">
-              <thead>
-                <tr>
-                  <th>Товар на сайте</th>
-                  <th>Карточка Flowwow</th>
-                  <th>Цена сайта</th>
-                  <th>Остаток сайта</th>
-                  <th>Обмен</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((i) => (
-                  <tr key={i.variantId}>
-                    <td>
-                      <a href={`/admin?section=products&product=${i.productId}&editor=channels`}>
-                        {i.name}
-                      </a>
-                      <small>{i.sku}</small>
-                    </td>
-                    <td>
-                      {i.remoteId ? `ID ${i.remoteId}` : "Ещё не связана"}
-                      <small>{i.offerId}</small>
-                    </td>
-                    <td>{(i.priceMinor / 100).toLocaleString("ru-RU")} ₽</td>
-                    <td>{i.stock} шт.</td>
-                    <td>
-                      <span role="status">{i.lastError || i.message}</span>
-                      {["failed", "needs_attention"].includes(i.status) && (
-                        <button
-                          type="button"
-                          className="admin-action"
-                          disabled={busy}
-                          onClick={async () => {
-                            setBusy(true);
-                            try {
-                              await api(
-                                `/api/v1/admin/products/${i.productId}/editor-publications/flowwow/retry`,
-                                {
-                                  method: "POST",
-                                  body: JSON.stringify({ variantId: i.variantId }),
-                                },
-                              );
-                              await load();
-                            } catch (e) {
-                              setError((e as Error).message);
-                            } finally {
-                              setBusy(false);
-                            }
-                          }}
-                        >
-                          Повторить проверку
-                        </button>
-                      )}
-                    </td>
+            <>
+              {data.preview && <h3>Тестовые связки СТГ</h3>}
+              <WorkspaceTable
+                label={data.preview ? "Тестовые связки СТГ" : "Связанные товары Flowwow"}
+              >
+                <thead>
+                  <tr>
+                    <th>Товар на сайте</th>
+                    <th>Карточка Flowwow</th>
+                    <th>Цена сайта</th>
+                    <th>Остаток сайта</th>
+                    <th>Контент</th>
+                    <th>Цена и остаток</th>
                   </tr>
-                ))}
-              </tbody>
-            </WorkspaceTable>
-          ) : (
+                </thead>
+                <tbody>
+                  {items.map((i) => (
+                    <tr key={i.variantId}>
+                      <td>
+                        <a href={`/admin?section=products&product=${i.productId}&editor=channels`}>
+                          {i.name}
+                        </a>
+                        <small>{i.sku}</small>
+                      </td>
+                      <td>
+                        {i.remoteId ? `ID ${i.remoteId}` : "Ещё не связана"}
+                        <small>{i.offerId}</small>
+                      </td>
+                      <td>{(i.priceMinor / 100).toLocaleString("ru-RU")} ₽</td>
+                      <td>{i.stock} шт.</td>
+                      <td>
+                        <span role="status">{i.message}</span>
+                        {i.contentUpdatedAt && (
+                          <small>
+                            Обновлено:{" "}
+                            {new Date(i.contentUpdatedAt).toLocaleString("ru-RU", {
+                              timeZone: "Europe/Moscow",
+                            })}
+                          </small>
+                        )}
+                        {["failed", "needs_attention"].includes(i.status) && (
+                          <button
+                            type="button"
+                            className="admin-action"
+                            disabled={busy}
+                            onClick={async () => {
+                              setBusy(true);
+                              try {
+                                await api(
+                                  `/api/v1/admin/products/${i.productId}/editor-publications/flowwow/retry`,
+                                  {
+                                    method: "POST",
+                                    body: JSON.stringify({ variantId: i.variantId }),
+                                  },
+                                );
+                                await load();
+                              } catch (e) {
+                                setError((e as Error).message);
+                              } finally {
+                                setBusy(false);
+                              }
+                            }}
+                          >
+                            Повторить проверку
+                          </button>
+                        )}
+                      </td>
+                      <td>
+                        <span role="status">
+                          {i.lastError || (i.inventorySyncedAt ? "Обновлены" : "Ожидают отправки")}
+                        </span>
+                        {i.inventorySyncedAt && (
+                          <small>
+                            {new Date(i.inventorySyncedAt).toLocaleString("ru-RU", {
+                              timeZone: "Europe/Moscow",
+                            })}{" "}
+                            · {((i.inventoryPriceMinor || 0) / 100).toLocaleString("ru-RU")} ₽ ·{" "}
+                            {i.inventoryStock} шт.
+                          </small>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </WorkspaceTable>
+            </>
+          ) : !data.preview && !remote && !binding ? (
             <WorkspaceState
               kind="empty"
               title={
-                filter === "attention" ? "Ошибок обмена не найдено" : "Товаров Flowwow пока нет"
+                filter === "attention"
+                  ? "Ошибок обмена не найдено"
+                  : "Связей с товарами сайта пока нет"
               }
               detail="Откройте товар в каталоге, перейдите в «Маркетплейсы» и настройте Flowwow."
               action={
@@ -211,13 +265,24 @@ export default function AdminFlowwow() {
                 </a>
               }
             />
+          ) : null}
+          {binding && (
+            <FlowwowBinding
+              remote={binding}
+              onCancel={() => setBinding(null)}
+              onSaved={() => {
+                setBinding(null);
+                setNotice("Связь подтверждена. Автоматический обмен поставлен в очередь.");
+                void load();
+              }}
+            />
           )}
           {remote && (
             <section>
               <h3>Карточки магазина Flowwow</h3>
               <p>
-                Чтобы сохранить существующую карточку, выберите «Связать существующую» в редакторе
-                товара и укажите её ID и артикул.
+                Выберите карточку и свяжите её с конкретным размером товара сайта. Новую карточку
+                можно создать из редактора товара, включив «Отправлять в Flowwow».
               </p>
               <WorkspaceTable label="Каталог Flowwow">
                 <thead>
@@ -227,6 +292,7 @@ export default function AdminFlowwow() {
                     <th>Артикул</th>
                     <th>Цена</th>
                     <th>Остаток</th>
+                    <th>Связь с сайтом</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -240,6 +306,23 @@ export default function AdminFlowwow() {
                       <td>{i.offerId || "Не назначен"}</td>
                       <td>{i.price} ₽</td>
                       <td>{i.stock}</td>
+                      <td>
+                        {data.items.some((link) => link.remoteId === String(i.productId)) ? (
+                          "Связана"
+                        ) : (
+                          <button
+                            type="button"
+                            className="admin-action"
+                            disabled={busy || i.type !== 1}
+                            onClick={() => {
+                              setBinding(i);
+                              setNotice("");
+                            }}
+                          >
+                            Связать с товаром
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

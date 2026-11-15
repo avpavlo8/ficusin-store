@@ -14,9 +14,7 @@ export type Section =
   | "collections"
   | "procurement"
   | "returns"
-  | "marketplaces"
-  | "avito"
-  | "flowwow";
+  | "marketplaces";
 
 export type Category = {
   id: number;

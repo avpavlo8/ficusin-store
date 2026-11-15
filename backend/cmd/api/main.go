@@ -276,7 +276,6 @@ func main() {
 	editorReferences := integration.NewMarketplaceExecutor(cfg.CatalogMarketplaces.WBToken, cfg.CatalogMarketplaces.OzonClientID, cfg.CatalogMarketplaces.OzonAPIKey).WithWBRequestLimiter(procurementStore).WithIntegrationRequestLimiter(procurementStore)
 	avitoService := avito.New(pool, cfg.Marketplaces.AvitoClientID, cfg.Marketplaces.AvitoClientSecret, cfg.SiteURL, cfg.Marketplaces.AvitoAddress, cfg.Marketplaces.AvitoManagerName, cfg.Marketplaces.AvitoContactPhone, cfg.Marketplaces.AvitoCategory, cfg.Marketplaces.AvitoGoodsType)
 	flowwowService := &flowwow.Service{Pool: pool, Client: integration.NewFlowwowClient(cfg.Marketplaces.FlowwowToken, cfg.Marketplaces.FlowwowShopID), Mode: cfg.CatalogPublicationMode}
-	go flowwowService.Run(ctx, logger)
 
 	var editorPublisher catalogeditor.Publisher
 	if cfg.CatalogPublicationMode == "mock" {
@@ -285,10 +284,16 @@ func main() {
 			logger.Error("local marketplace emulator unavailable", "error", err)
 			os.Exit(1)
 		}
-		flowwowService.Client = integration.NewMockFlowwowClient()
+		flowwowService.Client, err = integration.NewPersistentMockFlowwowClient(ctx, pool)
+		if err != nil {
+			logger.Error("local Flowwow emulator unavailable", "error", err)
+			os.Exit(1)
+		}
 		editorPublisher = catalogeditor.ChannelPublishers{"wb": mockPublisher, "ozon": mockPublisher, "flowwow": flowwowService}
 		editorReferences = mockPublisher.Executor
 	}
+	go flowwowService.Run(ctx, logger)
+	go adminRepository.RunFlowwowContent(ctx, logger)
 	if cfg.CatalogPublicationMode == "live" {
 		marketplacePublisher := &integration.CatalogPublisher{Executor: editorReferences}
 		editorPublisher = catalogeditor.ChannelPublishers{

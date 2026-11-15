@@ -15,8 +15,6 @@ export const sections: Array<{
   { id: "procurement", label: "Закупки", permission: "procurement.read" },
   { id: "returns", label: "Возвраты", permission: "returns.read" },
   { id: "marketplaces", label: "Маркетплейсы", permission: "integrations.edit" },
-  { id: "flowwow", label: "Flowwow", permission: "integrations.edit" },
-  { id: "avito", label: "Авито", permission: "integrations.edit" },
   { id: "customers", label: "Клиенты", permission: "customers.read" },
   { id: "analytics", label: "Аналитика", permission: "analytics.read" },
   { id: "settings", label: "Настройки", owner: true },
@@ -31,7 +29,20 @@ export function currentAdminSection(): Section {
     url.searchParams.get("tab") ||
     url.pathname.split("/")[2] ||
     url.hash.replace(/^#/, "");
-  const alias = value === "catalog" ? "products" : value;
+  if (value === "flowwow" || value === "avito") {
+    url.pathname = "/admin";
+    url.searchParams.set("section", "marketplaces");
+    url.searchParams.set("channel", value);
+    url.searchParams.delete("tab");
+    url.hash = "";
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }
+  const alias =
+    value === "flowwow" || value === "avito"
+      ? "marketplaces"
+      : value === "catalog"
+        ? "products"
+        : value;
   return (
     sections.find((item) => item.id === alias)?.id || (isStandalone() ? "orders" : "dashboard")
   );

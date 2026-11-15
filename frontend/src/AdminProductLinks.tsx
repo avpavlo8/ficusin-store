@@ -381,7 +381,7 @@ export function AdminProductLinks({
                         canManageAvito ? (
                           <a
                             className="text-button"
-                            href={`/admin?section=avito&product=${product.id}&q=${encodeURIComponent(product.name)}`}
+                            href={`/admin?section=marketplaces&channel=avito&product=${product.id}&q=${encodeURIComponent(product.name)}`}
                           >
                             Сопоставить в Авито ↗
                           </a>

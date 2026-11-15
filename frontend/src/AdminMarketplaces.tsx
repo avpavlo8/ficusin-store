@@ -1,7 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { PageHeading, api } from "./adminShared";
+import AdminFlowwow from "./AdminFlowwow";
 import { WorkspaceState } from "./WorkspaceUI";
 import type { IntegrationSyncStatus, ProcurementData } from "./adminTypes";
+
+const AdminAvito = lazy(() =>
+  import("./AdminAvito").then((module) => ({ default: module.AdminAvito })),
+);
+const marketplaceChannels = [
+  { id: "flowwow", label: "Flowwow" },
+  { id: "wb", label: "Wildberries" },
+  { id: "ozon", label: "Ozon" },
+  { id: "avito", label: "Авито" },
+] as const;
 
 const channelName = (value: string) =>
   ({ saby: "СБИС", wb: "Wildberries", ozon: "Ozon" })[value] || value;
@@ -18,7 +29,13 @@ const statusName = (value: string) =>
 const when = (value?: string) =>
   value ? new Date(value).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" }) : "не было";
 
-export function AdminMarketplaces({ onError }: { onError: (value: string) => void }) {
+function MarketplaceOverview({
+  onError,
+  channel,
+}: {
+  onError: (value: string) => void;
+  channel?: "wb" | "ozon";
+}) {
   const [data, setData] = useState<ProcurementData | null>(null);
   const [queued, setQueued] = useState<string[]>([]);
   const load = useCallback(
@@ -45,15 +62,19 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
     }
   };
   if (!data) return <WorkspaceState kind="loading" title="Загружаем состояние обмена…" />;
-  const lanes = data.integrationSync || [];
+  const lanes = (data.integrationSync || []).filter((item) => !channel || item.channel === channel);
   return (
     <>
       <PageHeading
-        title="Маркетплейсы"
-        text="Что отправилось на Ozon, Wildberries и в СБИС и что требует внимания."
+        title={channel ? channelName(channel) : "Обзор обмена"}
+        text={
+          channel
+            ? "Карточки, цены, продажи и состояние обмена с площадкой."
+            : "Что отправилось на Ozon, Wildberries и в СБИС и что требует внимания."
+        }
       />
       <div className="integration-channel-grid">
-        {(["ozon", "wb", "saby"] as const).map((channel) => {
+        {(channel ? [channel] : (["ozon", "wb", "saby"] as const)).map((channel) => {
           const health = data.integrationHealth.find((item) => item.channel === channel);
           const channelLanes = lanes.filter((item) => item.channel === channel);
           const enabledLanes = channelLanes.filter((item) => item.status !== "disabled");
@@ -197,5 +218,47 @@ export function AdminMarketplaces({ onError }: { onError: (value: string) => voi
         сверку; Wildberries перечитывает 90-дневное окно продаж при каждом обмене.
       </p>
     </>
+  );
+}
+
+export function AdminMarketplaces({ onError }: { onError: (value: string) => void }) {
+  const channel = new URLSearchParams(window.location.search).get("channel");
+  const selected = marketplaceChannels.some((item) => item.id === channel) ? channel : "overview";
+  return (
+    <div className="marketplace-workspace">
+      <nav className="marketplace-channel-nav" aria-label="Маркетплейсы">
+        {marketplaceChannels.map((item) => (
+          <a
+            key={item.id}
+            href={`/admin?section=marketplaces&channel=${item.id}`}
+            aria-current={selected === item.id ? "page" : undefined}
+          >
+            {item.label}
+          </a>
+        ))}
+        <a
+          className="marketplace-overview-link"
+          href="/admin?section=marketplaces"
+          aria-current={selected === "overview" ? "page" : undefined}
+        >
+          Обзор обмена
+        </a>
+      </nav>
+      <div className="marketplace-channel-content">
+        {selected === "flowwow" ? (
+          <AdminFlowwow />
+        ) : selected === "avito" ? (
+          <Suspense fallback={<WorkspaceState kind="loading" title="Загружаем Авито…" />}>
+            <AdminAvito onError={onError} />
+          </Suspense>
+        ) : (
+          <MarketplaceOverview
+            key={selected}
+            channel={selected === "wb" || selected === "ozon" ? selected : undefined}
+            onError={onError}
+          />
+        )}
+      </div>
+    </div>
   );
 }

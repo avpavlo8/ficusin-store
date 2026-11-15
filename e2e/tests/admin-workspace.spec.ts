@@ -51,8 +51,9 @@ test("@desktop @phone workspace preserves real navigation and filters recent ord
   const phone = (page.viewportSize()?.width ?? 1280) <= 760;
   if (phone) await page.getByRole("button", { name: "Ещё", exact: true }).click();
   const menu = page.getByRole("navigation", { name: phone ? "Все разделы управления" : "Разделы управления" });
-  // Десять разделов: «Финансы» удалены владельцем.
-  await expect(menu.getByRole("link")).toHaveCount(10);
+  // Площадки доступны внутри «Маркетплейсов», без отдельных пунктов.
+  await expect(menu.getByRole("link")).toHaveCount(8);
+  await expect(menu.getByRole("link", { name: /^(Flowwow|Авито)$/ })).toHaveCount(0);
   await expect(menu.getByRole("link", { name: "Маркетплейсы", exact: true })).toHaveCount(1);
   await expect(menu.getByRole("link", { name: "Склад", exact: true })).toHaveCount(0);
   await expect(menu.getByRole("link", { name: "Финансы", exact: true })).toHaveCount(0);

@@ -563,7 +563,7 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [integrations.edit]
-      description: Read-only Flowwow list. Credentials stay in server environment. No seller writes.
+      description: Flowwow list with independent content status/update time and confirmed inventory price, quantity, timestamp and error, scoped to the current execution mode. Credentials stay in server environment. No seller writes. In mock mode an optional preview contains a read-only production-link snapshot (shopId, capturedAt, items with SKU, remoteId, offerId, observed price/stock/status and optional locally resolved productId). This snapshot never creates executable links or publications.
       responses:
         2XX: { description: Current Flowwow data. }
         default: { $ref: "#/components/responses/ValidationError" }
@@ -593,6 +593,51 @@ paths:
         - { in: query, name: page, required: true, schema: { type: integer, minimum: 0 } }
       responses:
         2XX: { description: Current Flowwow data. }
+        default: { $ref: "#/components/responses/ValidationError" }
+  /admin/flowwow/candidates:
+    get:
+      operationId: get_admin_flowwow_candidates
+      x-source: backend/internal/httpapi/flowwow.go#flowwowCandidatesHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [integrations.edit]
+      description: Search up to 50 unarchived and unlinked site variants by name or exact SKU.
+      parameters:
+        - { in: query, name: q, schema: { type: string, maxLength: 128 } }
+      responses:
+        2XX: { description: Current execution mode only. }
+        default: { $ref: "#/components/responses/ValidationError" }
+  /admin/flowwow/links/preview:
+    post:
+      operationId: post_admin_flowwow_links_preview
+      x-source: backend/internal/httpapi/flowwow.go#flowwowLinkHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [integrations.edit, products.manage]
+      description: Read exact provider identity and saved site content, returning a fingerprint. No publication or provider write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/admin.FlowwowLinkInput" }
+      responses:
+        2XX: { description: Current execution mode only. }
+        default: { $ref: "#/components/responses/ValidationError" }
+  /admin/flowwow/links:
+    post:
+      operationId: post_admin_flowwow_links
+      x-source: backend/internal/httpapi/flowwow.go#flowwowLinkHandler
+      tags: [Administration]
+      security: [{ Session: [] }]
+      x-permissions: [integrations.edit, products.manage]
+      description: Confirm an unchanged preview and queue Flowwow-only linking/content. Reject duplicate identities, unresolved operations and mode changes. Preserve other channels.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/admin.FlowwowLinkInput" }
+      responses:
+        2XX: { description: Current execution mode only. }
         default: { $ref: "#/components/responses/ValidationError" }
   /admin/avito:
     get:
@@ -6893,6 +6938,14 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
   schemas:
+    admin.FlowwowLinkInput:
+      type: object
+      required: [variantId, remoteId]
+      properties:
+        variantId: { type: integer, format: int64, minimum: 1 }
+        remoteId: { type: integer, format: int64, minimum: 1 }
+        fingerprint: { type: string, description: Required for confirmation. }
+
     OrderRealizationRevision:
       type: object
       required: [id, number, state, createdAt]

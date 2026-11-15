@@ -105,6 +105,9 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 		mux.HandleFunc("GET /api/v1/admin/flowwow", flowwowHandler(adminAPI, dependencies.Flowwow, "list"))
 		mux.HandleFunc("GET /api/v1/admin/flowwow/references", flowwowHandler(adminAPI, dependencies.Flowwow, "references"))
 		mux.HandleFunc("GET /api/v1/admin/flowwow/products", flowwowHandler(adminAPI, dependencies.Flowwow, "products"))
+		mux.HandleFunc("GET /api/v1/admin/flowwow/candidates", flowwowCandidatesHandler(adminAPI, dependencies.Flowwow))
+		mux.HandleFunc("POST /api/v1/admin/flowwow/links/preview", flowwowLinkHandler(adminAPI, dependencies.Flowwow, false))
+		mux.HandleFunc("POST /api/v1/admin/flowwow/links", flowwowLinkHandler(adminAPI, dependencies.Flowwow, true))
 	}
 
 	if dependencies.Avito != nil {

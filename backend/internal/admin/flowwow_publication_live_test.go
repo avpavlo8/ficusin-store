@@ -61,7 +61,11 @@ func TestFlowwowPublicationLocalDatabase(t *testing.T) {
 	if _, e = repo.SaveEditorPlan(ctx, actor, p.ID, plan, true); e != nil {
 		t.Fatal(e)
 	}
-	client := integration.NewMockFlowwowClient()
+	client, e := integration.NewPersistentMockFlowwowClient(ctx, pool)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer pool.Exec(ctx, `DELETE FROM flowwow_mock_catalog WHERE offer_id<>'staging-flowwow-demo'`)
 	publisher := ce.ChannelPublishers{"flowwow": client}
 	for i := 0; i < 4; i++ {
 		if e = ce.PublicationStep(ctx, pool, publisher, "mock"); e != nil {
@@ -79,6 +83,90 @@ func TestFlowwowPublicationLocalDatabase(t *testing.T) {
 	if e != nil || len(items) != 1 || items[0].Name != p.Name || items[0].Description != "Site description" {
 		t.Fatalf("site authority %+v %v", items, e)
 	}
+
+	// A confirmed existing card can be linked without publishing any other channel.
+	if _, e = pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id=$1 AND channel='flowwow'`, id); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id=$1 AND channel='flowwow'`, id); e != nil {
+		t.Fatal(e)
+	}
+	target := items[0]
+	input := FlowwowLinkInput{VariantID: id, RemoteID: target.ProductID}
+	preview, e := repo.FlowwowLink(ctx, actor, input, target, "1", false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	var count int
+	if e = pool.QueryRow(ctx, `SELECT COUNT(*) FROM catalog_editor_publications WHERE variant_id=$1 AND channel='flowwow'`, id).Scan(&count); e != nil || count != 0 {
+		t.Fatal("preview wrote queue", count, e)
+	}
+	input.Fingerprint = preview.Fingerprint
+	if _, e = repo.FlowwowLink(ctx, Actor{Role: RoleAdministrator}, input, target, "1", true); e != ErrForbidden {
+		t.Fatal("content-only role changed binding", e)
+	}
+	if _, e = pool.Exec(ctx, `UPDATE products SET description='Fresh link description' WHERE id=$1`, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = repo.FlowwowLink(ctx, actor, input, target, "1", true); e == nil {
+		t.Fatal("stale preview accepted")
+	}
+	preview, e = repo.FlowwowLink(ctx, actor, input, target, "1", false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	input.Fingerprint = preview.Fingerprint
+	linkedView, e := repo.FlowwowLink(ctx, actor, input, target, "1", true)
+	if e != nil || !linkedView.Queued {
+		t.Fatal("link not queued", e)
+	}
+	if e = pool.QueryRow(ctx, `SELECT COUNT(*) FROM catalog_editor_publications WHERE variant_id=$1 AND channel<>'flowwow'`, id).Scan(&count); e != nil || count != 1 {
+		t.Fatal("other publication changed", count, e)
+	} // original Saby preparation only
+	var otherID int64
+	if e = pool.QueryRow(ctx, `INSERT INTO product_variants(product_id,label,base_price_minor) VALUES($1,'Other size',123400) RETURNING id`, p.ID).Scan(&otherID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = repo.FlowwowLink(ctx, actor, FlowwowLinkInput{VariantID: otherID, RemoteID: target.ProductID}, target, "1", false); e == nil {
+		t.Fatal("pending remote card reserved twice")
+	}
+	for i := 0; i < 4; i++ {
+		if e = ce.PublicationStep(ctx, pool, publisher, "mock"); e != nil {
+			t.Fatal(e)
+		}
+	}
+	view, e := repo.ReadEditorPlan(ctx, p.ID)
+	if e != nil || len(view.Config.Variants) != 1 || view.Config.Variants[0].Marketplace.Name != "Must not replace site name" {
+		t.Fatalf("binding overwrote other plan %+v %v", view, e)
+	}
+	// Background reconciliation observes saved site content without another editor-plan PUT.
+	if _, e = pool.Exec(ctx, `UPDATE products SET name='Background name',description='Background description' WHERE id=$1`, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = pool.Exec(ctx, `UPDATE product_media SET object_key='https://images.example.test/changed.jpg' WHERE product_id=$1`, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = repo.FlowwowContentStep(ctx); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 4; i++ {
+		if e = ce.PublicationStep(ctx, pool, publisher, "mock"); e != nil {
+			t.Fatal(e)
+		}
+	}
+	items, _, e = client.Products(ctx, map[string]any{"offerIds": []string{offer}})
+	if e != nil || len(items) != 1 || items[0].Name != "Background name" || items[0].Description != "Background description" || len(items[0].Images) != 1 || items[0].Images[0] != "https://images.example.test/changed.jpg" || fmt.Sprint(items[0].ProductID) != remote {
+		t.Fatalf("background content %+v %v", items, e)
+	}
+	client, e = integration.NewPersistentMockFlowwowClient(ctx, pool)
+	if e != nil {
+		t.Fatal(e)
+	}
+	items, _, e = client.Products(ctx, map[string]any{"offerIds": []string{offer}})
+	if e != nil || len(items) != 1 || items[0].Description != "Background description" {
+		t.Fatal("mock catalog lost after restart", items, e)
+	}
+
 	// Established links keep updating even if the create checkbox is cleared.
 	plan.Variants[0].Flowwow.Enabled = false
 	if _, e = pool.Exec(ctx, `UPDATE product_variants SET base_price_minor=234567 WHERE id=$1`, id); e != nil {
@@ -165,6 +253,32 @@ func TestFlowwowPublicationLocalDatabase(t *testing.T) {
 	}
 	if e = pool.QueryRow(ctx, `SELECT last_error FROM flowwow_inventory_sync WHERE variant_id=$1`, id).Scan(&status); e != nil || status != "" {
 		t.Fatal("inventory failed", status, e)
+	}
+
+	// Zero availability never gets reopened by a full content write. Content
+	// waits durably and resumes with the same card after fresh stock returns.
+	var waitingRequest ce.Request
+	if e = pool.QueryRow(ctx, `SELECT payload FROM catalog_editor_publications WHERE variant_id=$1 AND channel='flowwow'`, id).Scan(&waitingRequest); e != nil {
+		t.Fatal(e)
+	}
+	waiting, e := service.Advance(ctx, "flowwow", waitingRequest, ce.Progress{Stage: "update"})
+	if e != nil || waiting.Progress.Stage != "wait-stock" || waiting.Status != "queued" {
+		t.Fatalf("wait stock %+v %v", waiting, e)
+	}
+	if _, e = pool.Exec(ctx, `UPDATE inventory SET synced_at=NOW(),available_qty=7 WHERE variant_id=$1`, id); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 3; i++ {
+		waiting, e = service.Advance(ctx, "flowwow", waitingRequest, waiting.Progress)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = service.InventoryStep(ctx); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if waiting.Status != "synced" {
+		t.Fatalf("content did not resume %+v", waiting)
 	}
 	if _, e = pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id=$1 AND execution_mode='live'`, id); e != nil {
 		t.Fatal(e)
