@@ -3,7 +3,7 @@ import importlib.util,json,os,shutil,subprocess,tempfile
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('amendment_guards',Path(__file__).with_name('production-release-preflight.py'));g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
 READ_SOURCE='358bddc2528438822f1d38595b750306100c1dea'
-VERIFIED_APPLY_SOURCE='not-approved-for-write-yet'
+VERIFIED_APPLY_SOURCE='40b923ecb9da7fea64fde7871c4b1ca898c3d2a3'
 
 def main():
     apply=os.environ['ORDER74_AMENDMENT_OPERATION']=='order-74-amendment-apply'

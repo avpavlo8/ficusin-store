@@ -2,7 +2,7 @@
 import importlib.util,json,os,re,shutil,subprocess,tempfile
 from pathlib import Path
 spec=importlib.util.spec_from_file_location('fil_price_guards',Path(__file__).with_name('production-release-preflight.py'));g=importlib.util.module_from_spec(spec);spec.loader.exec_module(g)
-VERIFIED_PRICING_SOURCE='not-approved-for-dispatch-yet'
+VERIFIED_PRICING_SOURCE='40b923ecb9da7fea64fde7871c4b1ca898c3d2a3'
 
 def main():
     operation=os.environ['FIL_REPAIR_OPERATION'].removeprefix('fil-price-')
