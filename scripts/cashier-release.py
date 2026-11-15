@@ -410,6 +410,32 @@ def order_23_regulation_read(env):
     return {'readOnly':True,'documentRegulations':result}
 
 
+def correct_online_regulation(p,sha):
+    env=production(p.request('GET','/apps/229223')['app'],sha)
+    if env.get('ORDER_REALIZATION_REGULATION_ID')!='122650':raise g.PreflightError('unexpected_existing_regulation')
+    evidence=order_23_discovery(env)
+    candidates=evidence.get('nativeCandidates') or []
+    if len(candidates)!=1:raise g.PreflightError('native_document_not_unique')
+    doc=candidates[0]['header']
+    expected={'@Документ':42876,'ИдентификаторДокумента':'77c786ec-67d3-4417-93eb-30c60df0ef85',
+      'ДокументРасширение.ИдентификаторВИ':'f6d636c3-d0e3-4851-95ec-90a08ee35bc4','ТипДокумента':226,
+      'СкладскойДокумент.Склад':283,'ДокументНашаОрганизация':259,'Регламент':122498,'Удален':False}
+    if any(doc.get(k)!=v for k,v in expected.items()):raise g.PreflightError('verified_native_mapping_changed')
+    regulations=order_23_regulation_read(env)['documentRegulations']
+    own=[x for x in regulations if x.get('nativeId')==42876]
+    if len(own)!=1 or own[0].get('publicRegulation')!={'Название':'Реализация','Идентификатор':'8861254e-4354-11e1-9d64-005056a63fed'}:raise g.PreflightError('public_native_pair_not_verified')
+    with tempfile.TemporaryDirectory() as directory:
+        with g.connect_production(env,directory) as conn:
+            existing=conn.execute('SELECT id FROM order_sale_publications ORDER BY id LIMIT 2').fetchall()
+    if existing!=[(1,)]:raise g.PreflightError('other_publications_need_configuration_review')
+    if production(p.request('GET','/apps/229223')['app'],sha)!=env:raise g.PreflightError('environment_changed')
+    updated={**env,'ORDER_REALIZATION_REGULATION_ID':'122498'}
+    p.request('PATCH','/apps/229223',{'envs':updated})
+    if p.request('GET','/apps/229223')['app']['envs']!=updated:raise g.PreflightError('configuration_readback_mismatch')
+    return {'configurationCorrected':True,'nativeRegulationID':122498,'publicRegulationUUID':'8861254e-4354-11e1-9d64-005056a63fed',
+      'onlyFutureAdmissionsChanged':True,'existingRequestRewritten':False,'nativeWrites':False,'runtimeVerificationRequired':True}
+
+
 def main():
     if os.environ.get('GITHUB_ACTIONS')!='true': raise g.PreflightError('github_actions_only')
     p=Provider(os.environ.get('TIMEWEB_CLOUD_TOKEN',''))
@@ -426,6 +452,7 @@ def main():
         env=production(p.request('GET','/apps/229223')['app'],sha)
         result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else created_price_audit(env) if op=='created-price-audit' else created_price_default_audit(env) if op=='created-price-default' else order_23_discovery(env) if op=='order-23-discovery' else order_23_regulation_read(env) if op=='order-23-regulations' else buyer_read(env)
     elif op=='online-activate':result=activate_online(p,sha)
+    elif op=='online-regulation-correct':result=correct_online_regulation(p,sha)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
     elif op=='production-restart':
