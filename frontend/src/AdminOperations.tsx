@@ -135,7 +135,12 @@ export function AdminOperations({ onOpenProcurement }: { onOpenProcurement: () =
                 <strong>Резерв СБИС · заказ {item.orderNumber}</strong>
                 <p>{item.message}</p>
                 {item.documentId && <p>Счёт СБИС: {item.documentId}.</p>}
-                <a href={`/admin?section=orders&order=${item.orderId}`}>Открыть заказ</a>
+                <a
+                  className="admin-alert-link"
+                  href={`/admin?section=orders&order=${item.orderId}`}
+                >
+                  Открыть заказ
+                </a>
               </div>
             </article>
           ))}
