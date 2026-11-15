@@ -80,7 +80,7 @@ func (p *SabyCashierReserveProvider) Next(ctx context.Context, r cashierstock.Re
 	guard := func() cashierInvoiceGuard {
 		return cashierInvoiceGuard{Identity: state.Identity, Rows: state.Rows, Number: state.Number, Marker: state.Marker}
 	}
-	if p == nil || !p.Client.Configured() || r.ReservationID <= 0 || r.OrderID <= 0 || r.OrderNumber == "" || r.Config.WarehouseID <= 0 || r.Config.MovementWarehouseID <= 0 || r.Config.OrganizationID <= 0 || r.Config.RegulationID <= 0 || r.Terminal != "" && r.Terminal != "cancelled" && r.Terminal != "completed" {
+	if p == nil || !p.Client.Configured() || r.ReservationID <= 0 || r.OrderID <= 0 || r.OrderNumber == "" || r.BuyerID < 0 || r.Config.WarehouseID <= 0 || r.Config.MovementWarehouseID <= 0 || r.Config.OrganizationID <= 0 || r.Config.RegulationID <= 0 || r.Terminal != "" && r.Terminal != "cancelled" && r.Terminal != "completed" {
 		return attention("Не подтверждены настройки или заказ для резерва СБИС")
 	}
 	if state.Index < 0 || state.Index > 1000 || len(state.Rows) > 1000 || state.Identity.Config != r.Config {
@@ -96,10 +96,17 @@ func (p *SabyCashierReserveProvider) Next(ctx context.Context, r cashierstock.Re
 		if state.RequestHash != "" && (state.Phase != "done" || state.Pending != nil || progress.Command != nil) {
 			return attention("Нельзя заменить состав незавершённой операции резерва")
 		}
+		previous := r
+		previous.BuyerID = state.Identity.BuyerID
+		// Changing presentation must not release stock or replace existing rows.
+		// All other frozen request fields must match the acknowledged revision.
+		headerOnly := state.Identity.ID > 0 && r.BuyerID > 0 && cashierstock.Fingerprint(previous) == state.RequestHash
 		state.RequestHash = wantedHash
 		state.Index = 0
 		state.Polls = 0
-		if state.Identity.ID > 0 {
+		if headerOnly {
+			state.Phase = "presentation-header"
+		} else if state.Identity.ID > 0 {
 			state.Phase = "release"
 		} else {
 			state.Phase = "start"
@@ -122,12 +129,15 @@ func (p *SabyCashierReserveProvider) Next(ctx context.Context, r cashierstock.Re
 			state.Number = sabyValue(sabyRecordField(header, "Номер"))
 			state.Marker = sabyValue(sabyRecordField(header, "ДокументРасширение.Название"))
 			return advance("header")
-		case "header", "terminal-header":
+		case "header", "terminal-header", "presentation-header":
 			if progress.Command.Kind != "header" {
 				return attention("Неверный этап записи резервного счёта")
 			}
 			if state.Phase == "terminal-header" {
 				return advance("verify-terminal-header")
+			}
+			if state.Phase == "presentation-header" {
+				return advance("verify-presentation-header")
 			}
 			return advance("verify-header")
 		case "fill":
@@ -204,13 +214,18 @@ func (p *SabyCashierReserveProvider) Next(ctx context.Context, r cashierstock.Re
 	if state.Identity.ID <= 0 || !sabyOrderRealizationUUID.MatchString(state.Identity.UUID) {
 		return attention("Не сохранена точная привязка резервного счёта")
 	}
-	if state.Phase == "verify-header" || state.Phase == "verify-terminal-header" {
+	if state.Phase == "verify-header" || state.Phase == "verify-terminal-header" || state.Phase == "verify-presentation-header" {
 		header, err := p.Client.cashierHeader(ctx, state.Identity)
 		if err != nil {
 			return cashierstock.Plan{}, err
 		}
-		if sabyValue(sabyRecordField(header, "Номер")) != cashierNumber(r.ReservationID) || sabyValue(sabyRecordField(header, "ДокументРасширение.Название")) != cashierMarker(r) {
-			return wait("СБИС не подтвердил название резервного счёта")
+		buyer, buyerErr := cashierBuyer(header)
+		wantedBuyer := state.Identity.BuyerID
+		if r.BuyerID > 0 {
+			wantedBuyer = r.BuyerID
+		}
+		if buyerErr != nil || buyer != wantedBuyer || sabyValue(sabyRecordField(header, "Номер")) != cashierNumber(r.ReservationID) || sabyValue(sabyRecordField(header, "ДокументРасширение.Название")) != cashierMarker(r) {
+			return wait("СБИС не подтвердил покупателя или комментарий резервного счёта")
 		}
 		rows, err := p.Client.cashierRows(ctx, state.Identity)
 		if err != nil {
@@ -219,9 +234,25 @@ func (p *SabyCashierReserveProvider) Next(ctx context.Context, r cashierstock.Re
 		if !cashierSameRows(state.Rows, rows) {
 			return attention("Состав резервного счёта изменился во время записи заголовка")
 		}
+		if state.Phase == "verify-presentation-header" {
+			wantedReserve := "matching"
+			if r.Terminal != "" {
+				wantedReserve = "empty"
+			}
+			for _, row := range state.Rows {
+				reserve, readErr := p.Client.cashierReserveState(ctx, state.Identity, row)
+				if readErr != nil {
+					return cashierstock.Plan{}, readErr
+				}
+				if reserve != wantedReserve {
+					return attention("Резерв изменился при обновлении покупателя; требуется сверка")
+				}
+			}
+		}
+		state.Identity.BuyerID = buyer
 		state.Number = cashierNumber(r.ReservationID)
 		state.Marker = cashierMarker(r)
-		if state.Phase == "verify-terminal-header" {
+		if state.Phase == "verify-terminal-header" || state.Phase == "verify-presentation-header" {
 			return advance("done")
 		}
 		state.Index = 0
@@ -301,11 +332,12 @@ func (p *SabyCashierReserveProvider) Next(ctx context.Context, r cashierstock.Re
 		return advance("apply")
 	}
 	switch state.Phase {
-	case "header", "terminal-header":
+	case "header", "terminal-header", "presentation-header":
 		g := guard()
 		g.TargetMarker = cashierMarker(r)
 		g.TargetNumber = cashierNumber(r.ReservationID)
-		return prepare("header", cashierHeaderParams(state.Identity, cashierNumber(r.ReservationID), g.TargetMarker), g)
+		g.TargetBuyerID = r.BuyerID
+		return prepare("header", cashierHeaderParams(state.Identity, cashierNumber(r.ReservationID), g.TargetMarker, g.TargetBuyerID), g)
 	case "release":
 		if state.Index >= len(state.Rows) {
 			state.Index = 0
@@ -439,7 +471,7 @@ func (p *SabyCashierReserveProvider) Execute(ctx context.Context, command cashie
 			if e != nil || id != guard.Identity.ID || sabyRecordField(record, "ИдентификаторДокумента") != guard.Identity.UUID || sabyRecordField(record, "ДокументРасширение.Название") != guard.TargetMarker || guard.TargetMarker == "" {
 				return nil, errors.New("Изменение адресовано другому счёту")
 			}
-			if guard.TargetNumber == "" || cashierstock.Fingerprint(params) != cashierstock.Fingerprint(cashierHeaderParams(guard.Identity, guard.TargetNumber, guard.TargetMarker)) {
+			if guard.TargetNumber == "" || guard.TargetBuyerID < 0 || cashierstock.Fingerprint(params) != cashierstock.Fingerprint(cashierHeaderParams(guard.Identity, guard.TargetNumber, guard.TargetMarker, guard.TargetBuyerID)) {
 				return nil, errors.New("Изменён сохранённый запрос записи счёта")
 			}
 			method = "СчетСкИсх.WriteForParticipant"

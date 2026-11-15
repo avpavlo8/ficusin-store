@@ -58,7 +58,7 @@ func newCashierHarness(t *testing.T) *cashierHarness {
 	t.Helper()
 	h := &cashierHarness{reserve: map[int64]int64{}, writes: map[string]int{}, nextRow: 175790}
 	h.header = orderRealizationReadFixture()
-	for name, value := range map[string]any{"@Документ": int64(42866), "ИдентификаторДокумента": "01a1de0d-4726-7e92-98d8-5478ead64c28", "ТипДокумента": int64(231), "ТипДокумента.ТипДокумента": "СчетИсх", "ДокументНашаОрганизация": int64(259), "СкладскойДокумент.Склад": int64(283), "Регламент": int64(121326), "Номер": nil, "ДокументРасширение.Название": nil} {
+	for name, value := range map[string]any{"@Документ": int64(42866), "ИдентификаторДокумента": "01a1de0d-4726-7e92-98d8-5478ead64c28", "ТипДокумента": int64(231), "ТипДокумента.ТипДокумента": "СчетИсх", "ДокументНашаОрганизация": int64(259), "СкладскойДокумент.Склад": int64(283), "Регламент": int64(121326), "Лицо1": nil, "Номер": nil, "ДокументРасширение.Название": nil} {
 		if !setSabyRecordField(h.header, name, value) {
 			h.header["s"] = append(h.header["s"].([]any), map[string]any{"n": name, "t": "Строка"})
 			h.header["d"] = append(h.header["d"].([]any), value)
@@ -99,6 +99,9 @@ func newCashierHarness(t *testing.T) *cashierHarness {
 			record := params["Запись"].(map[string]any)
 			for _, name := range []string{"Номер", "ДокументРасширение.Название"} {
 				setSabyRecordField(h.header, name, sabyRecordField(record, name))
+			}
+			if buyer := sabyRecordField(record, "Лицо1"); buyer != nil {
+				setSabyRecordField(h.header, "Лицо1", buyer)
 			}
 			reply = true
 		case "СчетСкИсх.DocNomList":
