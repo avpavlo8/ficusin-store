@@ -338,7 +338,7 @@ func (p *SabyOrderRealizationProvider) Step(ctx context.Context, request ordersa
 			return attention("Реквизиты проведённой реализации не совпали; требуется сверка")
 		}
 		if snapshot.PostingErrors || snapshot.StaleEntries {
-			return attention("СБИС сообщил об ошибке или неактуальных проводках; списание не подтверждено")
+			return wait("Ожидаем завершение проверки проводок СБИС; ошибка или неактуальность ещё не снята")
 		}
 		if !snapshot.HeaderPosted || !snapshot.ClosedOutgoingLines {
 			return wait("Ожидаем подтверждение проведения и закрытия складских строк СБИС")

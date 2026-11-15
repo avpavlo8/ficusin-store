@@ -23,6 +23,7 @@ type realizationProviderHarness struct {
 	staleRemaining                    int
 	queueAfterPost                    int
 	postRequested                     bool
+	postVerificationFlags             []struct{ errors, stale bool }
 	loseCreate, loseSave, foreignOnly bool
 	provider                          *SabyOrderRealizationProvider
 	publicReadError                   map[string]any
@@ -171,6 +172,10 @@ func newRealizationProviderHarness(t *testing.T) *realizationProviderHarness {
 					for _, raw := range h.rows {
 						raw.([]any)[6] = true
 					}
+				}
+				if len(h.postVerificationFlags) > 0 {
+					flags[14], flags[16] = h.postVerificationFlags[0].errors, h.postVerificationFlags[0].stale
+					h.postVerificationFlags = h.postVerificationFlags[1:]
 				}
 			}
 			reply = h.header
