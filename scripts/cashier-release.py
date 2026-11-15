@@ -12,7 +12,7 @@ import urllib.request
 spec = importlib.util.spec_from_file_location('cashier_release_guards', Path(__file__).with_name('production-release-preflight.py'))
 g = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(g)
-SOURCE = '43ce79bf80c88c6cf2b8b124bfd0e35c9955fc7c'
+SOURCE = '642f2f583ee87e01ccda43278bfa0b723d50e5a4'
 OLD = '443e6f80e2ea90ce1987add53bab62dcf5ae18fc'
 STAGE_OLD = os.environ.get('EXPECTED_STAGING_COMMIT','44bfa6c5807fe1411857416c2e07755ab55b332d')
 TAG = 'ficusin-cashier-release-20261115-c661449'
@@ -182,7 +182,13 @@ def native_readback(env):
               or reserve.get('ЕстьСписаниеОтгрузкой') is not False
               or Decimal(str(reserve.get('Количество')))!=Decimal(str(row['line']['quantity']))
               or Decimal(str(reserve.get('КоличествоОтгружено')))!=0):raise g.PreflightError('native_reserve_quantity_mismatch')
-        result.append({'orderNumber':order,'documentId':doc_id,'documentUUID':uuid,'verifiedRows':len(rows),'posted':False})
+        expected_buyer=int(env.get('SABY_CASHIER_RESERVE_BUYER_ID','0'))
+        buyer=doc.get('Лицо1') or 0
+        comment=doc.get('ДокументРасширение.Название')
+        presentation=buyer==expected_buyer and expected_buyer>0 and comment=='Резерв заказа '+order
+        result.append({'orderNumber':order,'documentId':doc_id,'documentUUID':uuid,'verifiedRows':len(rows),'rowIDs':[x['id'] for x in rows],
+          'buyerId':buyer,'buyerName':doc.get('Лицо1.Название'),'comment':comment if presentation else '[legacy presentation]',
+          'presentationVerified':presentation,'posted':False})
     return {'verified':True,'activeInvoices':result,'readOnly':True}
 
 def order_23_audit(env):
