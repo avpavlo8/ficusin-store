@@ -684,3 +684,13 @@ test('@desktop @phone Flowwow-only link plan preserves default seller articles i
  expect(f.updates.at(-1)?.body.description).toBe('Сохранение после подключения Flowwow');
  expect(f.plans.get(1).variants[0].flowwow.existingId).toBe('990000000');
 });
+
+test('@desktop @phone saving a photo swap and swapping back updates the acknowledged first variant photo',async({page})=>{
+ const f=await fixture(page);
+ f.media.push({id:90001,productId:1,variantId:10,url:'/assets/hero-monstera.webp?photo=first',primary:true,sortOrder:0},{id:90002,productId:1,variantId:10,url:'/assets/hero-monstera.webp?photo=second',primary:false,sortOrder:1});
+ await open(page);const editor=await edit(page);
+ await editor.getByRole('button',{name:/^Фото 1:/}).press('Alt+ArrowRight');await saveEditor(editor);
+ expect(f.media.find(i=>i.variantId===10&&i.primary)?.id).toBe(90002);
+ await editor.getByRole('button',{name:/^Фото 2:/}).press('Alt+ArrowLeft');await saveEditor(editor);
+ expect(f.media.find(i=>i.variantId===10&&i.primary)?.id).toBe(90001);
+});
