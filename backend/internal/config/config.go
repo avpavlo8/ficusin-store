@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	OrderRealization       OrderRealization
+	CashierReservation     CashierReservation
 	FileStorageMode        string
 	LocalPrivateFilesDir   string
 	StaticAssetsBaseURL    string
@@ -284,6 +285,9 @@ func Load() (Config, error) {
 		}
 	}
 	if err = configureOrderRealization(&configured); err != nil {
+		return Config{}, err
+	}
+	if err = configureCashierReservation(&configured); err != nil {
 		return Config{}, err
 	}
 	return configured, nil

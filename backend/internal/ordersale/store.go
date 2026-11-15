@@ -17,6 +17,11 @@ type queryer interface {
 
 func readEvent(ctx context.Context, q queryer, orderID, offerID int64) (Event, error) {
 	e := Event{Key: eventKey(orderID, offerID), OrderID: orderID, ShipmentOfferID: offerID, Lines: []Line{}, State: "not_prepared"}
+	var methodErr error
+	e.cashierSale, methodErr = cashierOwnsSale(ctx, q, orderID)
+	if methodErr != nil {
+		return e, methodErr
+	}
 	var stored []byte
 	err := q.QueryRow(ctx, `SELECT i.id,i.snapshot,i.state,i.source,COALESCE(i.warehouse_id,0),i.prepared_at,i.created_at,i.event_trigger,(i.cancellation_requested_at IS NOT NULL),i.cancellation_blocked FROM order_sale_intents i WHERE event_key=$1 AND order_id=$2 AND COALESCE(shipment_offer_id,0)=$3`, e.Key, orderID, offerID).Scan(&e.IntentID, &stored, &e.State, &e.Source, &e.WarehouseID, &e.PreparedAt, &e.CreatedAt, &e.Trigger, &e.CancellationRequested, &e.CancellationBlocked)
 	if err == nil {
@@ -115,6 +120,11 @@ func readEvent(ctx context.Context, q queryer, orderID, offerID int64) (Event, e
 func Enqueue(ctx context.Context, tx pgx.Tx, orderID, offerID int64, source string) (Event, error) {
 	if source != "automatic" && source != "manual" {
 		return Event{}, fmt.Errorf("invalid realization source")
+	}
+	if cashier, err := cashierOwnsSale(ctx, tx, orderID); err != nil {
+		return Event{}, err
+	} else if cashier {
+		return readEvent(ctx, tx, orderID, offerID)
 	}
 	// Status/cancellation paths lock the parent before the realization advisory
 	// lock. Follow that order for manual preparation and carrier milestones too.

@@ -18,6 +18,7 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/avito"
 	"github.com/avpavlo8/ficusin-store/backend/internal/cart"
+	"github.com/avpavlo8/ficusin-store/backend/internal/cashierstock"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalog"
 	"github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
 	"github.com/avpavlo8/ficusin-store/backend/internal/chat"
@@ -252,6 +253,13 @@ func main() {
 	}
 	if realizationProvider != nil {
 		go ordersale.RunPublisher(ctx, pool, realizationProvider, cfg.OrderRealization.Mode, logger)
+	}
+	if cfg.CashierReservation.Mode == "live" {
+		reserve := cfg.CashierReservation
+		go cashierstock.Run(ctx, pool, &integration.SabyCashierReserveProvider{Client: sabyProcurementClient}, cashierstock.Config{
+			WarehouseID: reserve.WarehouseID, MovementWarehouseID: reserve.MovementWarehouseID,
+			OrganizationID: reserve.OrganizationID, RegulationID: reserve.RegulationID,
+		}, logger)
 	}
 	if cfg.Environment == "staging" {
 		stock, err := saby.NewStagingStockRefresher(ctx, pool)

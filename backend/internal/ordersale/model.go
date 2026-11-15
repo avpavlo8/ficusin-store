@@ -26,6 +26,7 @@ type Line struct {
 	UnitPrice   string `json:"unitPrice"`
 }
 type Event struct {
+	cashierSale           bool
 	Trigger               string           `json:"trigger,omitempty"`
 	CancellationRequested bool             `json:"cancellationRequested,omitempty"`
 	CancellationBlocked   bool             `json:"cancellationBlocked,omitempty"`
@@ -101,6 +102,10 @@ func finish(event *Event) {
 	event.Blockers = []string{}
 	eligible := event.Trigger == "created" || HandedOver(event.DeliveryMethod, event.Status, event.CDEKStatus)
 	event.CanPrepare = eligible && len(event.Lines) > 0
+	if event.cashierSale {
+		event.CanPrepare = false
+		event.Blockers = append(event.Blockers, "Оплата при получении: списание выполняет касса; реализация сайта не создаётся")
+	}
 	if event.CancellationRequested {
 		event.CanPrepare = false
 		event.Blockers = append(event.Blockers, "Заказ отменён; проверяется отмена реализации")

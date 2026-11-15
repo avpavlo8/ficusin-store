@@ -53,7 +53,7 @@ func (client *SabyClient) CancelOrderRealizationPosting(ctx context.Context, exp
 	}
 	params := map[string]any{"docRec": map[string]any{"_type": "record", "f": 0, "s": []any{map[string]any{"t": "Число целое", "n": "@Документ"}}, "d": []any{expected.Identity.ID}}, "eventRec": nil}
 	result.Outcome = "unknown"
-	result.Receipt, result.HTTPStatus, err = client.sabyOrderRealizationWriteRPCOnce(ctx, "Документ.CancelPosting", params)
+	result.Receipt, result.HTTPStatus, err = client.writeWarehouseRPCOnce(ctx, "Документ.CancelPosting", params)
 	if err != nil {
 		return result, errors.New("Ответ отмены проведения СБИС неизвестен; повторная запись запрещена, требуется чтение документа")
 	}

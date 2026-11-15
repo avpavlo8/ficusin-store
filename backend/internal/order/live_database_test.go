@@ -18,7 +18,7 @@ func (liveCommerceExpirySettings) Number(string) int { return 24 }
 // TestCommerceLifecycleOnLiveDatabase is the release-level proof that the
 // migrated schema and the real order service still agree. It deliberately
 // exercises the atomic facts that cannot be inferred from a 201 response:
-// no reservation, immutable order snapshots, consent, outbox and idempotent
+// counter reservation, immutable order snapshots, consent, outbox and idempotent
 // cancellation.
 func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
@@ -102,8 +102,14 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var orderID, preorderID int64
+	var orderID, preorderID, onlineExpiryID int64
 	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM cashier_stock_layers WHERE reservation_id IN (SELECT id FROM cashier_stock_reservations WHERE order_id=ANY($1::BIGINT[]))`, []int64{orderID, preorderID, onlineExpiryID})
+		_, _ = pool.Exec(ctx, `DELETE FROM cashier_stock_reservations WHERE order_id=ANY($1::BIGINT[])`, []int64{orderID, preorderID, onlineExpiryID})
+		if onlineExpiryID != 0 {
+			_, _ = pool.Exec(ctx, "DELETE FROM consent_events WHERE order_id=$1", onlineExpiryID)
+			_, _ = pool.Exec(ctx, "DELETE FROM orders WHERE id=$1", onlineExpiryID)
+		}
 		if preorderID != 0 {
 			_, _ = pool.Exec(ctx, "DELETE FROM procurement_requests WHERE customer_order_id=$1", preorderID)
 			_, _ = pool.Exec(ctx, "DELETE FROM consent_events WHERE order_id=$1", preorderID)
@@ -177,13 +183,30 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id=$1`, orderID).Scan(&pickupStatus); err != nil || pickupStatus != "new" {
 		t.Fatalf("pickup was automatically cancelled: %s %v", pickupStatus, err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE orders SET payment_method='online',payment_status='pending',created_at=CURRENT_TIMESTAMP-INTERVAL '25 hours' WHERE id=$1`, orderID); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE orders SET payment_method='online' WHERE id=$1`, orderID); err == nil {
+		t.Fatal("cash reservation silently changed ownership to online realization")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE orders SET status='cancelled',payment_status='cancelled' WHERE id=$1`, orderID); err != nil {
 		t.Fatal(err)
 	}
-	if err := worker.cancel(ctx, orderID); err != nil {
+	var physical, free int
+	if err := pool.QueryRow(ctx, `SELECT i.available_qty,v.available_qty FROM inventory i JOIN order_sale_inventory v ON v.id=i.id WHERE i.variant_id=$1`, variantID).Scan(&physical, &free); err != nil || physical != 5 || free != 5 {
+		t.Fatal("counter cancellation changed physical stock or kept its reserve", physical, free, err)
+	}
+	expiring, err := service.Create(ctx, CreateInput{Customer: CustomerInput{Name: "CI expiry", Phone: phone, Email: email}, Delivery: "pickup", Items: []ItemInput{{ID: sku, Quantity: 1}}, PaymentMethod: payment.MethodOnline, OnlinePaymentReady: true, Consent: true, OfferAccepted: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT id FROM orders WHERE order_number=$1`, expiring.OrderNumber).Scan(&onlineExpiryID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE orders SET created_at=CURRENT_TIMESTAMP-INTERVAL '25 hours' WHERE id=$1`, onlineExpiryID); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.cancel(ctx, onlineExpiryID); err != nil {
 		t.Fatalf("cancel order: %v", err)
 	}
-	if err := worker.cancel(ctx, orderID); err != nil {
+	if err := worker.cancel(ctx, onlineExpiryID); err != nil {
 		t.Fatalf("repeat cancellation must be safe: %v", err)
 	}
 	var cancelled string
@@ -195,7 +218,7 @@ func TestCommerceLifecycleOnLiveDatabase(t *testing.T) {
 		JOIN order_items oi ON oi.order_id=o.id
 		JOIN inventory i ON i.variant_id=oi.variant_id
 		WHERE o.id=$1
-	`, orderID).Scan(&cancelled); err != nil {
+	`, onlineExpiryID).Scan(&cancelled); err != nil {
 		t.Fatalf("read cancellation facts: %v", err)
 	}
 	if cancelled != "cancelled:cancelled:false:0:0" {

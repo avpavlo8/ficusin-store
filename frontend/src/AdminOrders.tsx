@@ -263,14 +263,16 @@ function OrderList({ canRefund = false, focusOrder, onError, registerBeforeLeave
   const updateOrder = (order: Order) =>
     setItems((current) => current.map((item) => (item.id === order.id ? order : item)));
   const updateStatus = async (order: Order, status: string) => {
-    const confirmPayment =
+    const cashPickupHandover =
       status === "completed" &&
       order.deliveryMethod === "pickup" &&
-      order.paymentMethod === "on_delivery" &&
-      order.paymentStatus !== "paid";
+      order.paymentMethod === "on_delivery";
+    const confirmPayment = cashPickupHandover && order.paymentStatus !== "paid";
     if (
-      confirmPayment &&
-      !window.confirm(`Подтвердите, что покупатель оплатил заказ ${order.orderNumber} при выдаче.`)
+      cashPickupHandover &&
+      !window.confirm(
+        `Покупатель оплатил заказ ${order.orderNumber}, и чек уже пробит на кассе СБИС? После этого можно подтвердить выдачу.`,
+      )
     )
       return;
     try {
