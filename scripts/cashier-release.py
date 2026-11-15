@@ -205,6 +205,38 @@ def order_23_audit(env):
               'intents':[dict(zip(['id','trigger','state','mode','status','documentId','documentUUID','createAttempted','postAttempted','stockVerified','cancellationVerified'],x)) for x in intents],
               'configuredOrderRealization':{k:env.get(k,'') for k in ['ORDER_REALIZATION_MODE','ORDER_REALIZATION_LIVE_ENABLED','ORDER_REALIZATION_BUYER_ID','ORDER_REALIZATION_SITE_WAREHOUSE_ID','ORDER_REALIZATION_NATIVE_WAREHOUSE_ID','ORDER_REALIZATION_MOVEMENT_WAREHOUSE_ID','ORDER_REALIZATION_ORGANIZATION_ID','ORDER_REALIZATION_REGULATION_ID']}}
 
+def order_23_rpc(env):
+    """Read only: frozen publication and its public absence preflight."""
+    import urllib.error
+    with tempfile.TemporaryDirectory() as directory:
+        with g.connect_production(env,directory) as conn:
+            row=conn.execute("""SELECT p.request,p.progress,p.create_attempted,p.post_attempted,p.document_id,p.document_uuid,p.status
+              FROM order_sale_publications p JOIN order_sale_intents i ON i.id=p.intent_id JOIN orders o ON o.id=i.order_id
+              WHERE p.id=1 AND i.order_id=74 AND o.order_number='0000-23'""").fetchone()
+    if not row:raise g.PreflightError('fixed_publication_missing')
+    request,progress,created,posted,docid,uuid,status=row
+    key=request.get('operationKey','')
+    if not re.fullmatch(r'[0-9a-f-]{36}',key):raise g.PreflightError('operation_key_invalid')
+    spec=importlib.util.spec_from_file_location('rpc_diag',Path(__file__).with_name('saby-realization-readback.py'))
+    r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
+    token=r.request(r.AUTH,{k:env.get(n,'') for k,n in [('app_client_id','SABY_APP_CLIENT_ID'),('app_secret','SABY_APP_SECRET'),('secret_key','SABY_SECRET_KEY')]}).get('token')
+    if not token:raise g.PreflightError('auth_failed')
+    print('::add-mask::'+token)
+    body={'jsonrpc':'2.0','protocol':3,'method':'СБИС.ПрочитатьДокумент','params':{'Документ':{'Идентификатор':key}},'id':1}
+    req=urllib.request.Request(r.SERVICE,method='POST',data=json.dumps(body).encode(),headers={'Content-Type':'application/json-rpc;charset=utf-8','Accept':'application/json','X-SBISAccessToken':token})
+    try:response=urllib.request.build_opener(g.NoRedirect()).open(req,timeout=40)
+    except urllib.error.HTTPError as error:response=error
+    with response:
+        raw=response.read((1<<20)+1);httpstatus=response.status; charset=response.headers.get_content_charset() or 'utf-8'
+    if len(raw)>1<<20:raise g.PreflightError('rpc_too_large')
+    try:raw.decode('utf-8');utf8=True
+    except UnicodeDecodeError:utf8=False
+    reply=json.loads(raw.decode(charset));error=reply.get('error') or {};data=error.get('data') or {}
+    return {'readOnly':True,'order':'0000-23','operationKey':key,'status':status,'progress':progress,
+      'createAttempted':created,'postAttempted':posted,'documentId':docid,'documentUUID':uuid,
+      'httpStatus':httpstatus,'charset':charset,'validUTF8':utf8,'rpcError':{k:error.get(k) for k in ('code','message','details')},
+      'errorData':{k:data.get(k) for k in ('classid','error_code')},'resultPresent':'result' in reply}
+
 def buyer_read(env):
     spec=importlib.util.spec_from_file_location('buyer_native_reads',Path(__file__).with_name('saby-realization-readback.py'))
     r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
@@ -254,9 +286,9 @@ def main():
             result['apps'].append({k:app.get(k) for k in ('id','name','status','branch_name','commit_sha')})
         result['backups']=[{k:b.get(k) for k in ('id','status','created_at','comment')} for b in p.request('GET','/dbs/4192781/backups')['backups'] if b.get('comment')==TAG]
     elif op=='backup': result=backup(p)
-    elif op in ('order-23-audit','buyer-read'):
+    elif op in ('order-23-audit','buyer-read','order-23-rpc'):
         env=production(p.request('GET','/apps/229223')['app'],sha)
-        result=order_23_audit(env) if op=='order-23-audit' else buyer_read(env)
+        result=order_23_audit(env) if op=='order-23-audit' else order_23_rpc(env) if op=='order-23-rpc' else buyer_read(env)
     elif op=='online-activate':result=activate_online(p,sha)
     elif op in ('staging-deploy','staging-restore'): result=deploy_stage(p,op=='staging-restore')
     elif op=='production-activate': result=activate(p,sha)
