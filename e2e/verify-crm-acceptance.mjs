@@ -138,7 +138,7 @@ try {
     await newPurchase.getByRole('tab',{name:'Рекомендации',exact:true}).click();
     await expect(newPurchase.getByRole('tabpanel',{name:'Рекомендации',exact:true})).toBeVisible();
     await expect(newPurchase.getByText('Монстера Stage 05',{exact:true})).toBeVisible();
-    await expect(newPurchase.getByRole('row').filter({has:newPurchase.getByLabel('Выбрать Монстера Stage 05')}).locator('.procurement-suggested-quantity')).toHaveText('25 шт.');
+    await expect(newPurchase.getByRole('row').filter({has:page.getByLabel('Выбрать Монстера Stage 05')}).locator('.procurement-suggested-quantity')).toHaveText('25 шт.');
     await newPurchase.getByLabel('Выбрать Монстера Stage 05').check();
     await expect(newPurchase.getByRole('button',{name:'Добавить выбранное',exact:true})).toBeEnabled();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);

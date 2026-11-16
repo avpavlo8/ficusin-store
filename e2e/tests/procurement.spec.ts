@@ -623,7 +623,7 @@ test("@desktop invoice can be attached from the saved order", async ({ page }) =
   await page.locator(".procurement-orders").getByRole("link", { name: "Закупка № 4", exact: true }).click();
   await expect(page.getByText("Нужно проверить")).toBeVisible();
   await expect(page.getByText("Загрузите инвойс",{exact:true})).toBeVisible();
-  await page.getByLabel("Загрузить инвойс / счёт", {exact:true}).setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
+  await page.getByRole("region", {name:"Документы закупки",exact:true}).getByLabel("Загрузить новую версию", {exact:true}).setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
 });
 
