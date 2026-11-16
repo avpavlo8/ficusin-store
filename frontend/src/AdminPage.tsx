@@ -15,7 +15,9 @@ import "./styles/admin-design.css";
 import { Settings } from "./AdminSettings";
 import { api, selectZeroNumberInput } from "./adminShared";
 import type { AdminData, Section } from "./adminTypes";
-import { Analytics } from "./AdminAnalytics";
+const Analytics = lazy(() =>
+  import("./AdminAnalytics").then((module) => ({ default: module.Analytics })),
+);
 const AdminMarketplaces = lazy(() =>
   import("./AdminMarketplaces").then((module) => ({ default: module.AdminMarketplaces })),
 );
