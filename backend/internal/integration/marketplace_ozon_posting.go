@@ -13,6 +13,9 @@ type ozonPosting struct {
 	Products       []struct {
 		OfferID  string `json:"offer_id"`
 		Quantity int    `json:"quantity"`
-		Price    string `json:"price"`
+		Price    struct {
+			Amount   marketplaceNumber `json:"amount"`
+			Currency string            `json:"currency"`
+		} `json:"price"`
 	} `json:"products"`
 }

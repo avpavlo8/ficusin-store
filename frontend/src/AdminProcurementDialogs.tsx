@@ -1,9 +1,19 @@
 import { AdminProductSearch } from "./AdminProductSearch";
 import { NumericInput } from "./NumericInput";
+import { currentActionFailures, recommendedPackageCount } from "./lib/procurement-state";
 import { receivingModeLabel } from "./procurementUX";
 import { ProcurementLineEditor } from "./ProcurementLineEditor";
 import { ProcurementReceivingDialog } from "./ProcurementReceivingDialog";
-import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   useProcurementDialog,
   useProcurementError,
@@ -12,7 +22,11 @@ import {
   quantityLabel,
 } from "./procurementUX";
 export { ProcurementRequestForm as ProcurementRequestDialog } from "./ProcurementRequestForm";
-import { normalizeProcurementOrderDetail, procurementStatusLabels } from "./AdminProcurement";
+import {
+  normalizeProcurementOrderDetail,
+  procurementStatusLabels,
+  procurementParserLabels,
+} from "./AdminProcurement";
 import { ConfirmDialog, api, money } from "./adminShared";
 import type {
   NomenclatureCandidate,
@@ -21,6 +35,7 @@ import type {
   ProcurementAlias,
   ProcurementOrder,
   ProcurementOrderDetail,
+  ProcurementDocument,
   ProcurementOrderLine,
   ProcurementRecommendation,
   ProcurementSupplier,
@@ -77,6 +92,8 @@ export function ProcurementPlanDialog({
   suppliers,
   recommendations,
   initialRecommendations,
+  renderRecommendations,
+  onNavigate,
   settings,
   draftId,
   onClose,
@@ -86,6 +103,13 @@ export function ProcurementPlanDialog({
   suppliers: ProcurementSupplier[];
   recommendations: ProcurementRecommendation[];
   initialRecommendations: ProcurementRecommendation[];
+  renderRecommendations: (
+    add: (items: ProcurementRecommendation[]) => boolean,
+    navigate: (target: "unlinkedSales" | "integrations") => void,
+    addedSabyIds: string[],
+    draftSupplierId?: number,
+  ) => ReactNode;
+  onNavigate: (target: "unlinkedSales" | "integrations") => void;
   settings: ProcurementSettings;
   draftId?: number | null;
   onClose: () => void;
@@ -145,7 +169,7 @@ export function ProcurementPlanDialog({
     article: item?.supplierArticle || "",
     category: item?.dutchName || "",
     recommendedQty: item?.suggestedQty || 0,
-    packageCount: item?.quantityKnown === false ? "" : "1",
+    packageCount: recommendedPackageCount(item),
     unitsPerPackage: String(item?.orderMultiple || 1),
     expectedUnitPrice: displayPrice(item?.lastUnitPrice),
     potDiameterCm: item?.potDiameterCm?.toString() || "",
@@ -155,6 +179,7 @@ export function ProcurementPlanDialog({
   const recommendationsFor = (id: number) =>
     recommendations.filter((item) => item.supplierId === id);
   const [showRecommendations, setShowRecommendations] = useState(false);
+  const [planMode, setPlanMode] = useState<"recommendations" | "editor">("editor");
   const [confirmPlan, setConfirmPlan] = useState(false);
   const [sourceKind, setSourceKind] = useState(
     initialRecommendations.length ? "recommendation" : "manual",
@@ -239,7 +264,6 @@ export function ProcurementPlanDialog({
       }),
     );
   }, [sabyBalances]);
-  const [remoteDraft, setRemoteDraft] = useState<RemoteDraft | null>(null);
   const [draftLoading, setDraftLoading] = useState(Boolean(draftId));
   const [title, setTitle] = useState(() =>
     initialRecommendations.length
@@ -247,8 +271,6 @@ export function ProcurementPlanDialog({
       : `Новая закупка · ${new Date().toLocaleDateString("ru-RU")}`,
   );
   const [draftSaving, setDraftSaving] = useState(false);
-  const [savedDraftSignature, setSavedDraftSignature] = useState("");
-  const initialTitle = useRef(title);
   const remoteDraftRef = useRef<RemoteDraft | null>(null);
   const savedSignatureRef = useRef("");
   const failedSignatureRef = useRef("");
@@ -276,7 +298,7 @@ export function ProcurementPlanDialog({
         });
         remoteDraftRef.current = draft;
         savedSignatureRef.current = signature;
-        setRemoteDraft(draft);
+
         setTitle(draft.title);
         setSourceKind(saved.sourceKind || "manual");
         setSupplierId(saved.supplierId);
@@ -285,7 +307,6 @@ export function ProcurementPlanDialog({
         setDeliveryToRyazanRub(saved.deliveryToRyazanRub);
         setItems(normalizedItems);
         setSortOrder(sortPlanLines(normalizedItems).map((item) => item.id));
-        setSavedDraftSignature(signature);
       })
       .catch((error) => onError(`Не удалось открыть черновик: ${(error as Error).message}`))
       .finally(() => setDraftLoading(false));
@@ -321,8 +342,7 @@ export function ProcurementPlanDialog({
           remoteDraftRef.current = result.draft;
           savedSignatureRef.current = signature;
           failedSignatureRef.current = "";
-          setRemoteDraft(result.draft);
-          setSavedDraftSignature(signature);
+
           return true;
         } catch (error) {
           failedSignatureRef.current = signature;
@@ -338,9 +358,7 @@ export function ProcurementPlanDialog({
     [draftId, draftLoading, onError],
   );
   const hasDraftContent =
-    initialRecommendations.length > 0 ||
-    items.some((item) => !isEmptyLine(item)) ||
-    title !== initialTitle.current;
+    initialRecommendations.length > 0 || items.some((item) => !isEmptyLine(item));
   const commitPlan = useCallback(() => {
     // Sorting after focus changes keeps the row in place while a price or category is edited.
     const normalizedItems = items.map((item) => ({
@@ -374,8 +392,9 @@ export function ProcurementPlanDialog({
       draftSignature !== savedSignatureRef.current &&
       !(await persistDraft(draftSignature))
     )
-      return;
+      return false;
     onClose();
+    return true;
   };
   const availableRecommendations = recommendationsFor(supplierId).filter(
     (item) => !items.some((line) => line.sabyId === item.sabyId),
@@ -573,6 +592,28 @@ export function ProcurementPlanDialog({
       controller.abort();
     };
   }, [items, onError, sabyQuery]);
+  const addRecommendationsToPlan = (recommendations: ProcurementRecommendation[]) => {
+    if (!recommendations.length) return false;
+    const supplier = recommendations[0].supplierId;
+    if (
+      recommendations.some((item) => item.supplierId !== supplier) ||
+      (selected.length > 0 && supplierId !== supplier)
+    ) {
+      onError(
+        "В одной закупке должен быть один поставщик. Выберите товары текущего поставщика или создайте отдельную закупку.",
+      );
+      return false;
+    }
+    const additions = recommendations
+      .filter((item) => !items.some((line) => line.sabyId === item.sabyId))
+      .map(makeLine);
+    setSupplierId(supplier);
+    setSourceKind("recommendation");
+    setItems((current) => [...current.filter((item) => !isEmptyLine(item)), ...additions]);
+    setSortOrder((current) => [...current, ...additions.map((item) => item.id)]);
+    setPlanMode("editor");
+    return true;
+  };
   const save = async () => {
     if (!valid || saving) return;
     setSaving(true);
@@ -618,6 +659,7 @@ export function ProcurementPlanDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="plan-title"
+        aria-busy={draftLoading || draftSaving}
         onBlurCapture={(event) => {
           const row = (event.target as HTMLElement).closest("tr");
           if (row && !row.contains(event.relatedTarget as Node | null)) commitPlan();
@@ -627,8 +669,7 @@ export function ProcurementPlanDialog({
       >
         <header>
           <div>
-            <p className="eyebrow">{isDomestic ? "Российская закупка" : "Закупка в Голландии"}</p>
-            <h2 id="plan-title">Новый заказ поставщику</h2>
+            <h2 id="plan-title">Новая закупка</h2>
           </div>
           <button
             className="procurement-plan-close"
@@ -647,365 +688,472 @@ export function ProcurementPlanDialog({
             </button>
           </div>
         )}
-        <div className="procurement-plan-settings">
-          <label>
-            Поставщик
-            <select
-              value={supplierId}
-              onChange={(event) => {
-                if (
-                  selected.length &&
-                  !window.confirm("Сменить поставщика и очистить текущий список?")
-                )
-                  return;
-                setSupplierId(Number(event.target.value));
-                setItems([makeLine()]);
-              }}
-            >
-              {suppliers.map((item) => (
-                <option value={item.id} key={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          {!isDomestic && (
-            <>
-              <label>
-                Курс, ₽/{currencySymbol}
-                <NumericInput
-                  min="0"
-                  step="0.01"
-                  value={exchangeRate}
-                  onChange={(event) => setExchangeRate(draftNumber(event.target.value))}
-                />
-              </label>
-              <label>
-                До Москвы, ₽
-                <NumericInput
-                  min="0"
-                  value={deliveryToMoscowRub}
-                  placeholder="0"
-                  onChange={(event) => setDeliveryToMoscowRub(draftNumber(event.target.value))}
-                />
-              </label>
-              <label>
-                Москва → Рязань, ₽
-                <NumericInput
-                  min="0"
-                  value={deliveryToRyazanRub}
-                  placeholder="0"
-                  onChange={(event) => setDeliveryToRyazanRub(draftNumber(event.target.value))}
-                />
-              </label>
-            </>
-          )}
-        </div>
-        <div className="procurement-plan-tools">
-          <label className="procurement-draft-title">
-            Название плана
-            <input
-              value={title}
-              maxLength={120}
-              onChange={(event) => setTitle(event.target.value)}
-              placeholder="Например, закупка для озеленения"
-            />
-          </label>
-          <button onClick={() => setItems((current) => [...current, makeLine()])}>
-            + Новая строка
+        <div
+          className="procurement-plan-flow-tabs"
+          role="tablist"
+          aria-label="Создание закупки"
+          onKeyDown={(event) => {
+            if (
+              !(event.target instanceof HTMLElement) ||
+              event.target.getAttribute("role") !== "tab" ||
+              !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
+            )
+              return;
+            event.preventDefault();
+            const next =
+              event.key === "Home"
+                ? "editor"
+                : event.key === "End"
+                  ? "recommendations"
+                  : planMode === "editor"
+                    ? "recommendations"
+                    : "editor";
+            setShowRecommendations(false);
+            setPlanMode(next);
+            event.currentTarget
+              .querySelectorAll<HTMLButtonElement>('[role="tab"]')
+              [next === "editor" ? 0 : 1]?.focus();
+          }}
+        >
+          <button
+            role="tab"
+            aria-selected={planMode === "editor"}
+            tabIndex={planMode === "editor" ? 0 : -1}
+            onClick={() => setPlanMode("editor")}
+          >
+            Состав закупки · {selected.length}
           </button>
           <button
-            aria-expanded={showRecommendations}
-            onClick={() => setShowRecommendations(!showRecommendations)}
+            role="tab"
+            aria-selected={planMode === "recommendations"}
+            tabIndex={planMode === "recommendations" ? 0 : -1}
+            onClick={() => {
+              setShowRecommendations(false);
+              setPlanMode("recommendations");
+            }}
           >
-            Каталог и рекомендации
+            Рекомендации
           </button>
-          <span className="procurement-sort-label">Название · цена ↑</span>
-          {draftSignature === failedSignatureRef.current && (
-            <button
-              onClick={() => void persistDraft(draftSignature)}
-              disabled={draftSaving || draftLoading}
-            >
-              Повторить сохранение
-            </button>
-          )}
-          <small>
-            {draftLoading
-              ? "Загружаем черновик…"
-              : draftSaving
-                ? "Сохраняем для команды…"
-                : remoteDraft && savedDraftSignature === draftSignature
-                  ? `Сохранено для команды ${new Date(remoteDraft.updatedAt).toLocaleString("ru-RU")}`
-                  : draftSignature === failedSignatureRef.current
-                    ? "Не удалось сохранить изменения"
-                    : hasDraftContent
-                      ? "Сохраним при выходе"
-                      : "План появится после заполнения"}
-          </small>
-          <span>
-            <strong>{quantityLabel(selected.length)}</strong> · {totalUnits} шт.
-          </span>
         </div>
-        <div className="admin-table-wrap procurement-plan-table-wrap">
-          <table className="admin-table procurement-plan-table">
-            <thead>
-              <tr>
-                <th>Название у поставщика</th>
-                <th>Товар / связь с СБИС</th>
-                <th>Артикул</th>
-                <th>Горшок · высота</th>
-                <th>Упаковки · штук</th>
-                <th>Цена, {currencySymbol}</th>
-                <th>Себестоимость</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((item) => {
-                const units = Number(item.packageCount) * Number(item.unitsPerPackage);
-                const selectedIndex = selected.indexOf(item);
-                const lineMissing = missingFields(item);
-                const estimate =
-                  selectedIndex >= 0 && valid && preview?.key === requestBody
-                    ? preview.lines[selectedIndex]
-                    : undefined;
-                const preliminary = partialCost(item);
-                return (
-                  <tr
-                    key={item.id}
-                    className={item.rowTouched ? "procurement-row-touched" : undefined}
-                    onClick={() => markLineTouched(item.id)}
-                  >
-                    <td>
-                      <input
-                        aria-invalid={Boolean(item.rowTouched && !item.category.trim())}
-                        value={item.category}
-                        onChange={(event) => updateItem(item.id, { category: event.target.value })}
-                        aria-label="Название у поставщика"
-                        placeholder="Например, Ficus lyrata"
-                      />
-                    </td>
-                    <td>
-                      {item.sabyId ? (
-                        <strong>{item.sabyName}</strong>
-                      ) : (
-                        <input
-                          aria-invalid={Boolean(item.rowTouched && !item.sabyName.trim())}
-                          aria-label="Название новой позиции"
-                          value={item.sabyName}
-                          onChange={(event) =>
-                            updateItem(item.id, { sabyName: event.target.value })
-                          }
-                          placeholder="Название растения"
-                        />
-                      )}
-                      <div className="procurement-product-meta">
-                        {item.recommendedQty > 0 && (
-                          <small className="procurement-recommended">
-                            Рекомендовано: {item.recommendedQty} шт.
-                          </small>
-                        )}
-                        {item.sabyId && (
-                          <small className="procurement-stock-note">
-                            Остаток:{" "}
-                            {sabyBalances[item.sabyId]
-                              ? `${sabyBalances[item.sabyId].balance} шт.`
-                              : "—"}
-                          </small>
-                        )}
-                      </div>
-                      {!item.potDiameterCm &&
-                        !item.heightCm &&
-                        (sabyBalances[item.sabyId]?.defaults?.length || 0) > 1 && (
-                          <AdminProductSearch
-                            label={`Размер для ${item.sabyName}`}
-                            placeholder="Найти размер или артикул…"
-                            value=""
-                            options={sabyBalances[item.sabyId].defaults.map((value, index) => ({
-                              value: String(index),
-                              name:
-                                [
-                                  value.potDiameterCm && `D${value.potDiameterCm}`,
-                                  value.heightCm && `${value.heightCm} см`,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ") || item.sabyName,
-                              detail: [
-                                value.article,
-                                value.unitPrice != null &&
-                                  `${value.unitPrice} ${selectedSupplier?.defaultCurrency || ""}`,
-                              ]
-                                .filter(Boolean)
-                                .join(" · "),
-                              search: item.sabyName,
-                            }))}
-                            onChange={(selected) => {
-                              const value = sabyBalances[item.sabyId].defaults[Number(selected)];
-                              if (value)
-                                updateItem(item.id, {
-                                  category: value.category,
-                                  article: value.article || item.article,
-                                  expectedUnitPrice: displayPrice(value.unitPrice),
-                                  potDiameterCm: value.potDiameterCm?.toString() || "",
-                                  heightCm: value.heightCm?.toString() || "",
-                                  unitsPerPackage: String(value.unitsPerPackage),
-                                });
-                            }}
-                          />
-                        )}
-                    </td>
-                    <td>
-                      <input
-                        value={item.article}
-                        onChange={(event) => updateItem(item.id, { article: event.target.value })}
-                        placeholder="Артикул"
-                      />
-                    </td>
-                    <td>
-                      <div className="procurement-size-inputs">
-                        <input
-                          aria-label="Горшок, см"
-                          type="text"
-                          inputMode="decimal"
-                          value={item.potDiameterCm}
-                          placeholder="Диаметр, см"
-                          onChange={(event) =>
-                            updateItem(item.id, { potDiameterCm: draftNumber(event.target.value) })
-                          }
-                        />
-                        <input
-                          aria-label="Высота, см"
-                          type="text"
-                          inputMode="decimal"
-                          value={item.heightCm}
-                          placeholder="Высота, см"
-                          onChange={(event) =>
-                            updateItem(item.id, { heightCm: draftNumber(event.target.value) })
-                          }
-                        />
-                      </div>
-                    </td>
-                    <td>
-                      <div className="procurement-quantity-inputs">
-                        <input
-                          aria-label="Количество упаковок"
-                          type="text"
-                          inputMode="numeric"
-                          value={item.packageCount}
-                          placeholder="Кол-во"
-                          onChange={(event) =>
-                            updateItem(item.id, { packageCount: draftNumber(event.target.value) })
-                          }
-                        />
-                        <span>×</span>
-                        <input
-                          aria-label="Штук в упаковке"
-                          type="text"
-                          inputMode="numeric"
-                          value={item.unitsPerPackage}
-                          placeholder="Кратность"
-                          onChange={(event) =>
-                            updateItem(item.id, {
-                              unitsPerPackage: draftNumber(event.target.value),
-                            })
-                          }
-                        />
-                      </div>
-                      <small>
-                        {units || 0} {units === 1 ? "штука" : "штук"}
-                      </small>
-                    </td>
-                    <td>
-                      <input
-                        aria-invalid={Boolean(
-                          item.rowTouched && !(decimalNumber(item.expectedUnitPrice) > 0),
-                        )}
-                        aria-label={isDomestic ? "Цена в рублях" : "Цена в евро"}
-                        className="procurement-price-input"
-                        type="text"
-                        inputMode="decimal"
-                        value={item.expectedUnitPrice}
-                        placeholder="0,00"
-                        onChange={(event) =>
-                          updateItem(item.id, {
-                            expectedUnitPrice: draftNumber(event.target.value),
-                          })
-                        }
-                      />
-                    </td>
-                    <td className="procurement-cost-cell">
-                      {estimate ? (
-                        <>
-                          <strong>{money.format(estimate.cost)} / шт.</strong>
-                          <small>Розница ≈ {money.format(estimate.retail)}</small>
-                        </>
-                      ) : preliminary !== null ? (
-                        <>
-                          <strong>{money.format(preliminary)} / шт.</strong>
-                          <small>
-                            {valid ? "Считаем…" : isDomestic ? "Оценка" : "Без доставки"}
-                          </small>
-                        </>
-                      ) : (
-                        <small>
-                          {lineMissing.length
-                            ? item.rowTouched
-                              ? `Заполните: ${lineMissing.join(", ")}`
-                              : "Заполните данные растения"
-                            : "Укажите курс"}
-                        </small>
-                      )}
-                    </td>
-                    <td>
-                      <button
-                        className="table-action danger"
-                        aria-label={`Удалить ${item.sabyName || "позицию"}`}
-                        onClick={() =>
-                          setItems((current) => {
-                            const remaining = current.filter((line) => line.id !== item.id);
-                            return remaining.length ? remaining : [makeLine()];
-                          })
-                        }
-                      >
-                        ×
-                      </button>
-                    </td>
+        {planMode === "recommendations" ? (
+          <>
+            <div
+              className="procurement-content procurement-plan-recommendations"
+              role="tabpanel"
+              aria-label="Рекомендации"
+            >
+              {renderRecommendations(
+                addRecommendationsToPlan,
+                (target) => {
+                  void closePlan().then((closed) => {
+                    if (closed) onNavigate(target);
+                  });
+                },
+                items.map((item) => item.sabyId).filter(Boolean),
+                selected.length > 0 ? supplierId : undefined,
+              )}
+            </div>
+            <div className="dialog-actions procurement-plan-footer">
+              <span>Добавьте товары из рекомендаций или заполните состав вручную.</span>
+              <button onClick={() => void closePlan()}>Закрыть</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="procurement-plan-settings">
+              <label>
+                Поставщик
+                <select
+                  value={supplierId}
+                  onChange={(event) => {
+                    if (
+                      selected.length &&
+                      !window.confirm("Сменить поставщика и очистить текущий список?")
+                    )
+                      return;
+                    setSupplierId(Number(event.target.value));
+                    setItems([makeLine()]);
+                  }}
+                >
+                  {suppliers.map((item) => (
+                    <option value={item.id} key={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!isDomestic && (
+                <>
+                  <label>
+                    Курс, ₽/{currencySymbol}
+                    <NumericInput
+                      min="0"
+                      step="0.01"
+                      value={exchangeRate}
+                      onChange={(event) => setExchangeRate(draftNumber(event.target.value))}
+                    />
+                  </label>
+                  <label>
+                    До Москвы, ₽
+                    <NumericInput
+                      min="0"
+                      value={deliveryToMoscowRub}
+                      placeholder="0"
+                      onChange={(event) => setDeliveryToMoscowRub(draftNumber(event.target.value))}
+                    />
+                  </label>
+                  <label>
+                    Москва → Рязань, ₽
+                    <NumericInput
+                      min="0"
+                      value={deliveryToRyazanRub}
+                      placeholder="0"
+                      onChange={(event) => setDeliveryToRyazanRub(draftNumber(event.target.value))}
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+            <div className="procurement-plan-tools">
+              <button onClick={() => setItems((current) => [...current, makeLine()])}>
+                + Новая строка
+              </button>
+              <button
+                aria-expanded={showRecommendations}
+                onClick={() => setShowRecommendations(!showRecommendations)}
+              >
+                Добавить из каталога
+              </button>
+              {draftSignature === failedSignatureRef.current && (
+                <button
+                  onClick={() => void persistDraft(draftSignature)}
+                  disabled={draftSaving || draftLoading}
+                >
+                  Повторить сохранение
+                </button>
+              )}
+              {(draftLoading || draftSaving) && (
+                <small role="status">{draftLoading ? "Загружаем…" : "Сохраняем…"}</small>
+              )}
+              <span>
+                <strong>{quantityLabel(selected.length)}</strong> · {totalUnits} шт.
+              </span>
+            </div>
+            <div className="admin-table-wrap procurement-plan-table-wrap">
+              <table className="admin-table procurement-plan-table" aria-label="Состав закупки">
+                <colgroup>
+                  {Array.from({ length: 9 }, (_, index) => (
+                    <col key={index} />
+                  ))}
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th scope="col">Название у поставщика</th>
+                    <th scope="col">Товар / связь с СБИС</th>
+                    <th scope="col">Артикул</th>
+                    <th scope="col">
+                      Горшок · высота<small>см</small>
+                    </th>
+                    <th scope="col">
+                      В упаковке<small>штук</small>
+                    </th>
+                    <th scope="col">
+                      Заказать<small>упаковок</small>
+                    </th>
+                    <th scope="col">
+                      Цена, {currencySymbol}
+                      <small>за 1 шт.</small>
+                    </th>
+                    <th scope="col">
+                      Себестоимость<small>₽ за 1 шт.</small>
+                    </th>
+                    <th scope="col">
+                      <span className="sr-only">Удалить</span>
+                    </th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="admin-hint">
-          {isDomestic
-            ? "Российский план в рублях. Строки вводятся вручную."
-            : "Расчёт доставки по объёму и высоте. Плановая цена сохраняется в закупке."}
-        </p>
-        <div className="dialog-actions procurement-plan-footer">
-          <div className="procurement-plan-total">
-            <span>Сумма закупки</span>
-            <strong>
-              {totalPurchaseEUR.toLocaleString("ru-RU", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}{" "}
-              {currencySymbol}
-            </strong>
-            <small>
-              {invalidItems.length
-                ? `Нужно проверить строк: ${invalidItems.length}`
-                : `${totalUnits} шт.`}
-            </small>
-          </div>
-          <button onClick={() => void closePlan()}>Закрыть</button>
-          <button
-            className="primary"
-            disabled={!supplierId || !valid || saving}
-            onClick={() => setConfirmPlan(true)}
-          >
-            {saving ? "Сохраняем…" : "Заказ отправлен поставщику →"}
-          </button>
-        </div>
+                </thead>
+                <tbody>
+                  {sorted.map((item) => {
+                    const units = Number(item.packageCount) * Number(item.unitsPerPackage);
+                    const selectedIndex = selected.indexOf(item);
+                    const lineMissing = missingFields(item);
+                    const estimate =
+                      selectedIndex >= 0 && valid && preview?.key === requestBody
+                        ? preview.lines[selectedIndex]
+                        : undefined;
+                    const preliminary = partialCost(item);
+                    return (
+                      <tr
+                        key={item.id}
+                        className={item.rowTouched ? "procurement-row-touched" : undefined}
+                        onClick={() => markLineTouched(item.id)}
+                      >
+                        <td data-label="Название у поставщика">
+                          <input
+                            aria-invalid={Boolean(item.rowTouched && !item.category.trim())}
+                            value={item.category}
+                            onChange={(event) =>
+                              updateItem(item.id, { category: event.target.value })
+                            }
+                            aria-label="Название у поставщика"
+                            placeholder="Например, Ficus lyrata"
+                          />
+                        </td>
+                        <td data-label="Товар / связь с СБИС">
+                          <div className="procurement-composition-product-name">
+                            {item.sabyId ? (
+                              <strong>{item.sabyName}</strong>
+                            ) : (
+                              <input
+                                aria-invalid={Boolean(item.rowTouched && !item.sabyName.trim())}
+                                aria-label="Название новой позиции"
+                                value={item.sabyName}
+                                onChange={(event) =>
+                                  updateItem(item.id, { sabyName: event.target.value })
+                                }
+                                placeholder="Название растения"
+                              />
+                            )}
+                          </div>
+                          <div className="procurement-product-meta">
+                            {item.recommendedQty > 0 && (
+                              <small className="procurement-recommended">
+                                Рекомендовано: {item.recommendedQty} шт.
+                              </small>
+                            )}
+                            {item.sabyId && (
+                              <small className="procurement-stock-note">
+                                Остаток:{" "}
+                                {sabyBalances[item.sabyId]
+                                  ? `${sabyBalances[item.sabyId].balance} шт.`
+                                  : "—"}
+                              </small>
+                            )}
+                          </div>
+                          {!item.potDiameterCm &&
+                            !item.heightCm &&
+                            (sabyBalances[item.sabyId]?.defaults?.length || 0) > 1 && (
+                              <AdminProductSearch
+                                label={`Размер для ${item.sabyName}`}
+                                placeholder="Найти размер или артикул…"
+                                value=""
+                                options={sabyBalances[item.sabyId].defaults.map((value, index) => ({
+                                  value: String(index),
+                                  name:
+                                    [
+                                      value.potDiameterCm && `D${value.potDiameterCm}`,
+                                      value.heightCm && `${value.heightCm} см`,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ") || item.sabyName,
+                                  detail: [
+                                    value.article,
+                                    value.unitPrice != null &&
+                                      `${value.unitPrice} ${selectedSupplier?.defaultCurrency || ""}`,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · "),
+                                  search: item.sabyName,
+                                }))}
+                                onChange={(selected) => {
+                                  const value =
+                                    sabyBalances[item.sabyId].defaults[Number(selected)];
+                                  if (value)
+                                    updateItem(item.id, {
+                                      category: value.category,
+                                      article: value.article || item.article,
+                                      expectedUnitPrice: displayPrice(value.unitPrice),
+                                      potDiameterCm: value.potDiameterCm?.toString() || "",
+                                      heightCm: value.heightCm?.toString() || "",
+                                      unitsPerPackage: String(value.unitsPerPackage),
+                                    });
+                                }}
+                              />
+                            )}
+                        </td>
+                        <td data-label="Артикул">
+                          <input
+                            aria-label="Артикул"
+                            value={item.article}
+                            onChange={(event) =>
+                              updateItem(item.id, { article: event.target.value })
+                            }
+                            placeholder="Артикул"
+                          />
+                        </td>
+                        <td data-label="Горшок · высота, см">
+                          <div className="procurement-size-inputs">
+                            <input
+                              aria-label="Горшок, см"
+                              type="text"
+                              inputMode="decimal"
+                              value={item.potDiameterCm}
+                              placeholder="Диаметр, см"
+                              onChange={(event) =>
+                                updateItem(item.id, {
+                                  potDiameterCm: draftNumber(event.target.value),
+                                })
+                              }
+                            />
+                            <input
+                              aria-label="Высота, см"
+                              type="text"
+                              inputMode="decimal"
+                              value={item.heightCm}
+                              placeholder="Высота, см"
+                              onChange={(event) =>
+                                updateItem(item.id, { heightCm: draftNumber(event.target.value) })
+                              }
+                            />
+                          </div>
+                        </td>
+                        <td className="procurement-pack-size-cell" data-label="В упаковке, штук">
+                          <input
+                            aria-label="Штук в упаковке"
+                            title="Количество штук в одной упаковке поставщика"
+                            type="text"
+                            inputMode="numeric"
+                            value={item.unitsPerPackage}
+                            placeholder="Штук"
+                            aria-invalid={Boolean(
+                              item.rowTouched &&
+                                (!Number.isInteger(Number(item.unitsPerPackage)) ||
+                                  Number(item.unitsPerPackage) <= 0),
+                            )}
+                            onChange={(event) =>
+                              updateItem(item.id, {
+                                unitsPerPackage: draftNumber(event.target.value),
+                              })
+                            }
+                          />
+                        </td>
+                        <td
+                          className="procurement-order-quantity-cell"
+                          data-label="Заказать, упаковок"
+                        >
+                          <input
+                            aria-label="Количество упаковок"
+                            title="Сколько упаковок заказать"
+                            aria-describedby={`plan-quantity-${item.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            value={item.packageCount}
+                            placeholder="Упаковок"
+                            aria-invalid={Boolean(
+                              item.rowTouched &&
+                                (!Number.isInteger(Number(item.packageCount)) ||
+                                  Number(item.packageCount) <= 0),
+                            )}
+                            onChange={(event) =>
+                              updateItem(item.id, { packageCount: draftNumber(event.target.value) })
+                            }
+                          />
+                          <output
+                            id={`plan-quantity-${item.id}`}
+                            className="procurement-line-quantity"
+                          >
+                            Итого {Number.isFinite(units) ? units : "—"} шт.
+                          </output>
+                        </td>
+                        <td
+                          className="procurement-composition-price-cell"
+                          data-label={`Цена за 1 шт., ${currencySymbol}`}
+                        >
+                          <input
+                            aria-invalid={Boolean(
+                              item.rowTouched && !(decimalNumber(item.expectedUnitPrice) > 0),
+                            )}
+                            aria-label={isDomestic ? "Цена в рублях" : "Цена в евро"}
+                            className="procurement-price-input"
+                            type="text"
+                            inputMode="decimal"
+                            value={item.expectedUnitPrice}
+                            placeholder="0,00"
+                            onChange={(event) =>
+                              updateItem(item.id, {
+                                expectedUnitPrice: draftNumber(event.target.value),
+                              })
+                            }
+                          />
+                        </td>
+                        <td
+                          className="procurement-cost-cell"
+                          data-label="Себестоимость за 1 шт., ₽"
+                        >
+                          {estimate ? (
+                            <>
+                              <strong>{money.format(estimate.cost)}</strong>
+                              <small>Розница ≈ {money.format(estimate.retail)}</small>
+                            </>
+                          ) : preliminary !== null ? (
+                            <>
+                              <strong>{money.format(preliminary)}</strong>
+                              <small>
+                                {valid ? "Считаем…" : isDomestic ? "Оценка" : "Без доставки"}
+                              </small>
+                            </>
+                          ) : (
+                            <small>
+                              {lineMissing.length
+                                ? item.rowTouched
+                                  ? `Заполните: ${lineMissing.join(", ")}`
+                                  : "Заполните данные растения"
+                                : "Укажите курс"}
+                            </small>
+                          )}
+                        </td>
+                        <td className="procurement-composition-remove-cell">
+                          <button
+                            className="table-action danger"
+                            aria-label={`Удалить ${item.sabyName || "позицию"}`}
+                            onClick={() =>
+                              setItems((current) => {
+                                const remaining = current.filter((line) => line.id !== item.id);
+                                return remaining.length ? remaining : [makeLine()];
+                              })
+                            }
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="admin-hint">
+              {isDomestic
+                ? "Закупка в рублях. Строки вводятся вручную."
+                : "Расчёт доставки по объёму и высоте. Плановая цена сохраняется в закупке."}
+            </p>
+            <div className="dialog-actions procurement-plan-footer">
+              <div className="procurement-plan-total">
+                <span>Сумма закупки</span>
+                <strong>
+                  {totalPurchaseEUR.toLocaleString("ru-RU", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}{" "}
+                  {currencySymbol}
+                </strong>
+                <small>
+                  {invalidItems.length
+                    ? `Нужно проверить строк: ${invalidItems.length}`
+                    : `${totalUnits} шт.`}
+                </small>
+              </div>
+              <button onClick={() => void closePlan()}>Закрыть</button>
+              <button
+                className="primary"
+                disabled={!supplierId || !valid || saving}
+                onClick={() => setConfirmPlan(true)}
+              >
+                {saving ? "Сохраняем…" : "Зафиксировать заказ"}
+              </button>
+            </div>
+          </>
+        )}
         <aside
           hidden={!showRecommendations}
           className="procurement-recommendation-drawer"
@@ -1098,7 +1246,8 @@ export function ProcurementPlanDialog({
               </p>
               <p>
                 Закупка перейдёт в статус «Заказано». Состав и плановая цена сохранятся. После этого
-                загрузите инвойс для сверки.
+                загрузите инвойс для сверки. Это действие не отправляет заказ поставщику — передайте
+                его самостоятельно.
               </p>
             </>
           }
@@ -1114,6 +1263,7 @@ export function ProcurementPlanDialog({
 
 export function ProcurementOrderDetailDialog({
   orderId,
+  documents = [],
   settings,
   canDelete,
   onClose,
@@ -1121,6 +1271,7 @@ export function ProcurementOrderDetailDialog({
   onError: externalError,
 }: {
   orderId: number;
+  documents?: ProcurementDocument[];
   settings?: ProcurementSettings;
   canDelete: boolean;
   onClose: () => void;
@@ -1558,6 +1709,8 @@ export function ProcurementOrderDetailDialog({
       setUploading(false);
     }
   };
+  const currentFailures = detail ? currentActionFailures(detail.batches) : [];
+  const failureChannels = [...new Set(currentFailures.map((item) => channelLabel(item.channel)))];
   const closed = detail ? ["received", "cancelled"].includes(detail.order.status) : false;
   const needsSaby = (line: ProcurementOrderLine) =>
     !line.invoiceExcluded && !["confirmed", "ignored", "deferred"].includes(line.matchStatus);
@@ -1787,14 +1940,20 @@ export function ProcurementOrderDetailDialog({
             <small>Проверяется существующий документ. Новое поступление не создаётся.</small>
           </div>
         )}
-      {batch.items.some((item) => item.channel === "saby_receipt" && item.status === "failed") && (
-        <p className="procurement-warning">
-          Проверка поступления СБИС завершилась ошибкой. Сверьте документ и повторно проверьте его
-          проведение. Повторная отправка товаров заблокирована.
-        </p>
-      )}
+      {batch.status !== "cancelled" &&
+        batch.items.some(
+          (item) =>
+            item.channel === "saby_receipt" &&
+            currentFailures.some((failure) => failure.id === item.id),
+        ) && (
+          <p className="procurement-warning">
+            Проверка поступления СБИС завершилась ошибкой. Сверьте документ и повторно проверьте его
+            проведение. Повторная отправка товаров заблокирована.
+          </p>
+        )}
       {!batch.items.some((item) => item.channel === "saby_receipt" && item.status === "failed") &&
-        batch.items.some((item) => item.status === "failed") && (
+        batch.status !== "cancelled" &&
+        batch.items.some((item) => currentFailures.some((failure) => failure.id === item.id)) && (
           <div className="dialog-actions">
             <button disabled={closed || saving} onClick={() => void retry(batch)}>
               Повторить ошибки
@@ -1869,21 +2028,114 @@ export function ProcurementOrderDetailDialog({
                 })}
               </strong>
             </div>
-            {detail.batches.some((batch) =>
-              batch.items.some((item) => item.status === "failed"),
-            ) && (
+            {detail.order.status !== "cancelled" && currentFailures.length > 0 && (
               <div className="procurement-checklist blocked" role="alert">
-                <strong>Есть ошибка отправки</strong>
+                <strong>Не выполнены действия: {failureChannels.join(", ")}</strong>
                 <p>
-                  Проверьте журнал действий ниже и фактическое поступление в СБИС. Статус закупки не
-                  подтверждает проведение документа.
+                  Состояние закупки и результат каждого канала проверяются отдельно. Откройте
+                  журнал, чтобы увидеть причину и результат последней попытки.
                 </p>
+                <button
+                  onClick={() => {
+                    const history = document.getElementById("procurement-action-history");
+                    if (history instanceof HTMLDetailsElement) history.open = true;
+                    history?.scrollIntoView({ block: "start", behavior: "smooth" });
+                    history?.focus();
+                  }}
+                >
+                  Перейти к действиям по каналам
+                </button>
               </div>
             )}
-            <details
-              className="procurement-cost-details"
-              open={detail.order.status !== "ready_to_receive" && !closed}
-            >
+            <section className="procurement-order-documents" aria-label="Документы закупки">
+              <div className="procurement-documents-heading">
+                <h3>
+                  Документы <span>{documents.length}</span>
+                </h3>
+                <label className="secondary-button procurement-inline-upload">
+                  {uploading
+                    ? "Разбираем PDF…"
+                    : documents.length
+                      ? "Загрузить новую версию"
+                      : "Загрузить инвойс / счёт"}
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    disabled={closed || saving || uploading}
+                    onChange={(event) => void uploadInvoice(event.target.files?.[0] || null)}
+                  />
+                </label>
+              </div>
+              {documents.length ? (
+                <ul className="procurement-document-list">
+                  {[...documents]
+                    .sort(
+                      (a, b) =>
+                        (b.revisionNo || 1) - (a.revisionNo || 1) ||
+                        b.createdAt.localeCompare(a.createdAt),
+                    )
+                    .map((document) => (
+                      <li key={document.id}>
+                        <div>
+                          <a
+                            href={`/api/v1/admin/procurement/documents/${document.id}/source.pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {document.documentNumber
+                              ? `${document.parserKind === "domestic_payment_invoice" ? "Счёт" : "Инвойс"} № ${document.documentNumber}`
+                              : document.fileName}{" "}
+                            · PDF
+                          </a>
+                          <small>
+                            {document.documentDate
+                              ? new Date(document.documentDate).toLocaleDateString("ru-RU")
+                              : new Date(document.createdAt).toLocaleDateString("ru-RU")}{" "}
+                            · версия {document.revisionNo || 1} ·{" "}
+                            {document.superseded ? "заменена" : "действующая"}
+                          </small>
+                        </div>
+                        <span
+                          className={
+                            document.arithmeticStatus === "ok"
+                              ? "procurement-ok"
+                              : "procurement-warning"
+                          }
+                        >
+                          {document.arithmeticStatus === "ok"
+                            ? "Суммы сходятся"
+                            : "Проверить суммы"}
+                        </span>
+                        <details>
+                          <summary>Суммы и разбор</summary>
+                          <p>
+                            {procurementParserLabels[document.parserKind] || document.parserKind} ·{" "}
+                            {quantityLabel(document.lines)} · {document.units} шт.
+                          </p>
+                          <p>
+                            Растения: {document.productSubtotal.toLocaleString("ru-RU")}{" "}
+                            {document.currency} · упаковка:{" "}
+                            {document.packageTotal.toLocaleString("ru-RU")} {document.currency} ·
+                            всего: {document.documentTotal.toLocaleString("ru-RU")}{" "}
+                            {document.currency}
+                          </p>
+                          <p>
+                            {document.parseStatus === "review"
+                              ? "Есть несопоставленные строки"
+                              : "Разобрано"}
+                          </p>
+                          {document.parseError && (
+                            <p className="procurement-warning">{document.parseError}</p>
+                          )}
+                        </details>
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p>Инвойс или счёт будет храниться здесь вместе с закупкой.</p>
+              )}
+            </section>
+            <details className="procurement-cost-details">
               <summary>
                 Расчёт и доставка{" "}
                 <span>
@@ -1954,19 +2206,6 @@ export function ProcurementOrderDetailDialog({
                       onChange={(event) =>
                         setCosts({ ...costs, additionalCostsRub: Number(event.target.value) })
                       }
-                    />
-                  </label>
-                  <label className="secondary-button procurement-inline-upload">
-                    {uploading
-                      ? "Разбираем PDF…"
-                      : detail.order.status === "ordered"
-                        ? "Загрузить инвойс"
-                        : "Заменить инвойс"}
-                    <input
-                      type="file"
-                      accept="application/pdf,.pdf"
-                      disabled={uploading}
-                      onChange={(event) => void uploadInvoice(event.target.files?.[0] || null)}
                     />
                   </label>
                   <button
@@ -2605,26 +2844,30 @@ export function ProcurementOrderDetailDialog({
                 Скачать цены для СБИС
               </button>
             )}
-            {detail.batches
-              .filter((batch) => !["completed", "cancelled"].includes(batch.status))
-              .map(renderBatch)}
-            {detail.batches.some((batch) => ["completed", "cancelled"].includes(batch.status)) && (
-              <details className="procurement-batch procurement-batch-history">
-                <summary>
-                  <strong>История поступлений и изменений цен</strong> ·{" "}
-                  {
-                    detail.batches.filter((batch) =>
-                      ["completed", "cancelled"].includes(batch.status),
-                    ).length
-                  }
-                </summary>
-                <div className="procurement-batch-history-list">
-                  {detail.batches
-                    .filter((batch) => ["completed", "cancelled"].includes(batch.status))
-                    .map(renderBatch)}
-                </div>
-              </details>
-            )}
+            <div id="procurement-action-history" tabIndex={-1}>
+              {detail.batches
+                .filter((batch) => !["completed", "cancelled"].includes(batch.status))
+                .map(renderBatch)}
+              {detail.batches.some((batch) =>
+                ["completed", "cancelled"].includes(batch.status),
+              ) && (
+                <details className="procurement-batch procurement-batch-history">
+                  <summary>
+                    <strong>История поступлений и изменений цен</strong> ·{" "}
+                    {
+                      detail.batches.filter((batch) =>
+                        ["completed", "cancelled"].includes(batch.status),
+                      ).length
+                    }
+                  </summary>
+                  <div className="procurement-batch-history-list">
+                    {detail.batches
+                      .filter((batch) => ["completed", "cancelled"].includes(batch.status))
+                      .map(renderBatch)}
+                  </div>
+                </details>
+              )}
+            </div>
             {!closed && (
               <div className="procurement-order-final">
                 {detail.order.status === "ready_to_receive" &&
@@ -3079,19 +3322,13 @@ export function ProcurementUploadDialog({
   suppliers: ProcurementSupplier[];
   orders: ProcurementOrder[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (id: number) => void;
 }) {
   const dialogRef = useProcurementDialog(() => {
     if (!saving) onClose();
   });
-  const suggestOrder = (supplier: number) => {
-    const active = orders.filter(
-      (item) => item.supplierId === supplier && !["received", "cancelled"].includes(item.status),
-    );
-    return active.length === 1 ? active[0].id : active.length ? -1 : 0;
-  };
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0);
-  const [orderId, setOrderId] = useState(() => suggestOrder(suppliers[0]?.id || 0));
+  const [orderId, setOrderId] = useState(0);
   const [fileError, setFileError] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -3100,7 +3337,7 @@ export function ProcurementUploadDialog({
   );
   const changeSupplier = (value: number) => {
     setSupplierId(value);
-    setOrderId(suggestOrder(value));
+    setOrderId(0);
   };
   const save = async () => {
     if (!file || !supplierId || orderId < 0) return;
@@ -3121,7 +3358,7 @@ export function ProcurementUploadDialog({
         );
         return;
       }
-      onSaved();
+      onSaved(result.order.id);
     } catch (error) {
       setFileError((error as Error).message);
     } finally {
@@ -3179,7 +3416,7 @@ export function ProcurementUploadDialog({
               <option value={0}>Создать новую закупку из документа</option>
               {availableOrders.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.orderNumber || `Закупка №${item.id}`} ·{" "}
+                  {`Закупка № ${item.id}`} ·{" "}
                   {item.title || new Date(item.createdAt).toLocaleDateString("ru-RU")} ·{" "}
                   {item.total.toLocaleString("ru-RU")} {item.currency} ·{" "}
                   {procurementStatusLabels[item.status] || item.status}
@@ -3519,131 +3756,6 @@ export function SupplierDialog({
           onConfirm={() => void remove(deleteCandidate)}
         />
       )}
-    </>
-  );
-}
-
-export function ProcurementOrderDialog({
-  suppliers,
-  onClose,
-  onSaved,
-  onError: externalError,
-}: {
-  suppliers: ProcurementSupplier[];
-  onClose: () => void;
-  onSaved: () => void;
-  onError: (value: string) => void;
-}) {
-  const {
-    error: dialogError,
-    errorRef,
-    notify: onError,
-    clear: clearError,
-  } = useProcurementError(externalError);
-  const dialogRef = useProcurementDialog(onClose);
-  const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0);
-  const selected = suppliers.find((item) => item.id === supplierId);
-  const [orderNumber, setOrderNumber] = useState("");
-  const [sourceKind, setSourceKind] = useState("manual");
-  const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
-  const save = async () => {
-    if (!selected) return;
-    setSaving(true);
-    try {
-      await api("/api/v1/admin/procurement/orders", {
-        method: "POST",
-        body: JSON.stringify({
-          supplierId,
-          orderNumber,
-          sourceKind,
-          currency: selected.defaultCurrency,
-          notes,
-        }),
-      });
-      onSaved();
-    } catch (error) {
-      onError((error as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <>
-      <button
-        tabIndex={-1}
-        className="admin-dialog-backdrop"
-        aria-label="Закрыть"
-        onClick={onClose}
-      />
-      <div
-        className="admin-dialog procurement-modal"
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="procurement-title"
-      >
-        <header>
-          <h2 id="procurement-title">Новая закупка</h2>
-          <button onClick={onClose} aria-label="Закрыть">
-            ×
-          </button>
-        </header>
-        {dialogError && (
-          <div ref={errorRef} tabIndex={-1} className="procurement-dialog-error" role="alert">
-            <strong>Не удалось выполнить действие</strong>
-            <span>{dialogError}</span>
-            <button aria-label="Закрыть сообщение об ошибке" onClick={clearError}>
-              ×
-            </button>
-          </div>
-        )}
-        <div className="admin-form-grid">
-          <label className="wide">
-            Поставщик
-            <select
-              value={supplierId}
-              onChange={(event) => setSupplierId(Number(event.target.value))}
-            >
-              {suppliers.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.defaultCurrency}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Номер заказа
-            <input
-              value={orderNumber}
-              onChange={(event) => setOrderNumber(event.target.value)}
-              placeholder="Можно заполнить позже"
-            />
-          </label>
-          <label>
-            Основание
-            <select value={sourceKind} onChange={(event) => setSourceKind(event.target.value)}>
-              <option value="manual">Ручная закупка</option>
-              <option value="recommendation">Рекомендации системы</option>
-              <option value="invoice">Инвойс</option>
-              <option value="payment_invoice">Счёт на оплату</option>
-            </select>
-          </label>
-          <label className="wide">
-            Комментарий
-            <textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />
-          </label>
-          <p className="admin-hint wide">
-            Создаётся только черновик. Отправки в СБИС и изменения цен не будет.
-          </p>
-        </div>
-        <div className="dialog-actions">
-          <button onClick={onClose}>Отмена</button>
-          <button className="primary" disabled={!supplierId || saving} onClick={save}>
-            {saving ? "Создаём…" : "Создать черновик"}
-          </button>
-        </div>
-      </div>
     </>
   );
 }

@@ -111,30 +111,6 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
-.admin-page .procurement-plan-table th:nth-child(1) {
-  width: 17%;
-}
-.admin-page .procurement-plan-table th:nth-child(2) {
-  width: 23%;
-}
-.admin-page .procurement-plan-table th:nth-child(3) {
-  width: 12%;
-}
-.admin-page .procurement-plan-table th:nth-child(4) {
-  width: 14%;
-}
-.admin-page .procurement-plan-table th:nth-child(5) {
-  width: 11%;
-}
-.admin-page .procurement-plan-table th:nth-child(6) {
-  width: 10%;
-}
-.admin-page .procurement-plan-table th:nth-child(7) {
-  width: 10%;
-}
-.admin-page .procurement-plan-table th:nth-child(8) {
-  width: 3%;
-}
 .admin-page .procurement-plan-table td {
   padding: 15px 10px;
   vertical-align: top;
@@ -188,16 +164,10 @@
 .admin-page .procurement-plan-table .procurement-cost-cell small {
   line-height: 1.35;
 }
-.admin-page .procurement-size-inputs,
-.admin-page .procurement-quantity-inputs {
+.admin-page .procurement-size-inputs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 5px;
-}
-.admin-page .procurement-quantity-inputs {
-  grid-template-columns: 1fr 12px 1fr;
-  align-items: center;
-  text-align: center;
 }
 .admin-page .procurement-recommended {
   width: max-content;
@@ -215,9 +185,17 @@
   padding: 0;
   border: 0;
   border-radius: 8px;
-  background: #ececed;
-  color: #7d4f12;
-  font-size: 17px;
+  background: transparent;
+  color: #b42318;
+  font-size: 24px;
+}
+.admin-page .procurement-plan-table .table-action.danger:hover {
+  background: transparent;
+  color: #912018;
+}
+.admin-page .procurement-plan-table .table-action.danger:focus-visible {
+  outline: 2px solid #b42318;
+  outline-offset: 2px;
 }
 .admin-page .procurement-plan-fullscreen > .admin-hint {
   margin: 12px 28px;

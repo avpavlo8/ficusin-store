@@ -12,6 +12,7 @@ async function openProcurementSection(page: Page) {
     .click();
 }
 async function procurementAction(page: Page, name: string) {
+  if (name === "Загрузить инвойс") { await page.getByRole("button", {name: "Загрузить инвойс / счёт", exact:true}).click(); return; }
   await page.locator(".procurement-inline-actions .ws-more-menu > summary").click();
   await page.getByRole("button", { name, exact: true }).click();
 }
@@ -126,7 +127,7 @@ test("@desktop @phone manager can inspect incoming plants without editing contro
  await expect(page.getByRole('button',{name:'Рассчитать',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Отменить закупку',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Закрыть закупку',exact:true}).click();
- await expect(page.getByRole('button',{name:'Собрать заказ',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Создать закупку',exact:true})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Загрузить инвойс',exact:true})).toHaveCount(0);
 });
 
@@ -170,6 +171,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       { channel: "saby", configured: false, lastError: "" },
     ],
   };
+  procurement.documents.push({...procurement.documents[0], id:8, orderId:999, documentNumber:"OTHER-ORDER", fileName:"other-order.pdf"});
   if (options.anotherRecommendation) procurement.recommendations.push({ aliasId: 11, supplierId: 1, sabyId: "TEST-SABY-3", name: "Олива D18", supplierArticle: "SUP-3", dutchName: "Олива", potDiameterCm: 18, heightCm: 55, lastUnitPrice: 10, availability: "available", balance: 4, incoming: 0, siteSales: 2, sabySales: 0, wbSales: 0, ozonSales: 0, totalSales: 2, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 2, dailySales: 0.1, daysOfCover: 4, status: "recommended", reason: "Есть спрос" });
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
@@ -457,7 +459,7 @@ test("@desktop calculator keeps its inputs across tabs and creates a request", a
   await page.getByLabel("Цена поставщика, €").fill("4,85");
   await page.getByLabel("Диаметр горшка, см").fill("14");
   await page.getByLabel("Высота растения, см").fill("40");
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Закупки", exact: true }).click();
   await procurementTab(page, "Калькулятор цены");
   await expect(page.getByLabel("Цена поставщика, €")).toHaveValue("4,85");
   await page.getByRole("button", { name: "Создать запрос", exact: true }).click();
@@ -492,10 +494,14 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
 
   await expect(page.getByRole("heading", { name: "Закупки", exact: true })).toBeVisible();
   await expect(page.getByText("Заказ → инвойс → сверка → поступление")).toHaveCount(0);
-  await expect(page.getByText("TEST-100").first()).toBeVisible();
-  await page.getByText("Инвойсы и счета", { exact: false }).click();
-  await expect(page.getByText("Российский счёт")).toBeVisible();
-  await expect(page.getByText("Суммы сходятся")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Закупка № 4", exact: true })).toBeVisible();
+  await expect(page.getByText("Инвойсы и счета", { exact: false })).toHaveCount(0);
+  await page.getByRole("link", { name: "Закупка № 4", exact: true }).click();
+  const documentOrder = page.getByRole("dialog", {name: "TEST-100", exact:true});
+  await expect(documentOrder.getByRole("region", {name: "Документы закупки"})).toContainText("Суммы сходятся");
+  await expect(documentOrder.getByRole("link", {name: /Счёт № TEST-100/})).toHaveAttribute("href", "/api/v1/admin/procurement/documents/7/source.pdf");
+  await expect(documentOrder.getByText(/OTHER-ORDER/)).toHaveCount(0);
+  await documentOrder.getByRole("button", {name: "Закрыть", exact:true}).click();
   await page.getByText("Связи с товарами СБИС", { exact: false }).click();
   await expect(page.getByText("Тестовая строка D10")).toBeVisible();
   await expect(page.getByText("Нет связи с СБИС: 2",{exact:false})).toBeVisible();
@@ -572,7 +578,7 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.locator(".procurement-orders").getByText("TEST-100").click();
+  await page.locator(".procurement-orders").getByRole("link", { name: "Закупка № 4", exact: true }).click();
   await expect(page.getByText("Нужно проверить")).toBeVisible();
   await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
   await expect(page.getByRole("button", { name: "Рассчитать" })).toBeDisabled();
@@ -582,7 +588,7 @@ test("@desktop procurement opens an order with no validation blockers", async ({
   await mockProcurement(page, { blockers: null, currency: "EUR" });
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.locator(".procurement-orders").getByText("TEST-100").click();
+  await page.locator(".procurement-orders").getByRole("link", { name: "Закупка № 4", exact: true }).click();
 
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByText("Проверки пройдены")).toHaveCount(0);
@@ -607,7 +613,7 @@ test("@desktop invoice can be attached from the saved order", async ({ page }) =
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.locator(".procurement-orders").getByText("TEST-100").click();
+  await page.locator(".procurement-orders").getByRole("link", { name: "Закупка № 4", exact: true }).click();
   await expect(page.getByText("Нужно проверить")).toBeVisible();
   await expect(page.getByText("Загрузите инвойс",{exact:true})).toBeVisible();
   await page.getByLabel("Заменить инвойс").setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
@@ -629,7 +635,8 @@ test("@desktop procurement separates actionable and already ordered recommendati
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать" }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
 
   await expect(page.getByText("Тестовый товар D10")).toBeVisible();
   await expect(page.getByText("12 шт.")).toBeVisible();
@@ -642,31 +649,45 @@ test("@desktop procurement filters, selects visible rows, and assigns a supplier
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
 
-  await expect(page.getByRole("button", { name: "Выделить все видимые" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Выделить все видимые" })).toBeEnabled();
+  await page.getByRole("button", { name: "Выделить все видимые" }).click();
+  await expect(page.getByLabel("Выбрать Тестовый товар D10")).toBeChecked();
+  await page.getByRole("button", { name: "Снять выделение" }).click();
+  await expect(page.getByLabel("Выбрать Тестовый товар D10")).not.toBeChecked();
   await page.getByLabel("Фильтр по количеству").selectOption("10");
-  await expect(page.getByText(/1 позиция · выбрано/)).toBeVisible();
+  await expect(page.locator(".procurement-selection-bar [role=status]")).toHaveText("1 позиция");
+  await expect(page.getByText("2 уп. по 6 шт.", { exact: true })).toBeVisible();
   await page.getByLabel("Фильтр по поставщику").selectOption("1");
   await page.getByRole("button", { name: "Выделить все видимые" }).click();
   await expect(page.getByLabel("Выбрать Тестовый товар D10")).toBeChecked();
-  await expect(page.getByRole("button", { name: "Сформировать заказ", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Добавить выбранное", exact: true })).toBeEnabled();
 
   await page.getByLabel("Поставщик для Тестовый товар D10").selectOption("2");
-  await expect(page.getByRole("button", { name: "Сформировать заказ", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Добавить выбранное", exact: true })).toBeDisabled();
   await page.getByLabel("Фильтр по поставщику").selectOption("2");
   await expect(page.getByLabel("Поставщик для Тестовый товар D10")).toHaveValue("2");
+  await page.getByRole("textbox", { name: "Поиск", exact: true }).fill("Несуществующий товар");
+  await expect(page.getByText("Ничего не найдено", { exact: true })).toBeVisible();
+  await expect(page.getByText("Дефицита нет", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Сбросить фильтры", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Поиск", exact: true })).toHaveValue("");
+  await expect(page.getByLabel("Фильтр по поставщику")).toHaveValue("0");
+  await expect(page.getByLabel("Выбрать Тестовый товар D10")).toBeVisible();
 });
 
 test("@desktop @phone procurement fullscreen plan stays on screen and accepts rows", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
-  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Новая закупка", exact: true });
   await expect(dialog).toBeVisible();
   const viewport = page.viewportSize()!;
   const bounds = await dialog.boundingBox();
@@ -675,33 +696,39 @@ test("@desktop @phone procurement fullscreen plan stays on screen and accepts ro
   expect(bounds!.y).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width + 1);
   expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(viewport.height + 1);
-  await expect(dialog.getByRole("heading", { name: "Новый заказ поставщику" })).toBeInViewport();
+  await expect(dialog.getByRole("heading", { name: "Новая закупка" })).toBeInViewport();
   await expect(page.getByLabel("Рекомендации к закупке", { exact: true })).toBeHidden();
   if (viewport.width > 800) await expect(dialog.getByRole("columnheader", { name: "Название у поставщика", exact: true })).toBeVisible();
   await expect(dialog.getByText("Заказ пока пуст", { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "+ Из рекомендаций", exact: true })).toHaveCount(0);
   await expect(dialog.getByLabel("Название у поставщика",{exact:true})).toHaveCount(1);
+  await expect(dialog.getByLabel("Количество упаковок", {exact:true})).toHaveValue("2");
   await expect(dialog.getByText("1 позиция", { exact: false })).toBeVisible();
   const addRow = dialog.getByRole("button", { name: "+ Новая строка", exact: true });
   await expect(addRow).toBeInViewport();
   await expect(dialog.getByLabel("Название у поставщика",{exact:true})).toBeVisible();
   await dialog.getByLabel("Количество упаковок", { exact: true }).fill("2");
   await dialog.getByLabel("Штук в упаковке", { exact: true }).fill("12");
+  await expect(dialog.locator(".procurement-line-quantity")).toHaveText("Итого 24 шт.");
+  await dialog.getByLabel("Количество упаковок", { exact: true }).fill("3");
+  await expect(dialog.getByLabel("Штук в упаковке", { exact: true })).toHaveValue("12");
+  await expect(dialog.locator(".procurement-line-quantity")).toHaveText("Итого 36 шт.");
   await expect(dialog.getByText("1 позиция", { exact: false })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Заказ отправлен поставщику →", exact: true })).toBeEnabled();
-  await expect(dialog.getByRole("button", { name: "Заказ отправлен поставщику →", exact: true })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Зафиксировать заказ", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("button", { name: "Зафиксировать заказ", exact: true })).toBeInViewport();
 });
 
 test("@desktop procurement recommendation keeps category and purchasing context in the order", async ({ page }) => {
   await mockProcurement(page, { anotherRecommendation: true });
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
-  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
-  await dialog.getByRole("button",{name:"Каталог и рекомендации",exact:true}).click();
+  const dialog = page.getByRole("dialog", { name: "Новая закупка", exact: true });
+  await dialog.getByRole("button",{name:"Добавить из каталога",exact:true}).click();
   const drawer = page.getByLabel("Рекомендации к закупке", { exact: true });
   const drawerBounds = await drawer.boundingBox();
   const viewport = page.viewportSize()!;
@@ -730,43 +757,46 @@ test("@desktop saved procurement draft is shared and a new recommendation starts
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
-  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Новая закупка", exact: true });
   await dialog.getByLabel("Название у поставщика",{exact:true}).fill("Цитрус");
   await dialog.getByPlaceholder("Артикул", { exact: true }).fill("NL-42");
-  await dialog.getByLabel("Название плана").click();
-  await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
+  await dialog.getByRole("tab", {name: /^Состав закупки/}).click();
+
   await dialog.getByRole("button", { name: "Закрыть", exact: true }).first().click();
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
-  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("SUP-1");
-  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
-  await page.getByRole("button", { name: "Планы", exact: false }).last().click();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("SUP-1");
+  await page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
+  await page.getByRole("button", { name: /^Черновики/ }).last().click();
   await page.getByRole("button", { name: "Продолжить" }).first().click();
-  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByLabel("Название у поставщика",{exact:true})).toHaveValue("Цитрус");
-  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-42");
-  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true }).fill("NL-43");
-  await page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
+  await expect(page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByLabel("Название у поставщика",{exact:true})).toHaveValue("Цитрус");
+  await expect(page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-42");
+  await page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByPlaceholder("Артикул", { exact: true }).fill("NL-43");
+  await page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
   await page.getByRole("button", { name: "Продолжить" }).first().click();
-  await expect(page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-43");
+  await expect(page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-43");
 });
 
 test("@desktop procurement saves and sorts after leaving the edited row", async ({ page }) => {
   await mockProcurement(page, { anotherRecommendation: true });
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
-  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Новая закупка", exact: true });
   await expect(dialog.getByRole("columnheader", { name: "Остаток СБИС", exact: true })).toHaveCount(0);
   await expect(dialog.locator("tbody tr").first().getByText("Остаток: 2 шт.")).toBeVisible();
-  await dialog.getByRole("button",{name:"Каталог и рекомендации",exact:true}).click();
+  await dialog.getByRole("button",{name:"Добавить из каталога",exact:true}).click();
   await dialog.getByLabel("Рекомендации к закупке").getByRole("button", { name: "+ Добавить" }).click();
   await dialog.getByRole("button",{name:"Закрыть рекомендации",exact:true}).click();
   await expect(dialog.locator("tbody tr")).toHaveCount(2);
@@ -774,10 +804,9 @@ test("@desktop procurement saves and sorts after leaving the edited row", async 
   await firstPrice.fill("20");
   await page.waitForTimeout(500);
   await expect(dialog.locator("tbody tr").first().getByText("Тестовый товар D10")).toBeVisible();
-  await expect(dialog.getByText("Сохраним при выходе")).toBeVisible();
-  await dialog.getByLabel("Название плана").click();
+  await dialog.getByRole("tab", {name: /^Состав закупки/}).click();
   await expect(dialog.locator("tbody tr").first().getByText("Олива D18")).toBeVisible();
-  await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
+
   const costCell = dialog.locator("tbody tr").last().locator(".procurement-cost-cell");
   expect((await costCell.boundingBox())!.height).toBeLessThan(90);
 });
@@ -786,25 +815,26 @@ test("@desktop procurement prices use a comma without trailing zeros", async ({ 
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
-  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Новая закупка", exact: true });
   const price = dialog.getByLabel("Цена в рублях");
   await expect(price).toHaveValue("5,3");
   await price.fill("4.2500");
   await expect(price).toHaveValue("4.2500");
-  await dialog.getByLabel("Название плана").click();
+  await dialog.getByRole("tab", {name: /^Состав закупки/}).click();
   await expect(price).toHaveValue("4,25");
-  await expect(dialog.getByText(/Сохранено для команды/)).toBeVisible();
+
   await dialog.getByRole("button", { name: "Закрыть", exact: true }).first().click();
-  await page.getByRole("button", { name: "Планы", exact: false }).last().click();
+  await page.getByRole("button", { name: /^Черновики/ }).last().click();
   await page.getByRole("button", { name: "Продолжить" }).first().click();
-  const reopenedPrice = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).getByLabel("Цена в рублях");
+  const reopenedPrice = page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByLabel("Цена в рублях");
   await expect(reopenedPrice).toHaveValue("4,25");
   await reopenedPrice.fill("0,0001");
-  await dialog.getByLabel("Название плана").click();
+  await dialog.getByRole("tab", {name: /^Состав закупки/}).click();
   await expect(reopenedPrice).toHaveValue("0,0001");
 });
 
@@ -812,19 +842,20 @@ test("@desktop procurement touched rows highlight automatically and survive reop
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
-  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
+  const dialog = page.getByRole("dialog", { name: "Новая закупка", exact: true });
   const row = dialog.locator("tbody tr").first();
   await expect(row).not.toHaveClass(/procurement-row-touched/);
   await row.click();
   await expect(row).toHaveClass(/procurement-row-touched/);
   await dialog.getByRole("button", { name: "Закрыть", exact: true }).first().click();
-  await page.getByRole("button", { name: "Планы", exact: false }).last().click();
+  await page.getByRole("button", { name: /^Черновики/ }).last().click();
   await page.getByRole("button", { name: "Продолжить" }).first().click();
-  const reopenedRow = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true }).locator("tbody tr").first();
+  const reopenedRow = page.getByRole("dialog", { name: "Новая закупка", exact: true }).locator("tbody tr").first();
   await expect(reopenedRow).toHaveClass(/procurement-row-touched/);
   await reopenedRow.getByLabel("Цена в рублях").fill("6,7");
   await expect(reopenedRow).toHaveClass(/procurement-row-touched/);
@@ -834,12 +865,13 @@ test("@desktop procurement can add a linked Saby product outside recommendations
   await mockProcurement(page);
   await page.goto("/admin");
   await openProcurementSection(page);
-  await page.getByRole("button", { name: "Что заказать", exact: true }).click();
+  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
   await page.getByLabel("Выбрать Тестовый товар D10").check();
-  await page.getByRole("button", { name: "Сформировать заказ", exact: true }).click();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
 
-  const dialog = page.getByRole("dialog", { name: "Новый заказ поставщику", exact: true });
-  await dialog.getByRole("button",{name:"Каталог и рекомендации",exact:true}).click();
+  const dialog = page.getByRole("dialog", { name: "Новая закупка", exact: true });
+  await dialog.getByRole("button",{name:"Добавить из каталога",exact:true}).click();
   const drawer = page.getByLabel("Рекомендации к закупке", { exact: true });
   await drawer.getByPlaceholder("Название, код или артикул").fill("Bonsai Zantaxilum");
   await expect(drawer.getByText("Bonsai Zantaxilum D15", { exact: true })).toBeVisible();
@@ -1148,10 +1180,12 @@ test("@desktop @phone first Saby file prices include hidden new rows after expli
 
 test('@desktop @phone поиск размера при закупке заполняет выбранный вариант',async({page},testInfo)=>{
  await mockProcurement(page,{sizeDefaults:true});
- await page.goto('/admin?section=procurement&view=recommendations');
+ await page.goto('/admin?section=procurement');
+ await page.getByRole('button',{name:'Создать закупку',exact:true}).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
  await page.getByLabel('Выбрать Тестовый товар D10').check();
- await page.getByRole('button',{name:'Сформировать заказ',exact:true}).click();
- const d=page.getByRole('dialog',{name:'Новый заказ поставщику',exact:true});
+ await page.getByRole('button',{name:'Добавить выбранное',exact:true}).click();
+ const d=page.getByRole('dialog',{name:'Новая закупка',exact:true});
  const picker=d.getByRole('combobox',{name:'Размер для Тестовый товар D10',exact:true});
  await picker.fill('SIZE-LARGE');
  await expect(d.getByRole('listbox',{name:'Найденные товары'}).getByRole('option')).toHaveCount(1);
@@ -1216,7 +1250,7 @@ test("@desktop @phone calculator infers source from edited amount and preserves 
  await expect(calc.getByRole('button',{name:'Копировать расчёт'})).toBeEnabled();
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
  await page.screenshot({path:test.info().outputPath("calculator.png"),fullPage:true});
- await page.getByRole('button',{name:'Что заказать',exact:true}).click();
+ await page.getByRole('button',{name:"Закупки",exact:true}).click();
  await procurementTab(page, "Калькулятор цены");
  await expect(calc.getByLabel('Цена в магазине, ₽')).toHaveValue('2000,37');
  await expect(calc.getByLabel('Высота коробки, см')).toHaveValue('50');
@@ -1233,9 +1267,32 @@ for (const width of [320, 390, 768]) {
     await page.setViewportSize({width,height:844});
     await mockProcurement(page);
     await page.goto("/admin?section=procurement");
-    await page.getByRole("button",{name:"Что заказать",exact:true}).click();
-    const button=await page.getByRole("button",{name:"Сформировать заказ",exact:true}).boundingBox();
+    await page.getByRole("button",{name:"Создать закупку",exact:true}).click();
+  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
+    const button=await page.getByRole("button",{name:"Добавить выбранное",exact:true}).boundingBox();
     expect(button!.x).toBeGreaterThanOrEqual(0);
     expect(button!.x+button!.width).toBeLessThanOrEqual(width);
   });
 }
+
+
+test("@desktop создание закупки открывает состав и сохраняет доступ к рекомендациям", async ({page}) => {
+  await mockProcurement(page);
+  await page.goto("/admin?section=procurement");
+  await expect(page.getByRole("navigation", {name:"Разделы закупок"}).getByRole("button", {name:/Что заказать/})).toHaveCount(0);
+  await expect(page.getByRole("button", {name:"Загрузить инвойс / счёт",exact:true})).toBeVisible();
+  await page.getByRole("button", {name:"Создать закупку",exact:true}).click();
+  const draft=page.getByRole("dialog", {name:"Новая закупка",exact:true});
+  await expect(draft.getByRole("tab", {name:/^Состав закупки/})).toHaveAttribute("aria-selected", "true");
+  await expect(draft.getByRole("button", {name:"+ Новая строка",exact:true})).toBeVisible();
+  await draft.getByRole("tab", {name:"Рекомендации",exact:true}).click();
+  await expect(draft.getByRole("tabpanel",{name:"Рекомендации",exact:true})).toBeVisible();
+  await draft.getByLabel("Выбрать Тестовый товар D10").check();
+  await draft.getByRole("button",{name:"Добавить выбранное",exact:true}).click();
+  await expect(draft.getByLabel("Количество упаковок",{exact:true})).toHaveValue("2");
+  await draft.getByRole("tab",{name:"Рекомендации",exact:true}).click();
+  await expect(draft.getByLabel("Выбрать Тестовый товар D10")).toHaveCount(0);
+  await draft.getByRole("tab",{name:/^Состав закупки/}).click();
+  await draft.getByRole("button",{name:"+ Новая строка",exact:true}).click();
+  await expect(draft.getByLabel("Название у поставщика",{exact:true})).toHaveCount(2);
+});

@@ -591,9 +591,6 @@
 .procurement-block {
   padding: 22px;
 }
-.procurement-documents {
-  min-width: 1040px;
-}
 .procurement-orders {
   min-width: 880px;
 }
@@ -764,55 +761,7 @@
   margin: 0 0 16px;
   line-height: 1.5;
 }
-.sales-sync-grid {
-  margin: 0 0 18px;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-.sales-sync-grid article {
-  min-width: 0;
-  padding: 12px;
-  display: grid;
-  gap: 5px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  background: #fafafa;
-}
-.sales-sync-grid article > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: start;
-}
-.sales-sync-grid article span {
-  color: #636974;
-  font-size: 11px;
-  font-weight: 700;
-  text-align: right;
-}
-.sales-sync-grid article small {
-  color: #656b77;
-  overflow-wrap: anywhere;
-}
-.sales-sync-grid article em {
-  color: #7d4f12;
-  font-size: 11px;
-  font-style: normal;
-  overflow-wrap: anywhere;
-}
-.sales-sync-grid .sales-sync-ok {
-  border-color: #a4e4c8;
-  background: #f4f4f4;
-}
-.sales-sync-grid .sales-sync-error {
-  border-color: #f0ca98;
-  background: #f9f9f9;
-}
-.sales-sync-grid .sales-sync-running {
-  border-color: #ecba78;
-  background: #f7f7f8;
-}
+
 .integration-health-grid {
   margin: 16px 0;
   display: grid;

@@ -30,6 +30,8 @@ const (
 	defaultOzonBase         = "https://api-seller.ozon.ru"
 	wbPriceCheckOperation   = "readback"
 	ozonPriceCheckOperation = "readback"
+	ozonFBSPostingsPath     = "/v4/posting/fbs/list"
+	ozonFBOPostingsPath     = "/v3/posting/fbo/list"
 	priceCheckDelay         = 25 * time.Second
 	priceCheckMaxAttempts   = 20
 )
@@ -219,7 +221,7 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 		return nil, errors.New("ключи Ozon не настроены")
 	}
 	records := make([]procurement.SalesRecord, 0)
-	for _, path := range []string{"/v3/posting/fbs/list", "/v2/posting/fbo/list"} {
+	for _, path := range []string{ozonFBSPostingsPath, ozonFBOPostingsPath} {
 		items, err := executor.fetchOzonPostings(ctx, path, from, to)
 		if err != nil {
 			var empty *emptyBodyError
@@ -237,7 +239,10 @@ func (executor *MarketplaceExecutor) fetchOzonSales(ctx context.Context, from, t
 				continue
 			}
 			for productIndex, product := range posting.Products {
-				price, _ := strconv.ParseFloat(product.Price, 64)
+				price := float64(product.Price.Amount)
+				if product.Price.Currency != "" && product.Price.Currency != "RUB" {
+					return nil, fmt.Errorf("Ozon вернул цену в %s вместо RUB для отправления %s", product.Price.Currency, posting.PostingNumber)
+				}
 				if strings.TrimSpace(product.OfferID) != "" && product.Quantity > 0 {
 					documentID := strings.TrimSpace(posting.PostingNumber)
 					if documentID == "" {
@@ -274,7 +279,7 @@ func (executor *MarketplaceExecutor) fetchOzonPostings(
 	path string,
 	from, to time.Time,
 ) ([]ozonPosting, error) {
-	const limit = 1000
+	const limit = 100
 	// Ozon отдаёт отправления окном, а не всей историей: годовой запрос
 	// возвращается пустым, и со стороны это неотличимо от «продаж не было».
 	// Поэтому ходим месяцами. Заодно страницы получаются короче, а к ним
@@ -301,50 +306,44 @@ func (executor *MarketplaceExecutor) fetchOzonPostingWindow(
 	since, until time.Time,
 	limit int,
 ) ([]ozonPosting, error) {
+	const maxPages = 10000
 	result := make([]ozonPosting, 0)
-	for offset := 0; offset < 100000; offset += limit {
-		with := map[string]bool{"analytics_data": false, "financial_data": false}
-		// Статус в фильтре не задаём: у FBS и FBO наборы значений разные, и
-		// неизвестное площадке значение молча возвращает пустоту. Доставленные
-		// отбираем сами, уже разобрав ответ.
+	cursor := ""
+	seenCursors := map[string]bool{"": true}
+	for page := 0; page < maxPages; page++ {
+		// Both current posting methods use a cursor and return postings at the
+		// top level. A short page is not the end when has_next is true.
 		payload := map[string]any{
-			"dir": "ASC", "filter": map[string]any{
+			"sort_dir": "ASC", "cursor": cursor,
+			"filter": map[string]any{
 				"since": since.Format(time.RFC3339), "to": until.Format(time.RFC3339),
 			},
-			"limit": limit, "offset": offset, "with": with,
-		}
-		if strings.Contains(path, "/fbs/") {
-			with["barcodes"], with["translit"] = false, false
-		} else {
-			payload["translit"] = true
+			"limit": limit, "translit": false,
+			"with": map[string]bool{"analytics_data": false, "financial_data": false},
 		}
 		var response struct {
-			Result json.RawMessage `json:"result"`
+			Postings []ozonPosting `json:"postings"`
+			Cursor   string        `json:"cursor"`
+			HasNext  bool          `json:"has_next"`
 		}
 		if err := executor.requestRead(ctx, http.MethodPost, executor.ozonBase+path, payload,
 			map[string]string{"Client-Id": executor.ozonClientID, "Api-Key": executor.ozonAPIKey}, &response); err != nil {
 			return nil, fmt.Errorf("получить продажи Ozon %s: %w", path, err)
 		}
-		var page []ozonPosting
-		if len(response.Result) > 0 && response.Result[0] == '[' {
-			if err := json.Unmarshal(response.Result, &page); err != nil {
-				return nil, fmt.Errorf("разобрать продажи Ozon: %w", err)
-			}
-		} else {
-			var wrapped struct {
-				Postings []ozonPosting `json:"postings"`
-			}
-			if err := json.Unmarshal(response.Result, &wrapped); err != nil {
-				return nil, fmt.Errorf("разобрать продажи Ozon: %w", err)
-			}
-			page = wrapped.Postings
+		if response.Postings == nil {
+			return nil, fmt.Errorf("Ozon %s не вернул список postings", path)
 		}
-		result = append(result, page...)
-		if len(page) < limit {
-			break
+		result = append(result, response.Postings...)
+		if !response.HasNext {
+			return result, nil
 		}
+		if response.Cursor == "" || seenCursors[response.Cursor] {
+			return nil, fmt.Errorf("Ozon %s вернул has_next без нового cursor; полная загрузка продаж не завершена", path)
+		}
+		seenCursors[response.Cursor] = true
+		cursor = response.Cursor
 	}
-	return result, nil
+	return nil, fmt.Errorf("Ozon %s вернул больше %d страниц; полная загрузка продаж не завершена", path, maxPages)
 }
 
 func parseMarketplaceDate(value string) (time.Time, error) {

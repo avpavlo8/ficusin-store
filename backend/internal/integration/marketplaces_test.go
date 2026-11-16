@@ -247,11 +247,11 @@ func TestWildberries429WithoutRetryHeaderUsesSafeMinuteWindow(t *testing.T) {
 func TestOzonSalesCombineFBSAndFBO(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
-		if request.URL.Path == "/v3/posting/fbs/list" {
-			_, _ = response.Write([]byte(`{"result":{"postings":[{"created_at":"2026-08-05T12:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":2,"price":"1200"}]}]}}`))
+		if request.URL.Path == "/v4/posting/fbs/list" {
+			_, _ = response.Write([]byte(`{"postings":[{"created_at":"2026-08-05T12:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":2,"price":{"amount":"1200","currency":"RUB"}}]}]}`))
 			return
 		}
-		_, _ = response.Write([]byte(`{"result":[{"created_at":"2026-08-06T12:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":1,"price":"1200"}]}]}`))
+		_, _ = response.Write([]byte(`{"postings":[{"created_at":"2026-08-06T12:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"1200","currency":"RUB"}}]}]}`))
 	}))
 	defer server.Close()
 	executor := NewMarketplaceExecutor("", "client", "secret")
@@ -272,7 +272,7 @@ func TestOzonSalesReportEmptyPostingsAsError(t *testing.T) {
 		if request.URL.Path == "/v1/analytics/data" {
 			t.Fatal("аналитика больше не источник продаж: её идентификатор нечем связать")
 		}
-		_, _ = response.Write([]byte(`{"result":{"postings":[]}}`))
+		_, _ = response.Write([]byte(`{"postings":[]}`))
 	}))
 	defer server.Close()
 	executor := NewMarketplaceExecutor("", "client", "secret")

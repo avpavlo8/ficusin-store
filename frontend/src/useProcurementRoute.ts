@@ -4,7 +4,6 @@ const views = [
   "orders",
   "drafts",
   "calculator",
-  "recommendations",
   "products",
   "unlinkedSales",
   "requests",

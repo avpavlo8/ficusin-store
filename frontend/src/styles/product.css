@@ -1008,9 +1008,7 @@
     align-items: start;
     flex-direction: column;
   }
-  .sales-sync-grid {
-    grid-template-columns: 1fr;
-  }
+
   .integration-health-grid {
     grid-template-columns: 1fr;
   }
