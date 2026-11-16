@@ -369,33 +369,11 @@
   border-color: #f3d2a8;
   color: #7d4f12;
 }
-.admin-page .procurement-plan-tools .procurement-draft-title {
-  display: grid;
-  gap: 4px;
-  color: #52565e;
-  font-size: 11px;
-  font-weight: 700;
-}
-.admin-page .procurement-plan-tools .procurement-draft-title input {
-  min-width: 230px;
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid #f1cea1;
-  border-radius: 6px;
-  background: #ffffff;
-  font: inherit;
-  font-size: 13px;
-  color: #303235;
-}
+
 @media (max-width: 700px) {
   .admin-page .procurement-draft-list article {
     align-items: flex-start;
     flex-direction: column;
-  }
-  .admin-page .procurement-plan-tools .procurement-draft-title,
-  .admin-page .procurement-plan-tools .procurement-draft-title input {
-    width: 100%;
-    min-width: 0;
   }
 }
 .admin-page .procurement-product-error {

@@ -1,10 +1,10 @@
 import { useProcurementParam, useProcurementRoute } from "./useProcurementRoute";
 import { procurementOrderHref, quantityLabel } from "./procurementUX";
+import { bulkSelectableRecommendations } from "./lib/procurement-state";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import {
   ProcurementMatchDialog,
   ProcurementOrderDetailDialog,
-  ProcurementOrderDialog,
   ProcurementPlanDialog,
   ProcurementRequestDialog,
   ProcurementUploadDialog,
@@ -16,8 +16,6 @@ import {
   recommendationEmptyText,
   recommendationEmptyTitle,
   recommendationStatusLabel,
-  salesChannelLabel,
-  salesSyncLabel,
   setExclusion,
   updateAvailability,
   updateRequestStatus,
@@ -27,6 +25,8 @@ import {
   type ProcurementCalculatorDraft,
 } from "./ProcurementCostCalculator";
 import { WorkspaceMore } from "./WorkspaceUI";
+import { ProcurementDataHealth } from "./ProcurementDataHealth";
+import { ProcurementRecommendationTable } from "./ProcurementRecommendationTable";
 import { PageHeading, api } from "./adminShared";
 import type {
   IntegrationHealth,
@@ -35,6 +35,7 @@ import type {
   ProcurementData,
   ProcurementOrder,
   ProcurementOrderDetail,
+  ProcurementRecommendation,
   RecommendationStatus,
   ProcurementRequest,
 } from "./adminTypes";
@@ -42,6 +43,8 @@ import "./styles/admin-procurement-plan.css";
 import "./styles/admin-procurement-redesign.css";
 import "./styles/admin-procurement-review.css";
 import "./styles/admin-procurement-workspace.css";
+import "./styles/admin-procurement-queues.css";
+import "./styles/admin-procurement-composition.css";
 
 const ProcurementProducts = lazy(() =>
   import("./AdminProcurementProducts").then((module) => ({ default: module.ProcurementProducts })),
@@ -197,14 +200,13 @@ export function Procurement({
   const [syncingCatalog, setSyncingCatalog] = useState("");
   const [supplierDialog, setSupplierDialog] = useState(false);
   const [reviewExpanded, setReviewExpanded] = useState(false);
-  const [orderDialog, setOrderDialog] = useState(false);
   const [uploadDialog, setUploadDialog] = useState(false);
   const [requestDialog, setRequestDialog] = useState(false);
   const [planDialog, setPlanDialog] = useState(false);
   const [drafts, setDrafts] = useState<PlanDraftSummary[]>([]);
   const [editingDraftId, setEditingDraftId] = useState<number | null>(null);
   const [matchDialog, setMatchDialog] = useState<ProcurementAlias | null>(null);
-  const [orderFilter, setOrderFilter] = useProcurementParam("status", "active");
+  const [orderFilter, setOrderFilter] = useProcurementParam("status", "all");
   const [orderQuery, setOrderQuery] = useProcurementParam("q", "");
   const [orderWindow, setOrderWindow] = useState({ scope: "", count: 5 });
   const [recommendationQuery, setRecommendationQuery] = useProcurementParam("recommendedQuery", "");
@@ -241,6 +243,8 @@ export function Procurement({
   }, [refreshPlanDrafts]);
   const openNewPlan = () => {
     setEditingDraftId(null);
+    setSelectedRecommendations([]);
+    setRecommendationView("recommended");
     setPlanDialog(true);
   };
   const deleteDraft = async (draft: PlanDraftSummary) => {
@@ -431,7 +435,10 @@ export function Procurement({
     .sort((a, b) =>
       recommendationSort === "name"
         ? a.name.localeCompare(b.name, "ru")
-        : b.suggestedQty - a.suggestedQty,
+        : recommendationSort === "urgent"
+          ? (a.daysOfCover ?? Infinity) - (b.daysOfCover ?? Infinity) ||
+            b.suggestedQty - a.suggestedQty
+          : b.suggestedQty - a.suggestedQty,
     );
   const actionableRecommendations = data.recommendations.filter(
     (item) => item.status === "recommended",
@@ -440,27 +447,6 @@ export function Procurement({
     selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
   );
   const selectedSupplierId = selectedRecommendationItems[0]?.supplierId;
-  const selectableVisibleRecommendations = recommendationItems.filter(
-    (item) =>
-      item.status === "recommended" &&
-      item.supplierId === recommendationSupplierFilter &&
-      item.supplierId > 0,
-  );
-  const allVisibleSelected =
-    selectableVisibleRecommendations.length > 0 &&
-    selectableVisibleRecommendations.every((item) =>
-      selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
-    );
-  const toggleVisibleRecommendations = () => {
-    const keys = selectableVisibleRecommendations.map(
-      (item) => `${item.supplierId}:${item.sabyId}`,
-    );
-    setSelectedRecommendations((current) =>
-      allVisibleSelected
-        ? current.filter((key) => !keys.includes(key))
-        : [...new Set([...current, ...keys])],
-    );
-  };
   const visibleOrders = data.orders.filter(
     (item) =>
       (orderFilter === "all" ||
@@ -488,20 +474,217 @@ export function Procurement({
       currency: item.currency,
       maximumFractionDigits: 2,
     }).format(item.total);
-  const formatMoney = (value: number, currency: string) =>
-    currency
-      ? new Intl.NumberFormat("ru-RU", {
-          style: "currency",
-          currency,
-          maximumFractionDigits: 2,
-        }).format(value)
-      : "—";
   const renderTab = (target: typeof view, label: string, count = 0) => (
-    <button className={view === target ? "active" : ""} onClick={() => setView(target)}>
+    <button
+      className={view === target ? "active" : ""}
+      aria-current={view === target ? "page" : undefined}
+      onClick={() => setView(target)}
+    >
       {label}
       {count > 0 && <span>{count}</span>}
     </button>
   );
+  const renderRecommendations = (
+    add: (items: ProcurementRecommendation[]) => boolean,
+    navigate: (target: "unlinkedSales" | "integrations") => void,
+    addedSabyIds: string[],
+    draftSupplierId?: number,
+  ) => {
+    const hasRecommendationFilters =
+      Boolean(recommendationQuery.trim()) ||
+      recommendationSupplierFilter !== 0 ||
+      recommendationMinQty > 0;
+    const offeredItems = recommendationItems.filter((item) => !addedSabyIds.includes(item.sabyId));
+    const selectionSupplierId = draftSupplierId ?? selectedSupplierId;
+    const selectableVisibleRecommendations = bulkSelectableRecommendations(
+      offeredItems,
+      selectionSupplierId,
+    );
+    const bulkSupplier = data.suppliers.find(
+      (supplier) => supplier.id === selectableVisibleRecommendations[0]?.supplierId,
+    );
+    const allVisibleSelected =
+      selectableVisibleRecommendations.length > 0 &&
+      selectableVisibleRecommendations.every((item) =>
+        selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
+      );
+    const toggleVisibleRecommendations = () => {
+      const keys = selectableVisibleRecommendations.map(
+        (item) => `${item.supplierId}:${item.sabyId}`,
+      );
+      setSelectedRecommendations((current) =>
+        allVisibleSelected
+          ? current.filter((key) => !keys.includes(key))
+          : [...new Set([...current, ...keys])],
+      );
+    };
+    return (
+      <section className="admin-block procurement-block procurement-recommendations-block">
+        <ProcurementDataHealth
+          channels={data.salesSync || []}
+          onUnlinked={() => navigate("unlinkedSales")}
+          onIntegrations={canIntegrations ? () => navigate("integrations") : undefined}
+        />
+        <div className="procurement-recommendation-tabs">
+          {(
+            [
+              "recommended",
+              "already_ordered",
+              "check_availability",
+              "supplier_unavailable",
+              "excluded",
+            ] as const
+          ).map((status) => (
+            <button
+              className={recommendationView === status ? "active" : ""}
+              aria-pressed={recommendationView === status}
+              key={status}
+              onClick={() => {
+                setRecommendationView(status);
+                setSelectedRecommendations([]);
+              }}
+            >
+              {recommendationStatusLabel(status)}{" "}
+              <span>{data.recommendations.filter((item) => item.status === status).length}</span>
+            </button>
+          ))}
+        </div>
+        <div className="procurement-recommendation-filters">
+          <label>
+            Поставщик
+            <select
+              aria-label="Фильтр по поставщику"
+              value={recommendationSupplierFilter}
+              onChange={(event) => {
+                setRecommendationSupplierFilter(Number(event.target.value));
+                setSelectedRecommendations([]);
+              }}
+            >
+              <option value={0}>Все поставщики</option>
+              <option value={-1}>Без поставщика</option>
+              {data.suppliers.map((supplier) => (
+                <option key={supplier.id} value={supplier.id}>
+                  {supplier.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Рекомендовано
+            <select
+              aria-label="Фильтр по количеству"
+              value={recommendationMinQty}
+              onChange={(event) => {
+                setRecommendationMinQty(Number(event.target.value));
+                setSelectedRecommendations([]);
+              }}
+            >
+              <option value={0}>Любое количество</option>
+              <option value={10}>Больше 10 шт.</option>
+              <option value={20}>Больше 20 шт.</option>
+            </select>
+          </label>
+          <label>
+            Поиск
+            <input
+              value={recommendationQuery}
+              onChange={(event) => setRecommendationQuery(event.target.value)}
+              placeholder="Название или артикул"
+            />
+          </label>
+          <label>
+            Сортировка
+            <select
+              value={recommendationSort}
+              onChange={(event) => setRecommendationSort(event.target.value)}
+            >
+              <option value="quantity">По количеству</option>
+              <option value="urgent">Сначала заканчивающиеся</option>
+              <option value="name">По названию</option>
+            </select>
+          </label>
+        </div>
+        <div className="procurement-selection-bar">
+          <span role="status" aria-live="polite">
+            {selectedRecommendationItems.length
+              ? `Выбрано: ${quantityLabel(selectedRecommendationItems.length)} · ${selectedRecommendationItems.reduce((sum, item) => sum + item.suggestedQty, 0)} шт.`
+              : quantityLabel(offeredItems.length)}
+          </span>
+          {recommendationView === "recommended" && (
+            <button
+              type="button"
+              onClick={toggleVisibleRecommendations}
+              disabled={!selectableVisibleRecommendations.length}
+            >
+              {allVisibleSelected ? "Снять выделение" : "Выделить все видимые"}
+            </button>
+          )}
+          {recommendationView === "recommended" && bulkSupplier && (
+            <span className="procurement-selection-hint">Поставщик: {bulkSupplier.name}</span>
+          )}
+          <button
+            aria-label="Добавить выбранное"
+            className="admin-primary"
+            disabled={!selectedRecommendationItems.length || !data.suppliers.length}
+            onClick={() => {
+              if (add(selectedRecommendationItems)) setSelectedRecommendations([]);
+            }}
+          >
+            Добавить в закупку · {selectedRecommendationItems.length}
+          </button>
+        </div>
+        {offeredItems.length ? (
+          <ProcurementRecommendationTable
+            items={offeredItems}
+            suppliers={data.suppliers}
+            selected={selectedRecommendations}
+            selectedSupplierId={selectionSupplierId}
+            savingSupplier={savingRecommendationSupplier}
+            periodDays={data.settings.recommendationDays}
+            onSelect={(key, checked) =>
+              setSelectedRecommendations((current) =>
+                checked ? [...current, key] : current.filter((value) => value !== key),
+              )
+            }
+            onSupplier={(sabyId, supplierId) =>
+              void assignRecommendationSupplier(sabyId, supplierId)
+            }
+            onAvailability={(item, status) =>
+              void updateAvailability(item.supplierId, item.sabyId, status, load, onError)
+            }
+            onExclude={(item, excluded) =>
+              void setExclusion(item.sabyId, excluded, "", load, onError)
+            }
+          />
+        ) : (
+          <div className="procurement-zero">
+            <strong>
+              {hasRecommendationFilters
+                ? "Ничего не найдено"
+                : recommendationEmptyTitle(recommendationView)}
+            </strong>
+            <span>
+              {hasRecommendationFilters
+                ? "Измените поиск или фильтры, чтобы увидеть другие товары."
+                : recommendationEmptyText(recommendationView)}
+            </span>
+            {hasRecommendationFilters && (
+              <button
+                onClick={() => {
+                  setRecommendationQuery("");
+                  setRecommendationSupplierFilter(0);
+                  setRecommendationMinQty(0);
+                  setSelectedRecommendations([]);
+                }}
+              >
+                Сбросить фильтры
+              </button>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  };
   if (planDialog)
     return (
       <ProcurementPlanDialog
@@ -509,7 +692,9 @@ export function Procurement({
         draftId={editingDraftId}
         suppliers={activeSuppliers}
         recommendations={actionableRecommendations}
-        initialRecommendations={editingDraftId ? [] : selectedRecommendationItems}
+        initialRecommendations={[]}
+        renderRecommendations={renderRecommendations}
+        onNavigate={(target) => setView(target)}
         settings={data.settings}
         onClose={() => {
           setPlanDialog(false);
@@ -535,23 +720,16 @@ export function Procurement({
             onClick={openNewPlan}
             disabled={activeSuppliers.length === 0}
           >
-            Собрать заказ
+            Создать закупку
+          </button>
+          <button
+            type="button"
+            disabled={activeSuppliers.length === 0}
+            onClick={() => setUploadDialog(true)}
+          >
+            Загрузить инвойс / счёт
           </button>
           <WorkspaceMore label="Ещё действия">
-            <button
-              type="button"
-              disabled={activeSuppliers.length === 0}
-              onClick={() => setUploadDialog(true)}
-            >
-              Загрузить инвойс
-            </button>
-            <button
-              type="button"
-              disabled={activeSuppliers.length === 0}
-              onClick={() => setOrderDialog(true)}
-            >
-              Создать заказ без плана
-            </button>
             <button type="button" onClick={() => setSupplierDialog(true)}>
               Поставщики
             </button>
@@ -584,13 +762,12 @@ export function Procurement({
 
       <div className="procurement-workspace">
         <nav className="procurement-tabs" aria-label="Разделы закупок">
-          {/* Пять ежедневных вкладок на виду, остальное — в «Ещё». */}
           {renderTab("orders", "Закупки")}
-          {renderTab("recommendations", "Что заказать")}
-          {renderTab("drafts", "Планы ", drafts.length)}
+          {renderTab("drafts", "Черновики ", drafts.length)}
           {renderTab("requests", "Под заказ ", data.summary.openRequests)}
-          {renderTab("availability", "Проверить наличие ", data.summary.availabilityChecks)}
+          {renderTab("availability", "Ожидают ответа ", data.summary.availabilityChecks)}
           <WorkspaceMore
+            label="Справочники и сервисы"
             active={[
               "calculator",
               "products",
@@ -621,10 +798,10 @@ export function Procurement({
             <section className="admin-block procurement-block">
               <div className="admin-block-heading">
                 <div>
-                  <h2>Планы закупок</h2>
+                  <h2>Черновики закупок</h2>
                 </div>
                 <button className="admin-primary" onClick={openNewPlan}>
-                  Новый план
+                  Создать черновик
                 </button>
               </div>
               {drafts.length ? (
@@ -653,7 +830,7 @@ export function Procurement({
                 </div>
               ) : (
                 <div className="procurement-zero">
-                  <strong>Планов пока нет</strong>
+                  <strong>Черновиков пока нет</strong>
                   <span>
                     Начните закупку — изменения сохранятся автоматически и будут доступны команде.
                   </span>
@@ -664,11 +841,6 @@ export function Procurement({
           {view === "orders" && (
             <>
               <section className="admin-block procurement-block">
-                <div className="admin-block-heading">
-                  <div>
-                    <h2>Заказы поставщикам</h2>
-                  </div>
-                </div>
                 <div className="procurement-filter-bar">
                   <input
                     aria-label="Поиск закупки"
@@ -681,16 +853,16 @@ export function Procurement({
                     value={orderFilter}
                     onChange={(event) => setOrderFilter(event.target.value)}
                   >
+                    <option value="all">Все закупки</option>
                     <option value="active">В работе</option>
                     <option value="received">Завершённые</option>
                     <option value="cancelled">Отменённые</option>
-                    <option value="all">Все закупки</option>
                   </select>
                   <span>Закупок: {visibleOrders.length}</span>
                 </div>
                 {visibleOrders.length ? (
                   <div className="admin-table-wrap">
-                    <table className="admin-table procurement-orders">
+                    <table className="admin-table procurement-orders" aria-label="Закупки">
                       <thead>
                         <tr>
                           <th>Закупка</th>
@@ -716,9 +888,8 @@ export function Procurement({
                                   }
                                 }}
                               >
-                                {item.title || item.orderNumber || `Закупка №${item.id}`}
+                                {`Закупка № ${item.id}`}
                               </a>
-                              <small>{item.title ? item.orderNumber || `№${item.id}` : ""}</small>
                               <small>{new Date(item.createdAt).toLocaleDateString("ru-RU")}</small>
                             </td>
                             <td>
@@ -741,10 +912,14 @@ export function Procurement({
                               ) : null}
                             </td>
                             <td>
-                              {item.failedActions ? (
+                              {item.status === "cancelled" ? (
+                                <span>Отменена</span>
+                              ) : item.failedActions ? (
                                 <span className="procurement-warning">
-                                  Ошибка отправки · {item.failedActions}
-                                  <small>Откройте закупку и проверьте журнал</small>
+                                  Ошибки в журнале · {item.failedActions}
+                                  <small>
+                                    Включая прошлые попытки — проверьте результат по каналам
+                                  </small>
                                 </span>
                               ) : item.pendingReview ? (
                                 <span className="procurement-warning">
@@ -772,9 +947,29 @@ export function Procurement({
                   </div>
                 ) : (
                   <div className="orders-empty procurement-empty">
-                    <span>⌁</span>
-                    <h3>Закупки не найдены</h3>
-                    <p>Измените фильтр или создайте новый заказ.</p>
+                    <h3>
+                      {orderFilter === "active" && !orderQuery
+                        ? "Заказов в работе нет"
+                        : "Закупки не найдены"}
+                    </h3>
+                    <p>
+                      {orderQuery
+                        ? "Попробуйте другое название или сбросьте поиск."
+                        : "Посмотрите потребность или откройте завершённые закупки."}
+                    </p>
+                    <div className="procurement-inline-actions">
+                      <button className="admin-primary" onClick={openNewPlan}>
+                        Создать закупку
+                      </button>
+                      <button
+                        onClick={() => {
+                          setOrderFilter("all");
+                          setOrderQuery("");
+                        }}
+                      >
+                        Показать все закупки
+                      </button>
+                    </div>
                   </div>
                 )}
                 {visibleOrders.length > pagedOrders.length && (
@@ -854,463 +1049,7 @@ export function Procurement({
                   </section>
                 </details>
               )}
-
-              <details className="procurement-section-details">
-                <summary>
-                  Инвойсы и счета <span>{data.documents.length}</span>
-                </summary>
-                <section className="admin-block procurement-block">
-                  {data.documents.length ? (
-                    <div className="admin-table-wrap">
-                      <table className="admin-table procurement-documents">
-                        <thead>
-                          <tr>
-                            <th>Документ</th>
-                            <th>Поставщик</th>
-                            <th>Формат</th>
-                            <th>Строк / шт.</th>
-                            <th>Растения</th>
-                            <th>Упаковка</th>
-                            <th>Проверка</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.documents.map((item) => (
-                            <tr key={item.id}>
-                              <td>
-                                <a
-                                  href={`/api/v1/admin/procurement/documents/${item.id}/source.pdf`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                >
-                                  {item.documentNumber || item.fileName} ↗ PDF
-                                </a>
-                                {item.orderId > 0 && (
-                                  <a
-                                    href={procurementOrderHref(item.orderId)}
-                                    onClick={(event) => {
-                                      event.preventDefault();
-                                      setSelectedOrder(item.orderId);
-                                    }}
-                                  >
-                                    Открыть закупку №{item.orderId}
-                                  </a>
-                                )}
-                                <small>
-                                  {item.documentDate
-                                    ? new Date(item.documentDate).toLocaleDateString("ru-RU")
-                                    : item.fileName}
-                                </small>
-                                <small>
-                                  Версия {item.revisionNo || 1}
-                                  {item.superseded ? " · заменена" : " · действующая"}
-                                </small>
-                              </td>
-                              <td>{item.supplierName}</td>
-                              <td>{procurementParserLabels[item.parserKind] || item.parserKind}</td>
-                              <td>
-                                {item.lines} / {item.units}
-                              </td>
-                              <td>{formatMoney(item.productSubtotal, item.currency)}</td>
-                              <td>{formatMoney(item.packageTotal, item.currency)}</td>
-                              <td>
-                                {item.arithmeticStatus === "ok" ? (
-                                  <span className="procurement-ok">Суммы сходятся</span>
-                                ) : (
-                                  <span className="procurement-warning">Проверить суммы</span>
-                                )}
-                                <small>
-                                  {item.parseStatus === "review"
-                                    ? "Есть несопоставленные строки"
-                                    : "Разобрано"}
-                                </small>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="procurement-zero">
-                      <strong>Документов пока нет</strong>
-                      <span>
-                        Загрузите PDF поставщика — строки и телеги будут разобраны автоматически.
-                      </span>
-                    </div>
-                  )}
-                </section>
-              </details>
             </>
-          )}
-
-          {view === "recommendations" && (
-            <section className="admin-block procurement-block">
-              <div className="admin-block-heading">
-                <div>
-                  <p className="eyebrow">Остаток СБИС + продажи всех каналов</p>
-                  <h2>Рекомендации к закупке</h2>
-                </div>
-                <button
-                  aria-label="Сформировать заказ"
-                  className="admin-primary"
-                  disabled={!selectedRecommendationItems.length || !data.suppliers.length}
-                  onClick={openNewPlan}
-                >
-                  Сформировать заказ · {selectedRecommendationItems.length}
-                </button>
-              </div>
-              <details className="procurement-explanation">
-                <summary>Как рассчитана потребность</summary>
-                <p className="admin-hint procurement-note">
-                  Продажи и заявки сопоставляются с карточками СБИС в разделах «Цветы» и «Цветы
-                  маркетплейс», включая товары без карточки на сайте. К закупке = подтверждённые
-                  продажи минус возвраты за {data.settings.recommendationDays} дней, пересчитанные
-                  на запас {data.settings.targetCoverDays} дней, + нераспределённые заявки клиентов
-                  и магазина − текущий остаток СБИС − товар в пути. Продажа сайта, уже связанная с
-                  заявкой клиента, повторно не считается. Карточки без спроса остаются во вкладке
-                  «Товары».
-                </p>
-              </details>
-              {(data.salesSync || []).some((item) => item.lastError || item.rowsUnlinked > 0) && (
-                <p className="procurement-warning">
-                  Есть проблемы с данными продаж. Откройте «Актуальность продаж по каналам» перед
-                  формированием заказа.
-                </p>
-              )}
-              <details className="procurement-explanation">
-                <summary>Актуальность продаж по каналам</summary>
-                <div className="sales-sync-grid">
-                  {(data.salesSync || []).map((sync) => (
-                    <article className={`sales-sync-${sync.status}`} key={sync.channel}>
-                      <div>
-                        <strong>{salesChannelLabel(sync.channel)}</strong>
-                        <span>{salesSyncLabel(sync.status)}</span>
-                      </div>
-                      <small>
-                        {sync.lastSuccessAt
-                          ? `Обновлено ${new Date(sync.lastSuccessAt).toLocaleString("ru-RU")}`
-                          : "Ещё не загружалось"}
-                      </small>
-                      <small>
-                        {sync.latestSale
-                          ? `Последняя продажа ${new Date(`${sync.latestSale}T00:00:00`).toLocaleDateString("ru-RU")}`
-                          : "Продаж за период нет"}{" "}
-                        · загружено {sync.rowsSynced} · без товара {sync.rowsUnlinked}
-                      </small>
-                      {sync.rowsUnlinked > 0 && (
-                        <em>
-                          {sync.rowsUnlinked} товарных кодов продаж не сопоставлены и не участвуют в
-                          расчёте — разберите их на вкладке «Продажи без товара»
-                        </em>
-                      )}
-                      {sync.lastError && <em>{sync.lastError}</em>}
-                    </article>
-                  ))}
-                </div>
-              </details>
-              <div className="procurement-recommendation-tabs">
-                {(
-                  [
-                    "recommended",
-                    "already_ordered",
-                    "check_availability",
-                    "supplier_unavailable",
-                    "excluded",
-                  ] as const
-                ).map((status) => (
-                  <button
-                    className={recommendationView === status ? "active" : ""}
-                    key={status}
-                    onClick={() => {
-                      setRecommendationView(status);
-                      setSelectedRecommendations([]);
-                    }}
-                  >
-                    {recommendationStatusLabel(status)}{" "}
-                    <span>
-                      {data.recommendations.filter((item) => item.status === status).length}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div className="procurement-recommendation-filters">
-                <label>
-                  Поставщик
-                  <select
-                    aria-label="Фильтр по поставщику"
-                    value={recommendationSupplierFilter}
-                    onChange={(event) => {
-                      setRecommendationSupplierFilter(Number(event.target.value));
-                      setSelectedRecommendations([]);
-                    }}
-                  >
-                    <option value={0}>Все поставщики</option>
-                    <option value={-1}>Без поставщика</option>
-                    {data.suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Рекомендовано
-                  <select
-                    aria-label="Фильтр по количеству"
-                    value={recommendationMinQty}
-                    onChange={(event) => {
-                      setRecommendationMinQty(Number(event.target.value));
-                      setSelectedRecommendations([]);
-                    }}
-                  >
-                    <option value={0}>Любое количество</option>
-                    <option value={10}>Больше 10 шт.</option>
-                    <option value={20}>Больше 20 шт.</option>
-                  </select>
-                </label>
-                <label>
-                  Поиск
-                  <input
-                    value={recommendationQuery}
-                    onChange={(event) => setRecommendationQuery(event.target.value)}
-                    placeholder="Название или артикул"
-                  />
-                </label>
-                <label>
-                  Порядок
-                  <select
-                    value={recommendationSort}
-                    onChange={(event) => setRecommendationSort(event.target.value)}
-                  >
-                    <option value="quantity">Сначала большее количество</option>
-                    <option value="name">По названию</option>
-                  </select>
-                </label>
-                <span>
-                  {quantityLabel(recommendationItems.length)} · выбрано{" "}
-                  {selectedRecommendationItems.reduce((sum, item) => sum + item.suggestedQty, 0)}{" "}
-                  шт.
-                </span>
-                {recommendationView === "recommended" && (
-                  <button
-                    type="button"
-                    onClick={toggleVisibleRecommendations}
-                    disabled={
-                      recommendationSupplierFilter <= 0 || !selectableVisibleRecommendations.length
-                    }
-                  >
-                    {allVisibleSelected ? "Снять выделение" : "Выделить все видимые"}
-                  </button>
-                )}
-              </div>
-              {recommendationView === "recommended" && recommendationSupplierFilter <= 0 && (
-                <p className="admin-hint procurement-note">
-                  Для массового выбора сначала укажите одного поставщика. У товара без поставщика
-                  его можно назначить прямо в строке.
-                </p>
-              )}
-              {recommendationItems.length ? (
-                <div className="admin-table-wrap">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Выбрать</th>
-                        <th>Товар</th>
-                        <th>Поставщик / артикул</th>
-                        <th>Остаток / в пути</th>
-                        <th>Продажи</th>
-                        <th>Хватит на</th>
-                        <th>Запросы</th>
-                        <th>Заказать</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recommendationItems.map((item) => {
-                        const key = `${item.supplierId}:${item.sabyId}`;
-                        const selectable = item.status === "recommended" && item.supplierId > 0;
-                        return (
-                          <tr key={key}>
-                            <td>
-                              {selectable && (
-                                <input
-                                  aria-label={`Выбрать ${item.name}`}
-                                  type="checkbox"
-                                  checked={selectedRecommendations.includes(key)}
-                                  disabled={
-                                    selectedSupplierId != null &&
-                                    selectedSupplierId !== item.supplierId
-                                  }
-                                  onChange={(event) =>
-                                    setSelectedRecommendations((current) =>
-                                      event.target.checked
-                                        ? [...current, key]
-                                        : current.filter((value) => value !== key),
-                                    )
-                                  }
-                                />
-                              )}
-                            </td>
-                            <td>
-                              <strong>{item.name}</strong>
-                              <small>{item.reason}</small>
-                              {item.lastSaleAt && (
-                                <small>
-                                  Последняя продажа:{" "}
-                                  {new Date(item.lastSaleAt).toLocaleDateString("ru-RU")}
-                                </small>
-                              )}
-                              {item.lastOrderedAt && (
-                                <small>
-                                  Последняя закупка:{" "}
-                                  {new Date(item.lastOrderedAt).toLocaleDateString("ru-RU")}
-                                </small>
-                              )}
-                            </td>
-                            <td>
-                              <select
-                                aria-label={`Поставщик для ${item.name}`}
-                                value={item.supplierId}
-                                disabled={savingRecommendationSupplier === item.sabyId}
-                                onChange={(event) =>
-                                  void assignRecommendationSupplier(
-                                    item.sabyId,
-                                    Number(event.target.value),
-                                  )
-                                }
-                              >
-                                <option value={0}>Поставщик не назначен</option>
-                                {data.suppliers.map((supplier) => (
-                                  <option key={supplier.id} value={supplier.id}>
-                                    {supplier.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <small>
-                                {savingRecommendationSupplier === item.sabyId
-                                  ? "Сохраняем…"
-                                  : item.supplierId
-                                    ? item.supplierArticle || "Артикул не заполнен"
-                                    : "Выберите поставщика"}
-                              </small>
-                            </td>
-                            <td>
-                              <strong>
-                                {item.balanceKnown === false ? "Неизвестен" : item.balance} /{" "}
-                                {item.incoming}
-                              </strong>
-                              <small>
-                                {item.balanceAsOf
-                                  ? `СБИС: ${new Date(item.balanceAsOf).toLocaleString("ru-RU")}`
-                                  : "Дата остатка неизвестна"}
-                              </small>
-                            </td>
-                            <td>
-                              <strong>{item.totalSales}</strong>
-                              <small>
-                                всего {item.grossSales ?? item.totalSales} − возвраты{" "}
-                                {item.returns ?? 0}
-                              </small>
-                              <small>
-                                магазин {item.sabySales} · сайт {item.siteSales} · WB {item.wbSales}{" "}
-                                · Ozon {item.ozonSales}
-                              </small>
-                            </td>
-                            <td>
-                              {item.daysOfCover == null
-                                ? "Нет продаж"
-                                : `${Math.round(item.daysOfCover)} дн.`}
-                            </td>
-                            <td>
-                              {item.openRequests}
-                              <small>
-                                {item.customerRequests ? `клиенту ${item.customerRequests}` : ""}
-                                {item.staffRequests
-                                  ? `${item.customerRequests ? " · " : ""}магазину ${item.staffRequests}`
-                                  : ""}
-                              </small>
-                            </td>
-                            <td>
-                              <strong>
-                                {item.quantityKnown === false
-                                  ? "Задать вручную"
-                                  : `${item.suggestedQty} шт.`}
-                              </strong>
-                              <small>
-                                {item.roundingExplanation ||
-                                  (item.demandQty == null
-                                    ? `Минимум ${item.minimumOrderQty}, кратно ${item.orderMultiple}`
-                                    : `Потребность ${item.demandQty} − остаток ${item.balance} − в пути ${item.incoming}`)}
-                              </small>
-                            </td>
-                            <td>
-                              <div className="procurement-inline-actions">
-                                {item.supplierId > 0 &&
-                                  item.status !== "check_availability" &&
-                                  item.status !== "excluded" && (
-                                    <button
-                                      onClick={() =>
-                                        void updateAvailability(
-                                          item.supplierId,
-                                          item.sabyId,
-                                          "check",
-                                          load,
-                                          onError,
-                                        )
-                                      }
-                                    >
-                                      Проверить наличие
-                                    </button>
-                                  )}
-                                {item.supplierId > 0 &&
-                                  item.status !== "supplier_unavailable" &&
-                                  item.status !== "excluded" && (
-                                    <button
-                                      onClick={() =>
-                                        void updateAvailability(
-                                          item.supplierId,
-                                          item.sabyId,
-                                          "temporarily_unavailable",
-                                          load,
-                                          onError,
-                                        )
-                                      }
-                                    >
-                                      Нет у поставщика
-                                    </button>
-                                  )}
-                                {item.status === "excluded" ? (
-                                  <button
-                                    onClick={() =>
-                                      void setExclusion(item.sabyId, false, "", load, onError)
-                                    }
-                                  >
-                                    Вернуть в закупку
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() =>
-                                      void setExclusion(item.sabyId, true, "", load, onError)
-                                    }
-                                  >
-                                    Не закупать
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="procurement-zero">
-                  <strong>{recommendationEmptyTitle(recommendationView)}</strong>
-                  <span>{recommendationEmptyText(recommendationView)}</span>
-                </div>
-              )}
-            </section>
           )}
 
           {view === "products" && (
@@ -1696,24 +1435,15 @@ export function Procurement({
           onError={onError}
         />
       )}
-      {orderDialog && (
-        <ProcurementOrderDialog
-          suppliers={activeSuppliers}
-          onClose={() => setOrderDialog(false)}
-          onSaved={() => {
-            setOrderDialog(false);
-            void load();
-          }}
-          onError={onError}
-        />
-      )}
       {uploadDialog && (
         <ProcurementUploadDialog
           suppliers={activeSuppliers}
           orders={data.orders}
           onClose={() => setUploadDialog(false)}
-          onSaved={() => {
+          onSaved={(id) => {
             setUploadDialog(false);
+            setView("orders");
+            setSelectedOrder(id);
             void load();
           }}
         />
@@ -1761,6 +1491,7 @@ export function Procurement({
         <ProcurementOrderDetailDialog
           settings={data.settings}
           orderId={selectedOrder}
+          documents={data.documents.filter((item) => item.orderId === selectedOrder)}
           canDelete={canDelete}
           onClose={() => setSelectedOrder(null)}
           onSaved={() => {

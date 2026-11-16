@@ -346,10 +346,7 @@
     padding: 12px 16px;
     gap: 8px;
   }
-  .admin-page .procurement-draft-title {
-    min-width: 100%;
-    width: 100%;
-  }
+
   .admin-page .procurement-plan-table-wrap {
     margin: 0 16px;
     overflow: visible;
@@ -394,31 +391,7 @@
     font-size: 12px;
     color: #52565e;
   }
-  .admin-page .procurement-plan-table td:nth-child(1)::before {
-    content: "Название у поставщика";
-  }
-  .admin-page .procurement-plan-table td:nth-child(2)::before {
-    content: "Товар / связь с СБИС";
-  }
-  .admin-page .procurement-plan-table td:nth-child(3)::before {
-    content: "Артикул";
-  }
-  .admin-page .procurement-plan-table td:nth-child(4)::before {
-    content: "Диаметр · высота, см";
-  }
-  .admin-page .procurement-plan-table td:nth-child(5)::before {
-    content: "Упаковки × штук";
-  }
-  .admin-page .procurement-plan-table td:nth-child(6)::before {
-    content: "Цена поставщика / шт.";
-  }
-  .admin-page .procurement-plan-table td:nth-child(7)::before {
-    content: "Предварительная стоимость";
-  }
-  .admin-page .procurement-plan-table td:nth-child(8) {
-    justify-self: end;
-    align-self: end;
-  }
+
   .admin-page .procurement-plan-footer {
     position: fixed;
     z-index: 1202;

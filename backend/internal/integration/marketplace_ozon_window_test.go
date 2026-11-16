@@ -18,8 +18,8 @@ func TestOzonPostingsAreRequestedByMonthlyWindows(t *testing.T) {
 	windows := 0
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
-		if request.URL.Path != "/v3/posting/fbs/list" {
-			_, _ = response.Write([]byte(`{"result":{"postings":[]}}`))
+		if request.URL.Path != "/v4/posting/fbs/list" {
+			_, _ = response.Write([]byte(`{"postings":[]}`))
 			return
 		}
 		var payload struct {
@@ -32,7 +32,7 @@ func TestOzonPostingsAreRequestedByMonthlyWindows(t *testing.T) {
 			t.Fatal("статус в фильтре: у FBS и FBO наборы значений разные")
 		}
 		windows++
-		_, _ = response.Write([]byte(`{"result":{"postings":[{"created_at":"2026-08-05T10:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":1,"price":"100"}]}]}}`))
+		_, _ = response.Write([]byte(`{"postings":[{"created_at":"2026-08-05T10:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"100","currency":"RUB"}}]}]}`))
 	}))
 	defer server.Close()
 

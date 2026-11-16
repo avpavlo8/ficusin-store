@@ -16,10 +16,10 @@ func TestOzonPostingWithoutCreatedAtStillCounts(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if !strings.Contains(request.URL.Path, "/fbs/") {
-			_, _ = response.Write([]byte(`{"result":[]}`))
+			_, _ = response.Write([]byte(`{"postings":[]}`))
 			return
 		}
-		_, _ = response.Write([]byte(`{"result":{"postings":[{"in_process_at":"2026-08-01T10:00:00Z","shipment_date":"2026-08-02T10:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":3,"price":"100"}]}]}}`))
+		_, _ = response.Write([]byte(`{"postings":[{"in_process_at":"2026-08-01T10:00:00Z","shipment_date":"2026-08-02T10:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":3,"price":{"amount":"100","currency":"RUB"}}]}]}`))
 	}))
 	defer server.Close()
 
@@ -43,17 +43,17 @@ func TestOzonCountsShipmentAfterItLeavesSeller(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if !strings.Contains(request.URL.Path, "/fbs/") {
-			_, _ = response.Write([]byte(`{"result":[]}`))
+			_, _ = response.Write([]byte(`{"postings":[]}`))
 			return
 		}
-		_, _ = response.Write([]byte(`{"result":{"postings":[
-			{"posting_number":"A","in_process_at":"2026-09-25T10:00:00Z","status":"awaiting_deliver","products":[{"offer_id":"OZ-1","quantity":1,"price":"100"}]},
-			{"posting_number":"B","in_process_at":"2026-09-25T11:00:00Z","status":"driver_pickup","products":[{"offer_id":"OZ-1","quantity":1,"price":"100"}]},
-			{"posting_number":"C","in_process_at":"2026-09-25T12:00:00Z","status":"delivering","products":[{"offer_id":"OZ-1","quantity":1,"price":"100"}]},
-			{"posting_number":"D","in_process_at":"2026-09-25T13:00:00Z","status":"last_mile","products":[{"offer_id":"OZ-1","quantity":1,"price":"100"}]},
-			{"posting_number":"E","in_process_at":"2026-09-25T14:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":1,"price":"100"}]},
-			{"posting_number":"F","in_process_at":"2026-09-25T15:00:00Z","status":"cancelled","products":[{"offer_id":"OZ-1","quantity":1,"price":"100"}]}
-		]}}`))
+		_, _ = response.Write([]byte(`{"postings":[
+			{"posting_number":"A","in_process_at":"2026-09-25T10:00:00Z","status":"awaiting_deliver","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"100","currency":"RUB"}}]},
+			{"posting_number":"B","in_process_at":"2026-09-25T11:00:00Z","status":"driver_pickup","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"100","currency":"RUB"}}]},
+			{"posting_number":"C","in_process_at":"2026-09-25T12:00:00Z","status":"delivering","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"100","currency":"RUB"}}]},
+			{"posting_number":"D","in_process_at":"2026-09-25T13:00:00Z","status":"last_mile","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"100","currency":"RUB"}}]},
+			{"posting_number":"E","in_process_at":"2026-09-25T14:00:00Z","status":"delivered","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"100","currency":"RUB"}}]},
+			{"posting_number":"F","in_process_at":"2026-09-25T15:00:00Z","status":"cancelled","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"100","currency":"RUB"}}]}
+		]}`))
 	}))
 	defer server.Close()
 

@@ -84,7 +84,7 @@ func (executor *MarketplaceExecutor) DescribeSalesFailure(
 		return cause
 	}
 	reports := make([]string, 0, 2)
-	for _, path := range []string{"/v3/posting/fbs/list", "/v2/posting/fbo/list"} {
+	for _, path := range []string{ozonFBSPostingsPath, ozonFBOPostingsPath} {
 		reports = append(reports, executor.scanOzonPostings(ctx, path, from, to).describe())
 	}
 	return fmt.Errorf("%w. Разведка за %s — %s: %s", cause,

@@ -18,13 +18,13 @@ func TestOzonFailureIsExplainedByWhatWasSeen(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Content-Type", "application/json")
 		if strings.Contains(request.URL.Path, "/fbs/") {
-			_, _ = response.Write([]byte(`{"result":{"postings":[` +
-				`{"created_at":"2026-08-01T10:00:00Z","status":"cancelled","products":[{"offer_id":"OZ-1","quantity":1,"price":"100"}]},` +
-				`{"created_at":"2026-08-01T11:00:00Z","status":"cancelled","products":[]}]}}`))
+			_, _ = response.Write([]byte(`{"postings":[` +
+				`{"created_at":"2026-08-01T10:00:00Z","status":"cancelled","products":[{"offer_id":"OZ-1","quantity":1,"price":{"amount":"100","currency":"RUB"}}]},` +
+				`{"created_at":"2026-08-01T11:00:00Z","status":"cancelled","products":[]}]}`))
 			return
 		}
-		_, _ = response.Write([]byte(`{"result":[` +
-			`{"created_at":"2026-08-01T12:00:00Z","status":"delivered","products":[{"offer_id":"","quantity":2,"price":"200"}]}]}`))
+		_, _ = response.Write([]byte(`{"postings":[` +
+			`{"created_at":"2026-08-01T12:00:00Z","status":"delivered","products":[{"offer_id":"","quantity":2,"price":{"amount":"200","currency":"RUB"}}]}]}`))
 	}))
 	defer server.Close()
 
@@ -37,8 +37,8 @@ func TestOzonFailureIsExplainedByWhatWasSeen(t *testing.T) {
 		t.Fatalf("исходная причина потеряна: %v", err)
 	}
 	for _, fragment := range []string{
-		"/v3/posting/fbs/list", "cancelled 2", "доставленных 0",
-		"/v2/posting/fbo/list", "доставленных 1", "с кодом продавца 0",
+		"/v4/posting/fbs/list", "cancelled 2", "доставленных 0",
+		"/v3/posting/fbo/list", "доставленных 1", "с кодом продавца 0",
 	} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("в сообщении нет «%s»: %s", fragment, err.Error())
