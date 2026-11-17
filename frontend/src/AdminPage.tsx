@@ -30,6 +30,7 @@ const AdminAvito = lazy(() =>
   import("./AdminAvito").then((module) => ({ default: module.AdminAvito })),
 );
 const AdminChat = lazy(() => import("./AdminChat"));
+const AdminInstructions = lazy(() => import("./AdminInstructions"));
 const Customers = lazy(() =>
   import("./AdminSales").then((module) => ({ default: module.Customers })),
 );
@@ -133,6 +134,13 @@ export default function AdminPage() {
           )}
           {allowed && (
             <>
+              {section === "instructions" && (
+                <Suspense
+                  fallback={<WorkspaceState kind="loading" title="Загружаем инструкции…" />}
+                >
+                  <AdminInstructions />
+                </Suspense>
+              )}
               {["categories", "collections"].includes(section) && (
                 <nav className="workspace-catalog-nav" aria-label="Каталог">
                   {(
