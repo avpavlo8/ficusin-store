@@ -18,3 +18,9 @@ test("fixed literal repetitions and ordinary Vite file globs still match", () =>
   assert.equal(picomatch("src/**/*.{ts,tsx}")("src/catalog/Product.tsx"), true);
   assert.equal(picomatch("src/**/*.{ts,tsx}")("src/catalog/Product.css"), false);
 });
+
+test("scan unescapes a path prefix and keeps escapes inside a character class", () => {
+  const parsed = picomatch.scan("src/\\[draft\\]/**/[a\\]]*.tsx", { unescape: true });
+  assert.equal(parsed.base, "src/[draft]");
+  assert.equal(parsed.glob, "**/[a\\]]*.tsx");
+});

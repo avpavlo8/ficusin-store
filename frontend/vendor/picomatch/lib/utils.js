@@ -3,7 +3,6 @@
 
 const {
   REGEX_BACKSLASH,
-  REGEX_REMOVE_BACKSLASH,
   REGEX_SPECIAL_CHARS,
   REGEX_SPECIAL_CHARS_GLOBAL
 } = require('./constants');
@@ -28,9 +27,32 @@ exports.isWindows = () => {
 };
 
 exports.removeBackslashes = str => {
-  return str.replace(REGEX_REMOVE_BACKSLASH, match => {
-    return match === '\\' ? '' : match;
-  });
+  const lineBreak = /[\r\n\u2028\u2029]/;
+  const closesBracket = index => str[index] === ']' && str[index - 1] !== '\\';
+  let output = '';
+  let bracketEnd = 0;
+
+  for (let index = 0; index < str.length; index++) {
+    const char = str[index];
+    if (char === '[') {
+      // Keep the search cursor between openers so an unmatched bracket
+      // cannot cause the same suffix to be scanned again.
+      bracketEnd = Math.max(bracketEnd, index + 2);
+      while (bracketEnd < str.length && !closesBracket(bracketEnd) &&
+             !lineBreak.test(str[bracketEnd - 1])) {
+        bracketEnd++;
+      }
+      if (closesBracket(bracketEnd)) {
+        output += str.slice(index, bracketEnd + 1);
+        index = bracketEnd;
+        continue;
+      }
+    }
+    if (char !== '\\' || index + 1 === str.length || lineBreak.test(str[index + 1])) {
+      output += char;
+    }
+  }
+  return output;
 };
 
 exports.escapeLast = (input, char, lastIdx) => {
