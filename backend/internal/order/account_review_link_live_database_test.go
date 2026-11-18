@@ -2,15 +2,17 @@ package order
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/reviews"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestAccountReviewLinkUsesPublishedProductCodeOnLiveDatabase(t *testing.T) {
+func TestAccountReviewLinkAndSubmissionOnLiveDatabase(t *testing.T) {
 	dsn := os.Getenv("TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL is not set")
@@ -29,6 +31,7 @@ func TestAccountReviewLinkUsesPublishedProductCodeOnLiveDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM product_reviews WHERE order_id=$1`, orderID)
 		_, _ = pool.Exec(ctx, `DELETE FROM orders WHERE id=$1`, orderID)
 		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, productID)
 		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, customerID)
@@ -61,6 +64,26 @@ func TestAccountReviewLinkUsesPublishedProductCodeOnLiveDatabase(t *testing.T) {
 		}
 	}
 	check(code)
+
+	store := reviews.NewStore(pool)
+	input := reviews.Input{Rating: 5, Text: "Все отлично"}
+	reviewID, err := store.Create(ctx, customerID, code, input)
+	if err != nil {
+		t.Fatalf("submit a text review from the order link: %v", err)
+	}
+	var status, body string
+	var reviewedOrderID int64
+	if err := pool.QueryRow(ctx, `SELECT status,body,order_id FROM product_reviews WHERE id=$1`, reviewID).
+		Scan(&status, &body, &reviewedOrderID); err != nil {
+		t.Fatal(err)
+	}
+	if status != "published" || body != input.Text || reviewedOrderID != orderID {
+		t.Fatalf("unexpected saved review: status=%q, body=%q, order=%d", status, body, reviewedOrderID)
+	}
+	if _, err := store.Create(ctx, customerID, code, input); !errors.Is(err, reviews.ErrAlreadyReviewed) {
+		t.Fatalf("duplicate review: got %v, want %v", err, reviews.ErrAlreadyReviewed)
+	}
+
 	if _, err := pool.Exec(ctx, `UPDATE products SET status='draft' WHERE id=$1`, productID); err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,31 @@ import (
 	"github.com/avpavlo8/ficusin-store/backend/internal/auth"
 	"github.com/avpavlo8/ficusin-store/backend/internal/reviews"
 )
+
+func TestCreateReviewSeparatesInvalidInputFromServerError(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		code int
+		body string
+	}{
+		{"invalid input", reviews.ErrInvalidReview, http.StatusBadRequest, "Проверьте оценку"},
+		{"server error", errors.New("database error"), http.StatusInternalServerError, "Попробуйте позже"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dependencies := testDependencies(catalogStub{}, authStub{user: &auth.User{ID: 42}})
+			dependencies.Reviews = &reviewStoreStub{createErr: test.err}
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/products/81/reviews", strings.NewReader(`{"rating":5,"text":"Все отлично"}`))
+			request.Header.Set("Content-Type", "application/json")
+			request.AddCookie(&http.Cookie{Name: auth.CookieName, Value: "session"})
+			response := httptest.NewRecorder()
+			NewRouter(discardLogger(), dependencies).ServeHTTP(response, request)
+			if response.Code != test.code || !strings.Contains(response.Body.String(), test.body) {
+				t.Fatalf("status=%d body=%s, want %d and %q", response.Code, response.Body.String(), test.code, test.body)
+			}
+		})
+	}
+}
 
 type reviewStoreStub struct {
 	createID   int64

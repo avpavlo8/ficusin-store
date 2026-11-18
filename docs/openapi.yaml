@@ -6749,6 +6749,8 @@ paths:
       operationId: post_products_slug_reviews
       x-file-storage: New files use verified private S3 objects; existing bytea and legacy review object keys remain readable. No database fallback for new uploads.
       responses:
+        "500":
+          description: The server could not save the review.
         "503":
           $ref: "#/components/responses/PrivateFileStorageUnavailable"
         2XX:
