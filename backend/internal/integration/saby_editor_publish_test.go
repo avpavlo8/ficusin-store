@@ -408,3 +408,31 @@ func TestSabyEditorFailedCreationRevisionStillPublishesInitialPrice(t *testing.T
 		t.Fatal("content edit rewrote a finished card price", updated, matched, err)
 	}
 }
+
+func TestSabyExistingGalleryKeepsManualPhotoAndItsCover(t *testing.T) {
+	f := newSabyEditorNativeFixture(t)
+	p := f.publisher()
+	r := sabyEditorRequestFixture()
+	r.Action, r.SabyID = "update", "1101"
+	oldSource := "https://example.com/site-removed.jpg"
+	gallery := sabyRecordField(f.card, "ImageData").(map[string]any)
+	gallery["d"] = []any{
+		[]any{"manual-id", "/manual", "https://example.com/manual.jpg", "manual.jpg", "Manual title", nil, true, true, true, "", false, nil, "{}", true},
+		[]any{"site-old-id", "/site-old", oldSource, "site-removed.jpg", "From site", nil, false, true, true, "", false, nil, "{}", true},
+	}
+	progress := ce.Progress{SitePhotos: &ce.SitePhotoBaseline{Before: []string{oldSource}}}
+	result := driveSabyEditorFixture(t, p, r, progress)
+	if result.Status != "synced" || f.creates != 0 || f.updates != 1 || f.uploads != len(r.Images) {
+		t.Fatalf("existing card photo delta did not finish: %+v", result)
+	}
+	raw, _ := json.Marshal(sabyRecordField(f.card, "ImageData"))
+	got, err := parseSabyEditorNativeRecordSet(raw)
+	if err != nil || len(got.rows) != len(r.Images)+1 || string(got.cell(0, "id")) != `"manual-id"` || string(got.cell(0, "isMaster")) != "true" || string(got.cell(0, "title")) != `"Manual title"` {
+		t.Fatalf("seller cover and its metadata were lost: %s, %v", raw, err)
+	}
+	for i := range got.rows {
+		if string(got.cell(i, "id")) == `"site-old-id"` {
+			t.Fatal("deleted site photo still exists")
+		}
+	}
+}

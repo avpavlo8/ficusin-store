@@ -140,7 +140,9 @@ func (r *PostgresRepository) SyncExistingEditorPlan(ctx context.Context, actor A
 			if status == "processing" || status == "queued" {
 				_, err = tx.Exec(ctx, `UPDATE catalog_editor_publications SET pending_payload=$3,pending_fingerprint=$4,updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, variant, channel, updated, hash)
 			} else {
-				_, err = tx.Exec(ctx, `UPDATE catalog_editor_publications SET payload=$3,fingerprint=$4,pending_payload=NULL,pending_fingerprint=NULL,progress='{}'::jsonb,status='prepared',message='Сохранённый контент ожидает обновления',next_attempt_at=NOW(),updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, variant, channel, updated, hash)
+				next := ce.Request{Action: "update", ExistingID: linked, ProductID: productID, VariantID: variant}
+				progressRaw, _ := json.Marshal(ce.Progress{SitePhotos: ce.CarrySitePhotos(channel, status, prior, next, progress)})
+				_, err = tx.Exec(ctx, `UPDATE catalog_editor_publications SET payload=$3,fingerprint=$4,pending_payload=NULL,pending_fingerprint=NULL,progress=$5,status='prepared',message='Сохранённый контент ожидает обновления',next_attempt_at=NOW(),updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, variant, channel, updated, hash, progressRaw)
 			}
 			if err != nil {
 				return out, err

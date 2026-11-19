@@ -103,6 +103,15 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 		progress.Stage = "ozon-reapply-unknown"
 		progress.Ambiguous = true
 	}
+	if status == "processing" && request.Action == "update" {
+		switch {
+		case channel == "ozon" && progress.Stage == "update" && progress.UpdateRequest != nil,
+			channel == "wb" && progress.Stage == "media",
+			channel == "flowwow" && progress.Stage == "update":
+			progress.Stage = "gallery-update-unknown"
+			progress.Ambiguous = true
+		}
+	}
 	if status == "processing" && channel == "saby" {
 		// These leases may have died after the vendor accepted a write but
 		// before its reply/progress committed. Never replay that POST blindly.
@@ -269,6 +278,7 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 			var next Request
 			if decodePublicationRequest(channel, pendingRaw, &next) == nil {
 				if nextProgress, ready := PendingPublicationProgress(channel, result.Status, request, next, result.Progress); ready {
+					nextProgress.SitePhotos = CarrySitePhotos(channel, result.Status, request, next, result.Progress)
 					progressRaw, _ := json.Marshal(nextProgress)
 					if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET payload=pending_payload,fingerprint=pending_fingerprint,progress=$3,status='prepared',message='Сохранены новые изменения, ожидают отправки',pending_payload=NULL,pending_fingerprint=NULL,next_attempt_at=NOW() WHERE variant_id=$1 AND channel=$2`, variant, channel, progressRaw); e != nil {
 						return e

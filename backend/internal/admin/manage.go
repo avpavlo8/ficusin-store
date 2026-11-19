@@ -556,19 +556,8 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 				WHERE variant.product_id=p.id AND variant.is_active=1 AND variant.archived_at IS NULL
 					AND e.show_in_summary AND NOT e.is_excluded
 					AND (value.value IS NULL OR value.value='null'::jsonb OR value.value='""'::jsonb OR value.value='[]'::jsonb)
-			), EXISTS(
-				SELECT 1 FROM product_attribute_values value JOIN attribute_definitions definition ON definition.id=value.attribute_id
-				WHERE value.product_id=p.id AND definition.data_type IN ('enum','multi_enum') AND (
-					(definition.data_type='enum' AND NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=(value.value#>>'{}') AND option.is_active)) OR
-					(definition.data_type='multi_enum' AND (jsonb_typeof(value.value)<>'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value ELSE '[]'::jsonb END) selected WHERE NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=selected AND option.is_active))))
-				)
-				UNION ALL
-				SELECT 1 FROM variant_attribute_values value JOIN product_variants variant ON variant.id=value.variant_id JOIN attribute_definitions definition ON definition.id=value.attribute_id
-				WHERE variant.product_id=p.id AND definition.data_type IN ('enum','multi_enum') AND (
-					(definition.data_type='enum' AND NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=(value.value#>>'{}') AND option.is_active)) OR
-					(definition.data_type='multi_enum' AND (jsonb_typeof(value.value)<>'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(value.value)='array' THEN value.value ELSE '[]'::jsonb END) selected WHERE NOT EXISTS(SELECT 1 FROM attribute_options option WHERE option.attribute_id=definition.id AND option.code=selected AND option.is_active))))
-				)
-			),
+			), invalid_enums.product_invalid OR jsonb_array_length(invalid_enums.variant_tasks)>0,
+			invalid_enums.variant_tasks,
             (SELECT COUNT(*) FROM product_variants v WHERE v.product_id=p.id AND v.archived_at IS NULL),
             (SELECT CASE WHEN COUNT(*)=COUNT(i.synced_at) AND MIN(i.synced_at)>TIMESTAMPTZ '1970-01-02' THEN MIN(i.synced_at) END FROM product_variants v LEFT JOIN order_sale_inventory i ON i.variant_id=v.id WHERE v.product_id=p.id AND v.is_active<>0),
             p.updated_at,
@@ -594,6 +583,44 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			SELECT * FROM product_variants WHERE product_id = p.id
 			ORDER BY is_active DESC, id LIMIT 1
 		) pv ON TRUE
+		CROSS JOIN LATERAL (
+			WITH RECURSIVE ancestors AS (
+				SELECT id,parent_id,0 depth FROM categories WHERE id=p.category_id
+				UNION ALL SELECT c.id,c.parent_id,a.depth+1 FROM categories c JOIN ancestors a ON a.parent_id=c.id
+			), candidates AS (
+				SELECT d.id,d.name,d.data_type,d.value_scope,ca.is_excluded,a.depth
+				FROM ancestors a JOIN category_attributes ca ON ca.category_id=a.id
+				JOIN attribute_definitions d ON d.id=ca.attribute_id
+				WHERE d.is_active AND d.data_type IN ('enum','multi_enum')
+				UNION ALL
+				SELECT id,name,data_type,value_scope,FALSE,1000000 FROM attribute_definitions
+				WHERE is_active AND is_global AND data_type IN ('enum','multi_enum')
+			), effective AS (
+				SELECT DISTINCT ON(id) * FROM candidates ORDER BY id,depth
+			), saved AS (
+				SELECT a.attribute_id,a.value,NULL::BIGINT variant_id,'' label,'' sku
+				FROM product_attribute_values a WHERE a.product_id=p.id
+				UNION ALL
+				SELECT a.attribute_id,a.value,v.id,v.label,v.sku
+				FROM product_variants v JOIN variant_attribute_values a ON a.variant_id=v.id
+				WHERE v.product_id=p.id AND v.is_active<>0 AND v.archived_at IS NULL
+			), invalid AS (
+				SELECT s.variant_id,s.label,s.sku,e.name FROM saved s JOIN effective e ON e.id=s.attribute_id
+				WHERE NOT e.is_excluded AND e.value_scope=CASE WHEN s.variant_id IS NULL THEN 'product' ELSE 'variant' END
+					AND s.value NOT IN ('null'::jsonb,'""'::jsonb,'[]'::jsonb)
+					AND CASE e.data_type
+						WHEN 'enum' THEN NOT EXISTS(SELECT 1 FROM attribute_options o
+							WHERE o.attribute_id=e.id AND o.is_active AND o.code=s.value#>>'{}')
+						ELSE jsonb_typeof(s.value)<>'array' OR EXISTS(
+							SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(s.value)='array' THEN s.value ELSE '[]'::jsonb END) selected
+							WHERE NOT EXISTS(SELECT 1 FROM attribute_options o WHERE o.attribute_id=e.id AND o.is_active AND o.code=selected))
+					END
+			)
+			SELECT COALESCE(bool_or(variant_id IS NULL),FALSE) product_invalid,
+				COALESCE(jsonb_agg('Размер '||label||' · артикул '||sku||' — выберите актуальное значение: '||name ORDER BY variant_id,name)
+				FILTER(WHERE variant_id IS NOT NULL),'[]'::jsonb) variant_tasks
+			FROM invalid
+		) invalid_enums
 		ORDER BY p.updated_at DESC, p.name
 	`)
 	if err != nil {
@@ -605,7 +632,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 		var item Product
 		var externalIDs []byte
 		var attributes []byte
-		var variantTasks []byte
+		var variantTasks, variantEnumTasks []byte
 		if err := rows.Scan(&item.ID, &item.Slug, &item.ProductCode, &item.Name,
 			&item.LatinName, &item.ShortDescription, &item.Description,
 			&item.CareInstructions, &item.Status, &item.Featured,
@@ -616,7 +643,7 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 			&item.PackageHeightCM, &item.PackageWeightGrams, &item.WholesaleMinQty,
 			&item.SabyCode,
 			&item.CategoryID, &item.Passport, &item.ImportantWarnings,
-			&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues, &item.VariantCount, &item.StockUpdatedAt, &item.UpdatedAt, &item.TotalStock, &item.MinPrice, &item.MaxPrice, &item.VariantsReady, &variantTasks); err != nil {
+			&externalIDs, &attributes, &item.VariantStage1Missing, &item.UnknownEnumValues, &variantEnumTasks, &item.VariantCount, &item.StockUpdatedAt, &item.UpdatedAt, &item.TotalStock, &item.MinPrice, &item.MaxPrice, &item.VariantsReady, &variantTasks); err != nil {
 			return nil, fmt.Errorf("scan admin product: %w", err)
 		}
 		if err := json.Unmarshal(externalIDs, &item.ExternalIDs); err != nil {
@@ -627,6 +654,9 @@ func (repository *PostgresRepository) ListProducts(ctx context.Context) ([]Produ
 		}
 		if err := json.Unmarshal(variantTasks, &item.VariantTasks); err != nil {
 			return nil, err
+		}
+		if err := json.Unmarshal(variantEnumTasks, &item.VariantEnumTasks); err != nil {
+			return nil, fmt.Errorf("decode invalid variant values: %w", err)
 		}
 		products = append(products, item)
 	}

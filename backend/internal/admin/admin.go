@@ -183,6 +183,7 @@ type Product struct {
 	MaxPrice             float64               `json:"maxPrice"`
 	VariantsReady        bool                  `json:"variantsReady"`
 	VariantTasks         []string              `json:"variantTasks"`
+	VariantEnumTasks     []string              `json:"variantEnumTasks"`
 	VariantCount         int                   `json:"variantCount"`
 	StockUpdatedAt       *time.Time            `json:"stockUpdatedAt"`
 	UpdatedAt            time.Time             `json:"updatedAt"`

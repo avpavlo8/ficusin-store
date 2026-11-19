@@ -4046,7 +4046,7 @@ paths:
       security:
         - Session: []
       x-permissions: [products.read]
-      description: Shared marketplace content, channel-specific categories and typed attributes, verified external IDs and resumable publication status. publicationMode is disabled, mock or live. links maps variant IDs to established channel identifiers. Each channel accepts its own optional article and replaceLink flag. Legacy shared article remains a fallback. An explicit changed channel article resolves an existing seller card or creates a replacement, preserving the previous remote card. Occupied links are rejected before writes. Creation checkboxes never disable established links; updates preserve remote fields and queue the latest pending snapshot. Mock dictionaries and IDs are isolated from live integration data.
+      description: Shared marketplace content, channel-specific categories and typed attributes, verified external IDs and resumable publication status. publicationMode is disabled, mock or live. links maps variant IDs to established channel identifiers. Each channel accepts its own optional article and replaceLink flag. Legacy shared article remains a fallback. An explicit changed channel article resolves an existing seller card or creates a replacement, preserving the previous remote card. Occupied links are rejected before writes. Creation checkboxes never disable established links; updates preserve remote fields and queue the latest pending snapshot. Site gallery additions and confirmed removals are merged into the current vendor gallery. Mock dictionaries and IDs are isolated from live integration data.
       responses:
         2XX:
           description: Editor settings or references returned successfully.
@@ -4123,7 +4123,7 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [products.edit]
-      description: Refresh saved product content, photos, attributes and seasonal packaging for already linked channels using their established publication payload. Accepts no configuration. Preserves prices, seller articles, categories, links and draft plans; never creates or relinks a vendor card. Missing configuration or unresolved operations are reported as skipped warnings while site content remains saved. In-flight updates retain their receipts and coalesce the latest content snapshot.
+      description: Refresh saved product content, photos, attributes and seasonal packaging for already linked channels using their established publication payload. For photos, the worker applies site additions and confirmed removals to the vendor gallery. Accepts no configuration. Preserves prices, seller articles, categories, links and draft plans; never creates or relinks a vendor card. Missing configuration or unresolved operations are reported as skipped warnings while site content remains saved. In-flight updates retain their receipts and coalesce the latest content snapshot.
       parameters:
         - in: path
           name: id

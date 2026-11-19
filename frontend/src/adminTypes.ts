@@ -249,6 +249,7 @@ export type Product = {
   externalIds: Array<{ provider: string; type: string; externalId: string }>;
   attributes: Record<string, string | number | boolean | string[]>;
   variantTasks?: string[];
+  variantEnumTasks?: string[];
   variantCount?: number;
   stockUpdatedAt?: string;
   updatedAt?: string;

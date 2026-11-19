@@ -70,3 +70,47 @@ func TestPrepareRejectsGarbage(t *testing.T) {
 		t.Fatal("мусор приняли за изображение")
 	}
 }
+
+func TestPrepareAppliesCameraOrientationBeforeJPEGEncoding(t *testing.T) {
+	source := image.NewRGBA(image.Rect(0, 0, 36, 24))
+	for y := 0; y < 24; y++ {
+		for x := 0; x < 36; x++ {
+			shade := uint8(40 + x/18*60 + y/12*120)
+			source.SetRGBA(x, y, color.RGBA{R: shade, G: shade, B: shade, A: 255})
+		}
+	}
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, source, &jpeg.Options{Quality: 95}); err != nil {
+		t.Fatal(err)
+	}
+	for orientation, want := range [][4]uint8{
+		{40, 100, 160, 220}, {100, 40, 220, 160},
+		{220, 160, 100, 40}, {160, 220, 40, 100},
+		{40, 160, 100, 220}, {160, 40, 220, 100},
+		{220, 100, 160, 40}, {100, 220, 40, 160},
+	} {
+		ifd := []byte{'I', 'I', 42, 0, 8, 0, 0, 0, 1, 0,
+			0x12, 0x01, 3, 0, 1, 0, 0, 0, byte(orientation + 1), 0, 0, 0, 0, 0, 0, 0}
+		jpegWithExif := append([]byte{0xff, 0xd8, 0xff, 0xe1, 0, byte(len(ifd) + 8)}, []byte("Exif\x00\x00")...)
+		jpegWithExif = append(jpegWithExif, ifd...)
+		jpegWithExif = append(jpegWithExif, encoded.Bytes()[2:]...)
+		result, err := Prepare(jpegWithExif, 18)
+		if err != nil {
+			t.Fatal(err)
+		}
+		img, err := jpeg.Decode(bytes.NewReader(result))
+		if err != nil {
+			t.Fatal(err)
+		}
+		w, h := img.Bounds().Dx(), img.Bounds().Dy()
+		if orientation < 4 && (w != 18 || h != 12) || orientation >= 4 && (w != 12 || h != 18) {
+			t.Fatalf("orientation %d: got %dx%d", orientation+1, w, h)
+		}
+		for i, p := range []image.Point{{X: w / 4, Y: h / 4}, {X: 3 * w / 4, Y: h / 4}, {X: w / 4, Y: 3 * h / 4}, {X: 3 * w / 4, Y: 3 * h / 4}} {
+			value := color.GrayModel.Convert(img.At(p.X, p.Y)).(color.Gray).Y
+			if diff := int(value) - int(want[i]); diff < -5 || diff > 5 {
+				t.Fatalf("orientation %d corner %d: got %d want %d", orientation+1, i, value, want[i])
+			}
+		}
+	}
+}

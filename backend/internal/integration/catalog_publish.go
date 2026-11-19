@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -56,24 +57,9 @@ func validateCatalogRequest(ch string, r ce.Request, allowLocal bool) error {
 	if ch == "ozon" && r.Channel.Category.TypeID <= 0 {
 		return errors.New("выберите категорию и тип Ozon")
 	}
-	if len(r.Images) == 0 {
-		return errors.New("добавьте фотографию")
-	}
-	max := 30
-	if ch == "ozon" {
-		max = 15
-	}
-	if len(r.Images) > max {
-		return fmt.Errorf("для %s допустимо максимум %d фото", ch, max)
-	}
-	for _, image := range r.Images {
-		u, e := url.Parse(image)
-		if e != nil || u.Host == "" || u.User != nil || u.Scheme != "https" && !(allowLocal && u.Scheme == "http" && isLoopbackHost(u.Hostname())) {
-			return errors.New("для площадки нужны прямые публичные HTTPS-ссылки на фото")
-		}
-		ip := net.ParseIP(u.Hostname())
-		if !allowLocal && (isLoopbackHost(u.Hostname()) || strings.HasSuffix(u.Hostname(), ".local") || ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified())) {
-			return errors.New("локальные фото недоступны площадке")
+	if r.Action != "updating" {
+		if err := validateCatalogPhotos(ch, r.Images, allowLocal); err != nil {
+			return err
 		}
 	}
 	p := r.Packaging
@@ -90,6 +76,30 @@ func validateCatalogRequest(ch string, r ce.Request, allowLocal bool) error {
 	}
 	return nil
 }
+func validateCatalogPhotos(ch string, images []string, allowLocal bool) error {
+	if len(images) == 0 {
+		return errors.New("добавьте фотографию")
+	}
+	max := 30
+	if ch == "ozon" {
+		max = 15
+	}
+	if len(images) > max {
+		return fmt.Errorf("для %s допустимо максимум %d фото", ch, max)
+	}
+	for _, image := range images {
+		u, e := url.Parse(image)
+		if e != nil || u.Host == "" || u.User != nil || u.Scheme != "https" && !(allowLocal && u.Scheme == "http" && isLoopbackHost(u.Hostname())) {
+			return errors.New("для площадки нужны прямые публичные HTTPS-ссылки на фото")
+		}
+		ip := net.ParseIP(u.Hostname())
+		if !allowLocal && (isLoopbackHost(u.Hostname()) || strings.HasSuffix(u.Hostname(), ".local") || ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified())) {
+			return errors.New("локальные фото недоступны площадке")
+		}
+	}
+	return nil
+}
+
 func catalogAttributes(ch string, r ce.Request) ([]map[string]any, error) {
 	result := []map[string]any{}
 	name, description := catalogContent(r)
@@ -149,6 +159,11 @@ func catalogAttributes(ch string, r ce.Request) ([]map[string]any, error) {
 func BuildOzonCard(r ce.Request, allowLocal bool) (map[string]any, error) {
 	if e := validateCatalogRequest("ozon", r, allowLocal); e != nil {
 		return nil, e
+	}
+	if r.Action == "updating" {
+		if err := validateCatalogPhotos("ozon", r.Images, allowLocal); err != nil {
+			return nil, err
+		}
 	}
 	price, e := catalogPrice(r.OzonPrice)
 	if e != nil {
@@ -241,11 +256,11 @@ func (p *CatalogPublisher) lookup(ctx context.Context, ch, identifier string, by
 		}
 		var out struct {
 			Items []struct {
-				ID           int64             `json:"id"`
-				OfferID      string            `json:"offer_id"`
-				Barcodes     []string          `json:"barcodes"`
-				Images       []json.RawMessage `json:"images"`
-				PrimaryImage json.RawMessage   `json:"primary_image"`
+				ID           int64    `json:"id"`
+				OfferID      string   `json:"offer_id"`
+				Barcodes     []string `json:"barcodes"`
+				Images       any      `json:"images"`
+				PrimaryImage any      `json:"primary_image"`
 				Statuses     struct {
 					StatusName string `json:"status_name"`
 					IsCreated  *bool  `json:"is_created"`
@@ -268,10 +283,19 @@ func (p *CatalogPublisher) lookup(ctx context.Context, ch, identifier string, by
 		if byArticle && v.OfferID != identifier {
 			return ce.RemoteIDs{}, errors.New("Ozon вернул товар с другим артикулом")
 		}
-		ids := ce.RemoteIDs{ProductID: strconv.FormatInt(v.ID, 10), OfferID: v.OfferID, ImageCount: len(v.Images), RemoteStatus: v.Statuses.StatusName, IsCreated: v.Statuses.IsCreated}
-		if ids.ImageCount == 0 && len(v.PrimaryImage) > 0 && string(v.PrimaryImage) != "null" && string(v.PrimaryImage) != `""` && string(v.PrimaryImage) != "[]" {
-			ids.ImageCount = 1
+		images, imagesOK := catalogPhotoURLs(v.Images)
+		primary, primaryOK := catalogPhotoURLs(v.PrimaryImage)
+		cover := slices.Clone(primary)
+		for _, photo := range images {
+			if index := slices.Index(cover, photo); index >= 0 {
+				cover = slices.Delete(cover, index, index+1)
+				continue
+			}
+			primary = append(primary, photo)
 		}
+		ids := ce.RemoteIDs{ProductID: strconv.FormatInt(v.ID, 10), OfferID: v.OfferID,
+			ImageCount: len(primary), Gallery: &ce.RemoteGallery{Photos: primary, Incomplete: !imagesOK || !primaryOK},
+			RemoteStatus: v.Statuses.StatusName, IsCreated: v.Statuses.IsCreated}
 		if len(v.Barcodes) > 0 {
 			ids.Barcode = v.Barcodes[0]
 		}
@@ -283,9 +307,10 @@ func (p *CatalogPublisher) lookup(ctx context.Context, ch, identifier string, by
 	// WB search is partial; accept an exact nmID or vendorCode only.
 	var out struct {
 		Cards []struct {
-			ID      int64             `json:"nmID"`
-			Article string            `json:"vendorCode"`
-			Photos  []json.RawMessage `json:"photos"`
+			ID      int64  `json:"nmID"`
+			Article string `json:"vendorCode"`
+			Photos  any    `json:"photos"`
+			Video   string `json:"video"`
 			Sizes   []struct {
 				SKUs []string `json:"skus"`
 			} `json:"sizes"`
@@ -306,7 +331,9 @@ func (p *CatalogPublisher) lookup(ctx context.Context, ch, identifier string, by
 			if v.Article != identifier && (byArticle || strconv.FormatInt(v.ID, 10) != identifier) {
 				continue
 			}
-			ids := ce.RemoteIDs{ProductID: strconv.FormatInt(v.ID, 10), OfferID: v.Article, ImageCount: len(v.Photos)}
+			photos, ok := catalogPhotoURLs(v.Photos)
+			ids := ce.RemoteIDs{ProductID: strconv.FormatInt(v.ID, 10), OfferID: v.Article,
+				ImageCount: len(photos), Gallery: &ce.RemoteGallery{Photos: photos, Incomplete: !ok, Video: v.Video}}
 			if len(v.Sizes) > 0 && len(v.Sizes[0].SKUs) > 0 {
 				ids.Barcode = v.Sizes[0].SKUs[0]
 			}
@@ -334,6 +361,9 @@ func (p *CatalogPublisher) lookup(ctx context.Context, ch, identifier string, by
 func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request, s ce.Progress) (ce.Result, error) {
 	if ch != "wb" && ch != "ozon" {
 		return ce.Result{}, errors.New("неизвестная площадка")
+	}
+	if s.Stage == "gallery-update-unknown" {
+		return ce.Result{Progress: s, Status: "needs_attention", Message: "Площадка не подтвердила сохранение. Проверьте карточку и галерею в кабинете"}, nil
 	}
 	// Resolve a changed seller article before touching either remote card.
 	// Returning after this read lets the worker reserve/check ownership first.
@@ -397,7 +427,7 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			s.Stage = "reconcile"
 			return ce.Result{Progress: s}, e
 		}
-		return ce.Result{Progress: ce.Progress{Stage: "check"}}, e
+		return ce.Result{Progress: ce.Progress{Stage: "check", SitePhotos: s.SitePhotos}}, e
 	}
 	result := func(status, message string) (ce.Result, error) {
 		return ce.Result{Progress: s, Status: status, Message: message}, nil
@@ -424,7 +454,11 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 		if ids.ProductID != s.IDs.ProductID {
 			return result("needs_attention", "Связь WB изменилась. Цена не отправлялась")
 		}
-		if ids.ImageCount < len(r.Images) {
+		confirmed, err := catalogPhotoWriteConfirmed(ctx, nil, ids.Gallery.Photos, s)
+		if err != nil {
+			return ce.Result{Progress: s}, err
+		}
+		if !confirmed || ids.Gallery.Incomplete && s.PhotoCount != nil {
 			s.Checks++
 			if s.Checks > 90 {
 				return result("needs_attention", "WB не подтвердил фотографии обновлённой карточки")
@@ -456,6 +490,12 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 				return result("queued", "Созданная этой попыткой карточка проверена. Отправим исправленные данные.")
 			} else if ch == "wb" {
 				s.Stage = "media"
+				if r.Action == "updating" && s.SitePhotos != nil {
+					removed, added := catalogSitePhotoDelta(s.SitePhotos, r.Images)
+					if len(removed) == 0 && len(added) == 0 {
+						s.Stage = "price"
+					}
+				}
 			} else {
 				s.Stage = "ozon-readback"
 			}
@@ -479,6 +519,7 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 	case "create", "update":
 		updating := s.Stage == "update"
 		ownedUncreatedUpdate := false
+		var live ce.RemoteIDs
 		if updating {
 			ids, e := p.lookup(ctx, ch, s.IDs.OfferID, true)
 			if e != nil {
@@ -495,17 +536,32 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			// Published cards and unknown vendor states must preserve live prices.
 			creationRetry := s.ReapplyPayload && s.CreateAttempted && s.TaskID > 0 && r.Action == "create" && r.Channel.Mode == "create"
 			trustedLink := r.Action == "updating" && r.ExistingID != "" && s.UpdateRequest != nil && ids.Barcode == s.IDs.Barcode
+			live = ids
 			ownedUncreatedUpdate = ch == "ozon" && ids.IsCreated != nil && !*ids.IsCreated && (creationRetry || trustedLink)
 		}
 		s.CreateAttempted = true
 		if ch == "ozon" {
+			if updating && !ownedUncreatedUpdate {
+				if live.Gallery.Incomplete {
+					return result("needs_attention", "Ozon не вернул полный список фотографий. Галерею нужно проверить")
+				}
+				changes, err := catalogGalleryDelta(ctx, nil, live.Gallery.Photos, s.SitePhotos, r.Images)
+				if err != nil {
+					return ce.Result{Progress: s}, err
+				}
+				r.Images = changes.apply(live.Gallery.Photos)
+				if len(changes.Added)+len(changes.Removed) > 0 {
+					count := len(r.Images)
+					s.PhotoCount, s.PhotoWrite = &count, changes.Added
+				}
+			}
 			body, e := BuildOzonCard(r, p.Mock)
 			if e != nil {
 				if s.ReapplyPayload {
 					s.Stage = "reconcile"
 					return ce.Result{Progress: s}, e
 				}
-				return ce.Result{Progress: ce.Progress{Stage: "check"}}, e
+				return ce.Result{Progress: ce.Progress{Stage: "check", SitePhotos: s.SitePhotos}}, e
 			}
 			if updating && !ownedUncreatedUpdate {
 				price, oldPrice, err := p.Executor.readEditorOzonPrice(ctx, s.IDs.OfferID)
@@ -526,13 +582,13 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 				if ambiguousCatalogError(e) {
 					s.Stage = "reconcile"
 					if updating {
-						s.Stage = "update"
+						s.Stage = "gallery-update-unknown"
 						if s.ReapplyPayload {
 							s.Stage = "ozon-reapply-unknown"
 						}
 					}
 					s.Ambiguous = true
-					return result("queued", "Ответ на создание не получен; проверяем товар без повторной отправки.")
+					return result("queued", "Ozon не подтвердил запись. Проверяем результат отправки.")
 				}
 				if s.ReapplyPayload {
 					s.Stage = "reconcile"
@@ -544,8 +600,11 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			}
 			if out.Result.TaskID <= 0 {
 				s.Stage = "reconcile"
-				if updating && s.ReapplyPayload {
-					s.Stage = "ozon-reapply-unknown"
+				if updating {
+					s.Stage = "gallery-update-unknown"
+					if s.ReapplyPayload {
+						s.Stage = "ozon-reapply-unknown"
+					}
 				}
 				s.Ambiguous = true
 				return result("queued", "Нет номера задания Ozon; проверяем товар по артикулу.")
@@ -555,7 +614,7 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 		} else {
 			body, e := BuildWBCard(r, p.Mock)
 			if e != nil {
-				return ce.Result{Progress: ce.Progress{Stage: "check"}}, e
+				return ce.Result{Progress: ce.Progress{Stage: "check", SitePhotos: s.SitePhotos}}, e
 			}
 			var out struct {
 				Error     bool   `json:"error"`
@@ -581,10 +640,10 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 					s.Ambiguous = true
 					return result("queued", "Ответ на создание не получен; ищем карточку без повторной отправки.")
 				}
-				return ce.Result{Progress: ce.Progress{Stage: "check"}}, e
+				return ce.Result{Progress: ce.Progress{Stage: "check", SitePhotos: s.SitePhotos}}, e
 			}
 			if out.Error {
-				return ce.Result{Progress: ce.Progress{Stage: "check"}}, errors.New(safeRemoteMessage(out.ErrorText))
+				return ce.Result{Progress: ce.Progress{Stage: "check", SitePhotos: s.SitePhotos}}, errors.New(safeRemoteMessage(out.ErrorText))
 			}
 			s.Stage = "reconcile"
 		}
@@ -656,12 +715,19 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			return result("needs_attention", "Ozon не подтвердил идентификаторы обновлённой карточки. Проверьте связь; повтор не отправлен.")
 		}
 		s.IDs = ids
-		if ids.ImageCount == 0 {
+		confirmed, err := catalogPhotoWriteConfirmed(ctx, nil, ids.Gallery.Photos, s)
+		if err != nil {
+			return ce.Result{Progress: s}, err
+		}
+		if ids.ImageCount == 0 || !confirmed || ids.Gallery.Incomplete && s.PhotoCount != nil {
 			s.Checks++
 			if s.Checks > 90 {
 				return result("needs_attention", "Ozon создал карточку, но не подтвердил фотографии. Проверьте кабинет.")
 			}
 			return result("queued", "Ozon обрабатывает фотографии карточки.")
+		}
+		if r.Action == "updating" {
+			return result("synced", "Данные связанной карточки Ozon обновлены")
 		}
 		message := "Карточка создана в Ozon. Допуск к продаже зависит от проверки площадки."
 		if ids.RemoteStatus != "" {
@@ -670,17 +736,54 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 		return result("created", message)
 	case "media":
 		id, _ := strconv.ParseInt(s.IDs.ProductID, 10, 64)
+		media := r.Images
+		if r.Action == "updating" {
+			live, err := p.lookup(ctx, ch, s.IDs.OfferID, true)
+			if err != nil {
+				return ce.Result{Progress: s}, err
+			}
+			if live.ProductID != s.IDs.ProductID || live.Gallery.Incomplete {
+				return result("needs_attention", "Wildberries не подтвердил связь или полный список фотографий")
+			}
+			changes, err := catalogGalleryDelta(ctx, nil, live.Gallery.Photos, s.SitePhotos, r.Images)
+			if err != nil {
+				return ce.Result{Progress: s}, err
+			}
+			if len(changes.Removed)+len(changes.Added) == 0 {
+				return result("synced", "Контент Wildberries обновлён. Состав фотографий на площадке сохранён")
+			}
+			media = changes.apply(live.Gallery.Photos)
+			if err := validateCatalogPhotos(ch, media, p.Mock); err != nil {
+				return ce.Result{Progress: s}, err
+			}
+			count := len(media)
+			s.PhotoCount, s.PhotoWrite = &count, changes.Added
+			if live.Gallery.Video != "" {
+				video, err := url.Parse(live.Gallery.Video)
+				if err != nil || video.Scheme != "https" || !(strings.HasSuffix(strings.ToLower(video.Path), ".mp4") || strings.HasSuffix(strings.ToLower(video.Path), ".mov")) {
+					return result("needs_attention", "Wildberries вернул только ссылку на проигрыватель видео. Измените фотографии в кабинете, чтобы сохранить видео")
+				}
+				media = append(media, live.Gallery.Video)
+			}
+		}
 		var out struct {
 			Error     bool   `json:"error"`
 			ErrorText string `json:"errorText"`
 		}
-		if e := p.write(ctx, ch, "/content/v3/media/save", map[string]any{"nmId": id, "data": r.Images}, &out); e != nil {
-			return ce.Result{}, e
+		if e := p.write(ctx, ch, "/content/v3/media/save", map[string]any{"nmId": id, "data": media}, &out); e != nil {
+			if r.Action == "updating" && ambiguousCatalogError(e) {
+				s.Stage, s.Ambiguous = "gallery-update-unknown", true
+				return result("needs_attention", "Wildberries не подтвердил запись фотографий. Проверьте галерею в кабинете")
+			}
+			return ce.Result{Progress: s}, e
 		}
 		if out.Error {
 			return ce.Result{}, errors.New(safeRemoteMessage(out.ErrorText))
 		}
 		s.Stage = "price"
+		if r.Action == "updating" {
+			return result("queued", "Изменения фотографий отправлены в Wildberries. Проверяем результат")
+		}
 		return result("queued", "Фото отправлены в Wildberries. Устанавливаем цену.")
 	case "price":
 		id, _ := strconv.ParseInt(s.IDs.ProductID, 10, 64)
