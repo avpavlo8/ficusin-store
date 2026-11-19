@@ -160,19 +160,3 @@ func TestCatalogEditorAtomicSaveOnLiveDatabase(t *testing.T) {
 		t.Fatalf("foreign size: %v", err)
 	}
 }
-
-func TestCatalogEditorAdministratorCannotWriteCommercialFields(t *testing.T) {
-	price := int64(0)
-	active := false
-	actor := Actor{Role: RoleAdministrator}
-	for _, edit := range []VariantEdit{{ID: 1, PriceMinor: &price}, {ID: 1, Active: &active}, {ID: -1}} {
-		if err := ValidateProductUpdate(actor, ProductUpdate{Variants: []VariantEdit{edit}}); !errors.Is(err, ErrForbidden) {
-			t.Fatalf("manager commercial edit allowed: %v", err)
-		}
-	}
-	label := "D12"
-	if err := ValidateProductUpdate(actor, ProductUpdate{Variants: []VariantEdit{{ID: 1, Label: &label}}}); err != nil {
-		t.Fatal(err)
-	}
-
-}

@@ -8,7 +8,6 @@ const effective=['length_cm','width_cm','height_cm','weight_grams'].map((code,i)
 effective.push(...['length_cm','width_cm','height_cm'].map((code,i)=>({id:20+i,code:`package_winter_${code}`,name:['Длина зимней упаковки','Ширина зимней упаковки','Высота зимней упаковки'][i],unit:'см',dataType:'number',scope:'variant',audience:'technical',active:true,excluded:false,required:false,options:[],global:false})));
 const size=(id:number,pid:number,label:string)=>({id,productId:pid,sku:String(id),label,price:1490,stock:0,wholesaleMinQty:1,active:false,archived:false,sabyId:`fixture-saby-${id}`,attributes:{pot_diameter_cm:Number(label.slice(1)),height_cm:40,package_length_cm:20,package_width_cm:20,package_height_cm:50,package_weight_grams:1000},externalIds:[{provider:'saby',type:'id',externalId:`fixture-saby-${id}`}],images:[],stockSource:'saby'});
 async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=false,sharedGalleryPhoto=false,variantGalleryPhoto=false,variantTasks=[] as string[],role='owner' as 'owner'|'administrator'|'manager',removeAction='deleted' as 'deleted'|'archived',failRemove=false}={}){
- const contentOnly=role==='administrator';
  let products=Array.from({length:total},(_,i)=>product(i+1));if(variantTasks.length)Object.assign(products[0],{variantTasks});const variants=new Map(products.map(p=>[p.id,[size(p.id*10,p.id,'D11'),size(p.id*10+1,p.id,'D17')]]));const updates:Array<Record<string,any>>=[],calls:string[]=[],plans=new Map<number,any>(),creations=new Map<string,any>(),mutations:Array<{path:string;method:string;body:any}>=[];let nextId=1000;
  let nextMediaId=100000;
  const media:Array<{id:number;productId:number;variantId?:number;url:string;primary:boolean;sortOrder:number}>=products.map(p=>({id:p.id*100,productId:p.id,url:p.image,primary:true,sortOrder:0}));
@@ -16,12 +15,12 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
  if(variantGalleryPhoto)media.push({id:++nextMediaId,productId:1,variantId:10,url:'/assets/hero-monstera.webp?photo=variant',primary:true,sortOrder:0});
  await page.route('**/api/v1/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname,method=req.method();calls.push(path);if(!['GET','HEAD'].includes(method)&&!path.endsWith('/pricing/preview'))mutations.push({path,method,body:req.postDataJSON()});const send=(body:unknown,status=200)=>route.fulfill({status,json:body});
  if(path==='/api/v1/auth/me')return send({user:{...owner.user,adminRole:role}});
- if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role,permissions:contentOnly?['dashboard.read','products.read','products.edit']:role==='manager'?['dashboard.read','products.read','products.edit','products.manage']:['dashboard.read','products.read','products.edit','products.manage','integrations.edit','catalog.delete'],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
+ if(path==='/api/v1/admin/dashboard')return send({user:{fullName:'Владелец'},role,permissions:['dashboard.read','products.read','products.edit','products.manage',...(role==='owner'?['integrations.edit','catalog.delete']:[])],dashboard:{products:products.length,variants:products.length*2,orders:0,customers:0,wholesalePending:0,lastSync:null,recentOrders:[]}});
  if(path==='/api/v1/admin/products'&&method==='GET')return send({products});
  if(path==='/api/v1/admin/products'&&method==='POST'){const body=req.postDataJSON();if(body.creationId&&creations.has(body.creationId))return send({product:creations.get(body.creationId)});const p={...product(++nextId),...body,image:'',price:body.priceMinor/100,status:'draft'};products.push(p);variants.set(p.id,[{...size(++nextId,p.id,'Основной'),externalIds:[],price:p.price,attributes:body.variantAttributes}]);if(body.creationId)creations.set(body.creationId,p);if(loseCreateResponse){loseCreateResponse=false;return send({error:'Ответ создания потерян'},503)}return send({product:p});}
  if(path==='/api/v1/admin/catalog-editor/references')return send({categories:[{id:'fixture-category',name:'Тестовая категория СБИС'}],folders:[{id:'fixture-folder',name:'Тестовый раздел СБИС'}]});
  if(path.endsWith('/editor-plan/sync-existing')&&method==='POST')return send({queued:0});
- const planMatch=path.match(/\/products\/(\d+)\/editor-plan$/);if(planMatch){const id=Number(planMatch[1]);if(method==='PUT'){if(contentOnly)return send({error:'Недостаточно прав'},403);plans.set(id,req.postDataJSON().config)};return send({config:plans.get(id)||{variants:[]},publications:[],links:{},barcodes:{},publicationMode:'disabled'});}
+ const planMatch=path.match(/\/products\/(\d+)\/editor-plan$/);if(planMatch){const id=Number(planMatch[1]);if(method==='PUT'){plans.set(id,req.postDataJSON().config)};return send({config:plans.get(id)||{variants:[]},publications:[],links:{},barcodes:{},publicationMode:'disabled'});}
  if(path==='/api/v1/admin/catalog-editor/settings')return send({values:{'cdek.packaging_season':'summer'}});
  if(path==='/api/v1/admin/settings')return role==='owner'?send({values:{'cdek.packaging_season':'summer'}}):send({error:'Недостаточно прав'},403);
  if(path==='/api/v1/admin/procurement/pricing/preview')return send({quotes:{wb:{priceRub:2490,missing:[]},ozon:{priceRub:2990,missing:[]}}});
@@ -34,7 +33,7 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
   if(method==='GET')return send({media:media.filter(belongs)});
   if(action==='copy'&&method==='POST'){const source=media.find(row=>row.id===req.postDataJSON().mediaId);const variant=[...variants.values()].flat().find(row=>row.id===id);if(!source||!variant||source.productId!==variant.productId)return send({error:'Фото не найдено'},404);const owned=media.filter(belongs);const copy={...source,id:++nextMediaId,variantId:id,primary:owned.length===0,sortOrder:owned.length};media.push(copy);return send({media:copy},201);}
   if(primary){for(const row of media.filter(belongs))row.primary=row.id===Number(action);return send({ok:true});}
-  if(method==='DELETE'){if(contentOnly)return send({error:'Недостаточно прав'},403);const index=media.findIndex(row=>belongs(row)&&row.id===Number(action));if(index>=0)media.splice(index,1);return send({ok:true});}
+  if(method==='DELETE'){const index=media.findIndex(row=>belongs(row)&&row.id===Number(action));if(index>=0)media.splice(index,1);return send({ok:true});}
   return send({error:'Unmocked media mutation'},400);
  }
  if(path==='/api/v1/admin/collection-definitions')return send({collections:[{id:1,title:'Для тёмной комнаты',slug:'shade',active:true,mode:'dynamic',rules:[{attribute:'light',operator:'eq',value:'diffused'}],products:[1],coverImage:'/assets/hero-monstera.webp',sortOrder:1}]});
@@ -42,7 +41,7 @@ async function fixture(page:Page,{total=2,failSave=false,loseCreateResponse=fals
  if(path==='/api/v1/admin/attributes')return send({attributes:schema.map(a=>({...a,active:true,options:[{code:'diffused',label:'Рассеянный свет',active:true}]}))});
  if(path==='/api/v1/admin/catalog-filters')return send({filters:[]});if(path.endsWith('/reviews'))return send({reviews:[]});
  if(path.endsWith('/products/publish'))return send({published:[1],blocked:[{productId:2,name:'Хлорофитум',reason:'Нет активного размера'}]});
- const update=path.match(/\/products\/(\d+)$/);if(update&&method==='DELETE'){const id=Number(update[1]);if(failRemove)return send({error:'Удаление временно недоступно'},503);if(removeAction==='deleted')products=products.filter(p=>p.id!==id);else products=products.map(p=>p.id===id?{...p,status:'archived'}:p);return send({productId:id,action:removeAction})}if(update&&method==='PATCH'){const id=Number(update[1]),body=req.postDataJSON();updates.push({id,body});if(failSave)return send({error:'Ошибка сохранения'},500);for(const v of body.variants||[]){const current=variants.get(id)||[];const old=current.find(x=>x.id===v.id);if(v.remove){if(contentOnly)return send({error:'Недостаточно прав'},403);if(old?.sabyId||old?.externalIds?.length){Object.assign(old,{active:false,archived:true})}else if(old)current.splice(current.indexOf(old),1);continue;}if(old)Object.assign(old,v,{price:typeof v.priceMinor==='number'?v.priceMinor/100:old.price,attributes:{...old.attributes,...v.attributes}});else current.push({...size(++nextId,id,v.label),...v,id:nextId,price:v.priceMinor/100});variants.set(id,current)}const i=products.findIndex(p=>p.id===id);const {variants:_,...patch}=body;products[i]={...products[i],...patch};return send({product:products[i]})}
+ const update=path.match(/\/products\/(\d+)$/);if(update&&method==='DELETE'){const id=Number(update[1]);if(failRemove)return send({error:'Удаление временно недоступно'},503);if(removeAction==='deleted')products=products.filter(p=>p.id!==id);else products=products.map(p=>p.id===id?{...p,status:'archived'}:p);return send({productId:id,action:removeAction})}if(update&&method==='PATCH'){const id=Number(update[1]),body=req.postDataJSON();updates.push({id,body});if(failSave)return send({error:'Ошибка сохранения'},500);for(const v of body.variants||[]){const current=variants.get(id)||[];const old=current.find(x=>x.id===v.id);if(v.remove){if(old?.sabyId||old?.externalIds?.length){Object.assign(old,{active:false,archived:true})}else if(old)current.splice(current.indexOf(old),1);continue;}if(old)Object.assign(old,v,{price:typeof v.priceMinor==='number'?v.priceMinor/100:old.price,attributes:{...old.attributes,...v.attributes}});else current.push({...size(++nextId,id,v.label),...v,id:nextId,price:v.priceMinor/100});variants.set(id,current)}const i=products.findIndex(p=>p.id===id);const {variants:_,...patch}=body;products[i]={...products[i],...patch};return send({product:products[i]})}
  return send({});});return{updates,calls,variants,plans,mutations,creations,media};
 }
 async function open(page:Page){await page.goto('/admin?section=products');await expect(page.locator('table.products tbody tr').first()).toBeVisible()}
@@ -396,59 +395,8 @@ test('@desktop @phone Flowwow channel saves site-authoritative publication setti
  expect(saved.submit).toBe(true);expect(saved.config.variants[0].flowwow.enabled).toBe(true);expect(saved.config.variants[0].flowwow.category.id).toBe('101');expect(saved.config.variants[0].flowwow.attributes.height).toEqual({val:35,measure:3});
 });
 
-test('@desktop @phone administrator saves product content and queues only stored marketplace connections',async({page})=>{
- const f=await fixture(page,{role:'administrator'});await open(page);const e=await edit(page);
- await expect(e.getByLabel('Цена на сайте, ₽ *',{exact:true})).toBeDisabled();
- await expect(e.getByLabel('Оптовый минимум, шт.',{exact:true})).toBeDisabled();
- await expect(e.getByRole('button',{name:'+ Добавить вариант',exact:true})).toBeDisabled();
- await expect(e.getByRole('button',{name:'Удалить обложку',exact:true})).toBeDisabled();
- await expect(e.getByRole('button',{name:'Уже создан в СБИС',exact:true})).toBeDisabled();
- await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Описание, изменённое менеджером');
- await e.getByLabel('Высота',{exact:true}).fill('47');
- await e.getByRole('tab',{name:'Маркетплейсы',exact:true}).click();
- const marketplace=e.getByRole('group',{name:'Настройки маркетплейсов',exact:true});
- await expect(marketplace.locator('button').first()).toBeDisabled();
- await expect(e.getByRole('group',{name:'Где создать товар'})).toHaveCount(0);
- await e.getByRole('tab',{name:'Вопросы и ответы',exact:true}).click();
- await e.getByRole('button',{name:'Добавить вопрос',exact:true}).click();
- await e.getByLabel('Вопрос',{exact:true}).fill('Можно ли держать в спальне?');
- await e.getByLabel('Ответ',{exact:true}).fill('Да, при подходящем освещении.');
- await saveEditor(e);
- expect(f.updates[0].body.description).toBe('Описание, изменённое менеджером');
- expect(f.updates[0].body.variants[0].attributes.height_cm).toBe(47);
- expect(f.updates[0].body.variants[0]).not.toHaveProperty('priceMinor');
- expect(f.updates[0].body.variants[0]).not.toHaveProperty('externalIds');
- expect(f.updates[0].body.passport.faq).toEqual([{question:'Можно ли держать в спальне?',answer:'Да, при подходящем освещении.'}]);
- expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT')).toHaveLength(0);
- expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan/sync-existing'))).toEqual([{path:'/api/v1/admin/products/1/editor-plan/sync-existing',method:'POST',body:{}}]);
- expect(savedMessages.get(e)).toContain('Изменения товара сохранены.');
- await e.getByRole('button',{name:'Закрыть редактор',exact:true}).click();
- await page.getByRole('link',{name:'Аглаонема Мария',exact:true}).click();
- await e.getByRole('tab',{name:'Товар',exact:true}).click();
- await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Описание, изменённое менеджером');
-});
-
-test('@desktop administrator can retry a failed stored-plan sync without changing prices or marketplace links',async({page})=>{
- const f=await fixture(page,{role:'administrator'});let calls=0;
- await page.route('**/api/v1/admin/products/1/editor-plan/sync-existing',route=>{calls++;return route.fulfill({status:calls===1?503:200,json:calls===1?{error:'Обновление площадок временно недоступно'}:{queued:1}})});
- await open(page);const e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Сохранённый контент при повторе обмена');
- await e.getByRole('button',{name:'Сохранить',exact:true}).click();
- await expect(e.getByRole('alert')).toContainText('Обновление площадок временно недоступно');
- await expect(e.getByRole('textbox',{name:'О растении',exact:true})).toHaveValue('Сохранённый контент при повторе обмена');
- expect(f.updates).toHaveLength(1);await saveEditor(e);expect(calls).toBe(2);
- expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT')).toHaveLength(0);
- expect(f.updates).toHaveLength(1);
-});
-
-test('@desktop administrator sees when saved content needs owner setup before marketplace sync',async({page})=>{
- await fixture(page,{role:'administrator'});await page.route('**/api/v1/admin/products/1/editor-plan/sync-existing',route=>route.fulfill({json:{queued:0,skipped:1,warnings:['Для обновления Ozon владелец должен завершить настройку карточки.']}}));
- await open(page);const e=await edit(page);await e.getByRole('textbox',{name:'О растении',exact:true}).fill('Контент сохранён, настройка площадки не потеряна');await saveEditor(e);
- expect(savedMessages.get(e)).toContain('Для обновления Ozon владелец должен завершить настройку карточки.');
- expect(savedMessages.get(e)).toContain('Изменения товара сохранены.');
-});
-
-test('@desktop @phone manager has the full product editor without global delete permission',async({page})=>{
- const f=await fixture(page,{role:'manager'});await open(page);const e=await edit(page);
+for(const role of ['administrator','manager'] as const)test(`@desktop @phone ${role} has the full product editor`,async({page})=>{
+ const f=await fixture(page,{role});await open(page);const e=await edit(page);
  await expect(e.getByLabel('Цена на сайте, ₽ *',{exact:true})).toBeEnabled();
  await expect(e.getByLabel('Оптовый минимум, шт.',{exact:true})).toBeEnabled();
  await expect(e.getByRole('button',{name:'Уже создан в СБИС',exact:true})).toBeEnabled();
@@ -476,6 +424,26 @@ test('@desktop @phone manager has the full product editor without global delete 
  const plan=f.plans.get(1).variants.find((v:any)=>v.variantId===10);expect(plan.wbPrice).toBe('2700');expect(plan.ozonPrice).toBe('3150');
 });
 
+for (const role of ['administrator', 'manager'] as const) {
+  test(`@desktop ${role} saves Saby, Ozon and Wildberries links in the card editor`, async ({page}) => {
+    const f = await fixture(page, {role});
+    await open(page);
+    const editor = await edit(page);
+    await editor.getByRole('button', {name: 'Уже создан в СБИС', exact: true}).click();
+    await editor.getByLabel('Код товара в СБИС', {exact: true}).fill('X100');
+    await editor.getByRole('tab', {name: 'Маркетплейсы', exact: true}).click();
+    for (const [channel, article] of [['Ozon', 'ozon-card'], ['Wildberries', 'wb-card']]) {
+      await editor.getByRole('button', {name: `Уже есть на ${channel}`, exact: true}).click();
+      await editor.getByLabel(`Артикул ${channel}`, {exact: true}).fill(article);
+    }
+    await saveEditor(editor);
+    const plan = f.plans.get(1).variants.find((variant: {variantId: number}) => variant.variantId === 10);
+    expect(plan.saby).toMatchObject({mode: 'link', existingCode: 'X100'});
+    expect(plan.marketplace.ozon).toMatchObject({mode: 'link', existingId: 'ozon-card'});
+    expect(plan.marketplace.wb).toMatchObject({mode: 'link', existingId: 'wb-card'});
+  });
+}
+
 test('@desktop @phone manager removes saved photos and archives a linked variant inside the editor',async({page})=>{
  const f=await fixture(page,{role:'manager',variantGalleryPhoto:true});await open(page);const e=await edit(page);
  const removePhoto=e.getByRole('button',{name:/^Удалить фото /}).first();await expect(removePhoto).toBeEnabled();await removePhoto.click();
@@ -488,15 +456,13 @@ test('@desktop @phone manager removes saved photos and archives a linked variant
  expect(f.mutations.filter(x=>x.path.endsWith('/editor-plan')&&x.method==='PUT')).toHaveLength(1);
 });
 
-test('@desktop administrator cannot open product creation through a direct URL',async({page})=>{
+test('@desktop administrator can open product creation through a direct URL',async({page})=>{
  await fixture(page,{role:'administrator'});await page.goto('/admin?section=products&create=1');
- await expect(page.getByRole('alert')).toHaveText('Нет доступа к редактору товара.');
- await expect(page.locator('.editor-page')).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Добавить товар',exact:true})).toHaveCount(0);
+ await expect(page.locator('.editor-page').getByRole('button',{name:'Создать товар',exact:true})).toBeVisible();
 });
 
-test('@desktop manager editor capability does not grant catalogue import or bulk merge',async({page})=>{
- const f=await fixture(page,{role:'manager'});await open(page);
+for(const role of ['administrator','manager'] as const)test(`@desktop ${role} can remove one card without catalogue import or bulk actions`,async({page})=>{
+ const f=await fixture(page,{role});await open(page);
  await expect(page.getByRole('button',{name:'Добавить товар',exact:true})).toBeEnabled();
  await expect(page.getByRole('button',{name:'Импорт из СБИС',exact:true})).toHaveCount(0);
  await page.getByRole('checkbox',{name:'Выбрать Аглаонема Мария',exact:true}).check();
@@ -508,7 +474,11 @@ test('@desktop manager editor capability does not grant catalogue import or bulk
  await expect(selection.getByRole('button',{name:'Проверить объединение',exact:true})).toHaveCount(0);
  await expect(selection.getByRole('button',{name:'Удалить черновики',exact:true})).toHaveCount(0);
  expect(f.mutations).toHaveLength(0);
-
+ await page.getByRole('button',{name:'Удалить Аглаонема Мария',exact:true}).click();
+ await page.getByRole('alertdialog').getByRole('button',{name:'Удалить карточку',exact:true}).click();
+ await expect(page.getByRole('link',{name:'Аглаонема Мария',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('link',{name:'Хлорофитум',exact:true})).toBeVisible();
+ expect(f.mutations).toEqual([{path:'/api/v1/admin/products/1',method:'DELETE',body:null}]);
 });
 
 test('@desktop @phone saved price proposals require an explicit channel confirmation with the saved fingerprint',async({page})=>{

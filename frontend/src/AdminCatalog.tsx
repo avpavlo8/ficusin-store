@@ -1301,7 +1301,7 @@ export function Products({
                                 </svg>
                               </button>
                             )}
-                            {can("catalog.delete") && product.status !== "archived" && (
+                            {can("products.manage") && product.status !== "archived" && (
                               <button
                                 type="button"
                                 className="catalog-icon-button catalog-remove-button"

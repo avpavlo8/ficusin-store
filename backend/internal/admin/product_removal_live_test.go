@@ -135,7 +135,11 @@ func TestProductRemovalOnLiveDatabase(t *testing.T) {
 			if association() != beforeAssociation {
 				t.Fatal("bulk deletion changed marketplace association")
 			}
-			result, err := repo.RemoveProduct(ctx, actor, p.ID)
+			remover := Actor{CustomerID: customer, Role: RoleAdministrator}
+			if kind == "published" {
+				remover.Role = RoleManager
+			}
+			result, err := repo.RemoveProduct(ctx, remover, p.ID)
 			must(err)
 			if kind == "free" {
 				if result.Action != "deleted" {
@@ -201,8 +205,8 @@ func TestProductRemovalOnLiveDatabase(t *testing.T) {
 			}
 		})
 	}
-	if _, err = repo.RemoveProduct(ctx, Actor{Role: RoleManager}, 1); !errors.Is(err, ErrForbidden) {
-		t.Fatal("manager delete permission widened", err)
+	if _, err = repo.RemoveProduct(ctx, Actor{}, 1); !errors.Is(err, ErrForbidden) {
+		t.Fatal("customer can remove product", err)
 	}
 	if _, err = repo.RemoveProduct(ctx, actor, -1); !errors.Is(err, ErrInvalidInput) {
 		t.Fatal(err)

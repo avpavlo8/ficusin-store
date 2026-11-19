@@ -97,7 +97,7 @@ func TestFlowwowPublicationLocalDatabase(t *testing.T) {
 		t.Fatalf("linked update %+v %v", items, e)
 	}
 
-	// Content-only administrators reuse the stored Flowwow connection after the
+	// The stored Flowwow connection can be reused after the
 	// main branch's permission split, without changing channel identity or price.
 	if _, e = pool.Exec(ctx, `UPDATE products SET description='Administrator saved content' WHERE id=$1`, p.ID); e != nil {
 		t.Fatal(e)

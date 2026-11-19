@@ -82,10 +82,10 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	if !found {
 		t.Fatalf("Saby candidate %q absent", sabyID)
 	}
-	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleAdministrator}, variantID, sabyID); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("administrator link: %v", err)
+	if err = repository.LinkVariantToSaby(ctx, Actor{}, variantID, sabyID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("link without staff role: %v", err)
 	}
-	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleManager, CustomerID: ownerID}, variantID, sabyID); err != nil {
+	if err = repository.LinkVariantToSaby(ctx, Actor{Role: RoleAdministrator, CustomerID: ownerID}, variantID, sabyID); err != nil {
 		t.Fatal(err)
 	}
 	var variantSabyID, productSabyID string
@@ -155,10 +155,10 @@ func TestLinkVariantToSabyOnLiveDatabase(t *testing.T) {
 	if _, err = pool.Exec(ctx, `UPDATE saby_nomenclature SET missing_since=CURRENT_TIMESTAMP WHERE saby_id=$1`, sabyID); err != nil {
 		t.Fatal(err)
 	}
-	if err = repository.RebindVariantToSaby(ctx, Actor{Role: RoleAdministrator}, variantID, sabyID, replacementSabyID); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("administrator rebind: %v", err)
+	if err = repository.RebindVariantToSaby(ctx, Actor{}, variantID, sabyID, replacementSabyID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("rebind without staff role: %v", err)
 	}
-	if err = repository.RebindVariantToSaby(ctx, owner, variantID, sabyID, replacementSabyID); err != nil {
+	if err = repository.RebindVariantToSaby(ctx, Actor{Role: RoleAdministrator, CustomerID: ownerID}, variantID, sabyID, replacementSabyID); err != nil {
 		t.Fatal(err)
 	}
 	var oldStatus, newStatus, activeCode string

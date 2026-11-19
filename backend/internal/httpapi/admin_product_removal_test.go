@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
-	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
+	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 )
 
 type removalRepository struct {
@@ -16,20 +18,33 @@ func (r *removalRepository) RemoveProduct(_ context.Context, _ admin.Actor, id i
 	r.removed = append(r.removed, id)
 	return admin.ProductRemoval{ProductID: id, Action: "archived"}, nil
 }
-func TestProductRemovalRequiresExistingDeletePermission(t *testing.T) {
-	for _, role := range []string{admin.RoleOwner, admin.RoleManager, admin.RoleAdministrator} {
-		repo := &removalRepository{adminRepositoryStub: &adminRepositoryStub{}}
-		w := httptest.NewRecorder()
-		NewRouter(discardLogger(), adminDependencies(repo, role, "")).ServeHTTP(w, adminRequest("DELETE", "/api/v1/admin/products/7", ""))
-		want := 403
-		if role == admin.RoleOwner {
-			want = 200
-		}
-		if w.Code != want || len(repo.removed) != map[bool]int{true: 1, false: 0}[role == admin.RoleOwner] {
-			t.Fatalf("%s status %d writes %v", role, w.Code, repo.removed)
-		}
-		if role == admin.RoleOwner && w.Body.String() != "{\"productId\":7,\"action\":\"archived\"}\n" {
-			t.Fatal(w.Body.String())
-		}
+func TestProductRemovalRequiresProductManagement(t *testing.T) {
+	for _, scenario := range []struct {
+		name, role string
+		status     int
+	}{
+		{"owner", admin.RoleOwner, http.StatusOK},
+		{"administrator", admin.RoleAdministrator, http.StatusOK},
+		{"manager", admin.RoleManager, http.StatusOK},
+		{"customer", "", http.StatusForbidden},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			repo := &removalRepository{adminRepositoryStub: &adminRepositoryStub{}}
+			response := httptest.NewRecorder()
+			NewRouter(discardLogger(), adminDependencies(repo, scenario.role, "")).ServeHTTP(response,
+				adminRequest(http.MethodDelete, "/api/v1/admin/products/7", ""))
+			if response.Code != scenario.status {
+				t.Fatalf("status %d, want %d: %s", response.Code, scenario.status, response.Body.String())
+			}
+			if scenario.status == http.StatusForbidden {
+				if len(repo.removed) != 0 {
+					t.Fatalf("removal called without permission: %v", repo.removed)
+				}
+				return
+			}
+			if len(repo.removed) != 1 || repo.removed[0] != 7 || response.Body.String() != "{\"productId\":7,\"action\":\"archived\"}\n" {
+				t.Fatalf("removed %v, response %s", repo.removed, response.Body.String())
+			}
+		})
 	}
 }

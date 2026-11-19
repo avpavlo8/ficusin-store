@@ -64,7 +64,7 @@ func TestEditorSyncDoesNotGrantAccessToOtherProductOperations(t *testing.T) {
 	}{
 		{"customer", "", http.MethodPost, "/api/v1/admin/products/61/editor-plan/sync-existing"},
 		{"unknown role", "viewer", http.MethodPost, "/api/v1/admin/products/61/editor-plan/sync-existing"},
-		{"administrator cannot write plan", admin.RoleAdministrator, http.MethodPut, "/api/v1/admin/products/61/editor-plan"},
+		{"customer cannot write plan", "", http.MethodPut, "/api/v1/admin/products/61/editor-plan"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &editorSyncStub{}

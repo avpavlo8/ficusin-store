@@ -4247,7 +4247,7 @@ paths:
       tags: [Administration]
       security:
         - Session: []
-      x-permissions: [catalog.delete]
+      x-permissions: [products.manage]
       description: >-
         Removes a free never-published draft. Published cards or drafts with stock,
         reservations, external links, reviews or historical references are archived
@@ -4292,7 +4292,7 @@ paths:
         - products.edit
       description: >-
         Requires products.edit. SKU fields are updated only through variants; media use the
-        dedicated media API. Unknown fields are rejected. Owners and managers with products.manage
+        dedicated media API. Unknown fields are rejected. Staff with products.manage
         can submit commercial fields, new variants and variants with {id, remove: true}
         without other variant fields. Within the same transaction, unlinked variants are
         deleted; variants with stock, reservations, orders, Saby links or historical
