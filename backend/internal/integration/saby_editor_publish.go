@@ -27,6 +27,7 @@ type sabyEditorUploadedImage struct {
 	Result json.RawMessage `json:"result"`
 }
 type sabyEditorPublishState struct {
+	Gallery             *sabyEditorGalleryDelta   `json:"gallery,omitempty"`
 	BasePriceIncluded   bool                      `json:"basePriceIncluded,omitempty"`
 	Created             bool                      `json:"created"`
 	Images              []sabyEditorUploadedImage `json:"images,omitempty"`
@@ -149,6 +150,13 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		if err = validateSabyEditorPublishRequest(r); err != nil {
 			return ce.Result{Progress: s}, err
 		}
+		if r.Action == "update" && !native.Created {
+			gallery, err := p.sabyEditorGalleryChanges(ctx, card.value("ImageData"), s.SitePhotos, r.Images)
+			if err != nil {
+				return ce.Result{Progress: s}, err
+			}
+			native.Gallery = &gallery
+		}
 		folder, _ := card.scalarString("Folder")
 		if folder != r.Saby.Folder.ID && !native.Created {
 			s.Stage = "move"
@@ -187,16 +195,20 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		return result("queued", "Перенос отправлен в СБИС. Проверяем выбранный раздел.")
 	}
 	if s.Stage == "media" {
-		if len(native.Images) > len(r.Images) {
+		sources := r.Images
+		if native.Gallery != nil {
+			sources = native.Gallery.Added
+		}
+		if len(native.Images) > len(sources) {
 			return result("needs_attention", "Состав фотографий изменился во время публикации СБИС. Нужна проверка.")
 		}
 		for i, image := range native.Images {
-			if image.Source != r.Images[i] {
+			if image.Source != sources[i] {
 				return result("needs_attention", "Порядок фотографий изменился во время публикации СБИС. Нужна проверка.")
 			}
 		}
-		if len(native.Images) < len(r.Images) {
-			source := r.Images[len(native.Images)]
+		if len(native.Images) < len(sources) {
+			source := sources[len(native.Images)]
 			data, ext, err := downloadSabyEditorImage(ctx, p.ImageClient, source)
 			if err != nil {
 				return ce.Result{Progress: s}, err
@@ -309,7 +321,9 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 			}
 		}
 		s.IDs.Barcode = r.Barcode
-		s.IDs.ImageCount = len(native.ImageIDs)
+		if native.Gallery == nil || native.Gallery.changed() {
+			s.IDs.ImageCount = len(native.ImageIDs)
+		}
 		s.Stage = "done"
 		s.Ambiguous = false
 		if native.Created {
@@ -345,7 +359,7 @@ func validateSabyEditorPublishRequest(r ce.Request) error {
 	if err := validateSabyEditorEAN13(r.Barcode); err != nil {
 		return err
 	}
-	if len(r.Images) == 0 || len(r.Images) > 30 {
+	if r.Action != "update" && (len(r.Images) == 0 || len(r.Images) > 30) {
 		return errors.New("Для СБИС добавьте от 1 до 30 фотографий")
 	}
 	for _, image := range r.Images {
@@ -372,7 +386,11 @@ func sabyEditorPreparedValid(native sabyEditorPublishState, r ce.Request, id str
 		return false
 	}
 	requestData, _ := json.Marshal(r)
-	return len(native.PreparedData) > 0 && native.PreparedHash != "" && native.PreparedRequestHash != "" && native.PreparedID == id && sabyEditorPayloadHash(native.PreparedData) == native.PreparedHash && sabyEditorPayloadHash(requestData) == native.PreparedRequestHash && len(r.Images) > 0 && len(native.ImageIDs) >= len(r.Images)
+	photosPrepared := len(r.Images) > 0 && len(native.ImageIDs) >= len(r.Images)
+	if native.Gallery != nil {
+		photosPrepared = len(native.Images) == len(native.Gallery.Added) && len(native.ImageIDs) >= len(native.Images)
+	}
+	return len(native.PreparedData) > 0 && native.PreparedHash != "" && native.PreparedRequestHash != "" && native.PreparedID == id && sabyEditorPayloadHash(native.PreparedData) == native.PreparedHash && sabyEditorPayloadHash(requestData) == native.PreparedRequestHash && photosPrepared
 }
 
 // Only semantically stable owned values participate. Saby may rotate gallery

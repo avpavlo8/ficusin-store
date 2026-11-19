@@ -24,7 +24,7 @@ func SabyPublicationRevision(status string, previous, next Request, receipt Prog
 	}
 	// Prepared hashes, uploaded media and an UpdateRequest belong to the old
 	// content. Rebuild them from a fresh identity-checked read of the same Id.
-	fresh := Progress{Stage: "hydrate", IDs: receipt.IDs, CreateAttempted: true}
+	fresh := Progress{Stage: "hydrate", IDs: receipt.IDs, CreateAttempted: true, SitePhotos: CarrySitePhotos("saby", status, previous, next, receipt)}
 	// A confirmed Create may fail before its initial price has been written.
 	// Rebuild its content, but retain the obligation to publish that first
 	// price. Finished cards return to ordinary content-only updates instead.

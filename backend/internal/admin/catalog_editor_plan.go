@@ -505,6 +505,15 @@ func (r *PostgresRepository) SaveEditorPlan(ctx context.Context, actor Actor, pr
 					}
 				}
 			}
+			if action == "update" && priorMode == mode && !replacing[channel] {
+				var previous, next catalogeditor.Request
+				var progress catalogeditor.Progress
+				if json.Unmarshal(priorPayload, &previous) == nil && json.Unmarshal(raw, &next) == nil {
+					_ = json.Unmarshal(resetProgress, &progress)
+					progress.SitePhotos = catalogeditor.CarrySitePhotos(channel, priorStatus, previous, next, priorProgress)
+					resetProgress, _ = json.Marshal(progress)
+				}
+			}
 			if _, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,status,message,execution_mode) VALUES($1,$2,$3,$4,'prepared','Подготовлено к созданию',$5) ON CONFLICT(variant_id,channel) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,payload=EXCLUDED.payload,execution_mode=EXCLUDED.execution_mode,pending_payload=NULL,pending_fingerprint=NULL,progress=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.progress ELSE $6::jsonb END,next_attempt_at=NOW(),status=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode AND catalog_editor_publications.status<>'cancelled' THEN catalog_editor_publications.status ELSE 'prepared' END,message=CASE WHEN catalog_editor_publications.fingerprint=EXCLUDED.fingerprint AND catalog_editor_publications.execution_mode=EXCLUDED.execution_mode THEN catalog_editor_publications.message ELSE EXCLUDED.message END,updated_at=NOW()`, v.VariantID, channel, hash, raw, mode, resetProgress); err != nil {
 				return EditorPlanView{}, err
 			}

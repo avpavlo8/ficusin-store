@@ -110,8 +110,9 @@ export function readinessFor(
   unknownEnums.forEach((name) =>
     tasks.push({ label: `Выберите актуальное значение: ${name}`, section: "attributes" }),
   );
-  if (product.unknownEnumValues && !unknownEnums.length)
-    tasks.push({ label: "Проверьте значения размеров", section: "variants" });
+  (product.variantEnumTasks || []).forEach((label) => tasks.push({ label, section: "variants" }));
+  if (product.unknownEnumValues && !unknownEnums.length && !product.variantEnumTasks?.length)
+    tasks.push({ label: "Проверьте значения характеристик", section: "attributes" });
   return { tasks, codes };
 }
 
