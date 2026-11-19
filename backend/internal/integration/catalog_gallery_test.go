@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	ce "github.com/avpavlo8/ficusin-store/backend/internal/catalogeditor"
+	"golang.org/x/image/draw"
 )
 
 func TestCatalogGalleryDeltaPreservesVendorPhotosAndMatchesRehostedFiles(t *testing.T) {
@@ -137,6 +138,66 @@ func TestCatalogExistingCardsApplyOnlySitePhotoChanges(t *testing.T) {
 			if !slices.Equal(m.cards[key].Images, append([]string{manual}, after...)) {
 				t.Fatalf("%s lost seller's photo: %v", channel, m.cards[key].Images)
 			}
+			if channel == "wb" {
+				// A pre-upgrade write already appended the new photos but kept
+				// the old versions. The durable readback can safely resume.
+				saved := m.cards[key]
+				saved.Images = append(append([]string{manual}, before...), after...)
+				m.cards[key] = saved
+				hydrated, ids, err := p.hydrateCatalogUpdate(ctx, channel, req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				count := len(saved.Images)
+				oldProgress := ce.Progress{Stage: "price", UpdateRequest: &hydrated, IDs: ids,
+					SitePhotos: s.SitePhotos, PhotoCount: &count, PhotoWrite: after}
+				advance(oldProgress, run)
+				if !slices.Equal(m.cards[key].Images, append([]string{manual}, after...)) {
+					t.Fatalf("WB legacy receipt did not reconcile old photos: %v", m.cards[key].Images)
+				}
+			}
 		})
+	}
+}
+
+func TestWildberriesMatchesLetterboxedSitePhotoAndDeduplicatesPreviousUpload(t *testing.T) {
+	canvas := image.Rect(0, 0, 144, 160)
+	snapshot := image.NewRGBA(canvas)
+	source := image.NewRGBA(image.Rect(0, 0, 192, 128))
+	for y := 0; y < 128; y++ {
+		for x := 0; x < 192; x++ {
+			source.SetRGBA(x, y, color.RGBA{R: uint8(45 + x), G: uint8(110 + y), B: 90, A: 255})
+		}
+	}
+	fullBlack := &image.Uniform{C: color.Black}
+	draw.Draw(snapshot, canvas, fullBlack, image.Point{}, draw.Src)
+	draw.BiLinear.Scale(snapshot, image.Rect(0, 32, 144, 128), source, source.Bounds(), draw.Src, nil)
+	if got := wildberriesPhotoContentBounds(snapshot); got != image.Rect(0, 32, 144, 128) {
+		t.Fatalf("incorrect source bounds: %v", got)
+	}
+	manual := image.NewRGBA(canvas)
+	draw.Draw(manual, canvas, &image.Uniform{C: color.RGBA{R: 180, G: 45, B: 60, A: 255}}, image.Point{}, draw.Src)
+	newPhoto := image.NewRGBA(canvas)
+	draw.Draw(newPhoto, canvas, &image.Uniform{C: color.RGBA{R: 50, G: 75, B: 185, A: 255}}, image.Point{}, draw.Src)
+	files := map[string]image.Image{"/site-old.jpg": source, "/wb-old.jpg": snapshot, "/manual.jpg": manual, "/site-new.jpg": newPhoto, "/wb-new.jpg": newPhoto}
+	client := &http.Client{Transport: flowwowRoundTrip(func(r *http.Request) (*http.Response, error) {
+		buf := new(bytes.Buffer)
+		if err := jpeg.Encode(buf, files[r.URL.Path], &jpeg.Options{Quality: 90}); err != nil {
+			return nil, err
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(buf.Bytes())), ContentLength: int64(buf.Len())}, nil
+	})}
+	const domain = "https://seller.example.com"
+	previous := &ce.SitePhotoBaseline{Before: []string{domain + "/site-old.jpg"}}
+	after := []string{domain + "/site-new.jpg"}
+	live := []string{domain + "/manual.jpg", domain + "/wb-old.jpg", domain + "/wb-new.jpg"}
+	matcher := newCatalogPhotoMatcher(client)
+	matcher.wildberries = true
+	changes, err := matcher.delta(context.Background(), live, previous, after, after)
+	if err != nil || !slices.Equal(changes.Removed, []int{1}) || len(changes.Added) > 0 {
+		t.Fatalf("wrong recovery plan: %+v, %v", changes, err)
+	}
+	if want := []string{live[0], live[2]}; !slices.Equal(changes.apply(live), want) {
+		t.Fatalf("manual image or converted upload was lost")
 	}
 }

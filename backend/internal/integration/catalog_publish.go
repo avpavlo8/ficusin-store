@@ -454,7 +454,15 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 		if ids.ProductID != s.IDs.ProductID {
 			return result("needs_attention", "Связь WB изменилась. Цена не отправлялась")
 		}
-		confirmed, err := catalogPhotoWriteConfirmed(ctx, nil, ids.Gallery.Photos, s)
+		matcher := newCatalogPhotoMatcher(nil)
+		matcher.wildberries = true
+		legacyPhotoWrite := !s.WBPhotoMatching && s.PhotoCount != nil && s.SitePhotos != nil
+		check := s
+		if legacyPhotoWrite {
+			count := len(ids.Gallery.Photos)
+			check.PhotoCount = &count
+		}
+		confirmed, err := matcher.confirms(ctx, ids.Gallery.Photos, check)
 		if err != nil {
 			return ce.Result{Progress: s}, err
 		}
@@ -464,6 +472,24 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 				return result("needs_attention", "WB не подтвердил фотографии обновлённой карточки")
 			}
 			return result("queued", "Ожидаем фотографии WB. Цена и скидка не менялись")
+		}
+		if legacyPhotoWrite {
+			// An earlier worker may have appended the right photos but missed
+			// copies with WB's black bars. Reconcile once against a fresh list.
+			changes, err := matcher.delta(ctx, ids.Gallery.Photos, s.SitePhotos, r.Images, s.PhotoWrite)
+			if err != nil {
+				return ce.Result{Progress: s}, err
+			}
+			if len(changes.Added) != 0 {
+				return result("needs_attention", "Wildberries не подтвердил загрузку фотографий. Проверьте галерею в кабинете")
+			}
+			if len(changes.Removed) > 0 {
+				s.Stage = "media"
+				s.Checks = 0
+				return result("queued", "Найдены прежние снимки сайта с полями Wildberries. Подготавливаем их удаление")
+			}
+			s.PhotoCount = check.PhotoCount
+			s.WBPhotoMatching = true
 		}
 		return result("synced", "Контент WB обновлён. Цена и скидка сохранены; изменения цен подтверждаются отдельно")
 	}
@@ -745,7 +771,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			if live.ProductID != s.IDs.ProductID || live.Gallery.Incomplete {
 				return result("needs_attention", "Wildberries не подтвердил связь или полный список фотографий")
 			}
-			changes, err := catalogGalleryDelta(ctx, nil, live.Gallery.Photos, s.SitePhotos, r.Images)
+			matcher := newCatalogPhotoMatcher(nil)
+			matcher.wildberries = true
+			changes, err := matcher.delta(ctx, live.Gallery.Photos, s.SitePhotos, r.Images, s.PhotoWrite)
 			if err != nil {
 				return ce.Result{Progress: s}, err
 			}
@@ -757,7 +785,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 				return ce.Result{Progress: s}, err
 			}
 			count := len(media)
-			s.PhotoCount, s.PhotoWrite = &count, changes.Added
+			s.PhotoCount = &count
+			s.PhotoWrite = append(s.PhotoWrite, changes.Added...)
+			s.WBPhotoMatching = true
 			if live.Gallery.Video != "" {
 				video, err := url.Parse(live.Gallery.Video)
 				if err != nil || video.Scheme != "https" || !(strings.HasSuffix(strings.ToLower(video.Path), ".mp4") || strings.HasSuffix(strings.ToLower(video.Path), ".mov")) {
