@@ -2,13 +2,14 @@ package httpapi
 
 import (
 	"context"
-	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 	"net/http"
 	"strconv"
+
+	"github.com/avpavlo8/ficusin-store/backend/internal/admin"
 )
 
 func (handlers adminHandlers) removeProduct(response http.ResponseWriter, request *http.Request) {
-	_, actor, ok := handlers.authorize(response, request, admin.PermissionDelete)
+	_, actor, ok := handlers.authorize(response, request, admin.PermissionProductsManage)
 	if !ok {
 		return
 	}

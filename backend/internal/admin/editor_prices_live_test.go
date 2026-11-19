@@ -276,7 +276,7 @@ func TestEditorPricesLocalDatabase(t *testing.T) {
 		if called != 0 {
 			t.Fatal("draft auto-sent")
 		}
-		_, e := repo.ApproveEditorPrice(ctx, Actor{CustomerID: actorID, Role: RoleAdministrator}, p, draft.ID, draft.Fingerprint)
+		_, e := repo.ApproveEditorPrice(ctx, Actor{CustomerID: actorID}, p, draft.ID, draft.Fingerprint)
 		if !errors.Is(e, ErrForbidden) {
 			t.Fatalf("role without product management approved: %v", e)
 		}
@@ -286,7 +286,7 @@ func TestEditorPricesLocalDatabase(t *testing.T) {
 		}
 		// A completed create receipt keeps createAttempted=true permanently.
 		exec(`INSERT INTO catalog_editor_publications(variant_id,channel,fingerprint,payload,status,execution_mode,progress) VALUES($1,'wb','content','{}','created','mock','{"createAttempted":true}')`, v)
-		_, e = repo.ApproveEditorPrice(ctx, actor, p, draft.ID, draft.Fingerprint)
+		_, e = repo.ApproveEditorPrice(ctx, Actor{CustomerID: actorID, Role: RoleAdministrator}, p, draft.ID, draft.Fingerprint)
 		must(e)
 		_, e = repo.ApproveEditorPrice(ctx, actor, p, draft.ID, draft.Fingerprint)
 		if !errors.Is(e, pgx.ErrNoRows) {

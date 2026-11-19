@@ -49,7 +49,8 @@ func TestEditorPriceMutationsRequireProductManagementAndExactSavedFingerprint(t 
 			want, calls      int
 		}{
 			{"manager", admin.RoleManager, `{"fingerprint":"saved"}`, nil, 200, 1},
-			{"administrator", admin.RoleAdministrator, `{"fingerprint":"saved"}`, nil, 403, 0},
+			{"administrator", admin.RoleAdministrator, `{"fingerprint":"saved"}`, nil, 200, 1},
+			{"customer", "", `{"fingerprint":"saved"}`, nil, 403, 0},
 			{"missing fingerprint", admin.RoleOwner, `{}`, nil, 400, 0},
 			{"stale", admin.RoleOwner, `{"fingerprint":"saved"}`, pgx.ErrNoRows, 409, 1},
 			{"disabled", admin.RoleOwner, `{"fingerprint":"saved"}`, admin.ErrPriceChannelUnavailable, 409, 1},

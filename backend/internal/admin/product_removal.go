@@ -17,7 +17,7 @@ type ProductRemoval struct {
 // Published cards and any referenced draft remain recoverable in the archive.
 func (repository *PostgresRepository) RemoveProduct(ctx context.Context, actor Actor, id int64) (ProductRemoval, error) {
 	result := ProductRemoval{ProductID: id}
-	if !Can(actor.Role, PermissionDelete) {
+	if !Can(actor.Role, PermissionProductsManage) {
 		return result, ErrForbidden
 	}
 	if id <= 0 {

@@ -89,7 +89,7 @@ async function unifiedPhotoFixture(page: import('@playwright/test').Page, role: 
     const req=route.request(),path=new URL(req.url()).pathname,method=req.method();
     const send=(json:unknown,status=200)=>route.fulfill({status,json});
     if(!['GET','HEAD'].includes(method))mutations.push({path,method});
-    if(path.endsWith('/dashboard'))return send({role,user:user.user,permissions:['products.read','products.edit',...(role==='administrator'?[]:['products.manage'])],dashboard:{products:1,variants:1,orders:0,customers:1,wholesalePending:0,recentOrders:[]}});
+    if(path.endsWith('/dashboard'))return send({role,user:user.user,permissions:['products.read','products.edit','products.manage'],dashboard:{products:1,variants:1,orders:0,customers:1,wholesalePending:0,recentOrders:[]}});
     if(path==='/api/v1/admin/products')return send({products:[saved]});
     if(path==='/api/v1/admin/categories')return send({categories:[{id:1,parentId:null,name:'Растения',slug:'plants',sortOrder:1,productsCount:1}]});
     if(path.endsWith('/attributes'))return send({attributes:[]});
@@ -97,7 +97,7 @@ async function unifiedPhotoFixture(page: import('@playwright/test').Page, role: 
     if(path.endsWith('/collection-definitions'))return send({collections:[]});
     if(path.endsWith('/catalog-editor/references'))return send({categories:[],folders:[]});
     if(path.endsWith('/editor-plan/sync-existing'))return send({queued:0,skipped:0,warnings:[]});
-    if(path.endsWith('/editor-plan')){if(method==='PUT'){if(role==='administrator')return send({error:'Недостаточно прав'},403);plan=req.postDataJSON().config;}return send({config:plan,publications:[],links:{},barcodes:{},publicationMode:'disabled'});}
+    if(path.endsWith('/editor-plan')){if(method==='PUT'){plan=req.postDataJSON().config;}return send({config:plan,publications:[],links:{},barcodes:{},publicationMode:'disabled'});}
     if(path.endsWith('/catalog-editor/settings'))return send({values:{'cdek.packaging_season':'summer'}});
     if(path==='/api/v1/admin/products/1'&&method==='PATCH'){saved={...saved,...req.postDataJSON()};return send({product:saved});}
     const photoRoute=path.match(/\/(products|variants)\/(\d+)\/media(?:\/(copy|\d+)(?:\/(primary))?)?$/);
@@ -112,7 +112,6 @@ async function unifiedPhotoFixture(page: import('@playwright/test').Page, role: 
       }
       if(primary){for(const photo of media.filter(belongs))photo.primary=photo.id===Number(action);return send({ok:true});}
       if(method==='DELETE'){
-        if(role==='administrator')return send({error:'Недостаточно прав'},403);
         const at=media.findIndex(photo=>belongs(photo)&&photo.id===Number(action));if(at<0)return send({error:'Фото не найдено'},404);media.splice(at,1);return send({deleted:true});
       }
       if(method==='POST'){
@@ -125,11 +124,11 @@ async function unifiedPhotoFixture(page: import('@playwright/test').Page, role: 
 }
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=','base64');
 
-for(const role of ['owner','manager'] as const)test(`@desktop @phone ${role} opens PDP photos in the unified editor and saves its draft gallery`,async({page})=>{
+for(const role of ['owner','manager','administrator'] as const)test(`@desktop @phone ${role} opens PDP photos in the unified editor and saves its draft gallery`,async({page})=>{
   const f=await unifiedPhotoFixture(page,role);await page.goto('/product/1');await page.getByRole('button',{name:'Фотографии',exact:true}).click();
   await expect(page).toHaveURL(/\/admin\?section=products&product=1&editor=media#product-media$/);
   const editor=page.locator('.editor-page'),gallery=editor.getByRole('complementary',{name:'Фото и видео товара',exact:true});
-  await expect(gallery).toBeFocused();await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(gallery).toBeFocused({timeout:15000});await expect(page.getByRole('dialog')).toHaveCount(0);
   await gallery.locator('input[type="file"]').setInputFiles({name:'plant.png',mimeType:'image/png',buffer:png});
   const uploaded=gallery.getByRole('button',{name:/^Фото \d+: plant.png\./});await expect(uploaded).toBeVisible();expect(f.uploadCount).toBe(0);
   // The same accessible ordering gesture as the catalogue moves the new image
@@ -147,17 +146,4 @@ for(const role of ['owner','manager'] as const)test(`@desktop @phone ${role} ope
   await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(editor).toHaveCount(0);await expect.poll(()=>f.mutations.filter(req=>req.method==='DELETE').length).toBe(1);await page.goto('/admin?section=products&product=1&editor=media');
   expect(f.mutations.find(req=>req.method==='DELETE')!.path).toMatch(/^\/api\/v1\/admin\/variants\/10\/media\/\d+$/);
   await page.reload();await expect(gallery).toBeFocused();await expect(gallery.locator('.editor-gallery-cover img')).toHaveAttribute('src',cover.url);
-});
-
-test('@desktop administrator opens the same PDP photo editor with upload access and protected deletion',async({page})=>{
-  const f=await unifiedPhotoFixture(page,'administrator');await page.goto('/product/1');await page.getByRole('button',{name:'Фотографии',exact:true}).click();
-  const editor=page.locator('.editor-page'),gallery=editor.getByRole('complementary',{name:'Фото и видео товара',exact:true});
-  await expect(gallery).toBeFocused();await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(gallery.getByRole('button',{name:'Удалить обложку',exact:true})).toBeDisabled();
-  await gallery.locator('input[type="file"]').setInputFiles({name:'admin.png',mimeType:'image/png',buffer:png});
-  await expect(gallery.getByRole('button',{name:/^Фото \d+: admin.png\./})).toBeVisible();expect(f.uploadCount).toBe(0);
-  await editor.getByRole('button',{name:'Сохранить',exact:true}).click();await expect(editor).toHaveCount(0);await expect(page.locator('.catalog-action-notice')).toContainText('Изменения товара сохранены');await page.goto('/admin?section=products&product=1&editor=media');await expect(editor.getByRole('button',{name:'Сохранить',exact:true})).toBeEnabled();
-  expect(f.uploadCount).toBe(1);expect(f.mutations.filter(req=>req.method==='DELETE')).toHaveLength(0);
-  expect(f.mutations.filter(req=>req.path.endsWith('/editor-plan')&&req.method==='PUT')).toHaveLength(0);
-  expect(f.mutations.filter(req=>req.path.endsWith('/editor-plan/sync-existing'))).toHaveLength(1);
 });

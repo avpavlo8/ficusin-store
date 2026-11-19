@@ -57,7 +57,7 @@ func Can(role, permission string) bool {
 		return permission == PermissionChat || permission == PermissionDashboard || permission == PermissionCustomersRead ||
 			permission == PermissionCustomersEdit || permission == PermissionOrdersRead ||
 			permission == PermissionOrdersEdit || permission == PermissionProductsRead ||
-			permission == PermissionProductsEdit || permission == PermissionReturnsRead ||
+			permission == PermissionProductsEdit || permission == PermissionProductsManage || permission == PermissionReturnsRead ||
 			permission == PermissionReturnsEdit || permission == PermissionReturnsReceipt || permission == PermissionReturnsDelete ||
 			permission == PermissionProcurementRead || permission == PermissionProcurementEdit ||
 			permission == PermissionAnalyticsRead

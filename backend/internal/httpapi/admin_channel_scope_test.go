@@ -21,11 +21,11 @@ func (stub *channelScopeStub) SetVariantMarketplaceScope(_ context.Context, _ ad
 	return nil
 }
 
-func TestMarketplaceScopeRejectsContentOnlyAdministrator(t *testing.T) {
+func TestMarketplaceScopeRejectsCustomer(t *testing.T) {
 	stub := &channelScopeStub{}
 	request := adminRequest(http.MethodPatch, "/api/v1/admin/variants/61/marketplace-scope", `{"marketplaceScope":"site_only"}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(stub, admin.RoleAdministrator, "manager@example.com")).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(stub, "", "customer@example.com")).ServeHTTP(response, request)
 	if response.Code != http.StatusForbidden || stub.called {
 		t.Fatalf("status=%d called=%v", response.Code, stub.called)
 	}
@@ -35,7 +35,7 @@ func TestMarketplaceScopeUpdatesVariant(t *testing.T) {
 	stub := &channelScopeStub{}
 	request := adminRequest(http.MethodPatch, "/api/v1/admin/variants/61/marketplace-scope", `{"marketplaceScope":"site_only"}`)
 	response := httptest.NewRecorder()
-	NewRouter(discardLogger(), adminDependencies(stub, admin.RoleOwner, "owner@example.com")).ServeHTTP(response, request)
+	NewRouter(discardLogger(), adminDependencies(stub, admin.RoleAdministrator, "administrator@example.com")).ServeHTTP(response, request)
 	if response.Code != http.StatusOK || !stub.called || stub.scope != "site_only" {
 		t.Fatalf("status=%d called=%v scope=%q body=%s", response.Code, stub.called, stub.scope, response.Body.String())
 	}

@@ -46,19 +46,23 @@ func TestEditorPlanShowsValidationAndHidesInternalErrors(t *testing.T) {
 	}
 }
 
-func TestManagerCanSubmitFullEditorPlanWithoutGrantingAdministrator(t *testing.T) {
+func TestStaffCanSubmitFullEditorPlanWithExternalLinks(t *testing.T) {
+	body := `{"config":{"variants":[{"variantId":71,"saby":{"mode":"link","existingCode":"X100"},"marketplace":{"wb":{"enabled":true,"mode":"link","existingId":"wb-card"},"ozon":{"enabled":true,"mode":"link","existingId":"ozon-card"}}}]},"submit":true}`
 	for _, role := range []string{admin.RoleManager, admin.RoleAdministrator} {
-		repo := &managerEditorPlanStub{}
-		response := httptest.NewRecorder()
-		NewRouter(discardLogger(), adminDependencies(repo, role, "")).ServeHTTP(response, adminRequest(http.MethodPut, "/api/v1/admin/products/61/editor-plan", `{"config":{"variants":[{"variantId":71,"saby":{"mode":"create","category":{"id":"1041"},"folder":{"id":"3333"}},"marketplace":{"wb":{"enabled":true,"mode":"create","category":{"id":"936"}}},"wbPrice":"1200"}]},"submit":true}`))
-		if role == admin.RoleAdministrator {
-			if response.Code != 403 || repo.submitted {
-				t.Fatalf("administrator upgraded: %d", response.Code)
+		t.Run(role, func(t *testing.T) {
+			repo := &managerEditorPlanStub{}
+			response := httptest.NewRecorder()
+			NewRouter(discardLogger(), adminDependencies(repo, role, "")).ServeHTTP(response,
+				adminRequest(http.MethodPut, "/api/v1/admin/products/61/editor-plan", body))
+			if response.Code != http.StatusOK || !repo.submitted || repo.id != 61 ||
+				repo.actor.Role != role || repo.actor.CustomerID != 1 || len(repo.plan.Variants) != 1 {
+				t.Fatalf("editor plan not submitted: %d %+v", response.Code, repo)
 			}
-			continue
-		}
-		if response.Code != 200 || !repo.submitted || repo.id != 61 || repo.actor.Role != admin.RoleManager || repo.actor.CustomerID != 1 || len(repo.plan.Variants) != 1 || repo.plan.Variants[0].WBPrice != "1200" {
-			t.Fatalf("manager plan not accepted: %d %+v", response.Code, repo)
-		}
+			variant := repo.plan.Variants[0]
+			if variant.VariantID != 71 || variant.Saby.ExistingCode != "X100" ||
+				variant.Marketplace.WB.ExistingID != "wb-card" || variant.Marketplace.Ozon.ExistingID != "ozon-card" {
+				t.Fatalf("external links not forwarded: %+v", variant)
+			}
+		})
 	}
 }
