@@ -33,8 +33,6 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 		{"POST", "/api/v1/admin/procurement/batches/1/retry", "{}"},
 		{"POST", "/api/v1/admin/products/import", `{"codes":["a"]}`},
 		{"POST", "/api/v1/admin/products/merge", "{}"},
-		{"DELETE", "/api/v1/admin/products", `{"productIds":[1]}`},
-		{"DELETE", "/api/v1/admin/products/1", ""},
 		{"DELETE", "/api/v1/admin/categories/1", ""},
 
 		{"DELETE", "/api/v1/admin/collection-definitions/1", ""},
@@ -51,21 +49,8 @@ func TestCRMManagerDeniedRoutes(t *testing.T) {
 		})
 	}
 }
-func TestCRMAdministratorProductPatchRejectsEntireMixedRequest(t *testing.T) {
-	for _, field := range []string{`"variants":[{"id":1,"priceMinor":1}]`, `"Variants":[{"id":1,"priceMinor":1}]`, `"variants":[{"id":1,"active":true}]`, `"variants":[{"id":1,"externalIds":[]}]`, `"variants":[{"id":1,"wholesaleMinQty":2}]`, `"status":"archived"`, `"unknown":1`} {
-		t.Run(field, func(t *testing.T) {
-			repository := &crmProductRepository{}
-			router := NewRouter(discardLogger(), adminDependencies(repository, admin.RoleAdministrator, ""))
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, adminRequest("PATCH", "/api/v1/admin/products/1", `{"name":"Must not persist",`+field+`}`))
-			if response.Code != 403 || len(repository.updates) != 0 {
-				t.Fatalf("status=%d writes=%d", response.Code, len(repository.updates))
-			}
-		})
-	}
-}
 func TestCRMContentEditUsesOnlyAtomicProductPatch(t *testing.T) {
-	for _, role := range []string{admin.RoleOwner, admin.RoleManager} {
+	for _, role := range []string{admin.RoleOwner, admin.RoleManager, admin.RoleAdministrator} {
 		repository := &crmProductRepository{}
 		body := `{"description":"Updated content"}`
 		router := NewRouter(discardLogger(), adminDependencies(repository, role, ""))
@@ -89,25 +74,39 @@ func TestCRMManagerPermissionResponse(t *testing.T) {
 	}
 }
 
-func TestManagerUnifiedCommercialPatchAndMediaDelete(t *testing.T) {
-	repo := &crmProductRepository{}
-	w := httptest.NewRecorder()
-	body := `{"name":"Updated","variants":[{"id":1,"priceMinor":12345,"wholesaleMinQty":3},{"id":-1,"label":"D17","priceMinor":23456},{"id":2,"remove":true}]}`
-	NewRouter(discardLogger(), adminDependencies(repo, admin.RoleManager, "")).ServeHTTP(w, adminRequest("PATCH", "/api/v1/admin/products/1", body))
-	if w.Code != 200 || len(repo.updates) != 1 || len(repo.updates[0].Variants) != 3 || repo.updates[0].Variants[0].PriceMinor == nil || *repo.updates[0].Variants[0].PriceMinor != 12345 || repo.updates[0].Variants[0].WholesaleMinQty == nil || *repo.updates[0].Variants[0].WholesaleMinQty != 3 || !repo.updates[0].Variants[2].Remove {
-		t.Fatalf("manager editor denied: %d %s", w.Code, w.Body.String())
-	}
+func TestStaffCannotBulkDeleteProducts(t *testing.T) {
 	for _, role := range []string{admin.RoleManager, admin.RoleAdministrator} {
-		media := newCatalogToolRepositoryStub()
-		w = httptest.NewRecorder()
-		NewRouter(discardLogger(), adminDependencies(media, role, "")).ServeHTTP(w, adminRequest("DELETE", "/api/v1/admin/products/1/media/2", ""))
-		want := 200
-		if role == admin.RoleAdministrator {
-			want = 403
+		response := httptest.NewRecorder()
+		NewRouter(discardLogger(), adminDependencies(admin.NewPostgresRepository(nil), role, "")).ServeHTTP(response,
+			adminRequest("DELETE", "/api/v1/admin/products", `{"productIds":[1]}`))
+		if response.Code != 403 {
+			t.Fatalf("role=%s bulk delete=%d", role, response.Code)
 		}
-		if w.Code != want {
-			t.Fatalf("role=%s media=%d", role, w.Code)
-		}
+	}
+}
+
+func TestStaffUnifiedCommercialPatchAndMediaDelete(t *testing.T) {
+	for _, role := range []string{admin.RoleManager, admin.RoleAdministrator} {
+		t.Run(role, func(t *testing.T) {
+			repo := &crmProductRepository{}
+			w := httptest.NewRecorder()
+			body := `{"name":"Updated","variants":[{"id":1,"priceMinor":12345,"wholesaleMinQty":3},{"id":-1,"label":"D17","priceMinor":23456},{"id":2,"remove":true}]}`
+			NewRouter(discardLogger(), adminDependencies(repo, role, "")).ServeHTTP(w, adminRequest("PATCH", "/api/v1/admin/products/1", body))
+			if w.Code != 200 || len(repo.updates) != 1 || len(repo.updates[0].Variants) != 3 {
+				t.Fatalf("editor denied: %d %s", w.Code, w.Body.String())
+			}
+			variants := repo.updates[0].Variants
+			if variants[0].PriceMinor == nil || *variants[0].PriceMinor != 12345 ||
+				variants[0].WholesaleMinQty == nil || *variants[0].WholesaleMinQty != 3 || !variants[2].Remove {
+				t.Fatalf("unexpected variant edits: %+v", variants)
+			}
+			media := newCatalogToolRepositoryStub()
+			w = httptest.NewRecorder()
+			NewRouter(discardLogger(), adminDependencies(media, role, "")).ServeHTTP(w, adminRequest("DELETE", "/api/v1/admin/products/1/media/2", ""))
+			if w.Code != 200 {
+				t.Fatalf("media delete=%d", w.Code)
+			}
+		})
 	}
 }
 
