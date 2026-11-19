@@ -297,6 +297,7 @@ type RemoteIDs struct {
 	Barcode      string         `json:"barcode,omitempty"`
 }
 type Progress struct {
+	WBPhotoMatching bool               `json:"wbPhotoMatching,omitempty"`
 	PhotoCount      *int               `json:"photoCount,omitempty"`
 	SitePhotos      *SitePhotoBaseline `json:"sitePhotos,omitempty"`
 	PhotoWrite      []string           `json:"photoWrite,omitempty"`
