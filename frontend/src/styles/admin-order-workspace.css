@@ -555,9 +555,51 @@
   justify-items: start;
   margin-block-start: 8px;
 }
-.order-cdek-tracking .order-packing-error {
-  margin: 0;
+.order-cdek-error {
+  display: grid;
+  justify-items: start;
+  justify-self: stretch;
+  gap: 10px;
   min-width: 0;
+  padding: 12px;
+  border: 1px solid #eaddcf;
+  border-radius: var(--ws-radius-sm);
+  background: #fffaf4;
+  color: #493a31;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.order-cdek-error-text {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.order-cdek-error-text strong {
+  color: #613b22;
+  font-size: 14px;
+  font-weight: 650;
+}
+.order-cdek-error-text p {
+  margin: 0;
+}
+.order-cdek-error-codes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  max-width: 100%;
+  color: #725141;
+  font-size: 12px;
+}
+.order-cdek-error-codes code {
+  max-width: 100%;
+  font-size: inherit;
+  overflow-wrap: anywhere;
+}
+.order-cdek-error-hint {
+  color: #725141;
+  font-size: 12px;
 }
 .order-cdek-tracking form,
 .order-cdek-tracking label {

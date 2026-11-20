@@ -787,7 +787,10 @@ test("@desktop @phone ошибка регистрации СДЭК, повтор
   await mockOrderEditor(page, false, "registration");
   await page.goto("/admin?section=orders&order=30");
   const shipping = page.getByRole("region", { name: "Покупатель и доставка" });
-  await expect(shipping.getByText(/bad_delivery_point/)).toBeVisible();
+  await expect(shipping.getByRole("status").filter({ hasText: "Ошибка регистрации в СДЭК" })).toContainText(
+    "СДЭК не обслуживает указанный пункт выдачи",
+  );
+  await expect(shipping.locator("code").filter({ hasText: /^bad_delivery_point$/ })).toBeVisible();
   const retry = shipping.getByRole("button", { name: "Повторить", exact: true });
   await retry.click();
   await expect(shipping.getByText("Ожидаем подтверждения от СДЭК")).toBeVisible();
@@ -795,11 +798,12 @@ test("@desktop @phone ошибка регистрации СДЭК, повтор
   await page.evaluate(() => {
     (window as typeof window & { __cdekRejectedAgain?: boolean }).__cdekRejectedAgain = true;
   });
-  await expect(shipping.getByText(/bad_recipient_phone/)).toBeVisible({ timeout: 10000 });
+  await expect(shipping.getByText("Проверьте телефон получателя", { exact: true })).toBeVisible({ timeout: 10000 });
+  await expect(shipping.locator("code").filter({ hasText: /^bad_recipient_phone$/ })).toBeVisible();
   await shipping.getByRole("button", { name: "Указать трек-номер вручную" }).click();
   await shipping.getByRole("textbox", { name: "Трек-номер СДЭК" }).fill("1234567890");
   if (process.env.FICUSIN_PREVIEW_OUTPUT_DIR) {
-    await shipping.screenshot({ path: `${process.env.FICUSIN_PREVIEW_OUTPUT_DIR}/cdek-order-${testInfo.project.name}.png` });
+    await shipping.locator(".order-cdek-tracking").screenshot({ path: `${process.env.FICUSIN_PREVIEW_OUTPUT_DIR}/cdek-order-${testInfo.project.name}.png` });
   }
   await shipping.getByRole("button", { name: "Сохранить трек" }).click();
   await expect(shipping.getByText("Добавлен вручную")).toBeVisible();

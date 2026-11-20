@@ -1319,6 +1319,24 @@ type OrderCDEKState = {
   canSetTracking: boolean;
 };
 
+function describeCDEKError(error: string) {
+  const httpStatus = /^СДЭК вернул ошибку \((\d{3})\):?\s*/.exec(error);
+  const body = httpStatus
+    ? error.slice(httpStatus[0].length)
+    : error.replace(/^СДЭК отклонил регистрацию:\s*/, "");
+  const codes = httpStatus ? [`HTTP ${httpStatus[1]}`] : [];
+  const messages = body
+    .split(/;\s+(?=[a-z][\w.-]*[_-][\w.-]*(?::|$))/i)
+    .map((issue) => {
+      const detail = /^([a-z][\w.-]*[_-][\w.-]*)(?::\s*(.*))?$/is.exec(issue.trim());
+      if (!detail) return issue.trim();
+      codes.push(detail[1]);
+      return detail[2]?.trim() ?? "";
+    })
+    .filter(Boolean);
+  return { messages, codes: [...new Set(codes)] };
+}
+
 function OrderCDEKTracking({
   order,
   disabled,
@@ -1364,6 +1382,7 @@ function OrderCDEKTracking({
 
   const trackNumber = shipping?.trackNumber ?? order.trackNumber ?? "";
   const enteredTrack = trackDraft ?? trackNumber;
+  const registrationError = shipping?.error ? describeCDEKError(shipping.error) : null;
   const save = async (next: "retry" | "set_tracking") => {
     if (!shipping || action) return;
     setAction(next);
@@ -1404,9 +1423,22 @@ function OrderCDEKTracking({
       {shipping?.pending && !trackNumber && (
         <small role="status">Ожидаем подтверждения от СДЭК</small>
       )}
-      {shipping?.error && (
-        <div className="order-packing-error">
-          <p role="status">{shipping.error}</p>
+      {shipping && registrationError && (
+        <div className="order-cdek-error">
+          <div className="order-cdek-error-text" role="status">
+            <strong>Ошибка регистрации в СДЭК</strong>
+            {registrationError.messages.map((message, index) => (
+              <p key={`${index}-${message}`}>{message}</p>
+            ))}
+          </div>
+          {registrationError.codes.length > 0 && (
+            <div className="order-cdek-error-codes">
+              <span>{registrationError.codes.length === 1 ? "Код ошибки" : "Коды ошибок"}</span>
+              {registrationError.codes.map((code) => (
+                <code key={code}>{code}</code>
+              ))}
+            </div>
+          )}
           {shipping.canRetry && (
             <button
               type="button"
@@ -1417,7 +1449,9 @@ function OrderCDEKTracking({
               {action === "retry" ? "Отправляем…" : "Повторить"}
             </button>
           )}
-          {shipping.retryUnavailable && <small>{shipping.retryUnavailable}</small>}
+          {shipping.retryUnavailable && (
+            <small className="order-cdek-error-hint">{shipping.retryUnavailable}</small>
+          )}
         </div>
       )}
       {shipping?.canSetTracking && trackDraft === null && (
