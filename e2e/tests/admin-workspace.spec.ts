@@ -51,8 +51,8 @@ test("@desktop @phone workspace preserves real navigation and filters recent ord
   const phone = (page.viewportSize()?.width ?? 1280) <= 760;
   if (phone) await page.getByRole("button", { name: "Ещё", exact: true }).click();
   const menu = page.getByRole("navigation", { name: phone ? "Все разделы управления" : "Разделы управления" });
-  // Десять разделов: «Финансы» удалены владельцем.
-  await expect(menu.getByRole("link")).toHaveCount(10);
+  // Инструкции доступны всем сотрудникам, включая роль без прав на интеграции.
+  await expect(menu.getByRole("link")).toHaveCount(11);
   await expect(menu.getByRole("link", { name: "Маркетплейсы", exact: true })).toHaveCount(1);
   await expect(menu.getByRole("link", { name: "Склад", exact: true })).toHaveCount(0);
   await expect(menu.getByRole("link", { name: "Финансы", exact: true })).toHaveCount(0);
@@ -169,7 +169,7 @@ test("@desktop restricted role has no inaccessible shortcuts or analytics reques
   page.on("request", request => { if (request.url().includes("/admin/analytics")) analyticsRequests++; });
   await page.goto("/admin");
   await expect(page.getByRole("heading", { name: greeting })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("link")).toHaveCount(2);
+  await expect(page.getByRole("navigation", { name: "Разделы управления" }).getByRole("link")).toHaveCount(3);
   await expect(page.getByRole("link", { name: "Настройки", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Открыть заказы" })).toHaveCount(0);
   await page.getByRole("searchbox", { name: "Найти раздел" }).fill("Настройки");

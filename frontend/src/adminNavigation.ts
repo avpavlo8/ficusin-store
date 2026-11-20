@@ -19,6 +19,7 @@ export const sections: Array<{
   { id: "avito", label: "Авито", permission: "integrations.edit" },
   { id: "customers", label: "Клиенты", permission: "customers.read" },
   { id: "analytics", label: "Аналитика", permission: "analytics.read" },
+  { id: "instructions", label: "Инструкции" },
   { id: "settings", label: "Настройки", owner: true },
 ];
 // На телефоне внизу помещается четыре кнопки и «Ещё». Сюда попадают
