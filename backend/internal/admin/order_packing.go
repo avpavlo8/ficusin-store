@@ -157,14 +157,14 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 		case activeOffers:
 			state.Notification.State = "queued"
 		}
-	} else if uuid != "" || state.CDEKState == "creating" || state.CDEKState == "unknown" || state.CDEKState == "registered" {
+	} else if uuid != "" || state.CDEKState == "creating" || state.CDEKState == "unknown" || (state.CDEKState == "registered" || state.CDEKState == "manual") {
 		state.Blockers = append(state.Blockers, "Заявка СДЭК уже создаётся или зарегистрирована; сначала сверьте её у перевозчика")
 	}
 	if state.State != "draft" && state.Error == "" {
 		state.Error = lastError
 	}
 	// A historical missing-tariff failure is resolved by the current quote flow.
-	if state.State == "draft" && (uuid != "" || state.CDEKState == "unknown" || state.CDEKState == "creating" || state.CDEKState == "registered") {
+	if state.State == "draft" && (uuid != "" || state.CDEKState == "unknown" || state.CDEKState == "creating" || (state.CDEKState == "registered" || state.CDEKState == "manual")) {
 		state.QuoteBlockers = append(state.QuoteBlockers, "Заявка СДЭК уже создаётся или зарегистрирована; сначала сверьте её у перевозчика")
 	}
 	var queued, sent, failed int
@@ -190,7 +190,7 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 		}
 	}
 
-	state.CanReopen = state.State != "draft" && state.State != "reopening" && status != "cancelled" && status != "shipped" && status != "completed" && state.CDEKState != "creating" && state.CDEKState != "unknown"
+	state.CanReopen = state.State != "draft" && state.State != "reopening" && status != "cancelled" && status != "shipped" && status != "completed" && state.CDEKState != "creating" && state.CDEKState != "unknown" && state.CDEKState != "manual" && state.CDEKState != "retry_cancel"
 	return state, nil
 }
 
@@ -447,7 +447,7 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 	if status == "cancelled" || status == "completed" || status == "shipped" || delivery != "cdek" || method != "online" || payee != "shop" || preorder {
 		return OrderPackingState{}, errors.New("условия заказа изменились — обновите карточку и проверьте причины")
 	}
-	if uuid != "" || cdekState == "creating" || cdekState == "unknown" || cdekState == "registered" {
+	if uuid != "" || cdekState == "creating" || cdekState == "unknown" || cdekState == "registered" || cdekState == "manual" {
 		return OrderPackingState{}, errors.New("заявка СДЭК уже создаётся или зарегистрирована; повторное создание запрещено")
 	}
 	var conflict bool

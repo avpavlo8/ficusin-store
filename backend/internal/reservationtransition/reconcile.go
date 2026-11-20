@@ -128,7 +128,7 @@ func readGroup(ctx context.Context, q queryer, id int64) (Group, error) {
  COALESCE(array_agg(DISTINCT o.id ORDER BY o.id) FILTER(WHERE o.stock_released_at IS NULL),'{}'::bigint[]),
  COALESCE(bool_or(o.status<>'cancelled') FILTER(WHERE o.stock_released_at IS NULL),false),
  COALESCE(bool_or(EXISTS(SELECT 1 FROM order_items other WHERE other.order_id=o.id AND other.variant_id IS DISTINCT FROM $1 AND other.reserved_qty<>0)) FILTER(WHERE o.stock_released_at IS NULL),false),
- COALESCE(bool_or(o.cdek_create_state IN('creating','unknown','manual_review') OR (COALESCE(o.cdek_uuid,'')<>'' AND COALESCE(o.cdek_cancel_state,'')<>'cancelled' AND UPPER(COALESCE(o.cdek_status,''))<>'REMOVED')) FILTER(WHERE o.stock_released_at IS NULL),false),
+ COALESCE(bool_or(o.cdek_create_state IN('creating','unknown','manual_review','manual') OR (COALESCE(o.cdek_uuid,'')<>'' AND COALESCE(o.cdek_cancel_state,'')<>'cancelled' AND UPPER(COALESCE(o.cdek_status,''))<>'REMOVED')) FILTER(WHERE o.stock_released_at IS NULL),false),
  COALESCE(jsonb_agg(jsonb_build_object('itemId',oi.id,'orderId',o.id,'reservedQty',oi.reserved_qty,'quantity',oi.quantity,'status',o.status,'stockReleasedAt',o.stock_released_at,'carrierCreateState',o.cdek_create_state,'carrierCancelState',o.cdek_cancel_state,'carrierStatus',o.cdek_status,'carrierLinked',COALESCE(o.cdek_uuid,'')<>'') ORDER BY oi.id),'[]'::jsonb)
  FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.variant_id=$1 AND oi.reserved_qty<>0`, id).Scan(&g.UnreleasedReserved, &g.OrderIDs, &active, &multi, &carrier, &raw)
 	if err != nil {

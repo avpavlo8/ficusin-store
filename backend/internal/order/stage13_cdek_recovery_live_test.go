@@ -274,3 +274,7 @@ func seedStage13CDEKOffer(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	}
 	return orderID, offerID
 }
+
+func (*stage13CDEK) CancelRejectedOrder(context.Context, string) error {
+	panic("unexpected retry of rejected registration")
+}

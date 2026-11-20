@@ -113,7 +113,7 @@ FROM (
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at)))::bigint
   FROM (
     SELECT created_at FROM orders
-    WHERE cdek_create_state = 'manual_review' OR cdek_cancel_state = 'manual_review'
+    WHERE cdek_create_state IN ('manual_review', 'retry_cancel_failed') OR cdek_cancel_state = 'manual_review'
     UNION ALL
     SELECT created_at FROM shipment_offers WHERE cdek_create_state = 'manual_review'
   ) cdek_review
@@ -122,7 +122,7 @@ FROM (
          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(cdek_next_attempt_at)))::bigint
   FROM (
     SELECT cdek_next_attempt_at FROM orders
-    WHERE cdek_create_state IN ('retry', 'unknown')
+    WHERE cdek_create_state IN ('retry', 'unknown', 'retry_queued', 'retry_cancel')
     UNION ALL
     SELECT cdek_next_attempt_at FROM shipment_offers
     WHERE cdek_create_state IN ('retry', 'unknown')

@@ -169,3 +169,7 @@ func TestCDEKTrackingLetterQueuedOnceOnLiveDatabase(t *testing.T) {
 		t.Fatal("cancelled order generated mail", err)
 	}
 }
+
+func (*cancellationReviewCDEK) CancelRejectedOrder(context.Context, string) error {
+	panic("unexpected retry of rejected registration")
+}

@@ -546,6 +546,42 @@
 }
 .order-packing-error p {
   margin: 0 0 9px;
+  overflow-wrap: anywhere;
+}
+.order-cdek-tracking {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  justify-items: start;
+  margin-block-start: 8px;
+}
+.order-cdek-tracking .order-packing-error {
+  margin: 0;
+  min-width: 0;
+}
+.order-cdek-tracking form,
+.order-cdek-tracking label {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.order-cdek-tracking label {
+  font-size: 13px;
+}
+.order-cdek-tracking input {
+  width: 100%;
+  min-width: 0;
+  font-size: 16px;
+}
+.order-cdek-form-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.order-cdek-tracking small {
+  overflow-wrap: anywhere;
 }
 @media (max-width: 1220px) {
   .admin-page .admin-order-workspace .admin-order-edit-line {
