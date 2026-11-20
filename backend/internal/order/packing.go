@@ -174,7 +174,7 @@ func (worker *PackingWorker) advance(ctx context.Context, id int64) error {
 		_, err = worker.pool.Exec(ctx, `UPDATE order_packing_workflows SET state='stale',locked_until=NULL WHERE id=$1`, id)
 		return err
 	}
-	if cdekState != "registered" || track == "" {
+	if track == "" || (cdekState != "registered" && cdekState != "manual") {
 		_, err = worker.pool.Exec(ctx, `UPDATE order_packing_workflows SET state='waiting_cdek',last_error=$2,locked_until=NULL,next_attempt_at=CURRENT_TIMESTAMP+INTERVAL '15 seconds',updated_at=CURRENT_TIMESTAMP WHERE id=$1 AND state IN ('queued','waiting_cdek','preparing_payment')`, id, cdekError)
 		return err
 	}

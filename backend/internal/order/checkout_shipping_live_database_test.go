@@ -369,3 +369,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	})
 
 }
+
+func (*checkoutCDEK) CancelRejectedOrder(context.Context, string) error {
+	panic("unexpected retry of rejected registration")
+}

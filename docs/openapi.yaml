@@ -2272,6 +2272,53 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.OrderEdit"
+  /admin/orders/{id}/cdek:
+    get:
+      operationId: get_admin_orders_id_cdek
+      responses:
+        "200":
+          description: Трек-номер, состояние регистрации и подробности отказа СДЭК для сотрудника
+        default:
+          $ref: "#/components/responses/ValidationError"
+      x-source: backend/internal/httpapi/admin_order_cdek.go#orderCDEK
+      tags:
+        - Administration
+      security:
+        - Session: []
+      x-permissions:
+        - orders.read
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+    post:
+      operationId: post_admin_orders_id_cdek
+      responses:
+        "200":
+          description: Повтор поставлен в очередь или ручной трек-номер сохранён
+        default:
+          $ref: "#/components/responses/ValidationError"
+      x-source: backend/internal/httpapi/admin_order_cdek.go#updateOrderCDEK
+      tags:
+        - Administration
+      security:
+        - Session: []
+      x-permissions:
+        - orders.edit
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/admin.OrderCDEKInput"
   /admin/orders/{id}/packing:
     get:
       operationId: get_admin_orders_id_packing
@@ -7718,6 +7765,20 @@ components:
           minLength: 1
           description: Exact Ficusin SKU, including the selected size. Product-card identifiers are not accepted.
       type: object
+    admin.OrderCDEKInput:
+      type: object
+      required: [revision, action]
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        action:
+          type: string
+          enum: [retry, set_tracking]
+        trackNumber:
+          type: string
+          description: Обязателен для set_tracking.
+          maxLength: 64
     admin.OrderPackingInput:
       properties:
         boxes:

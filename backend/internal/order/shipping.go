@@ -21,6 +21,7 @@ type shipper interface {
 	CreateOrder(context.Context, integration.ShipmentRequest) (integration.Shipment, error)
 	FetchOrder(ctx context.Context, uuid string) (integration.Shipment, error)
 	CancelOrder(ctx context.Context, uuid string) error
+	CancelRejectedOrder(ctx context.Context, uuid string) error
 	FindOrderByNumber(ctx context.Context, number string) (integration.Shipment, error)
 }
 
@@ -125,6 +126,7 @@ func (worker *ShippingWorker) sync(ctx context.Context) {
 	worker.markStockShortages(ctx)
 	if worker.settings.Enabled(settings.CDEKOrdersEnabled) {
 		worker.createOfferShipments(ctx)
+		worker.retryRejectedShipments(ctx)
 		worker.createShipments(ctx)
 	}
 	worker.reopenPackings(ctx)
@@ -142,7 +144,7 @@ func (worker *ShippingWorker) markStockShortages(ctx context.Context) {
 		UPDATE orders o SET cdek_create_state='manual_review',
 			cdek_last_error='Остатка растений недостаточно для заявки СДЭК. Проверьте наличие и решите вручную.',
 			cdek_next_attempt_at=NULL
-		WHERE o.delivery_method='cdek' AND o.delivery_payee='shop' AND o.cdek_uuid=''
+		WHERE o.delivery_method='cdek' AND o.delivery_payee='shop' AND o.cdek_uuid='' AND o.cdek_track_number=''
  AND NOT order_sale_revision_pending(o.id)
 			AND o.cdek_create_state NOT IN ('unknown','manual_review','registered')
 			AND o.has_preorder=0 AND o.status NOT IN ('cancelled','completed')
@@ -317,9 +319,9 @@ func (worker *ShippingWorker) createOfferShipments(ctx context.Context) {
 		if _, err := worker.pool.Exec(ctx, `
 			UPDATE shipment_offers
 			SET cdek_uuid=$2,cdek_track_number=$3,cdek_status=$4,cdek_status_reason=$5,
-				cdek_create_state='registered',cdek_last_error='',cdek_next_attempt_at=NULL,
+				cdek_create_state='registered',cdek_last_error=$6,cdek_next_attempt_at=NULL,
 				cdek_synced_at=CURRENT_TIMESTAMP,status='shipping',updated_at=CURRENT_TIMESTAMP
-			WHERE id=$1 AND cdek_uuid=''`, item.offerID, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason); err != nil {
+			WHERE id=$1 AND cdek_uuid=''`, item.offerID, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason, boundedCDEKError(shipment.RegistrationError)); err != nil {
 			worker.logger.Error("store offer cdek uuid failed", "error", err, "order", item.number)
 		}
 	}
@@ -459,9 +461,9 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 			_, err = worker.storeShipmentStatus(ctx, item.id, 0, nextStatus == "shipped" && nextStatus != item.status, `
 				UPDATE orders
 				SET cdek_uuid=$2,cdek_track_number=$3,cdek_status=$4,cdek_status_reason=$5,
-					cdek_create_state='registered',cdek_last_error='',cdek_next_attempt_at=NULL,
+					cdek_create_state='registered',cdek_last_error=$7,cdek_next_attempt_at=NULL,
 					cdek_synced_at=CURRENT_TIMESTAMP,status=CASE WHEN status IN ('cancelled','completed') THEN status ELSE $6 END
-				WHERE id=$1 AND cdek_uuid=''`, item.id, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus)
+				WHERE id=$1 AND cdek_uuid='' AND cdek_create_state='unknown'`, item.id, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus, boundedCDEKError(shipment.RegistrationError))
 			if err != nil {
 				worker.logger.Error("store reconciled cdek order failed", "error", err, "order", item.number)
 			}
@@ -473,7 +475,7 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 		state, nextAttempt := cdekReconciliationFailure(findErr, item.attempts)
 		_, _ = worker.pool.Exec(ctx, `
 			UPDATE orders SET cdek_create_state=$2,cdek_last_error=$3,cdek_next_attempt_at=$4
-			WHERE id=$1 AND cdek_uuid=''`, item.id, state, findErr.Error(), nextAttempt)
+			WHERE id=$1 AND cdek_uuid='' AND cdek_create_state='unknown'`, item.id, state, findErr.Error(), nextAttempt)
 	}
 
 	offerRows, err := worker.pool.Query(ctx, `
@@ -520,9 +522,9 @@ func (worker *ShippingWorker) reconcileUnknownShipments(ctx context.Context) {
 			_, err = worker.storeShipmentStatus(ctx, 0, item.id, nextStatus == "shipped" && nextStatus != item.status, `
 				UPDATE shipment_offers
 				SET cdek_uuid=$2,cdek_track_number=$3,cdek_status=$4,cdek_status_reason=$5,
-					cdek_create_state='registered',cdek_last_error='',cdek_next_attempt_at=NULL,
+					cdek_create_state='registered',cdek_last_error=$7,cdek_next_attempt_at=NULL,
 					cdek_synced_at=CURRENT_TIMESTAMP,status=$6,updated_at=CURRENT_TIMESTAMP
-				WHERE id=$1 AND cdek_uuid=''`, item.id, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus)
+				WHERE id=$1 AND cdek_uuid=''`, item.id, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus, boundedCDEKError(shipment.RegistrationError))
 			if err != nil {
 				worker.logger.Error("store reconciled cdek offer failed", "error", err, "offer_id", item.id)
 			}
@@ -649,8 +651,8 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
  AND NOT order_sale_revision_pending(o.id)
 					-- The shop collects delivery with the order; CDEK must not collect it again.
 					AND o.delivery_payee = 'shop'
-					AND o.cdek_uuid = ''
-					AND o.cdek_create_state NOT IN ('unknown','manual_review','creating','registered')
+					AND o.cdek_uuid = '' AND o.cdek_track_number = ''
+					AND o.cdek_create_state NOT IN ('unknown','manual_review','creating','registered','manual')
 				AND o.delivery_fee_pending = 0
 				AND o.has_preorder = 0
 				AND o.status NOT IN ('cancelled', 'completed')
@@ -779,9 +781,9 @@ func (worker *ShippingWorker) createShipments(ctx context.Context) {
 		if _, err := worker.pool.Exec(ctx, `
 			UPDATE orders
 			SET cdek_uuid = $2, cdek_track_number=$3, cdek_status=$4, cdek_status_reason=$5, cdek_synced_at = CURRENT_TIMESTAMP,
-					cdek_create_state = 'registered', cdek_last_error = '', cdek_next_attempt_at = NULL
-			WHERE id = $1 AND cdek_uuid = ''
-		`, item.id, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason); err != nil {
+					cdek_create_state = 'registered', cdek_last_error = $6, cdek_next_attempt_at = NULL
+			WHERE id = $1 AND cdek_uuid = '' AND cdek_create_state = 'creating'
+		`, item.id, shipment.UUID, shipment.TrackNumber, shipment.Status, shipment.StatusReason, boundedCDEKError(shipment.RegistrationError)); err != nil {
 			worker.logger.Error("store cdek uuid failed", "error", err, "order", item.number)
 		}
 	}
@@ -797,10 +799,7 @@ func (worker *ShippingWorker) recordCreateFailure(
 	// Keep provider details out of customer responses, but retain a bounded
 	// diagnostic for managers. Backoff caps at one hour.
 	delay := time.Minute * time.Duration(1<<min(6, max(0, attempts-1)))
-	message := failure.Error()
-	if len(message) > 1000 {
-		message = message[:1000]
-	}
+	message := boundedCDEKError(failure.Error())
 	state := "retry"
 	if errors.Is(failure, integration.ErrCDEKOutcomeUnknown) {
 		state = "unknown"
@@ -810,7 +809,7 @@ func (worker *ShippingWorker) recordCreateFailure(
 			UPDATE orders
 			SET cdek_create_state = $2, cdek_last_error = $3,
 				cdek_next_attempt_at = CURRENT_TIMESTAMP + ($4 * INTERVAL '1 second')
-			WHERE id = $1 AND cdek_uuid = ''
+			WHERE id = $1 AND cdek_uuid = '' AND cdek_create_state = 'creating'
 		`, orderID, state, message, int(delay/time.Second)); err != nil {
 		worker.logger.Error("store cdek failure failed", "error", err, "order", orderNumber)
 	}
@@ -822,9 +821,9 @@ func (worker *ShippingWorker) recordCreateFailure(
 func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 	rows, err := worker.pool.Query(ctx, `
 		SELECT id, order_number, customer_id, cdek_uuid, cdek_track_number,
-			cdek_status, status
+			cdek_status, status, cdek_last_error
 		FROM orders
-		WHERE cdek_uuid <> ''
+		WHERE cdek_uuid <> '' AND cdek_create_state NOT IN ('manual','retry_cancel','retry_cancel_failed')
 			AND status NOT IN ('cancelled', 'completed')
 		ORDER BY cdek_synced_at ASC NULLS FIRST, id
 		LIMIT 50
@@ -841,13 +840,14 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		track      string
 		cdekStatus string
 		status     string
+		lastError  string
 	}
 	shipments := make([]tracked, 0)
 	for rows.Next() {
 		var item tracked
 		if err := rows.Scan(
 			&item.id, &item.number, &item.customerID, &item.uuid,
-			&item.track, &item.cdekStatus, &item.status,
+			&item.track, &item.cdekStatus, &item.status, &item.lastError,
 		); err != nil {
 			worker.logger.Error("scan shipment failed", "error", err)
 			break
@@ -862,7 +862,11 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 			worker.logger.Error("fetch cdek order failed", "error", err, "order", item.number)
 			continue
 		}
-		if mapped := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; shipment.TrackNumber == item.track && shipment.Status == item.cdekStatus && (mapped == "" || mapped == item.status) {
+		diagnostic := boundedCDEKError(shipment.RegistrationError)
+		if shipment.Status == "INVALID" && diagnostic == "" {
+			diagnostic = item.lastError
+		}
+		if mapped := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; shipment.TrackNumber == item.track && shipment.Status == item.cdekStatus && diagnostic == item.lastError && (mapped == "" || mapped == item.status) {
 			if _, err := worker.pool.Exec(ctx, `
 				UPDATE orders SET cdek_synced_at = CURRENT_TIMESTAMP WHERE id = $1 AND cdek_uuid=$2
 			`, item.id, item.uuid); err != nil {
@@ -877,9 +881,9 @@ func (worker *ShippingWorker) refreshStatuses(ctx context.Context) {
 		command, err := worker.storeShipmentStatus(ctx, item.id, 0, nextStatus != "" && nextStatus != item.status, `
 			UPDATE orders
 			SET cdek_track_number = $2, cdek_status = $3, cdek_status_reason = $4, status = CASE WHEN status IN ('cancelled','completed') OR $5='' THEN status ELSE $5 END,
-				cdek_synced_at = CURRENT_TIMESTAMP
-			WHERE id = $1 AND cdek_uuid=$6
-		`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus, item.uuid)
+				cdek_synced_at = CURRENT_TIMESTAMP, cdek_last_error = $7
+			WHERE id = $1 AND cdek_uuid=$6 AND cdek_create_state NOT IN ('manual','retry_cancel','retry_cancel_failed')
+		`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, nextStatus, item.uuid, diagnostic)
 		if err != nil {
 			worker.logger.Error("store shipment status failed", "error", err, "order", item.number)
 			continue
@@ -925,7 +929,7 @@ func (worker *ShippingWorker) refreshOfferStatuses(ctx context.Context) {
 		if mapped, ok := cdekStatusToOrder[strings.ToUpper(shipment.Status)]; ok {
 			next = mapped
 		}
-		if _, err := worker.storeShipmentStatus(ctx, 0, item.id, next != item.status, `UPDATE shipment_offers SET cdek_track_number=$2,cdek_status=$3,cdek_status_reason=$4,status=$5,cdek_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, next); err != nil {
+		if _, err := worker.storeShipmentStatus(ctx, 0, item.id, next != item.status, `UPDATE shipment_offers SET cdek_track_number=$2,cdek_status=$3,cdek_status_reason=$4,status=$5,cdek_synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,cdek_last_error=CASE WHEN $3='INVALID' AND $6='' THEN cdek_last_error ELSE $6 END WHERE id=$1 AND cdek_uuid=$7`, item.id, shipment.TrackNumber, shipment.Status, shipment.StatusReason, next, boundedCDEKError(shipment.RegistrationError), item.uuid); err != nil {
 			worker.logger.Error("store cdek shipment offer status failed", "error", err, "offer_id", item.id)
 		}
 	}

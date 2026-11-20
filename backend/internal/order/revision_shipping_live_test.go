@@ -63,7 +63,7 @@ func TestPendingRevisionShippingPostgres(t *testing.T) {
  CREATE TABLE saby_nomenclature(saby_id TEXT,missing_since TIMESTAMPTZ);
  CREATE TABLE order_sale_inventory(warehouse_id BIGINT,variant_id BIGINT,available_qty INTEGER,reserved_qty INTEGER,synced_at TIMESTAMPTZ);
  CREATE TABLE orders(id BIGINT PRIMARY KEY,order_number TEXT,customer_name TEXT DEFAULT 'Synthetic',phone TEXT DEFAULT '',
- delivery_method TEXT DEFAULT 'cdek',delivery_payee TEXT DEFAULT 'shop',cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT 'pending',
+ delivery_method TEXT DEFAULT 'cdek',delivery_payee TEXT DEFAULT 'shop',cdek_uuid TEXT DEFAULT '',cdek_track_number TEXT NOT NULL DEFAULT '',cdek_create_state TEXT DEFAULT 'pending',
  cdek_last_error TEXT DEFAULT '',cdek_next_attempt_at TIMESTAMPTZ,cdek_attempts INTEGER DEFAULT 0,cdek_order_number TEXT DEFAULT '',
  cdek_office_code TEXT DEFAULT 'test',cdek_tariff_code INTEGER DEFAULT 136,cdek_city_code INTEGER DEFAULT 1,
  delivery_fee_pending INTEGER DEFAULT 0,has_preorder INTEGER DEFAULT 0,status TEXT DEFAULT 'ready',payment_status TEXT DEFAULT 'paid',

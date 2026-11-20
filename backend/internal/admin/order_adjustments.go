@@ -163,7 +163,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	// A checkout application already contains this composition and delivery fee.
 	// Do not silently leave the carrier with a different order snapshot.
 	var activeCDEK bool
-	if err := tx.QueryRow(ctx, `SELECT (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled') OR cdek_create_state IN ('creating','unknown') FROM orders WHERE id=$1`, id).Scan(&activeCDEK); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled') OR cdek_create_state IN ('creating','unknown','manual') FROM orders WHERE id=$1`, id).Scan(&activeCDEK); err != nil {
 		return Order{}, err
 	}
 	var packingActive bool

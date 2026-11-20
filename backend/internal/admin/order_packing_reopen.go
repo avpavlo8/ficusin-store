@@ -62,7 +62,10 @@ func (repository *PostgresRepository) RequestOrderPackingReopen(ctx context.Cont
 		_ = tx.Rollback(ctx)
 		return repository.OrderPacking(ctx, id)
 	}
-	if carrier == "creating" || carrier == "unknown" {
+	if carrier == "manual" {
+		return OrderPackingState{}, errors.New("У заказа есть трек-номер, указанный вручную. Сначала сверьте отправление с перевозчиком")
+	}
+	if carrier == "creating" || carrier == "unknown" || carrier == "retry_cancel" {
 		return OrderPackingState{}, errors.New("СДЭК ещё подтверждает создание заявки; дождитесь результата перед редактированием")
 	}
 	if uuid != "" && carrierStatus != "CREATED" && carrierStatus != "INVALID" && carrierStatus != "REMOVED" {
