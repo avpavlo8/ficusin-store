@@ -240,3 +240,7 @@ func TestShippingRealizationHooksPostgres(t *testing.T) {
 		}
 	})
 }
+
+func (*realizationReadOnlyCarrier) CancelRejectedOrder(context.Context, string) error {
+	panic("unexpected retry of rejected registration")
+}

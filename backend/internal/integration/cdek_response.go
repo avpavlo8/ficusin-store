@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type cdekIssue struct {
@@ -27,6 +28,7 @@ type cdekOrderResponse struct {
 	Warnings []cdekIssue `json:"warnings"`
 	Requests []struct {
 		Type     string      `json:"type"`
+		DateTime string      `json:"date_time"`
 		State    string      `json:"state"`
 		Errors   []cdekIssue `json:"errors"`
 		Warnings []cdekIssue `json:"warnings"`
@@ -77,7 +79,15 @@ func cdekIssueText(issues []cdekIssue) string {
 		if len(parts) == 4 {
 			break
 		}
-		parts = append(parts, truncateRunes(strings.TrimSpace(issue.Code+": "+issue.Message), 200))
+		code, message := strings.TrimSpace(issue.Code), strings.TrimSpace(issue.Message)
+		switch {
+		case code == "":
+			parts = append(parts, truncateRunes(message, 200))
+		case message == "":
+			parts = append(parts, truncateRunes(code, 200))
+		default:
+			parts = append(parts, truncateRunes(code+": "+message, 200))
+		}
 	}
 	return strings.Join(parts, "; ")
 }
@@ -113,4 +123,54 @@ func (response cdekOrderResponse) lookupFailure() error {
 		}
 	}
 	return lookup.failure()
+}
+
+// A successful GET can include a failed asynchronous CREATE. Extract that
+// request separately so it does not mask the current entity or a later DELETE.
+func (response cdekOrderResponse) registrationError() string {
+	issues := append([]cdekIssue{}, response.Errors...)
+	rejected := false
+	var latest string
+	for _, request := range response.Requests {
+		if request.Type != "CREATE" && request.Type != "" || request.DateTime < latest {
+			continue
+		}
+		if request.DateTime > latest {
+			issues = append([]cdekIssue{}, response.Errors...)
+			rejected = false
+			latest = request.DateTime
+		}
+		issues = append(issues, request.Errors...)
+		rejected = rejected || request.State == "INVALID"
+	}
+	if len(issues) != 0 {
+		return "СДЭК отклонил регистрацию: " + cdekIssueText(issues)
+	}
+	if rejected {
+		return "СДЭК отклонил регистрацию без подробностей"
+	}
+	return ""
+}
+
+func (response cdekOrderResponse) shipment() Shipment {
+	shipment := Shipment{UUID: response.Entity.UUID, TrackNumber: response.Entity.CDEKNumber}
+	// The carrier can return its history newest first.
+	var latest time.Time
+	for index, status := range response.Entity.Statuses {
+		date, err := time.Parse(time.RFC3339, status.DateTime)
+		if err != nil {
+			date, _ = time.Parse("2006-01-02T15:04:05-0700", status.DateTime)
+		}
+		if index == 0 || date.After(latest) {
+			shipment.Status, shipment.StatusReason, latest = status.Code, status.Name, date
+		}
+	}
+	if shipment.Status == "INVALID" || shipment.Status == "" && shipment.TrackNumber == "" {
+		shipment.RegistrationError = response.registrationError()
+	}
+	if shipment.Status == "" && shipment.RegistrationError != "" {
+		shipment.Status = "INVALID"
+		shipment.StatusReason = "Некорректный заказ"
+	}
+	return shipment
 }

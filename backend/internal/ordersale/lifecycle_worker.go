@@ -186,7 +186,7 @@ func carrierCancellationState(ctx context.Context, q queryer, orderID int64) (st
 	if unsafeOffer {
 		return "manual", nil
 	}
-	if cancelState == "manual_review" && status != "REMOVED" {
+	if createState == "manual" || (cancelState == "manual_review" && status != "REMOVED") {
 		return "manual", nil
 	}
 	if createState == "creating" || createState == "unknown" {

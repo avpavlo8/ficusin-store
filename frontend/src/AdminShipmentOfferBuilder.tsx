@@ -470,7 +470,8 @@ export function AdminShipmentOffers({
             <small>Статус СДЭК: {offer.cdekStatusReason || offer.cdekStatus}</small>
           )}
           {offer.cdekLastError &&
-            ["unknown", "manual_review", "retry"].includes(offer.cdekCreateState) &&
+            (offer.cdekStatus === "INVALID" ||
+              ["unknown", "manual_review", "retry"].includes(offer.cdekCreateState)) &&
             !(
               offer.cdekCreateState === "manual_review" &&
               offer.cdekLastError.includes("остатка растений недостаточно")
