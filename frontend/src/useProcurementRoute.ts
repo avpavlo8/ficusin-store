@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 const views = [
   "orders",
+  "recommendations",
   "drafts",
   "calculator",
   "products",

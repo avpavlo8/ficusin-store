@@ -802,3 +802,17 @@
     font-size: 12px;
   }
 }
+
+.admin-page .procurement-arrival-fields {
+  grid-template-columns: minmax(0, 17rem) auto;
+  align-items: end;
+  justify-content: start;
+  margin-block: 0.75rem;
+}
+
+@media (max-width: 420px) {
+  .admin-page .procurement-arrival-fields {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+}

@@ -49,11 +49,15 @@ func TestSabyLegacyFlagsCannotOverwriteSiteContentOnLiveDatabase(t *testing.T) {
 		}
 	}
 	exec := func(sql string, args ...any) { t.Helper(); _, e := pool.Exec(ctx, sql, args...); must(e) }
-	for _, table := range []string{"customers", "products", "product_variants", "product_external_ids", "product_media", "warehouses", "inventory", "saby_nomenclature", "saby_catalog_folders", "admin_audit_log", "sync_runs", "procurement_sales_daily", "attribute_definitions", "categories", "category_attributes", "attribute_options", "product_attribute_values", "variant_attribute_values"} {
+	for _, table := range []string{"customers", "products", "product_variants", "product_external_ids", "product_media", "warehouses", "inventory", "saby_nomenclature", "saby_catalog_folders", "admin_audit_log", "sync_runs", "procurement_sales_daily", "attribute_definitions", "categories", "category_attributes", "attribute_options", "product_attribute_values", "variant_attribute_values", "procurement_plant_stock_days", "launch_hidden_extra_plant_variants"} {
 		id := pgx.Identifier{table}.Sanitize()
 		exec("CREATE TABLE " + id + " (LIKE public." + id + " INCLUDING DEFAULTS INCLUDING GENERATED INCLUDING IDENTITY INCLUDING CONSTRAINTS INCLUDING INDEXES)")
 	}
 	exec(`CREATE VIEW canonical_product_directory AS SELECT v.id variant_id,v.product_id,v.saby_id FROM product_variants v`)
+	exec(`CREATE VIEW order_sale_inventory AS SELECT * FROM inventory`)
+	var procurementStockView string
+	must(base.QueryRow(ctx, `SELECT pg_get_viewdef('public.procurement_plant_catalog_stock'::regclass)`).Scan(&procurementStockView))
+	exec("CREATE VIEW procurement_plant_catalog_stock AS " + procurementStockView)
 	var actorID, product, variant int64
 	must(pool.QueryRow(ctx, `INSERT INTO customers(phone,full_name,consent_at) VALUES('+70000000000','Saby ownership owner',NOW()) RETURNING id`).Scan(&actorID))
 	must(pool.QueryRow(ctx, `INSERT INTO products(name,slug,description,status,saby_fields) VALUES('Название сайта','site-content-fixture','Описание сайта','draft',ARRAY['name','description','photo','price']) RETURNING id`).Scan(&product))
@@ -63,6 +67,9 @@ func TestSabyLegacyFlagsCannotOverwriteSiteContentOnLiveDatabase(t *testing.T) {
 	repository := NewPostgresRepository(pool)
 	actor := Actor{CustomerID: actorID, Role: RoleOwner}
 	must(repository.LinkVariantToSaby(ctx, actor, variant, "771"))
+	exec(`INSERT INTO categories(name,slug) VALUES('Растения','plants')`)
+	exec(`UPDATE products SET status='published',catalog_section='plants',
+		category_id=(SELECT id FROM categories WHERE slug='plants') WHERE id=$1`, product)
 	var galleryBefore []byte
 	must(pool.QueryRow(ctx, `SELECT jsonb_agg(to_jsonb(m) ORDER BY id) FROM product_media m WHERE product_id=$1`, product).Scan(&galleryBefore))
 	var flags []string
@@ -92,6 +99,12 @@ func TestSabyLegacyFlagsCannotOverwriteSiteContentOnLiveDatabase(t *testing.T) {
 	must(pool.QueryRow(ctx, `SELECT available_qty,synced_at>=NOW()-INTERVAL '1 minute' FROM inventory WHERE variant_id=$1`, variant).Scan(&qty, &fresh))
 	if qty != 8 || !fresh {
 		t.Fatalf("stock stopped refreshing: %d/%t", qty, fresh)
+	}
+	var observedInStock bool
+	must(pool.QueryRow(ctx, `SELECT in_stock FROM procurement_plant_stock_days
+		WHERE variant_id=$1 AND observed_date=(CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::DATE`, variant).Scan(&observedInStock))
+	if !observedInStock {
+		t.Fatal("synced sellable stock was not recorded in daily availability")
 	}
 	var sourceName, sourceDescription string
 	var sourcePrice int64

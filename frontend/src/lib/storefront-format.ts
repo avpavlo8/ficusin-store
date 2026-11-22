@@ -10,3 +10,13 @@ export function catalogSize(label: string) {
     .replace(/\bH\s*(\d+(?:[.,]\d+)?)/gi, "высота $1 см");
   return /^Ø \d+(?:[.,]\d+)? см$/.test(size) ? `Горшок ${size}` : size;
 }
+
+const arrivalDateFormat = new Intl.DateTimeFormat("ru-RU", {
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+});
+
+export function expectedArrivalDateText(date: string) {
+  return `≈ ${arrivalDateFormat.format(new Date(`${date}T00:00:00Z`))}.`;
+}

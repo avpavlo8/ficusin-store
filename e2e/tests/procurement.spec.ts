@@ -17,7 +17,7 @@ async function openPurchaseCosts(scope: Page | Locator) {
 }
 async function procurementAction(page: Page, name: string) {
   if (name === "Загрузить инвойс") { await page.getByRole("button", {name: "Загрузить инвойс / счёт", exact:true}).click(); return; }
-  await page.locator(".procurement-inline-actions .ws-more-menu > summary").click();
+  await page.locator(".procurement-tabs .ws-more-menu > summary").click();
   await page.getByRole("button", { name, exact: true }).click();
 }
 async function procurementTab(page: Page, name: string) {
@@ -151,7 +151,7 @@ test("@desktop @phone several invoice rows fulfil one planned quantity",async({p
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; mixedRecommendations?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -161,7 +161,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     documents: [{ id: 7, supplierId: 1, supplierName: "Тестовый поставщик", orderId: 4, fileName: "test.pdf", parserKind: "domestic_payment_invoice", parseStatus: "review", arithmeticStatus: "ok", documentNumber: "TEST-100", documentDate: "2026-08-07", currency: "RUB", lines: 5, units: 20, productSubtotal: 10000, packageTotal: 0, documentTotal: 10000, calculatedTotal: 10000, parseError: "", createdAt: "2026-08-10T12:00:00Z" }],
     review: [{ id: 9, supplierId: 1, supplierName: "Тестовый поставщик", rawName: "Тестовая строка D10", supplierArticle: "", potDiameterCm: 10, suggestedSabyId: "TEST-SABY-1", suggestedSabyName: "Тестовый товар D10", matchStatus: "suggested", confidence: 0.52, availabilityStatus: "unknown" }],
     requests: [] as Array<Record<string, unknown>>, availability: [] as Array<Record<string, unknown>>, recommendations: [
-      { aliasId: 9, supplierId: 1, sabyId: "TEST-SABY-1", name: "Тестовый товар D10", supplierArticle: "SUP-1", dutchName: "Цитрус", potDiameterCm: 12, heightCm: 35, lastUnitPrice: 5.3, availability: "available", balance: 2, incoming: 0, siteSales: 2, sabySales: 5, wbSales: 1, ozonSales: 0, totalSales: 8, customerRequests: 1, staffRequests: 0, openRequests: 1, minimumOrderQty: 6, orderMultiple: 6, suggestedQty: 12, dailySales: 0.27, daysOfCover: 7.5, status: "recommended", reason: "Есть товар под заказ клиента" },
+      { aliasId: 9, supplierId: 1, sabyId: "TEST-SABY-1", name: "Тестовый товар D10", supplierArticle: "SUP-1", dutchName: "Цитрус", potDiameterCm: 12, heightCm: 35, lastUnitPrice: 5.3, availability: "available", balance: 0, observedStockDays: 30, inStockDays: 11, incoming: 0, siteSales: 2, sabySales: 5, wbSales: 1, ozonSales: 0, totalSales: 8, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 6, orderMultiple: 6, suggestedQty: 12, dailySales: 0.27, daysOfCover: 7.5, status: "recommended", reason: "Расположен в разделе «Распродали»" },
       { aliasId: 10, supplierId: 1, sabyId: "TEST-SABY-2", name: "Товар уже едет", supplierArticle: "SUP-2", availability: "available", balance: 0, incoming: 6, siteSales: 0, sabySales: 4, wbSales: 0, ozonSales: 0, totalSales: 4, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 0, dailySales: 0.13, daysOfCover: 0, status: "already_ordered", reason: "Уже заказано 6 шт.; повторная закупка исключена" },
     ],
     salesSync: [
@@ -177,7 +177,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     ],
   };
   procurement.documents.push({...procurement.documents[0], id:8, orderId:999, documentNumber:"OTHER-ORDER", fileName:"other-order.pdf"});
-  if (options.anotherRecommendation) procurement.recommendations.push({ aliasId: 11, supplierId: 1, sabyId: "TEST-SABY-3", name: "Олива D18", supplierArticle: "SUP-3", dutchName: "Олива", potDiameterCm: 18, heightCm: 55, lastUnitPrice: 10, availability: "available", balance: 4, incoming: 0, siteSales: 2, sabySales: 0, wbSales: 0, ozonSales: 0, totalSales: 2, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 2, dailySales: 0.1, daysOfCover: 4, status: "recommended", reason: "Есть спрос" });
+  if (options.anotherRecommendation || options.mixedRecommendations) procurement.recommendations.push({ aliasId: 11, supplierId: options.mixedRecommendations ? 2 : 1, sabyId: "TEST-SABY-3", name: "Олива D18", supplierArticle: "SUP-3", dutchName: "Олива", potDiameterCm: 18, heightCm: 55, lastUnitPrice: 10, availability: "available", balance: options.mixedRecommendations ? 0 : 4, incoming: 0, siteSales: 2, sabySales: 0, wbSales: 0, ozonSales: 0, totalSales: 2, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 2, dailySales: 0.1, daysOfCover: 4, status: "recommended", reason: "Есть спрос" });
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
     validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не выбраны товары СБИС: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
@@ -309,6 +309,22 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       }
       if(path === "/api/v1/admin/procurement/pricing/preview")return json({retailRub:1490,quotes:{site:{priceRub:1490,breakEvenRub:800,contributionRub:600,coverUnits:500,missing:[]},wb:{missing:["комиссия","логистика"]},ozon:{missing:["комиссия","логистика"]}}});
       if(path === "/api/v1/admin/procurement/settings/example")return json({before:{cost:682,retail:1490},after:{cost:682,retail:1590},history:[]});
+      if (path === "/api/v1/admin/procurement/exclusions" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body)) as { sabyId?: string; sabyIds?: string[]; excluded: boolean; reason: string };
+        if (body.excluded && !body.reason) return json({ error: "Укажите причину" });
+        const ids = new Set(body.sabyIds || [body.sabyId]);
+        for (const item of procurement.recommendations.filter((candidate) => ids.has(candidate.sabyId))) {
+          item.status = body.excluded ? "excluded" : item.incoming > 0 ? "already_ordered" : "recommended";
+        }
+        return json({ ok: true });
+      }
+      if (path === "/api/v1/admin/procurement/orders/4/status" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body));
+        if (typeof body.expectedArrivalDate === "string") {
+          Object.assign(orderDetail.order, { expectedArrivalDate: body.expectedArrivalDate });
+          return json(orderDetail);
+        }
+      }
       if (path === "/api/v1/admin/procurement/recommendations/supplier" && init?.method === "PUT") {
         const body = JSON.parse(String(init.body)) as { sabyId: string; supplierId: number };
         const item = procurement.recommendations.find((candidate) => candidate.sabyId === body.sabyId);
@@ -385,6 +401,8 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         return json({ items: [{ variantId: 22, sabyId: "", sabyCode: "PLANT-22", sabyArticle: "", name: "Новый товар без кода СБИС", balance: 0, currentPriceRub: 0, supplierId: 1, supplierName: "Тестовый поставщик", supplierArticle: "NL-22", availabilityStatus: "unknown", checkAfter: "", hollandArticle: "", wbVendorCode: "WB-22", ozonOfferId: "OZON-22", wbArticles: ["WB-22"], wbLegacyArticles: [], ozonArticles: ["OZON-22"], ozonLegacyArticles: [], sabySales: 0, siteSales: 0, wbSales: 1, ozonSales: 2, minimumOrderQty: 1, orderMultiple: 6, aliases: [], aliasIds: [] }] });
       }
       if (path === "/api/v1/admin/procurement/documents" && init?.method === "POST") {
+        const date = init.body instanceof FormData ? init.body.get("expectedArrivalDate") : null;
+        if (typeof date === "string") Object.assign(orderDetail.order, { expectedArrivalDate: date });
         orderDetail.validation.blockers = ["Не выбраны товары СБИС: 2"];
         return json({ duplicate: false, order: procurement.orders[0] });
       }
@@ -623,8 +641,14 @@ test("@desktop invoice can be attached from the saved order", async ({ page }) =
   await page.locator(".procurement-orders").getByRole("link", { name: "Закупка № 4", exact: true }).click();
   await expect(page.getByText("Нужно проверить")).toBeVisible();
   await expect(page.getByText("Загрузите инвойс",{exact:true})).toBeVisible();
+  await page.getByLabel("Ориентировочная дата поступления", { exact: true }).fill("2030-12-08");
   await page.getByRole("region", {name:"Документы закупки",exact:true}).getByLabel("Загрузить новую версию", {exact:true}).setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
   await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
+  await expect(page.getByLabel("Ориентировочная дата поступления", { exact: true })).toHaveValue("2030-12-08");
+  await expect(page.getByRole("button", { name: "Сохранить дату", exact: true })).toBeDisabled();
+  await page.getByLabel("Ориентировочная дата поступления", { exact: true }).fill("2030-12-10");
+  await page.getByRole("button", { name: "Сохранить дату", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Сохранить дату", exact: true })).toBeDisabled();
 });
 
 test("@desktop procurement shows one markup and clear rounding settings", async ({ page }) => {
@@ -638,20 +662,50 @@ test("@desktop procurement shows one markup and clear rounding settings", async 
   await expect(page.locator(".procurement-settings-grid").getByLabel("Объём телеги, см³")).toHaveCount(0);
 });
 
-test("@desktop procurement separates actionable and already ordered recommendations", async ({ page }) => {
+test("@desktop @phone procurement shows coverage and hides or restores a sold-out plant", async ({ page }) => {
   await mockProcurement(page);
-  await page.goto("/admin");
-  await openProcurementSection(page);
-  await page.getByRole("button", { name: "Создать закупку", exact: true }).click();
-  await page.getByRole("tab", {name:"Рекомендации",exact:true}).click();
-
-  const recommendations=page.getByRole("region",{name:"Рекомендации к закупке",exact:true});
-  await expect(recommendations.getByText("Тестовый товар D10",{exact:true})).toBeVisible();
-  await expect(recommendations.locator(".procurement-suggested-quantity")).toHaveText("12 шт.");
-  await page.getByRole("button", { name: "Уже заказано 1" }).click();
-  await expect(recommendations.getByText("Товар уже едет",{exact:true})).toBeVisible();
-  await recommendations.getByRole("button",{name:"Расчёт и действия: Товар уже едет",exact:true}).click();
+  await page.goto("/admin?section=procurement&view=recommendations");
+  const tabs = page.getByRole("navigation", { name: "Вкладки рекомендаций" });
+  const recommendations = page.getByRole("region", { name: "Рекомендации к закупке" });
+  const plant = recommendations.getByRole("row").filter({ hasText: "Тестовый товар D10" });
+  const incoming = recommendations.getByRole("row").filter({ hasText: "Товар уже едет" });
+  await expect(tabs.getByRole("button", { name: "Распродали 2" })).toHaveAttribute("aria-pressed", "true");
+  await expect(plant).toContainText("В наличии 11 из 30 дн.");
+  await expect(plant.locator(".procurement-suggested-quantity")).toHaveText("12 шт.");
+  await expect(incoming).toContainText("Едет 6 шт.");
+  await incoming.getByRole("checkbox").check();
+  await expect(page.getByRole("button", { name: "Добавить выбранное", exact: true })).toBeDisabled();
+  await incoming.getByRole("checkbox").uncheck();
+  await incoming.getByRole("button", { name: "Расчёт: Товар уже едет" }).click();
   await expect(page.getByText("повторная закупка исключена")).toBeVisible();
+
+  const rowAction = plant.getByRole("cell").last().getByRole("button", { name: "Скрыть из рекомендаций: Тестовый товар D10" });
+  await rowAction.click();
+  await expect(plant).toHaveCount(0);
+  await tabs.getByRole("button", { name: "Скрытые 1" }).click();
+  const hidden = page.getByRole("list", { name: "Скрытые растения" });
+  await expect(hidden).toContainText("Тестовый товар D10");
+  await hidden.getByRole("button", { name: "Вернуть в рекомендации: Тестовый товар D10" }).click();
+  await expect(page.getByText("Скрытых растений нет")).toBeVisible();
+  await tabs.getByRole("button", { name: "Распродали 2" }).click();
+  await expect(plant).toBeVisible();
+  await plant.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Новая закупка" })).toContainText("Тестовый товар D10");
+});
+
+test("@desktop @phone procurement hides selected plants across suppliers", async ({ page }) => {
+  await mockProcurement(page, { mixedRecommendations: true });
+  await page.goto("/admin?section=procurement&view=recommendations");
+  await page.getByRole("checkbox", { name: "Выбрать Тестовый товар D10" }).check();
+  await page.getByRole("checkbox", { name: "Выбрать Олива D18" }).check();
+  await expect(page.getByRole("button", { name: "Добавить выбранное", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Скрыть выбранные · 2", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "Выбрать Тестовый товар D10" })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "Выбрать Олива D18" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Скрытые 2", exact: true }).click();
+  const hidden = page.getByRole("list", { name: "Скрытые растения" });
+  await expect(hidden.getByRole("button", { name: /^Вернуть в рекомендации:/ })).toHaveCount(2);
 });
 
 test("@desktop procurement filters, selects visible rows, and assigns a supplier", async ({ page }) => {
@@ -666,6 +720,7 @@ test("@desktop procurement filters, selects visible rows, and assigns a supplier
   await expect(page.getByLabel("Выбрать Тестовый товар D10")).toBeChecked();
   await page.getByRole("button", { name: "Снять выделение" }).click();
   await expect(page.getByLabel("Выбрать Тестовый товар D10")).not.toBeChecked();
+  await page.getByText("Фильтры и сортировка", { exact: true }).click();
   await page.getByLabel("Фильтр по количеству").selectOption("10");
   await expect(page.locator(".procurement-selection-bar [role=status]")).toHaveText("1 позиция");
   await expect(page.getByText("2 уп. по 6 шт.", { exact: true })).toBeVisible();

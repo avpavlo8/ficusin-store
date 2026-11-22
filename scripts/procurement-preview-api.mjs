@@ -61,6 +61,8 @@ export function procurementPreview() {
       name,
       balance,
       balanceKnown: true,
+      observedStockDays: 42,
+      inStockDays: balance > 0 ? 39 : 20,
       balanceAsOf: now,
       totalSales,
       grossSales: totalSales + (index === 0 ? 1 : 0),
@@ -474,6 +476,8 @@ export function procurementPreview() {
         orders.unshift(order);
         procurement.summary.openOrders++;
       }
+      if (body.expectedArrivalDate)
+        order.expectedArrivalDate = body.expectedArrivalDate;
       const previous = procurement.documents.filter(
         (doc) => doc.orderId === order.id,
       );
@@ -616,6 +620,17 @@ export function procurementPreview() {
       procurement.summary.openOrders++;
       return { order };
     }
+    const arrivalOrderId = path.match(/\/orders\/(\d+)\/status$/)?.[1];
+    if (
+      method === "PATCH" &&
+      arrivalOrderId &&
+      typeof body.expectedArrivalDate === "string"
+    ) {
+      const order = orders.find((item) => item.id === Number(arrivalOrderId));
+      if (!order) return { status: 404, error: "Закупка не найдена" };
+      order.expectedArrivalDate = body.expectedArrivalDate;
+      return orderDetail(order);
+    }
     const orderId = path.match(/\/orders\/(\d+)$/)?.[1];
     if (orderId) {
       const order = orders.find((item) => item.id === Number(orderId));
@@ -636,8 +651,19 @@ export function procurementPreview() {
       return {};
     }
     if (path === "/api/v1/admin/procurement/exclusions" && method === "PUT") {
-      const item = recommendations.find((item) => item.sabyId === body.sabyId);
-      if (item) item.status = body.excluded ? "excluded" : "recommended";
+      const ids = new Set(body.sabyIds || [body.sabyId]);
+      const items = recommendations.filter((item) => ids.has(item.sabyId));
+      if (items.length !== ids.size)
+        return { status: 404, error: "Товар не найден" };
+      for (const item of items) {
+        item.hiddenFromRestock = body.excluded;
+        item.status =
+          body.excluded && !item.customerRequests
+            ? "excluded"
+            : item.suggestedQty || !item.incoming
+              ? "recommended"
+              : "already_ordered";
+      }
       return {};
     }
     if (
@@ -646,27 +672,19 @@ export function procurementPreview() {
     ) {
       const item = recommendations.find((item) => item.sabyId === body.sabyId);
       if (item) {
-        item.status =
-          body.status === "check"
-            ? "check_availability"
-            : body.status === "available"
-              ? "recommended"
-              : "supplier_unavailable";
+        item.availability = body.status;
         procurement.availability = recommendations
-          .filter((item) =>
-            ["check_availability", "supplier_unavailable"].includes(
-              item.status,
+          .filter((entry) =>
+            ["check", "temporarily_unavailable", "discontinued"].includes(
+              entry.availability,
             ),
           )
-          .map((item) => ({
-            ...item,
+          .map((entry) => ({
+            ...entry,
             supplierName: suppliers.find(
-              (supplier) => supplier.id === item.supplierId,
+              (supplier) => supplier.id === entry.supplierId,
             )?.name,
-            availabilityStatus:
-              item.status === "check_availability"
-                ? "check"
-                : "temporarily_unavailable",
+            status: entry.availability,
             due: true,
           }));
         procurement.summary.availabilityChecks =

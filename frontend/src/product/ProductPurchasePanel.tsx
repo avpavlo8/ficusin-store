@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ProductDetail, ProductVariant } from "./types";
 import { attributeLabel, displayAttributeValue, money } from "./types";
+import { expectedArrivalDateText } from "../lib/storefront-format";
 import { CareLevel } from "./CareLevel";
 
 import { CharacteristicIcon } from "./CharacteristicIcon";
@@ -50,6 +51,8 @@ export function ProductPurchasePanel({
   onBuy: () => void;
 }) {
   const available = Boolean(variant && variant.stock > 0);
+  const arrival = !available && variant?.expectedArrivalDate;
+  const incoming = !available && (variant?.hasIncomingStock || arrival);
   const isPlant = product.catalogSection === "plants";
   const allAttributes = [...product.attributes, ...(variant?.attributes || [])].filter(
     (item) => isPlant || !plantOnlyAttributeCodes.has(item.code),
@@ -143,7 +146,13 @@ export function ProductPurchasePanel({
                     >
                       <strong>{isPlant ? sizeLabel(item) : item.label}</strong>
                       {product.variants.length > 1 && (
-                        <small>{item.stock > 0 ? money(item.price) : "Под заказ"}</small>
+                        <small>
+                          {item.stock > 0
+                            ? money(item.price)
+                            : item.hasIncomingStock || item.expectedArrivalDate
+                              ? "Нет в наличии"
+                              : "Под заказ"}
+                        </small>
                       )}
                     </button>
                   ))}
@@ -171,9 +180,20 @@ export function ProductPurchasePanel({
                 {variant ? `${available ? "" : "≈ "}${money(variant.price)}` : "Цена уточняется"}
               </strong>
               <span className={available ? "stock-ok" : "stock-out"}>
-                {available ? "● В наличии" : "Под заказ"}
+                {available ? "● В наличии" : incoming ? "Нет в наличии" : "Под заказ"}
               </span>
             </div>
+            {incoming && (
+              <p className="pdp-expected-arrival">
+                Ожидаем поступление
+                {arrival && (
+                  <>
+                    {" "}
+                    <b>{expectedArrivalDateText(arrival)}</b>
+                  </>
+                )}
+              </p>
+            )}
             <div className="pdp-actions">
               <div className="pdp-quantity" aria-label="Количество">
                 <button

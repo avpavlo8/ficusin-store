@@ -442,6 +442,17 @@ func (service *Service) sync(ctx context.Context, items []normalizedItem, rawIte
 		return fmt.Errorf("update Saby stock: %w", err)
 	}
 
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO procurement_plant_stock_days(variant_id,observed_date,in_stock)
+		SELECT variant_id,(synced_at AT TIME ZONE 'Europe/Moscow')::DATE,balance>0
+		FROM procurement_plant_catalog_stock
+		WHERE synced_at=CURRENT_TIMESTAMP
+		ON CONFLICT (variant_id,observed_date) DO UPDATE
+		SET in_stock=procurement_plant_stock_days.in_stock OR EXCLUDED.in_stock
+	`); err != nil {
+		return fmt.Errorf("record daily plant availability: %w", err)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit Saby sync: %w", err)
 	}

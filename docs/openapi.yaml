@@ -2971,6 +2971,24 @@ paths:
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [supplierId, file]
+              properties:
+                supplierId:
+                  type: integer
+                orderId:
+                  type: integer
+                expectedArrivalDate:
+                  type: string
+                  format: date
+                file:
+                  type: string
+                  format: binary
   /admin/procurement/documents/{id}/source.pdf:
     get:
       operationId: get_admin_procurement_documents_id_source_pdf
@@ -8583,6 +8601,11 @@ components:
           type: string
         sabyId:
           type: string
+        sabyIds:
+          description: A batch of product identifiers. Send one of sabyId or sabyIds.
+          type: array
+          items:
+            type: string
       type: object
     procurement.LogisticsNorm:
       properties:
@@ -8679,6 +8702,9 @@ components:
       type: object
     procurement.OrderStatusUpdate:
       properties:
+        expectedArrivalDate:
+          description: A calendar date for an active purchase, or an empty string to remove it. Send separately from status changes.
+          type: string
         force:
           type: boolean
         note:
