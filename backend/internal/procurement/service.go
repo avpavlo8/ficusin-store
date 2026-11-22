@@ -747,8 +747,23 @@ func (service *Service) SetExclusion(ctx context.Context, actor Actor, input Exc
 	if len([]rune(input.Reason)) > 300 {
 		input.Reason = string([]rune(input.Reason)[:300])
 	}
-	if input.SabyID == "" || (input.Excluded && input.Reason == "") {
+	if (input.SabyID == "") == (len(input.SabyIDs) == 0) || (input.Excluded && input.Reason == "") {
 		return ErrInvalidInput
+	}
+	if len(input.SabyIDs) > 0 {
+		unique := make(map[string]bool, len(input.SabyIDs))
+		sabyIDs := make([]string, 0, len(input.SabyIDs))
+		for _, raw := range input.SabyIDs {
+			id := strings.TrimSpace(raw)
+			if id == "" {
+				return ErrInvalidInput
+			}
+			if !unique[id] {
+				unique[id] = true
+				sabyIDs = append(sabyIDs, id)
+			}
+		}
+		input.SabyIDs = sabyIDs
 	}
 	return service.store.SetExclusion(ctx, actor, input)
 }

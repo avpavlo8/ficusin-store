@@ -2,6 +2,7 @@ package procurement
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -78,6 +79,28 @@ func TestStage05SiteStockAndProcurementArrival(t *testing.T) {
 		t.Fatalf("restored plant = %+v", item)
 	}
 
+	otherID := key + "-other"
+	_, err = pool.Exec(ctx, `INSERT INTO saby_nomenclature(saby_id,code,name) VALUES($1,$1,'Другой товар')`, otherID)
+	must(err)
+	service := NewServiceWithExecutor(store, nil)
+	err = service.SetExclusion(ctx, actor, ExclusionUpdate{SabyIDs: []string{key, otherID, key + "-missing"}, Excluded: true, Reason: "Разовая закупка"})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("invalid batch error = %v, want ErrNotFound", err)
+	}
+	var hidden int
+	checkHidden := func(want int) {
+		t.Helper()
+		must(pool.QueryRow(ctx, `SELECT COUNT(*) FROM procurement_excluded_products WHERE saby_id IN ($1,$2)`, key, otherID).Scan(&hidden))
+		if hidden != want {
+			t.Fatalf("hidden count = %d, want %d", hidden, want)
+		}
+	}
+	checkHidden(0)
+	must(service.SetExclusion(ctx, actor, ExclusionUpdate{SabyIDs: []string{key, otherID, " " + key}, Excluded: true, Reason: "Разовая закупка"}))
+	checkHidden(2)
+	must(service.SetExclusion(ctx, actor, ExclusionUpdate{SabyIDs: []string{key, otherID}}))
+	checkHidden(0)
+
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_suppliers(name,kind,default_currency)
 		VALUES($1,'domestic','RUB') RETURNING id`, key).Scan(&supplierID))
 	must(pool.QueryRow(ctx, `INSERT INTO procurement_orders(supplier_id,source_kind,currency,status,expected_arrival_date)
@@ -88,7 +111,7 @@ func TestStage05SiteStockAndProcurementArrival(t *testing.T) {
 		VALUES($1,$2,$3,'Тестовое растение',4,'confirmed','matched') RETURNING id`,
 		orderID, key, variantID).Scan(&lineID))
 	repository := catalog.NewPostgresRepository(pool)
-	checkArrival := func(expected bool) {
+	checkArrival := func(incoming, dated bool) {
 		t.Helper()
 		detail, err := repository.DetailBySlug(ctx, productCode)
 		must(err)
@@ -96,27 +119,33 @@ func TestStage05SiteStockAndProcurementArrival(t *testing.T) {
 		must(err)
 		for _, product := range products {
 			if product.ID == productCode {
-				if (detail.Variants[0].ExpectedArrivalDate != "") != expected ||
-					(detail.Variants[0].ExpectedArrivalDate != product.ExpectedArrivalDate) {
-					t.Fatalf("unexpected ETA: variant=%q, listing=%q", detail.Variants[0].ExpectedArrivalDate, product.ExpectedArrivalDate)
+				variant := detail.Variants[0]
+				if variant.HasIncomingStock != incoming || product.HasIncomingStock != incoming ||
+					(variant.ExpectedArrivalDate != "") != dated || variant.ExpectedArrivalDate != product.ExpectedArrivalDate {
+					t.Fatalf("unexpected arrival: variant=%+v, listing=%+v", variant, product)
 				}
 				return
 			}
 		}
 		t.Fatal("plant missing from the site catalogue")
 	}
-	checkArrival(true)
+	checkArrival(true, true)
 	_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET invoice_excluded=TRUE WHERE id=$1`, lineID)
 	must(err)
-	checkArrival(false)
+	checkArrival(false, false)
 	_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET invoice_excluded=FALSE WHERE id=$1`, lineID)
 	must(err)
 	_, err = pool.Exec(ctx, `UPDATE inventory SET available_qty=1 WHERE variant_id=$1`, variantID)
 	must(err)
-	checkArrival(false)
+	checkArrival(false, false)
 	_, err = pool.Exec(ctx, `UPDATE inventory SET available_qty=0 WHERE variant_id=$1`, variantID)
 	must(err)
+	_, err = pool.Exec(ctx, `UPDATE procurement_orders SET status='ordered',expected_arrival_date=NULL WHERE id=$1`, orderID)
+	must(err)
+	_, err = pool.Exec(ctx, `UPDATE procurement_order_lines SET invoiced_qty=NULL,ordered_qty=4 WHERE id=$1`, lineID)
+	must(err)
+	checkArrival(true, false)
 	_, err = pool.Exec(ctx, `UPDATE procurement_orders SET status='cancelled' WHERE id=$1`, orderID)
 	must(err)
-	checkArrival(false)
+	checkArrival(false, false)
 }

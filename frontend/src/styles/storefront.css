@@ -2899,3 +2899,28 @@
 .storefront-card.preorder .storefront-price em {
   color: #96601d;
 }
+
+.storefront-buy.with-favorite > .storefront-expected-arrival {
+  grid-column: 1 / -1;
+  justify-self: end;
+  max-width: 16rem;
+  color: #355a3b;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.storefront-expected-arrival b {
+  white-space: nowrap;
+}
+
+@media (max-width: 850px) {
+  .storefront-buy.with-favorite > .storefront-expected-arrival {
+    grid-row: 2;
+  }
+  .storefront-card
+    .storefront-buy.with-favorite:has(> .storefront-expected-arrival)
+    > :is(button, .catalog-cart-controls) {
+    grid-row: 3;
+  }
+}

@@ -396,9 +396,10 @@ type AvailabilityItem struct {
 // ExclusionUpdate — «не закупаем». Решение магазина, а не поставщика,
 // поэтому крепится к товару целиком.
 type ExclusionUpdate struct {
-	SabyID   string `json:"sabyId"`
-	Excluded bool   `json:"excluded"`
-	Reason   string `json:"reason"`
+	SabyID   string   `json:"sabyId,omitempty"`
+	SabyIDs  []string `json:"sabyIds,omitempty"`
+	Excluded bool     `json:"excluded"`
+	Reason   string   `json:"reason"`
 }
 
 type Recommendation struct {

@@ -6,7 +6,6 @@ export function ProcurementRecommendationTable({
   items,
   suppliers,
   selected,
-  selectedSupplierId,
   savingSupplier,
   periodDays,
   onSelect,
@@ -17,7 +16,6 @@ export function ProcurementRecommendationTable({
   items: ProcurementRecommendation[];
   suppliers: ProcurementSupplier[];
   selected: string[];
-  selectedSupplierId?: number;
   savingSupplier: string;
   periodDays: number;
   onSelect: (key: string, checked: boolean) => void;
@@ -58,7 +56,7 @@ export function ProcurementRecommendationTable({
             </th>
             <th scope="col">Поставщик</th>
             <th scope="col">
-              <span className="sr-only">Подробности</span>
+              <span className="sr-only">Действия</span>
             </th>
           </tr>
         </thead>
@@ -66,24 +64,20 @@ export function ProcurementRecommendationTable({
           {items.map((item, index) => {
             const key = `${item.supplierId}:${item.sabyId}`;
             const isExpanded = expanded.includes(key);
-            const isSelected = selected.includes(key);
+            const isSelected = selected.includes(item.sabyId);
             const urgent =
               item.balanceKnown !== false && item.daysOfCover != null && item.daysOfCover <= 7;
             return (
               <Fragment key={key}>
                 <tr data-selected={isSelected || undefined}>
                   <td>
-                    {item.status === "recommended" && item.supplierId > 0 && (
-                      <input
-                        type="checkbox"
-                        aria-label={`Выбрать ${item.name}`}
-                        checked={isSelected}
-                        disabled={
-                          selectedSupplierId != null && selectedSupplierId !== item.supplierId
-                        }
-                        onChange={(event) => onSelect(key, event.target.checked)}
-                      />
-                    )}
+                    <input
+                      type="checkbox"
+                      aria-label={`Выбрать ${item.name}`}
+                      checked={isSelected}
+                      disabled={changingVisibility}
+                      onChange={(event) => onSelect(item.sabyId, event.target.checked)}
+                    />
                   </td>
                   <td>
                     <strong>{item.name}</strong>
@@ -98,19 +92,7 @@ export function ProcurementRecommendationTable({
                         </span>
                       )}
                     </small>
-                    {item.hiddenFromRestock ? (
-                      <small>Пополнение скрыто</small>
-                    ) : (
-                      <button
-                        type="button"
-                        className="procurement-hide-recommendation"
-                        aria-label={`Скрыть из рекомендаций: ${item.name}`}
-                        disabled={changingVisibility}
-                        onClick={() => onHide(item)}
-                      >
-                        Скрыть
-                      </button>
-                    )}
+                    {item.hiddenFromRestock && <small>Пополнение скрыто</small>}
                   </td>
                   <td>
                     <strong>
@@ -176,29 +158,58 @@ export function ProcurementRecommendationTable({
                     )}
                   </td>
                   <td>
-                    <button
-                      className="procurement-expand-row"
-                      aria-label={`Расчёт: ${item.name}`}
-                      aria-expanded={isExpanded}
-                      aria-controls={`${id}-${index}`}
-                      onClick={() =>
-                        setExpanded((current) =>
-                          isExpanded ? current.filter((value) => value !== key) : [...current, key],
-                        )
-                      }
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.7"
-                        aria-hidden="true"
+                    <div className="procurement-row-actions">
+                      <button
+                        type="button"
+                        className="procurement-expand-row"
+                        aria-label={`Расчёт: ${item.name}`}
+                        aria-expanded={isExpanded}
+                        aria-controls={`${id}-${index}`}
+                        onClick={() =>
+                          setExpanded((current) =>
+                            isExpanded
+                              ? current.filter((value) => value !== key)
+                              : [...current, key],
+                          )
+                        }
                       >
-                        <path d={isExpanded ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} />
-                      </svg>
-                    </button>
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          aria-hidden="true"
+                        >
+                          <path d={isExpanded ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} />
+                        </svg>
+                      </button>
+                      {!item.hiddenFromRestock && (
+                        <button
+                          type="button"
+                          className="procurement-hide-recommendation"
+                          aria-label={`Скрыть из рекомендаций: ${item.name}`}
+                          title="Скрыть из рекомендаций"
+                          disabled={changingVisibility}
+                          onClick={() => onHide(item)}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="17"
+                            height="17"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.7"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M3 3l18 18M10.6 10.7a2 2 0 0 0 2.7 2.7M9.8 5.3A10 10 0 0 1 12 5c5.4 0 9 5 9 7a10.7 10.7 0 0 1-2.2 3.2M6.3 6.3C4.2 7.7 3 10.2 3 12c0 2 3.6 7 9 7 1.8 0 3.5-.6 4.9-1.6" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
                 {isExpanded && (

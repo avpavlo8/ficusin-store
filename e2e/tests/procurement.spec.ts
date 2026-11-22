@@ -151,7 +151,7 @@ test("@desktop @phone several invoice rows fulfil one planned quantity",async({p
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; mixedRecommendations?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -177,7 +177,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     ],
   };
   procurement.documents.push({...procurement.documents[0], id:8, orderId:999, documentNumber:"OTHER-ORDER", fileName:"other-order.pdf"});
-  if (options.anotherRecommendation) procurement.recommendations.push({ aliasId: 11, supplierId: 1, sabyId: "TEST-SABY-3", name: "Олива D18", supplierArticle: "SUP-3", dutchName: "Олива", potDiameterCm: 18, heightCm: 55, lastUnitPrice: 10, availability: "available", balance: 4, incoming: 0, siteSales: 2, sabySales: 0, wbSales: 0, ozonSales: 0, totalSales: 2, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 2, dailySales: 0.1, daysOfCover: 4, status: "recommended", reason: "Есть спрос" });
+  if (options.anotherRecommendation || options.mixedRecommendations) procurement.recommendations.push({ aliasId: 11, supplierId: options.mixedRecommendations ? 2 : 1, sabyId: "TEST-SABY-3", name: "Олива D18", supplierArticle: "SUP-3", dutchName: "Олива", potDiameterCm: 18, heightCm: 55, lastUnitPrice: 10, availability: "available", balance: options.mixedRecommendations ? 0 : 4, incoming: 0, siteSales: 2, sabySales: 0, wbSales: 0, ozonSales: 0, totalSales: 2, customerRequests: 0, staffRequests: 0, openRequests: 0, minimumOrderQty: 1, orderMultiple: 1, suggestedQty: 2, dailySales: 0.1, daysOfCover: 4, status: "recommended", reason: "Есть спрос" });
   const orderDetail = {
     order: procurement.orders[0], costs: { exchangeRate: 1, trolleyCostCurrency: 0, trolleyCostRub: 0, deliveryToMoscowRub: 0, deliveryToRyazanRub: 0 },
     validation: { canCalculate: false, canPrepareActions: false, blockers: options.blockers === undefined ? ["Не загружен инвойс или счёт", "Не выбраны товары СБИС: 2"] : options.blockers, arithmeticMismatch: 0, comparisonMismatch: 0, missingDimensions: 0, missingLoadUnits: 0, invalidLines: 0, unmatched: 2, trolleyCount: 0, expectedTrolleyRub: 0, allocatedTrolleyRub: 0, expectedRyazanRub: 0, allocatedRyazanRub: 0 },
@@ -310,10 +310,12 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if(path === "/api/v1/admin/procurement/pricing/preview")return json({retailRub:1490,quotes:{site:{priceRub:1490,breakEvenRub:800,contributionRub:600,coverUnits:500,missing:[]},wb:{missing:["комиссия","логистика"]},ozon:{missing:["комиссия","логистика"]}}});
       if(path === "/api/v1/admin/procurement/settings/example")return json({before:{cost:682,retail:1490},after:{cost:682,retail:1590},history:[]});
       if (path === "/api/v1/admin/procurement/exclusions" && init?.method === "PUT") {
-        const body = JSON.parse(String(init.body)) as { sabyId: string; excluded: boolean; reason: string };
+        const body = JSON.parse(String(init.body)) as { sabyId?: string; sabyIds?: string[]; excluded: boolean; reason: string };
         if (body.excluded && !body.reason) return json({ error: "Укажите причину" });
-        const item = procurement.recommendations.find((candidate) => candidate.sabyId === body.sabyId);
-        if (item) item.status = body.excluded ? "excluded" : item.incoming > 0 ? "already_ordered" : "recommended";
+        const ids = new Set(body.sabyIds || [body.sabyId]);
+        for (const item of procurement.recommendations.filter((candidate) => ids.has(candidate.sabyId))) {
+          item.status = body.excluded ? "excluded" : item.incoming > 0 ? "already_ordered" : "recommended";
+        }
         return json({ ok: true });
       }
       if (path === "/api/v1/admin/procurement/orders/4/status" && init?.method === "PATCH") {
@@ -671,11 +673,14 @@ test("@desktop @phone procurement shows coverage and hides or restores a sold-ou
   await expect(plant).toContainText("В наличии 11 из 30 дн.");
   await expect(plant.locator(".procurement-suggested-quantity")).toHaveText("12 шт.");
   await expect(incoming).toContainText("Едет 6 шт.");
-  await expect(incoming.getByRole("checkbox")).toHaveCount(0);
+  await incoming.getByRole("checkbox").check();
+  await expect(page.getByRole("button", { name: "Добавить выбранное", exact: true })).toBeDisabled();
+  await incoming.getByRole("checkbox").uncheck();
   await incoming.getByRole("button", { name: "Расчёт: Товар уже едет" }).click();
   await expect(page.getByText("повторная закупка исключена")).toBeVisible();
 
-  await plant.getByRole("button", { name: "Скрыть из рекомендаций: Тестовый товар D10" }).click();
+  const rowAction = plant.getByRole("cell").last().getByRole("button", { name: "Скрыть из рекомендаций: Тестовый товар D10" });
+  await rowAction.click();
   await expect(plant).toHaveCount(0);
   await tabs.getByRole("button", { name: "Скрытые 1" }).click();
   const hidden = page.getByRole("list", { name: "Скрытые растения" });
@@ -687,6 +692,20 @@ test("@desktop @phone procurement shows coverage and hides or restores a sold-ou
   await plant.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Добавить выбранное", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Новая закупка" })).toContainText("Тестовый товар D10");
+});
+
+test("@desktop @phone procurement hides selected plants across suppliers", async ({ page }) => {
+  await mockProcurement(page, { mixedRecommendations: true });
+  await page.goto("/admin?section=procurement&view=recommendations");
+  await page.getByRole("checkbox", { name: "Выбрать Тестовый товар D10" }).check();
+  await page.getByRole("checkbox", { name: "Выбрать Олива D18" }).check();
+  await expect(page.getByRole("button", { name: "Добавить выбранное", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Скрыть выбранные · 2", exact: true }).click();
+  await expect(page.getByRole("checkbox", { name: "Выбрать Тестовый товар D10" })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "Выбрать Олива D18" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Скрытые 2", exact: true }).click();
+  const hidden = page.getByRole("list", { name: "Скрытые растения" });
+  await expect(hidden.getByRole("button", { name: /^Вернуть в рекомендации:/ })).toHaveCount(2);
 });
 
 test("@desktop procurement filters, selects visible rows, and assigns a supplier", async ({ page }) => {

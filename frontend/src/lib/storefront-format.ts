@@ -12,11 +12,11 @@ export function catalogSize(label: string) {
 }
 
 const arrivalDateFormat = new Intl.DateTimeFormat("ru-RU", {
-  day: "2-digit",
+  day: "numeric",
   month: "long",
   timeZone: "UTC",
 });
 
-export function expectedArrivalLabel(date: string) {
-  return `Ожидаем поступление примерно ${arrivalDateFormat.format(new Date(`${date}T00:00:00Z`))}`;
+export function expectedArrivalDateText(date: string) {
+  return `≈ ${arrivalDateFormat.format(new Date(`${date}T00:00:00Z`))}.`;
 }

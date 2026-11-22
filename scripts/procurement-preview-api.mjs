@@ -651,8 +651,11 @@ export function procurementPreview() {
       return {};
     }
     if (path === "/api/v1/admin/procurement/exclusions" && method === "PUT") {
-      const item = recommendations.find((item) => item.sabyId === body.sabyId);
-      if (item) {
+      const ids = new Set(body.sabyIds || [body.sabyId]);
+      const items = recommendations.filter((item) => ids.has(item.sabyId));
+      if (items.length !== ids.size)
+        return { status: 404, error: "Товар не найден" };
+      for (const item of items) {
         item.hiddenFromRestock = body.excluded;
         item.status =
           body.excluded && !item.customerRequests

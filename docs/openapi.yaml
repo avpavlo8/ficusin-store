@@ -8601,6 +8601,11 @@ components:
           type: string
         sabyId:
           type: string
+        sabyIds:
+          description: A batch of product identifiers. Send one of sabyId or sabyIds.
+          type: array
+          items:
+            type: string
       type: object
     procurement.LogisticsNorm:
       properties:

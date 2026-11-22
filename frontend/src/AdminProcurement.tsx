@@ -273,25 +273,26 @@ export function Procurement({
     }
   };
   const changeRecommendationVisibility = async (
-    item: ProcurementRecommendation,
+    items: ProcurementRecommendation[],
     excluded: boolean,
   ) => {
+    if (!items.length || changingRecommendation) return;
+    const ids = new Set(items.map((item) => item.sabyId));
     setChangingRecommendation(true);
     setRecommendationNotice("");
     try {
       await api("/api/v1/admin/procurement/exclusions", {
         method: "PUT",
         body: JSON.stringify({
-          sabyId: item.sabyId,
+          sabyIds: [...ids],
           excluded,
           reason: excluded ? "Скрыто из рекомендаций" : "",
         }),
       });
-      setSelectedRecommendations((current) =>
-        current.filter((key) => key !== `${item.supplierId}:${item.sabyId}`),
-      );
       setData(await api<ProcurementData>("/api/v1/admin/procurement"));
-      setRecommendationNotice(excluded ? `Скрыто: ${item.name}` : `Возвращено: ${item.name}`);
+      setSelectedRecommendations((current) => current.filter((id) => !ids.has(id)));
+      const label = items.length === 1 ? items[0].name : quantityLabel(ids.size);
+      setRecommendationNotice(excluded ? `Скрыто: ${label}` : `Возвращено: ${label}`);
     } catch (error) {
       onError((error as Error).message);
     } finally {
@@ -512,10 +513,6 @@ export function Procurement({
   const actionableRecommendations = data.recommendations.filter(
     (item) => item.status === "recommended",
   );
-  const selectedRecommendationItems = actionableRecommendations.filter((item) =>
-    selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
-  );
-  const selectedSupplierId = selectedRecommendationItems[0]?.supplierId;
   const visibleOrders = data.orders.filter(
     (item) =>
       (orderFilter === "all" ||
@@ -569,7 +566,22 @@ export function Procurement({
       recommendationView === "customer"
         ? unmatchedClientRequests.filter((item) => matchesSearch(item.requestedName))
         : [];
+    const selectedItems = offeredItems.filter((item) =>
+      selectedRecommendations.includes(item.sabyId),
+    );
+    const selectedSupplierId = selectedItems.find(
+      (item) => item.status === "recommended" && item.supplierId > 0,
+    )?.supplierId;
     const selectionSupplierId = draftSupplierId ?? selectedSupplierId;
+    const canAddSelected =
+      selectedItems.length > 0 &&
+      selectedItems.every(
+        (item) =>
+          item.status === "recommended" &&
+          item.supplierId > 0 &&
+          item.supplierId === selectionSupplierId,
+      );
+    const hideableItems = selectedItems.filter((item) => !item.hiddenFromRestock);
     const selectableVisibleRecommendations = bulkSelectableRecommendations(
       offeredItems,
       selectionSupplierId,
@@ -580,16 +592,12 @@ export function Procurement({
     const allVisibleSelected =
       selectableVisibleRecommendations.length > 0 &&
       selectableVisibleRecommendations.every((item) =>
-        selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
+        selectedRecommendations.includes(item.sabyId),
       );
     const toggleVisibleRecommendations = () => {
-      const keys = selectableVisibleRecommendations.map(
-        (item) => `${item.supplierId}:${item.sabyId}`,
-      );
+      const ids = selectableVisibleRecommendations.map((item) => item.sabyId);
       setSelectedRecommendations((current) =>
-        allVisibleSelected
-          ? current.filter((key) => !keys.includes(key))
-          : [...new Set([...current, ...keys])],
+        allVisibleSelected ? [] : [...new Set([...current, ...ids])],
       );
     };
     return (
@@ -626,7 +634,10 @@ export function Procurement({
             Поиск
             <input
               value={recommendationQuery}
-              onChange={(event) => setRecommendationQuery(event.target.value)}
+              onChange={(event) => {
+                setRecommendationQuery(event.target.value);
+                setSelectedRecommendations([]);
+              }}
               placeholder="Название или артикул"
             />
           </label>
@@ -691,36 +702,46 @@ export function Procurement({
         {!hiddenView && (
           <div className="procurement-selection-bar">
             <span role="status" aria-live="polite">
-              {selectedRecommendationItems.length
-                ? `Выбрано: ${quantityLabel(selectedRecommendationItems.length)} · ${selectedRecommendationItems.reduce((sum, item) => sum + item.suggestedQty, 0)} шт.`
+              {selectedItems.length
+                ? `Выбрано: ${quantityLabel(selectedItems.length)} · ${selectedItems.reduce((sum, item) => sum + item.suggestedQty, 0)} шт.`
                 : quantityLabel(offeredItems.length)}
             </span>
-            {(selectableVisibleRecommendations.length > 0 ||
-              selectedRecommendationItems.length > 0) && (
+            {(selectableVisibleRecommendations.length > 0 || selectedItems.length > 0) && (
               <button
                 type="button"
                 onClick={toggleVisibleRecommendations}
-                disabled={!selectableVisibleRecommendations.length}
+                disabled={!selectableVisibleRecommendations.length || changingRecommendation}
               >
                 {allVisibleSelected ? "Снять выделение" : "Выделить все видимые"}
               </button>
             )}
-            {bulkSupplier && (
-              <span className="procurement-selection-hint">Поставщик: {bulkSupplier.name}</span>
+            {selectedItems.length > 0 && !canAddSelected ? (
+              <span className="procurement-selection-hint">
+                Для закупки выберите позиции к заказу у одного поставщика
+              </span>
+            ) : (
+              bulkSupplier && (
+                <span className="procurement-selection-hint">Поставщик: {bulkSupplier.name}</span>
+              )
+            )}
+            {hideableItems.length > 0 && (
+              <button
+                type="button"
+                disabled={changingRecommendation}
+                onClick={() => void changeRecommendationVisibility(hideableItems, true)}
+              >
+                Скрыть выбранные · {hideableItems.length}
+              </button>
             )}
             <button
               aria-label="Добавить выбранное"
               className="admin-primary"
-              disabled={
-                changingRecommendation ||
-                !selectedRecommendationItems.length ||
-                !activeSuppliers.length
-              }
+              disabled={changingRecommendation || !canAddSelected}
               onClick={() => {
-                if (add(selectedRecommendationItems)) setSelectedRecommendations([]);
+                if (add(selectedItems)) setSelectedRecommendations([]);
               }}
             >
-              Добавить в закупку · {selectedRecommendationItems.length}
+              Добавить в закупку · {selectedItems.length}
             </button>
           </div>
         )}
@@ -762,7 +783,7 @@ export function Procurement({
                     type="button"
                     disabled={changingRecommendation}
                     aria-label={`Вернуть в рекомендации: ${item.name}`}
-                    onClick={() => void changeRecommendationVisibility(item, false)}
+                    onClick={() => void changeRecommendationVisibility([item], false)}
                   >
                     Вернуть
                   </button>
@@ -774,7 +795,6 @@ export function Procurement({
               items={offeredItems}
               suppliers={activeSuppliers}
               selected={selectedRecommendations}
-              selectedSupplierId={selectionSupplierId}
               savingSupplier={savingRecommendationSupplier}
               periodDays={data.settings.recommendationDays}
               onSelect={(key, checked) =>
@@ -786,7 +806,7 @@ export function Procurement({
                 void assignRecommendationSupplier(sabyId, supplierId)
               }
               changingVisibility={changingRecommendation}
-              onHide={(item) => void changeRecommendationVisibility(item, true)}
+              onHide={(item) => void changeRecommendationVisibility([item], true)}
             />
           )
         ) : (

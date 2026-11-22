@@ -685,7 +685,7 @@ export default function ProductPage({ slug }: { slug: string }) {
             <small className={variant.stock <= 0 ? "stock-out" : undefined}>
               {variant.stock > 0
                 ? "В наличии"
-                : variant.expectedArrivalDate
+                : variant.hasIncomingStock || variant.expectedArrivalDate
                   ? "Нет в наличии"
                   : "Под заказ"}
             </small>

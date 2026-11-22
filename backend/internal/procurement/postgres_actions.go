@@ -383,6 +383,10 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 
 // SetExclusion stores the replenishment decision across suppliers.
 func (store *PostgresStore) SetExclusion(ctx context.Context, actor Actor, input ExclusionUpdate) error {
+	sabyIDs := input.SabyIDs
+	if input.SabyID != "" {
+		sabyIDs = []string{input.SabyID}
+	}
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin procurement exclusion: %w", err)
@@ -391,18 +395,18 @@ func (store *PostgresStore) SetExclusion(ctx context.Context, actor Actor, input
 	if input.Excluded {
 		command, err := tx.Exec(ctx, `
 			INSERT INTO procurement_excluded_products (saby_id, reason, updated_by)
-			SELECT $1, $2, $3 FROM saby_nomenclature WHERE saby_id = $1
+			SELECT saby_id, $2, $3 FROM saby_nomenclature WHERE saby_id = ANY($1::TEXT[]) ORDER BY saby_id
 			ON CONFLICT (saby_id) DO UPDATE SET reason = EXCLUDED.reason,
 				excluded_at = CURRENT_TIMESTAMP, updated_by = EXCLUDED.updated_by
-		`, input.SabyID, input.Reason, actor.CustomerID)
+		`, sabyIDs, input.Reason, actor.CustomerID)
 		if err != nil {
 			return fmt.Errorf("insert procurement exclusion: %w", err)
 		}
-		if command.RowsAffected() == 0 {
+		if command.RowsAffected() != int64(len(sabyIDs)) {
 			return ErrNotFound
 		}
 	} else if _, err := tx.Exec(ctx,
-		`DELETE FROM procurement_excluded_products WHERE saby_id = $1`, input.SabyID); err != nil {
+		`DELETE FROM procurement_excluded_products WHERE saby_id = ANY($1::TEXT[])`, sabyIDs); err != nil {
 		return fmt.Errorf("delete procurement exclusion: %w", err)
 	}
 	if err := audit(ctx, tx, actor, "procurement.exclusion.update", "procurement_excluded_product", 0, input); err != nil {

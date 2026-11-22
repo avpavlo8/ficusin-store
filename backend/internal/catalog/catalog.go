@@ -45,6 +45,7 @@ type Product struct {
 	PopularityScore  float64            `json:"popularityScore"`
 	FilterAttributes []ProductAttribute `json:"filterAttributes"`
 
+	HasIncomingStock    bool   `json:"hasIncomingStock,omitempty"`
 	ExpectedArrivalDate string `json:"expectedArrivalDate,omitempty"`
 }
 
@@ -228,5 +229,6 @@ type Variant struct {
 	Images          []string           `json:"images"`
 	Attributes      []ProductAttribute `json:"attributes"`
 
+	HasIncomingStock    bool   `json:"hasIncomingStock,omitempty"`
 	ExpectedArrivalDate string `json:"expectedArrivalDate,omitempty"`
 }
