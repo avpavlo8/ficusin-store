@@ -44,6 +44,8 @@ type Product struct {
 	ReviewsCount     int                `json:"reviewsCount"`
 	PopularityScore  float64            `json:"popularityScore"`
 	FilterAttributes []ProductAttribute `json:"filterAttributes"`
+
+	ExpectedArrivalDate string `json:"expectedArrivalDate,omitempty"`
 }
 
 // CartProduct is the server-owned display snapshot for one sellable SKU.
@@ -225,4 +227,6 @@ type Variant struct {
 	WholesaleMinQty int                `json:"wholesaleMinQty"`
 	Images          []string           `json:"images"`
 	Attributes      []ProductAttribute `json:"attributes"`
+
+	ExpectedArrivalDate string `json:"expectedArrivalDate,omitempty"`
 }

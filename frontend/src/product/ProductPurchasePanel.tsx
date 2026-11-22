@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ProductDetail, ProductVariant } from "./types";
 import { attributeLabel, displayAttributeValue, money } from "./types";
+import { expectedArrivalLabel } from "../lib/storefront-format";
 import { CareLevel } from "./CareLevel";
 
 import { CharacteristicIcon } from "./CharacteristicIcon";
@@ -50,6 +51,7 @@ export function ProductPurchasePanel({
   onBuy: () => void;
 }) {
   const available = Boolean(variant && variant.stock > 0);
+  const arrival = !available && variant?.expectedArrivalDate;
   const isPlant = product.catalogSection === "plants";
   const allAttributes = [...product.attributes, ...(variant?.attributes || [])].filter(
     (item) => isPlant || !plantOnlyAttributeCodes.has(item.code),
@@ -171,9 +173,10 @@ export function ProductPurchasePanel({
                 {variant ? `${available ? "" : "≈ "}${money(variant.price)}` : "Цена уточняется"}
               </strong>
               <span className={available ? "stock-ok" : "stock-out"}>
-                {available ? "● В наличии" : "Под заказ"}
+                {available ? "● В наличии" : arrival ? "Нет в наличии" : "Под заказ"}
               </span>
             </div>
+            {arrival && <p className="pdp-expected-arrival">{expectedArrivalLabel(arrival)}</p>}
             <div className="pdp-actions">
               <div className="pdp-quantity" aria-label="Количество">
                 <button

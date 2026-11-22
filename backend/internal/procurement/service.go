@@ -447,6 +447,15 @@ func (service *Service) CalculateOrder(ctx context.Context, actor Actor, orderID
 }
 
 func (service *Service) UpdateOrderStatus(ctx context.Context, actor Actor, orderID int64, input OrderStatusUpdate) (OrderDetail, error) {
+	if input.ExpectedArrivalDate != nil {
+		if orderID <= 0 || input.Status != "" || input.Note != "" || input.Force {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		if err := validateExpectedArrivalDate(*input.ExpectedArrivalDate); err != nil {
+			return OrderDetail{}, err
+		}
+		return service.store.UpdateOrderStatus(ctx, actor, orderID, input)
+	}
 	input.Status = strings.TrimSpace(input.Status)
 	input.Note = strings.TrimSpace(input.Note)
 	if orderID <= 0 || !oneOf(input.Status, "received", "cancelled", "review") ||
@@ -549,11 +558,25 @@ func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID
 	return service.store.UpdateOrderLine(ctx, actor, lineID, input)
 }
 
+func validateExpectedArrivalDate(value string) error {
+	if value == "" {
+		return nil
+	}
+	date, err := time.Parse(time.DateOnly, value)
+	if err != nil || date.Year() < 1 {
+		return &UserFacingError{Message: "Укажите корректную дату поступления"}
+	}
+	return nil
+}
+
 func (service *Service) ImportDocument(
 	ctx context.Context,
 	actor Actor,
 	input DocumentUpload,
 ) (ImportResult, error) {
+	if err := validateExpectedArrivalDate(input.ExpectedArrivalDate); err != nil {
+		return ImportResult{}, err
+	}
 	input.FileName = strings.TrimSpace(input.FileName)
 	input.ContentType = strings.ToLower(strings.TrimSpace(input.ContentType))
 	if separator := strings.IndexByte(input.ContentType, ';'); separator >= 0 {
@@ -717,9 +740,7 @@ func (service *Service) UpdateAvailability(ctx context.Context, actor Actor, inp
 	return service.store.UpdateAvailability(ctx, actor, input)
 }
 
-// SetExclusion снимает товар с закупки. Причина обязательна: список «не
-// закупаем» живёт годами, и через полгода вопрос «почему этого нет в
-// рекомендациях» задаст тот же человек, который его туда положил.
+// SetExclusion hides a product from automatic replenishment and records the reason.
 func (service *Service) SetExclusion(ctx context.Context, actor Actor, input ExclusionUpdate) error {
 	input.SabyID = strings.TrimSpace(input.SabyID)
 	input.Reason = strings.TrimSpace(input.Reason)

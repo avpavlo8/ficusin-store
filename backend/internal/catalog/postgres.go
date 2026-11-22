@@ -186,9 +186,10 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 				JOIN variant_attribute_values v ON v.attribute_id=e.id AND v.variant_id=pv.id
 				WHERE e.audience='customer' AND e.value_scope='variant' AND NOT e.is_excluded
 				  AND (e.show_in_summary OR e.show_in_characteristics OR e.is_badge OR e.is_filterable)
-			), '[]'::jsonb)
+			), '[]'::jsonb), COALESCE(arrival.arrival_date::TEXT,'')
 		FROM product_variants pv
 		JOIN products product ON product.id=pv.product_id
+		LEFT JOIN procurement_catalog_arrivals arrival ON arrival.variant_id=pv.id
 		WHERE pv.product_id = $1 AND pv.is_active = 1 AND pv.archived_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=pv.id)
 		ORDER BY pv.id
@@ -203,11 +204,14 @@ func (repository *PostgresRepository) DetailBySlug(ctx context.Context, code str
 		var attributes, images []byte
 		if err := variantRows.Scan(&variant.ID, &variant.SKU, &variant.Label, &priceMinor,
 			&variant.Stock, &variant.HeightCM, &variant.PotDiameterCM,
-			&variant.WholesaleMinQty, &images, &attributes); err != nil {
+			&variant.WholesaleMinQty, &images, &attributes, &variant.ExpectedArrivalDate); err != nil {
 			variantRows.Close()
 			return ProductDetail{}, err
 		}
 		variant.Price = float64(priceMinor) / 100
+		if variant.Stock > 0 {
+			variant.ExpectedArrivalDate = ""
+		}
 		if err := json.Unmarshal(images, &variant.Images); err != nil {
 			variantRows.Close()
 			return ProductDetail{}, fmt.Errorf("decode variant images: %w", err)
@@ -497,27 +501,27 @@ const catalogListQuery = `
 		WHERE o.status <> 'cancelled' AND (o.status = 'completed' OR o.payment_status = 'paid')
 		GROUP BY variant.product_id
 	), default_variants AS (
-		SELECT product.id AS product_id, chosen.id, chosen.sku, chosen.label, chosen.base_price_minor, chosen.stock
+		SELECT product.id AS product_id, chosen.id, chosen.sku, chosen.label, chosen.base_price_minor, chosen.stock, chosen.arrival_date
 		FROM products product
 		JOIN LATERAL (
+			SELECT * FROM (
 			SELECT variant.id,variant.sku,variant.label,variant.base_price_minor,
 				COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM order_sale_inventory inventory
 					JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
 					JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
 					WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
-						AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER AS stock
+						AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)::INTEGER AS stock, arrival.arrival_date
 			FROM product_variants variant
+			LEFT JOIN procurement_catalog_arrivals arrival ON arrival.variant_id=variant.id
 			WHERE variant.product_id=product.id AND variant.is_active=1 AND variant.archived_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM launch_hidden_extra_plant_variants hidden WHERE hidden.variant_id=variant.id)
 			AND ($1='' OR EXISTS (SELECT 1 FROM requested_collection collection
 			 WHERE (collection.mode='manual' AND EXISTS (SELECT 1 FROM collection_products member
 			   WHERE member.collection_id=collection.id AND member.product_id=product.id))
 			 OR (collection.mode='dynamic' AND collection_rules_match_variant(product.id,variant.id,collection.rules))))
-			ORDER BY (COALESCE((SELECT SUM(GREATEST(inventory.available_qty-inventory.reserved_qty,0)) FROM order_sale_inventory inventory
-				JOIN warehouses warehouse ON warehouse.id=inventory.warehouse_id AND warehouse.saby_id='saby-ryazan-main' AND warehouse.is_active=1
-				JOIN saby_nomenclature source ON source.saby_id=variant.saby_id AND source.missing_since IS NULL
-				WHERE inventory.variant_id=variant.id AND 'stock'=ANY(product.saby_fields)
-					AND inventory.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours'),0)>0) DESC, variant.id
+			) candidate
+			ORDER BY (candidate.stock > 0) DESC,
+				(CASE WHEN candidate.stock=0 THEN candidate.arrival_date END) NULLS LAST, candidate.id
 			LIMIT 1
 		) chosen ON TRUE
 	)
@@ -531,6 +535,7 @@ const catalogListQuery = `
 			ORDER BY (media.variant_id=default_variant.id) DESC,media.is_primary DESC,media.sort_order,media.id LIMIT 1
 		),'/assets/product-photo-pending-graphite-v1.svg'),
 		default_variant.label, default_variant.stock,
+		CASE WHEN default_variant.stock=0 THEN COALESCE(default_variant.arrival_date::TEXT,'') ELSE '' END,
 		NULLIF(GREATEST(variant_numeric_attribute(default_variant.id,'height_cm'),0),0)::double precision,
 		product.catalog_section,COALESCE(product.plant_kind,''),COALESCE(NULLIF(pim.light_level,''),product.light_level,''),
 		COALESCE(NULLIF(pim.watering,''),product.watering,''),COALESCE(NULLIF(pim.height_class,''),product.height_class,''),COALESCE(NULLIF(pim.care_level,''),product.care_level,''),
@@ -640,7 +645,7 @@ func (repository *PostgresRepository) listAvailable(ctx context.Context, collect
 		var priceMinor int64
 		var filterAttributes []byte
 		if err := rows.Scan(&product.ID, &product.SKU, &product.Name, &product.Latin, &product.Category, &priceMinor,
-			&product.Image, &product.Size, &product.Stock, &product.HeightCm, &product.CatalogSection, &product.PlantKind, &product.LightLevel,
+			&product.Image, &product.Size, &product.Stock, &product.ExpectedArrivalDate, &product.HeightCm, &product.CatalogSection, &product.PlantKind, &product.LightLevel,
 			&product.Watering, &product.HeightClass, &product.CareLevel, &product.Placement, &product.PetSafety, &product.GrowthHabit,
 			&product.CategoryID, &product.PopularityScore, &product.Collections, &product.Rating, &product.ReviewsCount, &filterAttributes); err != nil {
 			return nil, fmt.Errorf("scan catalog product: %w", err)

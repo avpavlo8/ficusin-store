@@ -42,7 +42,7 @@ func (store *PostgresStore) listSuppliers(ctx context.Context) ([]Supplier, erro
 func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, error) {
 	rows, err := store.pool.Query(ctx, `
 		SELECT o.id, o.supplier_id, s.name, o.order_number, o.document_number,
-			o.document_date, o.source_kind, o.currency, o.status,
+			o.document_date, COALESCE(o.expected_arrival_date::TEXT, ''), o.source_kind, o.currency, o.status,
 			COUNT(l.id)::INTEGER,
 			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER,
 			COALESCE(SUM(COALESCE(l.line_total, COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, l.expected_unit_price, 0))), 0)::DOUBLE PRECISION,
@@ -68,7 +68,7 @@ func (store *PostgresStore) listOrders(ctx context.Context) ([]OrderSummary, err
 		var item OrderSummary
 		if err := rows.Scan(
 			&item.ID, &item.SupplierID, &item.SupplierName, &item.OrderNumber,
-			&item.DocumentNumber, &item.DocumentDate, &item.SourceKind, &item.Currency,
+			&item.DocumentNumber, &item.DocumentDate, &item.ExpectedArrivalDate, &item.SourceKind, &item.Currency,
 			&item.Status, &item.Lines, &item.Units, &item.Total, &item.Unmatched, &item.CreatedAt, &item.Title, &item.PendingReview, &item.FailedActions,
 		); err != nil {
 			return nil, fmt.Errorf("scan procurement order: %w", err)
@@ -272,8 +272,10 @@ func (store *PostgresStore) listRequests(ctx context.Context) ([]Request, error)
 
 func (store *PostgresStore) listRecommendations(ctx context.Context, settings PricingSettings) ([]Recommendation, error) {
 	rows, err := store.pool.Query(ctx, `
-		WITH request_remaining AS (
-			SELECT r.id,r.kind,r.saby_id,GREATEST(0,r.quantity-COALESCE(SUM(a.active_quantity) FILTER(WHERE a.status='active'),0))::INTEGER quantity,
+		WITH catalog_stock AS MATERIALIZED (
+			SELECT * FROM procurement_plant_catalog_stock
+		), request_remaining AS (
+			SELECT r.id,r.kind,r.saby_id,r.due_date,GREATEST(0,r.quantity-COALESCE(SUM(a.active_quantity) FILTER(WHERE a.status='active'),0))::INTEGER quantity,
 				COALESCE(SUM(a.active_quantity) FILTER(WHERE a.status='active'),0)::INTEGER allocated_quantity
 			FROM procurement_requests r LEFT JOIN procurement_request_allocations a ON a.request_id=r.id
 			WHERE r.status IN('open','included') AND r.saby_id IS NOT NULL GROUP BY r.id
@@ -288,15 +290,29 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				COALESCE(SUM(event.units) FILTER(WHERE event.effect=-1),0)::INTEGER return_units,
 				MAX(event.event_at) FILTER (WHERE event.effect=1) AS last_sale_at
 			FROM sales_events event
-			WHERE (event.event_at AT TIME ZONE 'Europe/Moscow')::DATE >= CURRENT_DATE-($1-1)
+			WHERE event.event_at >= (((CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::DATE-($1-1))::TIMESTAMP AT TIME ZONE 'Europe/Moscow')
 				AND event.saby_id IS NOT NULL AND event.event_status='confirmed' AND event.reconciliation_status='counted'
 				AND NOT (event.channel='site' AND EXISTS(SELECT 1 FROM procurement_requests r JOIN orders o ON o.id=r.customer_order_id
 					WHERE r.saby_id=event.saby_id AND o.order_number=event.source_document_id AND r.status IN('open','included')))
 			GROUP BY event.saby_id
+		), last_sales AS (
+			SELECT saby_id, MAX(event_at) AS last_sale_at
+			FROM sales_events
+			WHERE event_at>=CURRENT_TIMESTAMP-INTERVAL '365 days' AND effect=1
+				AND event_status='confirmed' AND reconciliation_status='counted'
+			GROUP BY saby_id
+		), stock_history AS (
+			SELECT variant_id,COUNT(*)::INTEGER AS observed_days,
+				COUNT(*) FILTER(WHERE in_stock)::INTEGER AS in_stock_days
+			FROM procurement_plant_stock_days
+			WHERE observed_date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Moscow')::DATE-($1-1)
+			GROUP BY variant_id
 		), requests AS (
 			SELECT saby_id,
 				COALESCE(SUM(quantity) FILTER (WHERE kind = 'customer_order'), 0)::INTEGER AS customer_units,
 				COALESCE(SUM(quantity) FILTER (WHERE kind = 'staff_recommendation'), 0)::INTEGER AS staff_units,
+				COALESCE(SUM(quantity+allocated_quantity) FILTER (WHERE kind='customer_order'),0)::INTEGER AS customer_waiting,
+				COALESCE((MIN(due_date) FILTER (WHERE kind='customer_order'))::TEXT,'') AS customer_due_date,
 				COALESCE(SUM(allocated_quantity),0)::INTEGER AS allocated_units
 			FROM request_remaining GROUP BY saby_id
 		), incoming AS (
@@ -304,7 +320,7 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				FROM procurement_order_lines l
 				JOIN procurement_orders o ON o.id = l.procurement_order_id
 				WHERE l.saby_id IS NOT NULL AND l.match_status = 'confirmed'
-					AND NOT l.invoice_excluded AND l.reconciliation_status <> 'superseded'
+					AND NOT l.invoice_excluded AND l.reconciliation_status NOT IN ('missing','superseded')
 					AND (l.reconciliation_status <> 'added' OR l.comparison_accepted)
 					AND o.status IN ('ordered', 'invoice_received', 'review', 'ready_to_receive')
 				GROUP BY l.saby_id
@@ -324,9 +340,10 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				COALESCE(defaults.unit_price, last_line.expected_unit_price) AS expected_unit_price,
 				ROW_NUMBER() OVER (PARTITION BY sp.saby_id ORDER BY
 					CASE WHEN pc.preferred_supplier_id = sp.supplier_id THEN 0 ELSE 1 END,
-					CASE sp.availability_status WHEN 'available' THEN 0 WHEN 'check' THEN 1 WHEN 'unknown' THEN 2 ELSE 3 END,
+					CASE sp.availability_status WHEN 'available' THEN 0 WHEN 'unknown' THEN 1 WHEN 'check' THEN 2 ELSE 3 END,
 					a.last_seen_at DESC NULLS LAST, sp.updated_at DESC, sp.supplier_id) AS preference
 			FROM procurement_supplier_products sp
+			JOIN procurement_suppliers supplier ON supplier.id=sp.supplier_id AND supplier.active
 			LEFT JOIN procurement_product_channels pc ON pc.saby_id = sp.saby_id
 			LEFT JOIN LATERAL (SELECT id, last_seen_at, raw_name, pot_diameter_cm, height_cm FROM procurement_supplier_aliases
 				WHERE supplier_id = sp.supplier_id AND matched_saby_id = sp.saby_id AND match_status = 'confirmed'
@@ -339,32 +356,37 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 				ORDER BY o.created_at DESC, l.id DESC LIMIT 1) last_line ON TRUE
 			LEFT JOIN procurement_product_defaults defaults ON defaults.supplier_id=sp.supplier_id
 				AND defaults.saby_id=sp.saby_id
-				AND defaults.currency=(SELECT default_currency FROM procurement_suppliers WHERE id=sp.supplier_id)
+				AND defaults.currency=supplier.default_currency
 				AND defaults.pot_diameter_cm=COALESCE(last_line.pot_diameter_cm,a.pot_diameter_cm,-1)
 				AND defaults.height_cm=COALESCE(last_line.height_cm,a.height_cm,-1)
 			UNION ALL
-			-- A linked sale still represents demand when no supplier has been assigned.
-			-- Keep supplier_id=0 so the UI cannot add it to an order by accident.
+			-- Keep catalogue items, requests and exclusions visible without a supplier.
 			SELECT 0::BIGINT, n.saby_id, 'unknown'::TEXT, 1, 1,
 				0::BIGINT, COALESCE(NULLIF(pc.holland_article,''),''), ''::TEXT,
 				NULL::NUMERIC, NULL::NUMERIC, NULL::NUMERIC, 1::BIGINT
 			FROM saby_nomenclature n
 			LEFT JOIN procurement_product_channels pc ON pc.saby_id=n.saby_id
-			WHERE n.missing_since IS NULL
-				AND EXISTS (SELECT 1 FROM UNNEST(n.section_path) part
-					WHERE LOWER(BTRIM(part)) IN (LOWER('Цветы'), LOWER('Цветы маркетплейс'), LOWER('Комнатные растения')))
-				AND NOT EXISTS (SELECT 1 FROM procurement_supplier_products existing WHERE existing.saby_id=n.saby_id)
-				AND (EXISTS (SELECT 1 FROM sales WHERE sales.saby_id=n.saby_id AND sales.units>0)
-					OR EXISTS (SELECT 1 FROM requests WHERE requests.saby_id=n.saby_id
-						AND requests.customer_units+requests.staff_units>0))
+			WHERE NOT EXISTS (
+				SELECT 1 FROM procurement_supplier_products existing
+				JOIN procurement_suppliers supplier ON supplier.id=existing.supplier_id AND supplier.active
+				WHERE existing.saby_id=n.saby_id
+			)
+				AND (EXISTS (SELECT 1 FROM catalog_stock WHERE saby_id=n.saby_id)
+					OR EXISTS (SELECT 1 FROM requests WHERE saby_id=n.saby_id)
+					OR EXISTS (SELECT 1 FROM procurement_excluded_products WHERE saby_id=n.saby_id))
 		)
-			SELECT sp.alias_id, sp.supplier_id, n.saby_id, n.name, sp.article,
+			SELECT sp.alias_id, sp.supplier_id, n.saby_id, COALESCE(stock.display_name,n.name), sp.article,
 				sp.dutch_name, sp.pot_diameter_cm::DOUBLE PRECISION, sp.height_cm::DOUBLE PRECISION,
-				sp.expected_unit_price::DOUBLE PRECISION, sp.availability_status, n.balance,n.missing_since IS NULL,n.seen_at,COALESCE(i.units, 0),
+				sp.expected_unit_price::DOUBLE PRECISION, sp.availability_status,
+				CASE WHEN stock.variant_id IS NULL THEN n.balance ELSE COALESCE(stock.balance,0) END,
+				CASE WHEN stock.variant_id IS NULL THEN n.missing_since IS NULL ELSE stock.balance IS NOT NULL END,
+				CASE WHEN stock.variant_id IS NULL THEN n.seen_at ELSE stock.synced_at END, COALESCE(i.units, 0),
 				COALESCE(s.site_units, 0), COALESCE(s.saby_units, 0), COALESCE(s.wb_units, 0),
 				COALESCE(s.ozon_units, 0),COALESCE(s.gross_units,0),COALESCE(s.return_units,0), COALESCE(r.customer_units, 0), COALESCE(r.staff_units, 0),COALESCE(r.allocated_units,0),
-				sp.minimum_order_qty, sp.order_multiple, s.last_sale_at, lo.last_ordered_at,
-				e.saby_id IS NOT NULL, COALESCE(e.reason, '')
+				sp.minimum_order_qty, sp.order_multiple, COALESCE(s.last_sale_at, last_sale.last_sale_at), lo.last_ordered_at,
+				e.saby_id IS NOT NULL, COALESCE(e.reason, ''),
+				COALESCE(r.customer_waiting,0), COALESCE(r.customer_due_date,''),
+				COALESCE(history.observed_days,0), COALESCE(history.in_stock_days,0)
 			FROM products sp
 			JOIN saby_nomenclature n ON n.saby_id = sp.saby_id
 			LEFT JOIN sales s ON s.saby_id = n.saby_id
@@ -372,13 +394,11 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			LEFT JOIN incoming i ON i.saby_id = n.saby_id
 			LEFT JOIN last_orders lo ON lo.saby_id = n.saby_id
 			LEFT JOIN procurement_excluded_products e ON e.saby_id = n.saby_id
-			WHERE sp.preference = 1 AND (COALESCE(s.units, 0) > 0 OR
-				COALESCE(r.customer_units, 0) > 0 OR COALESCE(r.staff_units, 0) > 0 OR
-				COALESCE(r.allocated_units, 0) > 0 OR
-				e.saby_id IS NOT NULL)
-			ORDER BY CASE WHEN COALESCE(s.units, 0) > 0 OR COALESCE(r.customer_units, 0) > 0
-				OR COALESCE(r.staff_units, 0) > 0 THEN 0 ELSE 1 END, n.balance, n.name
-		LIMIT 2000
+			LEFT JOIN catalog_stock stock ON stock.saby_id=n.saby_id
+			LEFT JOIN stock_history history ON history.variant_id=stock.variant_id
+			LEFT JOIN last_sales last_sale ON last_sale.saby_id=n.saby_id
+			WHERE sp.preference = 1 AND (e.saby_id IS NOT NULL OR COALESCE(r.customer_waiting,0)>0 OR COALESCE(r.staff_units,0)>0
+				OR (stock.variant_id IS NOT NULL AND stock.balance IS NOT NULL))
 	`, settings.RecommendationDays)
 	if err != nil {
 		return nil, fmt.Errorf("query procurement recommendations: %w", err)
@@ -392,7 +412,8 @@ func (store *PostgresStore) listRecommendations(ctx context.Context, settings Pr
 			&input.AvailabilityStatus, &input.Balance, &input.BalanceKnown, &input.BalanceAsOf, &input.Incoming, &input.SiteSales, &input.SabySales,
 			&input.WBSales, &input.OzonSales, &input.GrossSales, &input.Returns, &input.CustomerRequests, &input.StaffRequests, &input.AllocatedRequests,
 			&input.MinimumOrderQty, &input.OrderMultiple, &input.LastSaleAt, &input.LastOrderedAt,
-			&input.Excluded, &input.ExclusionReason); err != nil {
+			&input.Excluded, &input.ExclusionReason, &input.CustomerWaiting, &input.CustomerDueDate,
+			&input.ObservedStockDays, &input.InStockDays); err != nil {
 			return nil, fmt.Errorf("scan procurement recommendation: %w", err)
 		}
 		input.BalanceStateProvided = true
@@ -1420,6 +1441,23 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 		return OrderDetail{}, ErrNotFound
 	} else if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement order status: %w", err)
+	}
+	if input.ExpectedArrivalDate != nil {
+		if current == "received" || current == "cancelled" {
+			return OrderDetail{}, &UserFacingError{Message: "Дату поступления можно изменить в активной закупке"}
+		}
+		if _, err := tx.Exec(ctx, `
+			UPDATE procurement_orders SET expected_arrival_date=NULLIF($2,'')::DATE, updated_at=CURRENT_TIMESTAMP WHERE id=$1
+		`, orderID, *input.ExpectedArrivalDate); err != nil {
+			return OrderDetail{}, fmt.Errorf("update procurement arrival date: %w", err)
+		}
+		if err := audit(ctx, tx, actor, "procurement.arrival_date.update", "procurement_order", orderID, input); err != nil {
+			return OrderDetail{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return OrderDetail{}, err
+		}
+		return store.OrderDetail(ctx, orderID)
 	}
 	restoring := input.Status == "review" && current == "cancelled"
 	allowed := input.Status == "cancelled" && current != "received" && current != "cancelled" ||

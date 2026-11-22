@@ -11,8 +11,8 @@ export function ProcurementRecommendationTable({
   periodDays,
   onSelect,
   onSupplier,
-  onAvailability,
-  onExclude,
+  changingVisibility,
+  onHide,
 }: {
   items: ProcurementRecommendation[];
   suppliers: ProcurementSupplier[];
@@ -22,8 +22,8 @@ export function ProcurementRecommendationTable({
   periodDays: number;
   onSelect: (key: string, checked: boolean) => void;
   onSupplier: (sabyId: string, supplierId: number) => void;
-  onAvailability: (item: ProcurementRecommendation, status: string) => void;
-  onExclude: (item: ProcurementRecommendation, excluded: boolean) => void;
+  changingVisibility: boolean;
+  onHide: (item: ProcurementRecommendation) => void;
 }) {
   const [expanded, setExpanded] = useState<string[]>([]);
   const id = useId();
@@ -90,12 +90,27 @@ export function ProcurementRecommendationTable({
                     <small>
                       {item.supplierArticle ||
                         (item.supplierId ? "Артикул не заполнен" : "Нужен поставщик")}
-                      {item.customerRequests > 0 && (
+                      {(item.customerWaiting || item.customerRequests) > 0 && (
                         <span className="procurement-client-demand">
-                          Клиенту: {item.customerRequests} шт.
+                          Ждут {item.customerWaiting || item.customerRequests} шт.
+                          {item.customerDueDate &&
+                            ` · к ${new Date(`${item.customerDueDate}T00:00:00`).toLocaleDateString("ru-RU")}`}
                         </span>
                       )}
                     </small>
+                    {item.hiddenFromRestock ? (
+                      <small>Пополнение скрыто</small>
+                    ) : (
+                      <button
+                        type="button"
+                        className="procurement-hide-recommendation"
+                        aria-label={`Скрыть из рекомендаций: ${item.name}`}
+                        disabled={changingVisibility}
+                        onClick={() => onHide(item)}
+                      >
+                        Скрыть
+                      </button>
+                    )}
                   </td>
                   <td>
                     <strong>
@@ -105,6 +120,16 @@ export function ProcurementRecommendationTable({
                   </td>
                   <td>
                     <strong>{item.totalSales} шт.</strong>
+                    <small>
+                      {item.observedStockDays > 0
+                        ? `В наличии ${item.inStockDays} из ${item.observedStockDays} дн.${item.observedStockDays < periodDays ? " с данными" : ""}`
+                        : "Дни в наличии неизвестны"}
+                    </small>
+                    {item.totalSales === 0 && item.lastSaleAt && (
+                      <small>
+                        Последняя продажа {new Date(item.lastSaleAt).toLocaleDateString("ru-RU")}
+                      </small>
+                    )}
                   </td>
                   <td>
                     <span className={urgent ? "procurement-cover-urgent" : "procurement-cover"}>
@@ -117,13 +142,18 @@ export function ProcurementRecommendationTable({
                     <strong className="procurement-suggested-quantity">
                       {item.quantityKnown === false ? "Вручную" : `${item.suggestedQty} шт.`}
                     </strong>
-                    <small>
-                      {item.orderMultiple > 1
-                        ? item.quantityKnown === false
-                          ? `В упаковке ${item.orderMultiple} шт.`
-                          : `${recommendedPackageCount(item)} уп. по ${item.orderMultiple} шт.`
-                        : "Поштучно"}
-                    </small>
+                    {item.uncoveredQty > 0 && item.uncoveredQty !== item.suggestedQty && (
+                      <small>Дефицит {item.uncoveredQty} шт.</small>
+                    )}
+                    {item.status === "recommended" && (
+                      <small>
+                        {item.orderMultiple > 1
+                          ? item.quantityKnown === false
+                            ? `В упаковке ${item.orderMultiple} шт.`
+                            : `${recommendedPackageCount(item)} уп. по ${item.orderMultiple} шт.`
+                          : "Поштучно"}
+                      </small>
+                    )}
                   </td>
                   <td>
                     <select
@@ -140,11 +170,15 @@ export function ProcurementRecommendationTable({
                       ))}
                     </select>
                     {savingSupplier === item.sabyId && <small role="status">Сохраняем…</small>}
+                    {item.availability === "check" && <small>Уточнить наличие</small>}
+                    {["temporarily_unavailable", "discontinued"].includes(item.availability) && (
+                      <small>Ранее отмечен как отсутствующий</small>
+                    )}
                   </td>
                   <td>
                     <button
                       className="procurement-expand-row"
-                      aria-label={`Расчёт и действия: ${item.name}`}
+                      aria-label={`Расчёт: ${item.name}`}
                       aria-expanded={isExpanded}
                       aria-controls={`${id}-${index}`}
                       onClick={() =>
@@ -210,28 +244,6 @@ export function ProcurementRecommendationTable({
                               {new Date(item.lastOrderedAt).toLocaleDateString("ru-RU")}
                             </p>
                           )}
-                        </div>
-                        <div className="procurement-recommendation-actions">
-                          <strong>Действия с товаром</strong>
-                          {item.supplierId > 0 && item.status !== "excluded" && (
-                            <>
-                              {item.status !== "check_availability" && (
-                                <button onClick={() => onAvailability(item, "check")}>
-                                  Проверить наличие
-                                </button>
-                              )}
-                              {item.status !== "supplier_unavailable" && (
-                                <button
-                                  onClick={() => onAvailability(item, "temporarily_unavailable")}
-                                >
-                                  Нет у поставщика
-                                </button>
-                              )}
-                            </>
-                          )}
-                          <button onClick={() => onExclude(item, item.status !== "excluded")}>
-                            {item.status === "excluded" ? "Вернуть в закупку" : "Не закупать"}
-                          </button>
                         </div>
                       </div>
                     </td>

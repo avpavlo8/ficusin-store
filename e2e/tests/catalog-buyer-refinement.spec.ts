@@ -211,3 +211,30 @@ test("@desktop @phone unrated products reserve rating space and keep purchase wi
   await page.reload();
   await expect(page.locator('.storefront-card').first().getByRole('button', { name: 'Перейти в корзину, 1 шт.', exact: true })).toBeVisible();
 });
+
+test("@desktop @phone arrival date follows the unavailable plant variant", async ({ page }) => {
+  await mockApi(page);
+  const item = { ...catalogue[0], sku: "1", stock: 0, expectedArrivalDate: "2030-12-08" };
+  await page.route("**/api/v1/catalog", (route) =>
+    route.fulfill({ json: { products: [item] } }),
+  );
+  await page.route("**/api/v1/products/1", (route) => route.fulfill({ json: { product: {
+    ...item, description: "Описание", images: [], recommendations: [], attributes: [], passport: {},
+    importantWarnings: [], reviews: [],
+    variants: [
+      { id: 1, sku: "1", label: "D10", potDiameterCm: 10, price: item.price, stock: 0,
+        expectedArrivalDate: item.expectedArrivalDate, images: [], attributes: [] },
+      { id: 2, sku: "101", label: "D12", potDiameterCm: 12, price: item.price, stock: 2,
+        images: [], attributes: [] },
+    ],
+  } } }));
+  await page.goto("/");
+  const card = page.locator(".storefront-card").filter({ hasText: item.name });
+  await expect(card).toContainText("Нет в наличии. Ожидаем поступление примерно 08 декабря");
+  await card.getByRole("link", { name: item.name, exact: true }).last().click();
+  await expect(page).toHaveURL(/\/product\/1\?sku=1$/);
+  await expect(page.locator(".pdp-expected-arrival")).toHaveText("Ожидаем поступление примерно 08 декабря");
+  await page.getByRole("group", { name: "Размер растения" }).getByRole("button", { name: /Ø 12 см/ }).click();
+  await expect(page.locator(".pdp-expected-arrival")).toHaveCount(0);
+  await expect(page.locator(".pdp-price-row .stock-ok")).toContainText("В наличии");
+});

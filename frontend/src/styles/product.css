@@ -2328,3 +2328,9 @@
 .product-page .pdp-mobile-purchase .stock-out {
   font-weight: 600;
 }
+
+.pdp-expected-arrival {
+  margin: 0;
+  color: inherit;
+  font-size: 0.875rem;
+}

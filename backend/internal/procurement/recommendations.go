@@ -5,19 +5,11 @@ import (
 	"math"
 )
 
-// Очереди экрана рекомендаций.
-//
-// «К заказу» — единственный список, по которому формируется заказ
-// поставщику. Товар без остатка и ручная рекомендация магазина живут здесь
-// же: разбирать их по отдельным вкладкам значило заставлять человека
-// собирать заказ из трёх мест. Остальные очереди — это то, что из «К
-// заказу» вычли, и каждая называет причину.
 const (
-	RecommendationReady        = "recommended"
-	RecommendationIncoming     = "already_ordered"
-	RecommendationAvailability = "check_availability"
-	RecommendationUnavailable  = "supplier_unavailable"
-	RecommendationExcluded     = "excluded"
+	RecommendationReady    = "recommended"
+	RecommendationIncoming = "already_ordered"
+	RecommendationCovered  = "covered"
+	RecommendationExcluded = "excluded"
 )
 
 type recommendationInput struct {
@@ -37,6 +29,9 @@ type recommendationInput struct {
 func calculateRecommendation(input recommendationInput, historyDays, coverDays int) (Recommendation, bool) {
 	item := input.Recommendation
 	item.Availability = input.AvailabilityStatus
+	item.HiddenFromRestock = input.Excluded
+	item.ExclusionReason = input.ExclusionReason
+	hasCustomer := item.CustomerWaiting > 0 || item.CustomerRequests > 0
 	item.SiteSales = max(0, item.SiteSales)
 	item.SabySales = max(0, item.SabySales)
 	item.WBSales = max(0, item.WBSales)
@@ -58,10 +53,7 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 		item.DaysOfCover = &cover
 	}
 
-	// Решение магазина не закупать сильнее любого расчёта: считать спрос по
-	// такому товару всё равно нужно, чтобы человек видел, от чего
-	// отказывается, но в заказ он не попадёт.
-	if input.Excluded {
+	if input.Excluded && !hasCustomer {
 		item.Status = RecommendationExcluded
 		item.Reason = defaultReason(input.ExclusionReason, "Снят с закупки решением магазина")
 		return item, true
@@ -71,6 +63,9 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 	// арифметике дают 9.999999999999998, и округление вверх молча
 	// превращается то в 10, то в 11.
 	demand := (item.TotalSales*coverDays+historyDays-1)/historyDays + item.OpenRequests
+	if input.Excluded {
+		demand = item.CustomerRequests
+	}
 	item.DemandQty = demand
 	needBeforeIncoming := max(0, demand-max(0, item.Balance))
 	item.NeedBeforeIncoming = needBeforeIncoming
@@ -78,26 +73,17 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 	// Нулевой остаток без продаж и без заявок — это не рассчитанная
 	// потребность, а напоминание. Количество должен задать закупщик: статистика
 	// объясняет отсутствие товара, но не позволяет честно вывести точную цифру.
-	manualQuantity := needBeforeIncoming == 0 && item.Balance <= 0 && item.TotalSales == 0 && item.OpenRequests == 0 && item.AllocatedRequests == 0
+	manualQuantity := !hasCustomer && needBeforeIncoming == 0 && item.Balance <= 0 && item.TotalSales == 0 && item.OpenRequests == 0 && item.AllocatedRequests == 0
 	if manualQuantity {
 		needBeforeIncoming = 1
 	}
-	if needBeforeIncoming == 0 && item.AllocatedRequests == 0 {
+	if needBeforeIncoming == 0 && item.AllocatedRequests == 0 && !hasCustomer {
 		return Recommendation{}, false
 	}
 
-	switch input.AvailabilityStatus {
-	case "check":
-		item.Status = RecommendationAvailability
-		item.Reason = "Наличие у поставщика нужно проверить"
-		return item, true
-	case "temporarily_unavailable":
-		item.Status = RecommendationUnavailable
-		item.Reason = "У поставщика временно нет"
-		return item, true
-	case "discontinued":
-		item.Status = RecommendationUnavailable
-		item.Reason = "Поставщик снял с продажи"
+	if needBeforeIncoming == 0 && item.Incoming > 0 && item.AllocatedRequests > 0 {
+		item.Status = RecommendationIncoming
+		item.Reason = fmt.Sprintf("В закупке распределено %d шт.; остатка заявки нет", item.AllocatedRequests)
 		return item, true
 	}
 	if input.BalanceStateProvided && !item.BalanceKnown {
@@ -106,12 +92,12 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 		item.Reason = "Остаток СБИС неизвестен; обновите справочник или задайте количество вручную"
 		return item, true
 	}
-	if needBeforeIncoming == 0 && item.Incoming > 0 && item.AllocatedRequests > 0 {
-		item.Status = RecommendationIncoming
-		item.Reason = fmt.Sprintf("В закупке распределено %d шт.; остатка заявки нет", item.AllocatedRequests)
-		return item, true
-	}
 	if manualQuantity {
+		if item.Incoming > 0 {
+			item.Status = RecommendationIncoming
+			item.Reason = fmt.Sprintf("Уже заказано %d шт.", item.Incoming)
+			return item, true
+		}
 		item.Status = RecommendationReady
 		item.QuantityKnown = false
 		item.Reason = "Нет остатка и продаж за выбранный период; количество задайте вручную"
@@ -131,6 +117,11 @@ func calculateRecommendation(input recommendationInput, historyDays, coverDays i
 		return item, true
 	}
 	if rawQuantity == 0 {
+		if hasCustomer {
+			item.Status = RecommendationCovered
+			item.Reason = "Текущий остаток покрывает заявку клиента"
+			return item, true
+		}
 		return Recommendation{}, false
 	}
 
@@ -180,13 +171,11 @@ func recommendationPriority(item Recommendation) int {
 		return 1
 	case RecommendationIncoming:
 		return 2
-	case RecommendationAvailability:
+	case RecommendationCovered:
 		return 3
-	case RecommendationUnavailable:
-		return 4
 	case RecommendationExcluded:
-		return 5
+		return 4
 	default:
-		return 6
+		return 5
 	}
 }

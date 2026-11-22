@@ -44,6 +44,7 @@ type Product = {
   image: string;
   size: string;
   stock?: number;
+  expectedArrivalDate?: string;
   heightCm?: number;
   catalogSection: string;
   plantKind?: string;

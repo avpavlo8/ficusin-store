@@ -105,11 +105,11 @@ export function ProcurementPlanDialog({
   initialRecommendations: ProcurementRecommendation[];
   renderRecommendations: (
     add: (items: ProcurementRecommendation[]) => boolean,
-    navigate: (target: "unlinkedSales" | "integrations") => void,
+    navigate: (target: "unlinkedSales" | "integrations" | "requests") => void,
     addedSabyIds: string[],
     draftSupplierId?: number,
   ) => ReactNode;
-  onNavigate: (target: "unlinkedSales" | "integrations") => void;
+  onNavigate: (target: "unlinkedSales" | "integrations" | "requests") => void;
   settings: ProcurementSettings;
   draftId?: number | null;
   onClose: () => void;
@@ -1294,6 +1294,7 @@ export function ProcurementOrderDetailDialog({
   const [detail, setDetail] = useState<ProcurementOrderDetail | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [arrivalDate, setArrivalDate] = useState<string | null>(null);
   const [pairingLineID, setPairingLineID] = useState<number | null>(null);
   const [matchingLine, setMatchingLine] = useState<ProcurementOrderLine | null>(null);
   const [pricingLine, setPricingLine] = useState<ProcurementOrderLine | null>(null);
@@ -1685,6 +1686,23 @@ export function ProcurementOrderDetailDialog({
       setSaving(false);
     }
   };
+  const saveArrivalDate = async () => {
+    if (arrivalDate === null) return;
+    setSaving(true);
+    try {
+      const item = await api<ProcurementOrderDetail>(
+        `/api/v1/admin/procurement/orders/${orderId}/status`,
+        { method: "PATCH", body: JSON.stringify({ expectedArrivalDate: arrivalDate }) },
+      );
+      setDetail(normalizeProcurementOrderDetail(item));
+      setArrivalDate(null);
+      onSaved();
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
   const uploadInvoice = async (file: File | null) => {
     if (!file || !detail) return;
     setUploading(true);
@@ -1693,6 +1711,7 @@ export function ProcurementOrderDetailDialog({
       const body = new FormData();
       body.append("supplierId", String(detail.order.supplierId));
       body.append("orderId", String(orderId));
+      if (arrivalDate) body.append("expectedArrivalDate", arrivalDate);
       body.append("file", file);
       const result = await uploadProcurementPDF<{ duplicate: boolean; order: ProcurementOrder }>(
         body,
@@ -1701,6 +1720,7 @@ export function ProcurementOrderDetailDialog({
         throw new Error(
           `Этот PDF уже загружен в закупку ${result.order.orderNumber || `№${result.order.id}`}.`,
         );
+      setArrivalDate(null);
       await load();
       onSaved();
     } catch (error) {
@@ -2066,6 +2086,31 @@ export function ProcurementOrderDetailDialog({
                   />
                 </label>
               </div>
+              {!closed && (
+                <div className="procurement-arrival-fields admin-form-grid">
+                  <label>
+                    Ориентировочная дата поступления
+                    <input
+                      type="date"
+                      value={arrivalDate ?? detail.order.expectedArrivalDate ?? ""}
+                      onChange={(event) => setArrivalDate(event.target.value)}
+                      disabled={saving || uploading}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      saving ||
+                      uploading ||
+                      arrivalDate === null ||
+                      arrivalDate === (detail.order.expectedArrivalDate ?? "")
+                    }
+                    onClick={() => void saveArrivalDate()}
+                  >
+                    Сохранить дату
+                  </button>
+                </div>
+              )}
               {documents.length ? (
                 <ul className="procurement-document-list">
                   {[...documents]
@@ -3329,6 +3374,7 @@ export function ProcurementUploadDialog({
   });
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0);
   const [orderId, setOrderId] = useState(0);
+  const [expectedArrivalDate, setExpectedArrivalDate] = useState("");
   const [fileError, setFileError] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -3338,6 +3384,7 @@ export function ProcurementUploadDialog({
   const changeSupplier = (value: number) => {
     setSupplierId(value);
     setOrderId(0);
+    setExpectedArrivalDate("");
   };
   const save = async () => {
     if (!file || !supplierId || orderId < 0) return;
@@ -3348,6 +3395,7 @@ export function ProcurementUploadDialog({
       const body = new FormData();
       body.append("supplierId", String(supplierId));
       if (orderId) body.append("orderId", String(orderId));
+      if (expectedArrivalDate) body.append("expectedArrivalDate", expectedArrivalDate);
       body.append("file", file);
       const result = await uploadProcurementPDF<{ duplicate: boolean; order: ProcurementOrder }>(
         body,
@@ -3411,7 +3459,16 @@ export function ProcurementUploadDialog({
           </label>
           <label className="wide">
             Связать с закупкой
-            <select value={orderId} onChange={(event) => setOrderId(Number(event.target.value))}>
+            <select
+              value={orderId}
+              onChange={(event) => {
+                const id = Number(event.target.value);
+                setOrderId(id);
+                setExpectedArrivalDate(
+                  availableOrders.find((item) => item.id === id)?.expectedArrivalDate ?? "",
+                );
+              }}
+            >
               {orderId < 0 && <option value={-1}>Выберите закупку или создание новой</option>}
               <option value={0}>Создать новую закупку из документа</option>
               {availableOrders.map((item) => (
@@ -3430,6 +3487,18 @@ export function ProcurementUploadDialog({
               уже отправленному заказу.
             </p>
           )}
+          <label className="wide">
+            Ориентировочная дата поступления
+            <input
+              type="date"
+              value={expectedArrivalDate}
+              onChange={(event) => setExpectedArrivalDate(event.target.value)}
+              disabled={saving}
+            />
+            <small>
+              Покупатели увидят дату у отсутствующих товаров после сопоставления строк инвойса.
+            </small>
+          </label>
           <label className="wide procurement-file">
             PDF-файл
             <input

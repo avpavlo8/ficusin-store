@@ -124,6 +124,8 @@ type OrderSummary struct {
 	Total          float64    `json:"total"`
 	Unmatched      int        `json:"unmatched"`
 	CreatedAt      time.Time  `json:"createdAt"`
+
+	ExpectedArrivalDate string `json:"expectedArrivalDate,omitempty"`
 }
 
 type OrderCreate struct {
@@ -335,9 +337,10 @@ type RequestUpdate struct {
 }
 
 type OrderStatusUpdate struct {
-	Status string `json:"status"`
-	Note   string `json:"note"`
-	Force  bool   `json:"force"`
+	ExpectedArrivalDate *string `json:"expectedArrivalDate,omitempty"`
+	Status              string  `json:"status"`
+	Note                string  `json:"note"`
+	Force               bool    `json:"force"`
 }
 
 type OrderLineUpdate struct {
@@ -399,28 +402,35 @@ type ExclusionUpdate struct {
 }
 
 type Recommendation struct {
-	AliasID             int64      `json:"aliasId"`
-	SupplierID          int64      `json:"supplierId"`
-	SabyID              string     `json:"sabyId"`
-	Name                string     `json:"name"`
-	SupplierArticle     string     `json:"supplierArticle"`
-	DutchName           string     `json:"dutchName"`
-	PotDiameterCM       *float64   `json:"potDiameterCm,omitempty"`
-	HeightCM            *float64   `json:"heightCm,omitempty"`
-	LastUnitPrice       *float64   `json:"lastUnitPrice,omitempty"`
-	Availability        string     `json:"availability"`
-	Balance             int        `json:"balance"`
-	BalanceKnown        bool       `json:"balanceKnown"`
-	BalanceAsOf         *time.Time `json:"balanceAsOf,omitempty"`
-	Incoming            int        `json:"incoming"`
-	SiteSales           int        `json:"siteSales"`
-	SabySales           int        `json:"sabySales"`
-	WBSales             int        `json:"wbSales"`
-	OzonSales           int        `json:"ozonSales"`
-	TotalSales          int        `json:"totalSales"`
-	GrossSales          int        `json:"grossSales"`
-	Returns             int        `json:"returns"`
-	CustomerRequests    int        `json:"customerRequests"`
+	AliasID           int64      `json:"aliasId"`
+	SupplierID        int64      `json:"supplierId"`
+	SabyID            string     `json:"sabyId"`
+	Name              string     `json:"name"`
+	SupplierArticle   string     `json:"supplierArticle"`
+	DutchName         string     `json:"dutchName"`
+	PotDiameterCM     *float64   `json:"potDiameterCm,omitempty"`
+	HeightCM          *float64   `json:"heightCm,omitempty"`
+	LastUnitPrice     *float64   `json:"lastUnitPrice,omitempty"`
+	Availability      string     `json:"availability"`
+	Balance           int        `json:"balance"`
+	BalanceKnown      bool       `json:"balanceKnown"`
+	BalanceAsOf       *time.Time `json:"balanceAsOf,omitempty"`
+	Incoming          int        `json:"incoming"`
+	SiteSales         int        `json:"siteSales"`
+	SabySales         int        `json:"sabySales"`
+	WBSales           int        `json:"wbSales"`
+	OzonSales         int        `json:"ozonSales"`
+	TotalSales        int        `json:"totalSales"`
+	GrossSales        int        `json:"grossSales"`
+	Returns           int        `json:"returns"`
+	CustomerRequests  int        `json:"customerRequests"`
+	CustomerWaiting   int        `json:"customerWaiting"`
+	CustomerDueDate   string     `json:"customerDueDate,omitempty"`
+	ObservedStockDays int        `json:"observedStockDays"`
+	InStockDays       int        `json:"inStockDays"`
+	HiddenFromRestock bool       `json:"hiddenFromRestock"`
+	ExclusionReason   string     `json:"exclusionReason,omitempty"`
+
 	StaffRequests       int        `json:"staffRequests"`
 	OpenRequests        int        `json:"openRequests"`
 	AllocatedRequests   int        `json:"allocatedRequests"`
@@ -737,11 +747,12 @@ type DocumentSummary struct {
 }
 
 type DocumentUpload struct {
-	SupplierID  int64
-	OrderID     int64
-	FileName    string
-	ContentType string
-	Content     []byte
+	ExpectedArrivalDate string
+	SupplierID          int64
+	OrderID             int64
+	FileName            string
+	ContentType         string
+	Content             []byte
 }
 
 type ImportResult struct {

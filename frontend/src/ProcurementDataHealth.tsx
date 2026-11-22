@@ -29,22 +29,23 @@ export function ProcurementDataHealth({
       <div className="procurement-data-summary">
         <div>
           <strong>{problems.length ? "Рекомендации по неполным данным" : "Данные продаж"}</strong>
-          <p>
-            {failed.length > 0
-              ? failed
-                  .map(
-                    (item) =>
-                      `${salesChannelLabel(item.channel)}: ${item.lastSuccessAt ? `обновлено ${date(item.lastSuccessAt)}` : "нет успешной загрузки"}`,
-                  )
-                  .join(" · ") + ". Количества требуют проверки."
-              : problems.length
-                ? "Часть продаж не участвует в расчёте потребности."
-                : "Проверьте актуальность каналов перед оформлением закупки."}
-            {unlinked > 0 && ` Кодов без связи с товаром: ${unlinked}.`}
-          </p>
+          {expanded && (
+            <p>
+              {failed.length > 0
+                ? failed
+                    .map(
+                      (item) =>
+                        `${salesChannelLabel(item.channel)}: ${item.lastSuccessAt ? `обновлено ${date(item.lastSuccessAt)}` : "нет успешной загрузки"}`,
+                    )
+                    .join(" · ") + ". Количества требуют проверки."
+                : problems.length
+                  ? "Часть продаж не участвует в расчёте потребности."
+                  : "Проверьте актуальность каналов перед оформлением закупки."}
+              {unlinked > 0 && ` Кодов без связи с товаром: ${unlinked}.`}
+            </p>
+          )}
         </div>
         <div className="procurement-data-actions">
-          {unlinked > 0 && <button onClick={onUnlinked}>Сопоставить продажи</button>}
           <button aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
             {expanded ? "Свернуть" : "По каналам"}
           </button>
@@ -92,6 +93,7 @@ export function ProcurementDataHealth({
               )}
             </article>
           ))}
+          {unlinked > 0 && <button onClick={onUnlinked}>Сопоставить продажи</button>}
           {onIntegrations && <button onClick={onIntegrations}>Открыть интеграции</button>}
         </div>
       )}

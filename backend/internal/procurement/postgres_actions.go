@@ -381,9 +381,7 @@ func (store *PostgresStore) UpdateAvailability(ctx context.Context, actor Actor,
 	return item, nil
 }
 
-// SetExclusion снимает товар с закупки или возвращает его обратно. Решение
-// магазина, поэтому без поставщика и с обязательной причиной при снятии:
-// через месяц «почему это не заказывается» — обычный вопрос.
+// SetExclusion stores the replenishment decision across suppliers.
 func (store *PostgresStore) SetExclusion(ctx context.Context, actor Actor, input ExclusionUpdate) error {
 	tx, err := store.pool.Begin(ctx)
 	if err != nil {
@@ -1502,7 +1500,7 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 	var item OrderSummary
 	err := querier.QueryRow(ctx, `
 		SELECT o.id, o.supplier_id, s.name, o.order_number, o.document_number,
-			o.document_date, o.source_kind, o.currency, o.status,
+			o.document_date, COALESCE(o.expected_arrival_date::TEXT, ''), o.source_kind, o.currency, o.status,
 			COUNT(l.id)::INTEGER,
 			COALESCE(SUM(COALESCE(l.invoiced_qty, l.ordered_qty)), 0)::INTEGER,
 			COALESCE(SUM(COALESCE(l.line_total, COALESCE(l.invoiced_qty, l.ordered_qty) * COALESCE(l.unit_price, l.expected_unit_price, 0))), 0)::DOUBLE PRECISION,
@@ -1519,7 +1517,7 @@ func loadOrderSummary(ctx context.Context, querier queryRower, orderID int64) (O
 		GROUP BY o.id, s.name
 	`, orderID).Scan(
 		&item.ID, &item.SupplierID, &item.SupplierName, &item.OrderNumber,
-		&item.DocumentNumber, &item.DocumentDate, &item.SourceKind, &item.Currency,
+		&item.DocumentNumber, &item.DocumentDate, &item.ExpectedArrivalDate, &item.SourceKind, &item.Currency,
 		&item.Status, &item.Lines, &item.Units, &item.Total, &item.Unmatched, &item.CreatedAt, &item.Title, &item.PendingReview, &item.FailedActions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {

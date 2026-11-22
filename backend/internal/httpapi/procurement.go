@@ -434,7 +434,7 @@ func (handlers procurementHandlers) importDocument(response http.ResponseWriter,
 		CustomerID: actor.CustomerID, Role: actor.Role,
 	}, procurement.DocumentUpload{
 		SupplierID: supplierID, OrderID: orderID, FileName: header.Filename,
-		ContentType: contentType, Content: content,
+		ContentType: contentType, Content: content, ExpectedArrivalDate: request.FormValue("expectedArrivalDate"),
 	})
 	if err != nil {
 		handlers.failed(response, "import procurement document", err)
