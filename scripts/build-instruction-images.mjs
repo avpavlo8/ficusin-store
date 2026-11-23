@@ -1,4 +1,4 @@
-// Code-native diagrams and annotations; the original screenshots stay unchanged.
+// Draw markers over the redacted CDEK screenshots.
 // Run after `npm ci` in e2e and `npx playwright install chromium`.
 import { chromium } from "../e2e/node_modules/@playwright/test/index.mjs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
@@ -29,7 +29,7 @@ for (const guide of content.guides) {
     const assets = step.example ? [step, step.example] : [step];
     for (const asset of assets) {
       const bytes = await readFile(
-        path.join(root, "public/assets/instructions/source", asset.screen),
+        path.join(root, "scripts/instruction-screens", asset.screen),
       );
       const uri = `data:image/png;base64,${bytes.toString("base64")}`;
       const dim = await page.evaluate(async (src) => {

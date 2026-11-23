@@ -56,7 +56,8 @@
 ## Обновление картинок
 
 Источник текста и аннотаций — `frontend/src/instructions/content.json`.
-Очищенные снимки интерфейса хранятся в `public/assets/instructions/source/`.
+Очищенные исходные снимки хранятся в `scripts/instruction-screens/`. В сборку
+входят размеченные копии из `public/assets/instructions/v1/`.
 Для `imageStyle: "outline"` генератор рисует обводку маркером по координатам
 `outlines` (x, y, ширина, высота в пикселях) поверх снимка из `screen`.
 Текст шага находится над изображением. Поле `imageFile` задаёт имя с версией
