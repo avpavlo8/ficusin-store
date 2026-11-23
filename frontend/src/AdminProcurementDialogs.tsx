@@ -10,6 +10,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -213,6 +214,36 @@ export function ProcurementPlanDialog({
     initialRecommendations.length ? initialRecommendations.map(makeLine) : [makeLine()],
   );
   const [sortOrder, setSortOrder] = useState(() => sortPlanLines(items).map((item) => item.id));
+  const lineFirstFields = useRef(new Map<string, HTMLInputElement>());
+  const pendingNewLine = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const id = pendingNewLine.current;
+    if (!id) return;
+    const field = lineFirstFields.current.get(id);
+    if (!field) return;
+    pendingNewLine.current = null;
+    field.focus({ preventScroll: true });
+    field.scrollIntoView({ block: "center", inline: "nearest" });
+  }, [items]);
+  const rowScrollAnchor = useRef<{ row: HTMLElement; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const anchor = rowScrollAnchor.current;
+    rowScrollAnchor.current = null;
+    if (!anchor?.row.isConnected) return;
+    const offset = anchor.row.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(offset) < 1) return;
+    // Keep the row at its previous screen position, including in the mobile
+    // dialog where the dialog itself scrolls instead of the table wrapper.
+    for (let parent = anchor.row.parentElement; parent; parent = parent.parentElement) {
+      if (
+        parent.scrollHeight > parent.clientHeight &&
+        /auto|scroll|overlay/.test(window.getComputedStyle(parent).overflowY)
+      ) {
+        parent.scrollTop += offset;
+        break;
+      }
+    }
+  }, [sortOrder]);
   const sabyIDsKey = [...new Set(items.map((item) => item.sabyId).filter(Boolean))]
     .sort()
     .join("\u001f");
@@ -359,32 +390,46 @@ export function ProcurementPlanDialog({
   );
   const hasDraftContent =
     initialRecommendations.length > 0 || items.some((item) => !isEmptyLine(item));
-  const commitPlan = useCallback(() => {
-    // Sorting after focus changes keeps the row in place while a price or category is edited.
-    const normalizedItems = items.map((item) => ({
-      ...item,
-      expectedUnitPrice: displayPrice(item.expectedUnitPrice),
-    }));
-    if (
-      normalizedItems.some(
-        (item, index) => item.expectedUnitPrice !== items[index].expectedUnitPrice,
+  const commitPlan = useCallback(
+    (editedRow?: HTMLElement) => {
+      // Sorting after focus changes keeps the row in place while a price or category is edited.
+      const normalizedItems = items.map((item) => ({
+        ...item,
+        expectedUnitPrice: displayPrice(item.expectedUnitPrice),
+      }));
+      if (
+        normalizedItems.some(
+          (item, index) => item.expectedUnitPrice !== items[index].expectedUnitPrice,
+        )
       )
-    )
-      setItems(normalizedItems);
-    window.setTimeout(() => setSortOrder(sortPlanLines(normalizedItems).map((item) => item.id)), 0);
-    if (
-      !draftLoading &&
-      !saving &&
-      hasDraftContent &&
-      draftSignature !== savedSignatureRef.current &&
-      draftSignature !== failedSignatureRef.current
-    ) {
-      void persistDraft(draftSignature);
-    }
-  }, [draftLoading, draftSignature, hasDraftContent, items, persistDraft, saving]);
+        setItems(normalizedItems);
+      window.setTimeout(() => {
+        // Focus has already moved by now. Follow the newly focused row when
+        // the user continues in the table; otherwise follow the edited row.
+        const activeRow = document.activeElement?.closest<HTMLElement>(
+          ".procurement-plan-table tbody tr",
+        );
+        const row = activeRow || editedRow;
+        if (row?.isConnected)
+          rowScrollAnchor.current = { row, top: row.getBoundingClientRect().top };
+        setSortOrder(sortPlanLines(normalizedItems).map((item) => item.id));
+      }, 0);
+      if (
+        !draftLoading &&
+        !saving &&
+        hasDraftContent &&
+        draftSignature !== savedSignatureRef.current &&
+        draftSignature !== failedSignatureRef.current
+      ) {
+        void persistDraft(draftSignature);
+      }
+    },
+    [draftLoading, draftSignature, hasDraftContent, items, persistDraft, saving],
+  );
   useEffect(() => {
-    window.addEventListener("blur", commitPlan);
-    return () => window.removeEventListener("blur", commitPlan);
+    const saveOnWindowBlur = () => commitPlan();
+    window.addEventListener("blur", saveOnWindowBlur);
+    return () => window.removeEventListener("blur", saveOnWindowBlur);
   }, [commitPlan]);
   const closePlan = async () => {
     if (
@@ -662,7 +707,7 @@ export function ProcurementPlanDialog({
         aria-busy={draftLoading || draftSaving}
         onBlurCapture={(event) => {
           const row = (event.target as HTMLElement).closest("tr");
-          if (row && !row.contains(event.relatedTarget as Node | null)) commitPlan();
+          if (row && !row.contains(event.relatedTarget as Node | null)) commitPlan(row);
           else if (!row && hasDraftContent && draftSignature !== savedSignatureRef.current)
             void persistDraft(draftSignature);
         }}
@@ -815,7 +860,13 @@ export function ProcurementPlanDialog({
               )}
             </div>
             <div className="procurement-plan-tools">
-              <button onClick={() => setItems((current) => [...current, makeLine()])}>
+              <button
+                onClick={() => {
+                  const line = makeLine();
+                  pendingNewLine.current = line.id;
+                  setItems((current) => [...current, line]);
+                }}
+              >
                 + Новая строка
               </button>
               <button
@@ -890,6 +941,10 @@ export function ProcurementPlanDialog({
                       >
                         <td data-label="Название у поставщика">
                           <input
+                            ref={(field) => {
+                              if (field) lineFirstFields.current.set(item.id, field);
+                              else lineFirstFields.current.delete(item.id);
+                            }}
                             aria-invalid={Boolean(item.rowTouched && !item.category.trim())}
                             value={item.category}
                             onChange={(event) =>

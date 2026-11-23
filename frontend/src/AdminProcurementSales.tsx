@@ -27,7 +27,13 @@ const saleTitle = (item: UnlinkedSale) =>
 const visibleMarketplaceArticle = (item: UnlinkedSale) =>
   item.channel === "wb" ? item.article || "Артикул WB не загружен" : item.externalId;
 
-export function ProcurementUnlinkedSales({ onError }: { onError: (value: string) => void }) {
+export function ProcurementUnlinkedSales({
+  onError,
+  onChanged,
+}: {
+  onError: (value: string) => void;
+  onChanged: () => void;
+}) {
   const [channel, setChannel] = useState("ozon");
   const [items, setItems] = useState<UnlinkedSale[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,6 +61,7 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
           : "Товар возвращён в список сопоставления.",
       );
       void load();
+      onChanged();
     } catch (error) {
       onError((error as Error).message);
     }
@@ -71,6 +78,7 @@ export function ProcurementUnlinkedSales({ onError }: { onError: (value: string)
       `«${result.sabyName}» связан с кодом ${result.externalId}. В расчёт вернулось строк продаж: ${result.linkedRows} (${result.linkedUnits} шт.).${result.takenFrom ? ` Код снят с товара ${result.takenFrom}.` : ""} Осталось разобрать кодов: ${result.remaining}.`,
     );
     void load();
+    onChanged();
   };
   return (
     <section className="admin-block procurement-block">
