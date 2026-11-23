@@ -6575,8 +6575,6 @@ paths:
                       type: string
                     officeCode:
                       type: string
-                    repack:
-                      type: boolean
                     tariffCode:
                       type: integer
                   type: object

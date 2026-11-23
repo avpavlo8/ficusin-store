@@ -155,9 +155,7 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	defer func() { _ = tx.Rollback(ctx) }()
 	var status, deliveryMethod string
 	var customerID *int64
-	var oldDeliveryFee float64
-	var oldFeePending bool
-	if err := tx.QueryRow(ctx, `SELECT status,delivery_method,customer_id,delivery_fee::DOUBLE PRECISION,delivery_fee_pending=1 FROM orders WHERE id=$1 FOR UPDATE`, id).Scan(&status, &deliveryMethod, &customerID, &oldDeliveryFee, &oldFeePending); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT status,delivery_method,customer_id FROM orders WHERE id=$1 FOR UPDATE`, id).Scan(&status, &deliveryMethod, &customerID); err != nil {
 		return Order{}, err
 	}
 	// A checkout application already contains this composition and delivery fee.
@@ -276,8 +274,13 @@ func (repository *PostgresRepository) EditOrder(ctx context.Context, actor Actor
 	}
 
 	if edit.Items != nil {
-		if err = replaceOrderEditLines(ctx, tx, id, customerID, oldFeePending, requestedLines); err != nil {
+		if err = replaceOrderEditLines(ctx, tx, id, customerID, requestedLines); err != nil {
 			return Order{}, err
+		}
+		if deliveryMethod == "cdek" && edit.DeliveryFee == nil {
+			if _, err = tx.Exec(ctx, `UPDATE orders SET delivery_fee_pending=1,cdek_tariff_code=NULL WHERE id=$1`, id); err != nil {
+				return Order{}, err
+			}
 		}
 	}
 

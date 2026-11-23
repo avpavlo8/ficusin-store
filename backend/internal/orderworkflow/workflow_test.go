@@ -37,7 +37,6 @@ func TestAssemblyReadinessUsesPaymentFreshStockAndPacking(t *testing.T) {
 		{"short stock", func(f *flow.Facts) { f.Lines[0].Available = 0 }, "stock_short"},
 		{"dimensions", func(f *flow.Facts) { f.Lines[0].Dimensions = false }, "dimensions"},
 		{"delivery", func(f *flow.Facts) { f.FeePending = true }, "delivery_fee"},
-		{"repack", func(f *flow.Facts) { f.RepackRequested = true }, "repack"},
 		{"address", func(f *flow.Facts) { f.AddressConfirmed = false }, "delivery_address"},
 		{"unknown payment", func(f *flow.Facts) { f.PaymentUncertain = true }, "payment_check"},
 	} {

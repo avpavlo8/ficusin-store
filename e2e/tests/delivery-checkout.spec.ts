@@ -33,8 +33,8 @@ test("@desktop @phone delivery animations keep one shop image and checkout actio
   }
 });
 
-async function openDeliveryStep(page: Page) {
-  await setStoredCounts(page, [], { "1": 1 });
+async function openDeliveryStep(page: Page, quantity = 1) {
+  await setStoredCounts(page, [], { "1": quantity });
   await page.goto("/checkout");
   const contact = page.locator(".checkout-contact-section");
   await contact.getByLabel("Имя").fill("Александр");
@@ -72,7 +72,7 @@ test("@desktop оформление показывает персональну�
   await expect(summary).toContainText("Выберите способ получения");
 });
 
-test("@desktop стоимость СДЭК входит в сумму онлайн-заказа", async ({ page }) => {
+test("@desktop @phone СДЭК рассчитывает тариф для нескольких растений при оформлении", async ({ page }) => {
   await mockApi(page);
   await page.route("**/api/v1/delivery/cdek?action=status", (route) =>
     route.fulfill({ json: { available: true } }));
@@ -81,8 +81,8 @@ test("@desktop стоимость СДЭК входит в сумму онлай
   await page.route("**/api/v1/delivery/cdek?action=offices&cityCode=*", (route) =>
     route.fulfill({ json: { offices: [{ code: "MSK1", name: "ПВЗ", location: { city: "Москва", address: "Тверская, 1" } }] } }));
   await page.route("**/api/v1/delivery/cdek", (route) =>
-    route.fulfill({ json: { quotes: [{ tariffCode: 136, tariffName: "Склад — склад", price: 590, daysMin: 2, daysMax: 3 }] } }));
-  await openDeliveryStep(page);
+    route.fulfill({ json: { quotes: [{ tariffCode: 136, tariffName: "Склад — склад", price: 590, daysMin: 2, daysMax: 3 }, { tariffCode: 137, tariffName: "Экспресс", price: 810, daysMin: 1, daysMax: 2 }] } }));
+  await openDeliveryStep(page, 2);
 
   const submit = page.locator('.checkout-navigation button.primary-button');
   await expect(submit).toBeDisabled();
@@ -99,9 +99,12 @@ test("@desktop стоимость СДЭК входит в сумму онлай
   await page.getByLabel("Пункт выдачи").click();
   await page.getByRole("listbox", { name: "Пункты выдачи" }).getByRole("button", { name: /Тверская, 1/ }).click();
 
-  await expect(summary).toContainText(/Растения\s*1.?490/);
+  await expect(summary).toContainText(/Растения\s*2.?980/);
   await expect(summary).toContainText(/Доставка\s*590/);
-  await expect(summary).toContainText(/Итого\s*2.?080/);
+  await expect(summary).toContainText(/Итого\s*3.?570/);
+  await expect(page.getByRole("switch", { name: /упаковать в одну коробку/i })).toHaveCount(0);
+  await page.getByRole("radio", { name: /Экспресс/ }).check();
+  await expect(summary).toContainText(/Итого\s*3.?790/);
   await expect(submit).toBeDisabled();
   await page.locator('input[name="offerAccepted"]').check();
   await page.locator('input[name="consent"]').check();

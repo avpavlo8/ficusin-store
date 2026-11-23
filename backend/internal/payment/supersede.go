@@ -3,6 +3,8 @@ package payment
 import (
 	"context"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const StatusSuperseded = "superseded"
@@ -32,8 +34,12 @@ func (service *Service) SupersedePending(ctx context.Context, orderID int64) err
 		return err
 	}
 	defer func() { _ = guard.Rollback(ctx) }()
+	return service.supersedePendingLocked(ctx, guard, orderID)
+}
+
+func (service *Service) supersedePendingLocked(ctx context.Context, guard pgx.Tx, orderID int64) error {
 	var packed bool
-	if err = guard.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_packing_workflows WHERE order_id=$1 AND state NOT IN ('cancelled','stale'))`, orderID).Scan(&packed); err != nil {
+	if err := guard.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM order_packing_workflows WHERE order_id=$1 AND state NOT IN ('cancelled','stale'))`, orderID).Scan(&packed); err != nil {
 		return err
 	}
 	if packed {

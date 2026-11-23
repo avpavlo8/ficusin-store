@@ -14,6 +14,7 @@ import (
 type OrderCDEKState struct {
 	Revision         int    `json:"revision"`
 	TrackNumber      string `json:"trackNumber"`
+	OrderStatus      string `json:"orderStatus"`
 	ManualTrack      bool   `json:"manualTrack"`
 	Error            string `json:"error"`
 	Pending          bool   `json:"pending"`
@@ -63,12 +64,13 @@ func loadOrderCDEK(ctx context.Context, reader interface {
 }
 
 func (repository *PostgresRepository) cdekOrderState(d orderCDEKData) OrderCDEKState {
-	state := OrderCDEKState{Revision: d.revision, TrackNumber: d.track, ManualTrack: d.state == "manual"}
+	state := OrderCDEKState{Revision: d.revision, TrackNumber: d.track, OrderStatus: d.status, ManualTrack: d.state == "manual"}
 	if d.delivery != "cdek" || d.status == "cancelled" {
 		return state
 	}
 	switch d.state {
 	case "manual":
+		state.Error = d.lastError
 	case "retry_queued", "creating", "retry_cancel":
 		state.Pending = true
 	case "unknown":
@@ -180,7 +182,7 @@ func (repository *PostgresRepository) UpdateOrderCDEK(ctx context.Context, actor
 			return state, nil
 		}
 		_, err = tx.Exec(ctx, `UPDATE orders SET cdek_track_number=$2,cdek_create_state='manual',
-			cdek_next_attempt_at=NULL WHERE id=$1`, id, track)
+			cdek_next_attempt_at=NULL,cdek_synced_at=NULL,cdek_status='',cdek_status_reason='',cdek_last_error='' WHERE id=$1`, id, track)
 		auditAction = "order.cdek.manual_tracking"
 		before["trackNumber"], after["trackNumber"] = data.track, track
 		after["state"] = "manual"
