@@ -38,6 +38,7 @@ type Dependencies struct {
 	Orders              orderRepository
 	OrderCreator        orderCreator
 	CDEK                cdekService
+	CDEKOffice          CDEKOfficeCredentials
 	Admin               adminRepository
 	Saby                sabySyncService
 	Push                pushService
@@ -254,6 +255,7 @@ func NewRouter(logger *slog.Logger, dependencies Dependencies) http.Handler {
 	mux.HandleFunc("PUT /api/v1/admin/settings", settingsAPI.update)
 	mux.HandleFunc("GET /api/v1/admin/catalog-editor/settings", editorSettingsHandler(adminAPI, dependencies.Settings))
 	mux.HandleFunc("GET /api/v1/admin/dashboard", adminAPI.dashboard)
+	mux.HandleFunc("GET /api/v1/admin/instructions/cdek-credentials", adminAPI.cdekOfficeCredentials(dependencies.CDEKOffice))
 	mux.HandleFunc("GET /api/v1/admin/operations", adminOperationsHandler(adminAPI, dependencies.Operations))
 	mux.HandleFunc("GET /api/v1/admin/analytics/metrika", analyticsMetrikaStatusHandler(logger, adminAPI, dependencies.Analytics))
 	mux.HandleFunc("GET /api/v1/admin/analytics", analyticsSummaryHandler(logger, adminAPI, dependencies.Analytics))

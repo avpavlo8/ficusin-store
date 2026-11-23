@@ -2026,6 +2026,36 @@ paths:
         - Session: []
       x-permissions:
         - dashboard.read
+  /admin/instructions/cdek-credentials:
+    get:
+      operationId: adminInstructionCdekCredentials
+      description: Returns the web cabinet login and password to active staff. The response is private and must not be stored.
+      responses:
+        "200":
+          description: Login and password for the CDEK web cabinet
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [login, password]
+                properties:
+                  login:
+                    type: string
+                  password:
+                    type: string
+        "401":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ValidationError"
+        "503":
+          $ref: "#/components/responses/ValidationError"
+      x-source: backend/internal/httpapi/admin.go#cdekOfficeCredentials
+      tags:
+        - Administration
+      security:
+        - Session: []
+      x-permissions:
+        - dashboard.read
   /admin/operations:
     get:
       operationId: get_admin_operations

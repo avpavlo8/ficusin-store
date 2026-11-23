@@ -387,6 +387,12 @@ export function procurementPreview() {
     return detail;
   }
   function route(path, method, body) {
+    if (
+      path === "/api/v1/admin/instructions/cdek-credentials" &&
+      method === "GET"
+    ) {
+      return { login: "cdek-demo", password: "example-only" };
+    }
     if (path === "/api/v1/auth/me")
       return {
         user: {

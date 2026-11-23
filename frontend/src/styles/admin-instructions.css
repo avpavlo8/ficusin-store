@@ -112,11 +112,29 @@
   margin-top: 3px;
   color: var(--ws-green);
 }
-.admin-page .instruction-back {
-  display: inline-block;
+.admin-page .instruction-reader-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.admin-page .ws-main .instruction-reader-nav a.ws-button {
+  min-height: 44px;
+}
+.admin-page .ws-main .instruction-reader-nav a.instruction-reader-service {
+  background: var(--ws-green-soft);
   color: var(--ws-green-dark);
-  margin: 0 0 22px;
-  min-height: 24px;
+}
+.admin-page .ws-main .instruction-reader-nav a.instruction-reader-service:hover {
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .instruction-reader-nav svg {
+  width: 20px;
+  height: 20px;
+}
+.admin-page .instruction-reader-service svg {
+  transform: rotate(180deg);
 }
 .admin-page .instruction-service-back {
   display: inline-flex;
@@ -127,6 +145,8 @@
   border: 1px solid var(--ws-green);
   border-radius: var(--ws-radius-sm);
   background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+  margin: 0 0 22px;
   font-size: 16px;
   font-weight: 600;
   text-decoration: none;
@@ -148,39 +168,6 @@
   background: var(--ws-warn-soft);
   color: var(--ws-warn);
   max-width: 90ch;
-}
-.admin-page .instruction-reading-layout {
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 30px;
-  align-items: start;
-}
-.admin-page .instruction-contents {
-  position: sticky;
-  top: 80px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.admin-page .instruction-contents > strong {
-  font-size: 13px;
-  color: var(--ws-muted);
-  margin-bottom: 8px;
-}
-.admin-page .instruction-contents a {
-  display: flex;
-  gap: 10px;
-  padding: 10px 0;
-  color: var(--ws-text);
-  text-decoration: none;
-  line-height: 1.5;
-}
-.admin-page .instruction-contents a:hover {
-  color: var(--ws-green-dark);
-  text-decoration: underline;
-}
-.admin-page .instruction-contents a span {
-  color: var(--ws-green-dark);
 }
 .admin-page .instruction-pages {
   min-width: 0;
@@ -244,18 +231,142 @@
   color: var(--ws-text);
   font-size: 13px;
 }
-.admin-page .instruction-step figcaption {
+.admin-page .instruction-linear {
+  max-width: 1120px;
+}
+.admin-page .instruction-box-layouts {
+  margin-bottom: 32px;
+}
+.admin-page .instruction-box-layouts h3 {
+  margin: 0 0 12px;
+  font-size: 19px;
+}
+.admin-page .instruction-box-layouts > p {
+  margin: 0;
+  color: var(--ws-muted);
+}
+.admin-page .instruction-box-layout {
+  margin: 0 0 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+}
+.admin-page .instruction-box-layout > summary {
+  display: list-item;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-radius: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-page .instruction-box-layout > summary:hover,
+.admin-page .instruction-box-layout[open] > summary {
+  background: var(--ws-green-soft);
+}
+.admin-page .instruction-box-layout > summary:focus-visible {
+  outline: 2px solid var(--ws-green);
+  outline-offset: -2px;
+}
+.admin-page .instruction-box-layout-body {
+  padding: 12px;
+}
+.admin-page .instruction-box-layout-body .instruction-step-heading {
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+.admin-page .instruction-linear .instruction-step-heading {
+  margin-bottom: 8px;
+}
+.admin-page .instruction-linear .instruction-step-heading h3 {
+  font-size: clamp(18px, 2vw, 22px);
+}
+.admin-page .instruction-linear .instruction-step {
+  margin-bottom: 32px;
+}
+.admin-page .instruction-step-description {
   max-width: 72ch;
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+.admin-page .instruction-step-description p {
+  margin: 0 0 8px;
+}
+.admin-page .instruction-step-description a {
+  color: var(--ws-green-dark);
+  text-underline-offset: 3px;
+}
+.admin-page .instruction-step-example {
+  margin-top: 20px;
+}
+.admin-page .instruction-step-example h4 {
+  margin: 0;
+  font-size: 16px;
+}
+.admin-page .instruction-action-step {
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-green-soft);
+}
+.admin-page .instruction-action-step > p {
+  margin: 8px 0 16px;
+  line-height: 1.55;
+}
+.admin-page .instruction-action-buttons,
+.admin-page .instruction-credentials-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.admin-page .ws-main .instruction-credentials-trigger {
+  width: 44px;
+  min-height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  border-color: var(--ws-green);
+  color: var(--ws-green-dark);
+  font-size: 19px;
+  font-weight: 700;
+}
+.admin-page .instruction-credentials-dialog {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  padding: 24px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+}
+.admin-page .instruction-credentials-dialog::backdrop {
+  background: rgba(14, 16, 19, 0.65);
+}
+.admin-page .instruction-credentials-dialog h4 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+.admin-page .instruction-credentials-dialog dl {
+  margin: 0 0 16px;
+}
+.admin-page .instruction-credentials-dialog dt {
+  color: var(--ws-muted);
   font-size: 14px;
 }
-.admin-page .instruction-step figcaption p {
-  margin: 12px 0 0;
-}
-.admin-page .instruction-image-error,
-.admin-page .instruction-empty {
-  padding: 28px;
-  border-radius: var(--ws-radius);
+.admin-page .instruction-credentials-dialog dd {
+  margin: 4px 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--ws-radius-sm);
   background: var(--ws-soft);
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+.admin-page .instruction-credentials-actions {
+  justify-content: flex-end;
+}
+.admin-page .instruction-action-step .instruction-action-result {
+  margin: 12px 0 0;
+  color: var(--ws-muted);
+  font-size: 14px;
 }
 .admin-page .instruction-sources {
   display: flex;
@@ -296,7 +407,7 @@
   display: block;
   width: 1200px;
   max-width: none;
-  height: 760px;
+  height: auto;
 }
 .admin-page .instructions :is(a, button):focus-visible {
   outline: 2px solid var(--ws-green);
@@ -305,23 +416,6 @@
 .admin-page .instructions ::selection {
   background: var(--ws-green-soft);
   color: var(--ws-green-dark);
-}
-@media (max-width: 1000px) {
-  .admin-page .instruction-reading-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .admin-page .instruction-contents {
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;
-    column-gap: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid var(--ws-line);
-  }
-  .admin-page .instruction-contents > strong {
-    flex-basis: 100%;
-    margin: 0;
-  }
 }
 @media (max-width: 760px) {
   .admin-page .instruction-index-heading,
@@ -345,24 +439,31 @@
     align-items: flex-start;
     flex-direction: column;
   }
-  .admin-page .instruction-contents a {
-    min-height: 44px;
-  }
 }
 @media print {
   .admin-page .ws-sidebar,
   .admin-page .ws-topbar,
   .admin-page .ws-tabbar,
-  .admin-page .instruction-back,
+  .admin-page .instruction-reader-nav,
+  .admin-page .instruction-service-back,
   .admin-page .instruction-reader-heading > button,
-  .admin-page .instruction-contents,
   .admin-page .instruction-step-heading > a,
+  .admin-page .instruction-credentials-dialog,
+  .admin-page .instruction-credentials-trigger,
   .admin-page .instruction-image-button > span,
   .admin-page .instruction-zoom {
     display: none !important;
   }
-  .admin-page.ws-shell,
-  .admin-page .instruction-reading-layout {
+  .admin-page .instruction-box-layout:not([open]) {
+    display: none;
+  }
+  .admin-page .instruction-box-layout {
+    break-inside: avoid;
+  }
+  .admin-page .instruction-box-layout-body .instruction-step-heading {
+    display: none;
+  }
+  .admin-page.ws-shell {
     display: block;
   }
   .admin-page .workspace-body {
@@ -372,6 +473,12 @@
   .admin-page .instruction-step {
     break-inside: avoid;
     margin-bottom: 24px;
+  }
+  .admin-page .instruction-step[data-has-example="true"] {
+    break-inside: auto;
+  }
+  .admin-page .instruction-step-example {
+    break-inside: avoid;
   }
   .admin-page .instruction-image-button {
     border: 0;
@@ -397,40 +504,6 @@
 .admin-page .instructions h2[tabindex="-1"]:focus {
   outline: none;
 }
-.admin-page .instruction-mobile-contents {
-  display: none;
-}
-@media (max-width: 760px) {
-  .admin-page .instruction-contents {
-    display: none;
-  }
-  .admin-page .instruction-mobile-contents {
-    display: block;
-    border-bottom: 1px solid var(--ws-line);
-  }
-  .admin-page .instruction-mobile-contents summary {
-    cursor: pointer;
-    min-height: 44px;
-    padding: 12px 0;
-    color: var(--ws-green-dark);
-  }
-  .admin-page .instruction-mobile-contents nav {
-    display: flex;
-    flex-direction: column;
-    padding-bottom: 12px;
-  }
-  .admin-page .instruction-mobile-contents a {
-    color: var(--ws-text);
-    min-height: 44px;
-    padding: 12px 0;
-  }
-}
-@media print {
-  .admin-page .instruction-mobile-contents {
-    display: none;
-  }
-}
-
 /* Мягкий цвет связывает раздел сервиса и его результаты в общем поиске. */
 .admin-page .instructions [data-service] {
   --instruction-tint: var(--ws-soft);

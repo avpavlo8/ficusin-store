@@ -336,6 +336,7 @@ func main() {
 		Orders:              orderRepository,
 		OrderCreator:        orderService,
 		CDEK:                cdekClient,
+		CDEKOffice:          httpapi.CDEKOfficeCredentials{Login: cfg.CDEKOfficeLogin, Password: cfg.CDEKOfficePassword},
 		Admin:               adminRepository,
 		Saby:                sabyService,
 		Push:                pushService,
