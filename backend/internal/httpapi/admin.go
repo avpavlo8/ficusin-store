@@ -88,6 +88,27 @@ func (handlers adminHandlers) dashboard(response http.ResponseWriter, request *h
 	})
 }
 
+// CDEKOfficeCredentials is the staff login for the web cabinet.
+// The shipping API uses separate credentials.
+type CDEKOfficeCredentials struct {
+	Login    string `json:"login"`
+	Password string `json:"password"`
+}
+
+func (handlers adminHandlers) cdekOfficeCredentials(credentials CDEKOfficeCredentials) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "private, no-store")
+		if _, _, ok := handlers.authorize(response, request, admin.PermissionDashboard); !ok {
+			return
+		}
+		if credentials.Login == "" || credentials.Password == "" {
+			writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Данные для входа в СДЭК ещё не настроены."})
+			return
+		}
+		writeJSON(response, http.StatusOK, credentials)
+	}
+}
+
 func (handlers adminHandlers) customers(response http.ResponseWriter, request *http.Request) {
 	_, _, ok := handlers.authorize(response, request, admin.PermissionCustomersRead)
 	if !ok {

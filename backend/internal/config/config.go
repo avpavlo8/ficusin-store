@@ -10,6 +10,8 @@ import (
 )
 
 type Config struct {
+	CDEKOfficeLogin        string
+	CDEKOfficePassword     string
 	OrderRealization       OrderRealization
 	CashierReservation     CashierReservation
 	FileStorageMode        string
@@ -159,6 +161,8 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
+		CDEKOfficeLogin:    strings.TrimSpace(os.Getenv("CDEK_OFFICE_LOGIN")),
+		CDEKOfficePassword: os.Getenv("CDEK_OFFICE_PASSWORD"),
 		HTTP: HTTP{
 			Address:   defaultString(os.Getenv("HTTP_ADDRESS"), ":"+port),
 			StaticDir: strings.TrimSpace(os.Getenv("STATIC_DIR")),

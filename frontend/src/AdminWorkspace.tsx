@@ -21,6 +21,8 @@ function WorkspaceAvatar({ user }: { user: AdminData["user"] }) {
 type IconName = Section | "search" | "arrow" | "more";
 export function AdminIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
+    instructions:
+      "M12 5C8 2 4 3 2 4v15c3-1 6-1 10 1 4-2 7-2 10-1V4c-2-1-6-2-10 1Zm0 0v15M5 8h4M5 12h4m6-4h4m-4 4h4",
     chat: "M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2ZM7 9h10M7 13h6",
     returns: "M4 8h10a6 6 0 0 1 0 12H9M4 8l5-5M4 8l5 5",
     marketplaces: "M8 16 16 8M9 5l2-2a5 5 0 0 1 7 7l-2 2M8 12l-2 2a5 5 0 0 0 7 7l2-2",

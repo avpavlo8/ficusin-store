@@ -1,0 +1,707 @@
+.admin-page .instructions {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 8px 0 40px;
+  color: var(--ws-ink);
+}
+.admin-page .instruction-index-heading,
+.admin-page .instruction-reader-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.admin-page .instructions h2 {
+  margin: 0 0 8px;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+.admin-page .instructions p {
+  color: var(--ws-text);
+  line-height: 1.6;
+}
+.admin-page .instruction-index-heading p,
+.admin-page .instruction-reader-heading p {
+  margin: 0;
+  max-width: 68ch;
+}
+.admin-page .instruction-index-heading > span {
+  color: var(--ws-muted);
+  padding-top: 8px;
+  white-space: nowrap;
+}
+.admin-page .instruction-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 640px;
+  background: var(--ws-field);
+  border-radius: var(--ws-radius-sm);
+  padding: 0 14px;
+}
+.admin-page .instruction-search svg {
+  width: 20px;
+  height: 20px;
+  color: var(--ws-muted);
+  flex-shrink: 0;
+}
+.admin-page .instruction-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 14px 0;
+  font-size: 16px;
+  color: var(--ws-ink);
+  caret-color: var(--ws-green);
+}
+.admin-page .instruction-search:focus-within {
+  outline: 2px solid var(--ws-green);
+  outline-offset: 3px;
+}
+.admin-page .instruction-search input:focus {
+  outline: none;
+  box-shadow: none;
+}
+.admin-page .instruction-group {
+  margin: 0 0 36px;
+}
+.admin-page .instruction-group > header {
+  margin: 0 0 8px;
+}
+.admin-page .instruction-group h3 {
+  font-size: 21px;
+  margin: 0 0 3px;
+}
+.admin-page .instruction-group header p {
+  margin: 0 0 14px;
+  color: var(--ws-muted);
+}
+.admin-page .instruction-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.admin-page .instruction-list > a {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 10px 18px 0;
+  text-decoration: none;
+  color: var(--ws-ink);
+  border-top: 1px solid var(--ws-line);
+  min-height: 108px;
+}
+.admin-page .instruction-list > a:hover {
+  background: var(--ws-soft);
+}
+.admin-page .instruction-list strong {
+  font-size: 16px;
+  line-height: 1.45;
+}
+.admin-page .instruction-list p {
+  margin: 4px 0 8px;
+}
+.admin-page .instruction-list small {
+  color: var(--ws-muted);
+}
+.admin-page .instruction-list svg {
+  flex: 0 0 20px;
+  height: 20px;
+  margin-top: 3px;
+  color: var(--ws-green);
+}
+.admin-page .instruction-reader-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.admin-page .ws-main .instruction-reader-nav a.ws-button {
+  min-height: 44px;
+}
+.admin-page .ws-main .instruction-reader-nav a.instruction-reader-service {
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+}
+.admin-page .ws-main .instruction-reader-nav a.instruction-reader-service:hover {
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .instruction-reader-nav svg {
+  width: 20px;
+  height: 20px;
+}
+.admin-page .instruction-reader-service svg {
+  transform: rotate(180deg);
+}
+.admin-page .instruction-service-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 20px 10px 14px;
+  border: 1px solid var(--ws-green);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+  margin: 0 0 22px;
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.admin-page .instruction-service-back:hover {
+  background: var(--ws-green);
+  color: #fff;
+}
+.admin-page .instruction-service-back svg {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  transform: rotate(180deg);
+}
+.admin-page .instruction-note {
+  padding: 14px 18px;
+  margin: 0 0 24px;
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-warn-soft);
+  color: var(--ws-warn);
+  max-width: 90ch;
+}
+.admin-page .instruction-pages {
+  min-width: 0;
+}
+.admin-page .instruction-step {
+  margin: 0 0 42px;
+  scroll-margin-top: 80px;
+}
+.admin-page .instruction-step-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.admin-page .instruction-step-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.45;
+}
+.admin-page .instruction-step-heading h3 span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+  font-size: 14px;
+}
+.admin-page .instruction-step-heading > a {
+  color: var(--ws-green-dark);
+  white-space: nowrap;
+  font-size: 13px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.admin-page .instruction-image-button {
+  display: block;
+  padding: 0;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--ws-line);
+  background: var(--ws-panel);
+  border-radius: var(--ws-radius);
+  cursor: zoom-in;
+}
+.admin-page .instruction-image-button img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.admin-page .instruction-image-button > span {
+  display: block;
+  padding: 12px;
+  background: var(--ws-soft);
+  color: var(--ws-text);
+  font-size: 13px;
+}
+.admin-page .instruction-linear {
+  max-width: 1120px;
+}
+.admin-page .instruction-box-layouts {
+  margin-bottom: 32px;
+}
+.admin-page .instruction-box-layouts h3 {
+  margin: 0 0 12px;
+  font-size: 19px;
+}
+.admin-page .instruction-box-layouts > p {
+  margin: 0;
+  color: var(--ws-muted);
+}
+.admin-page .instruction-box-layout {
+  margin: 0 0 8px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-panel);
+}
+.admin-page .instruction-box-layout > summary {
+  display: list-item;
+  min-height: 48px;
+  padding: 12px 16px;
+  border-radius: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin-page .instruction-box-layout > summary:hover,
+.admin-page .instruction-box-layout[open] > summary {
+  background: var(--ws-green-soft);
+}
+.admin-page .instruction-box-layout > summary:focus-visible {
+  outline: 2px solid var(--ws-green);
+  outline-offset: -2px;
+}
+.admin-page .instruction-box-layout-body {
+  padding: 12px;
+}
+.admin-page .instruction-box-layout-body .instruction-step-heading {
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+.admin-page .instruction-linear .instruction-step-heading {
+  margin-bottom: 8px;
+}
+.admin-page .instruction-linear .instruction-step-heading h3 {
+  font-size: clamp(18px, 2vw, 22px);
+}
+.admin-page .instruction-linear .instruction-step {
+  margin-bottom: 32px;
+}
+.admin-page .instruction-step-description {
+  max-width: 72ch;
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+.admin-page .instruction-step-description p {
+  margin: 0 0 8px;
+}
+.admin-page .instruction-step-description a {
+  color: var(--ws-green-dark);
+  text-underline-offset: 3px;
+}
+.admin-page .instruction-step-example {
+  margin-top: 20px;
+}
+.admin-page .instruction-step-example h4 {
+  margin: 0;
+  font-size: 16px;
+}
+.admin-page .instruction-action-step {
+  padding: clamp(16px, 3vw, 28px);
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-green-soft);
+}
+.admin-page .instruction-action-step > p {
+  margin: 8px 0 16px;
+  line-height: 1.55;
+}
+.admin-page .instruction-action-buttons,
+.admin-page .instruction-credentials-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.admin-page .ws-main .instruction-credentials-trigger {
+  width: 44px;
+  min-height: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+  border-color: var(--ws-green);
+  color: var(--ws-green-dark);
+  font-size: 19px;
+  font-weight: 700;
+}
+.admin-page .instruction-credentials-dialog {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  padding: 24px;
+  border: 1px solid var(--ws-line);
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+}
+.admin-page .instruction-credentials-dialog::backdrop {
+  background: rgba(14, 16, 19, 0.65);
+}
+.admin-page .instruction-credentials-dialog h4 {
+  margin: 0 0 16px;
+  font-size: 18px;
+}
+.admin-page .instruction-credentials-dialog dl {
+  margin: 0 0 16px;
+}
+.admin-page .instruction-credentials-dialog dt {
+  color: var(--ws-muted);
+  font-size: 14px;
+}
+.admin-page .instruction-credentials-dialog dd {
+  margin: 4px 0 12px;
+  padding: 8px 12px;
+  border-radius: var(--ws-radius-sm);
+  background: var(--ws-soft);
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+.admin-page .instruction-credentials-actions {
+  justify-content: flex-end;
+}
+.admin-page .instruction-action-step .instruction-action-result {
+  margin: 12px 0 0;
+  color: var(--ws-muted);
+  font-size: 14px;
+}
+.admin-page .instruction-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 0;
+  border-top: 1px solid var(--ws-line);
+}
+.admin-page .instruction-sources a {
+  color: var(--ws-green-dark);
+}
+.admin-page .instruction-zoom {
+  width: min(1280px, 96vw);
+  max-width: 96vw;
+  max-height: 94dvh;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ws-radius);
+  background: var(--ws-panel);
+  color: var(--ws-ink);
+}
+.admin-page .instruction-zoom::backdrop {
+  background: rgba(14, 16, 19, 0.65);
+}
+.admin-page .instruction-zoom-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border-bottom: 1px solid var(--ws-line);
+}
+.admin-page .instruction-zoom-scroll {
+  max-height: 78dvh;
+  overflow: auto;
+}
+.admin-page .instruction-zoom-scroll img {
+  display: block;
+  width: 1200px;
+  max-width: none;
+  height: auto;
+}
+.admin-page .instructions :is(a, button):focus-visible {
+  outline: 2px solid var(--ws-green);
+  outline-offset: 4px;
+}
+.admin-page .instructions ::selection {
+  background: var(--ws-green-soft);
+  color: var(--ws-green-dark);
+}
+@media (max-width: 760px) {
+  .admin-page .instruction-index-heading,
+  .admin-page .instruction-reader-heading {
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+  .admin-page .instruction-index-heading > span {
+    padding: 0;
+    font-size: 13px;
+  }
+  .admin-page .instruction-step-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .admin-page .instruction-step-heading h3 {
+    font-size: 16px;
+  }
+  .admin-page .instruction-zoom-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media print {
+  .admin-page .ws-sidebar,
+  .admin-page .ws-topbar,
+  .admin-page .ws-tabbar,
+  .admin-page .instruction-reader-nav,
+  .admin-page .instruction-service-back,
+  .admin-page .instruction-reader-heading > button,
+  .admin-page .instruction-step-heading > a,
+  .admin-page .instruction-credentials-dialog,
+  .admin-page .instruction-credentials-trigger,
+  .admin-page .instruction-image-button > span,
+  .admin-page .instruction-zoom {
+    display: none !important;
+  }
+  .admin-page .instruction-box-layout:not([open]) {
+    display: none;
+  }
+  .admin-page .instruction-box-layout {
+    break-inside: avoid;
+  }
+  .admin-page .instruction-box-layout-body .instruction-step-heading {
+    display: none;
+  }
+  .admin-page.ws-shell {
+    display: block;
+  }
+  .admin-page .workspace-body {
+    padding: 0;
+    overflow: visible;
+  }
+  .admin-page .instruction-step {
+    break-inside: avoid;
+    margin-bottom: 24px;
+  }
+  .admin-page .instruction-step[data-has-example="true"] {
+    break-inside: auto;
+  }
+  .admin-page .instruction-step-example {
+    break-inside: avoid;
+  }
+  .admin-page .instruction-image-button {
+    border: 0;
+  }
+  .admin-page .instruction-image-button img {
+    max-height: 60vh;
+    object-fit: contain;
+  }
+}
+
+.admin-page .instruction-search-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.admin-page .instructions h2[tabindex="-1"]:focus {
+  outline: none;
+}
+/* Мягкий цвет связывает раздел сервиса и его результаты в общем поиске. */
+.admin-page .instructions [data-service] {
+  --instruction-tint: var(--ws-soft);
+  --instruction-accent: var(--ws-text);
+}
+.admin-page .instructions [data-service="saby"] {
+  --instruction-tint: #edf6fa;
+  --instruction-accent: #255c71;
+}
+.admin-page .instructions [data-service="wb"] {
+  --instruction-tint: #f4edfa;
+  --instruction-accent: #614083;
+}
+.admin-page .instructions [data-service="ozon"] {
+  --instruction-tint: #edf3ff;
+  --instruction-accent: #28588f;
+}
+.admin-page .instructions [data-service="cdek"] {
+  --instruction-tint: #edf7ef;
+  --instruction-accent: #2f6841;
+}
+.admin-page .instructions [data-service="site"] {
+  --instruction-tint: #f3f4f6;
+  --instruction-accent: #41464e;
+}
+.admin-page .instructions [data-service="flowwow"] {
+  --instruction-tint: #fcf0f4;
+  --instruction-accent: #84445e;
+}
+.admin-page .instructions [data-service="avito"] {
+  --instruction-tint: #edf7f6;
+  --instruction-accent: #326962;
+}
+.admin-page .instructions [data-service="fivepost"] {
+  --instruction-tint: #f2f7e9;
+  --instruction-accent: #4c6827;
+}
+.admin-page .instructions [data-service="cash"] {
+  --instruction-tint: #eef0f6;
+  --instruction-accent: #4e5c80;
+}
+.admin-page .instruction-service-directory {
+  margin-top: 28px;
+}
+.admin-page .instruction-service-directory h3,
+.admin-page .instruction-results-heading h3 {
+  margin: 0 0 6px;
+  font-size: 21px;
+}
+.admin-page .instruction-service-directory > header p {
+  margin: 0 0 20px;
+  color: var(--ws-muted);
+}
+.admin-page .instruction-service-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-page .instruction-service-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 146px;
+  padding: 22px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius);
+  text-decoration: none;
+  color: var(--ws-ink);
+  background: var(--instruction-tint);
+}
+.admin-page .instruction-service-card:hover {
+  border-color: var(--instruction-accent);
+}
+.admin-page .instruction-service-card:focus-visible {
+  outline-color: var(--instruction-accent);
+}
+.admin-page .instruction-service-logo {
+  display: block;
+  width: min(160px, 100%);
+  height: 44px;
+  object-fit: contain;
+  object-position: left center;
+}
+.admin-page [data-service="cash"] .instruction-service-logo,
+.admin-page [data-service="fivepost"] .instruction-service-logo {
+  width: 52px;
+}
+.admin-page .instruction-service-card strong {
+  display: block;
+  font-size: 17px;
+  line-height: 1.4;
+}
+.admin-page .instruction-service-card small {
+  display: block;
+  margin-top: 3px;
+  color: var(--ws-text);
+  font-size: 13px;
+  line-height: 1.4;
+  padding-right: 18px;
+}
+.admin-page .instruction-service-card > svg {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  right: 20px;
+  bottom: 24px;
+  color: var(--instruction-accent);
+}
+.admin-page .instruction-general {
+  margin-top: 36px;
+  padding-top: 28px;
+  border-top: 1px solid var(--ws-line);
+}
+.admin-page .instruction-selected-service {
+  margin-top: 24px;
+}
+.admin-page .instruction-selected-heading {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 24px;
+  border-radius: var(--ws-radius);
+  background: var(--instruction-tint);
+  margin-bottom: 20px;
+}
+.admin-page .instruction-selected-heading p {
+  margin: 4px 0 0;
+}
+.admin-page .instruction-search-results {
+  margin-top: 28px;
+}
+.admin-page .instruction-results-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.admin-page .instruction-results-heading p {
+  margin: 0;
+  color: var(--ws-muted);
+  font-size: 13px;
+}
+.admin-page .instruction-list[data-search] {
+  gap: 10px;
+}
+.admin-page .instruction-list[data-search] > .instruction-guide-link {
+  padding: 18px 20px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius);
+  background: var(--instruction-tint);
+  min-height: 0;
+}
+.admin-page .instruction-list[data-search] > .instruction-guide-link:hover {
+  border-color: var(--instruction-accent);
+}
+.admin-page .instruction-list[data-search] > a strong {
+  display: block;
+}
+.admin-page .instruction-service-badge {
+  display: block;
+  width: fit-content;
+  margin-bottom: 5px;
+  color: var(--instruction-accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+@media (max-width: 760px) {
+  .admin-page .instruction-service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .admin-page .instruction-service-card {
+    padding: 16px;
+    min-height: 140px;
+    gap: 16px;
+  }
+  .admin-page .instruction-service-card strong {
+    font-size: 16px;
+  }
+  .admin-page .instruction-service-card small {
+    font-size: 12px;
+  }
+  .admin-page .instruction-service-card > svg {
+    right: 12px;
+    bottom: 20px;
+    width: 16px;
+  }
+  .admin-page .instruction-selected-heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px;
+  }
+  .admin-page .instruction-results-heading {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
