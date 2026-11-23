@@ -626,6 +626,7 @@ test("@desktop @phone ignored and restored sales refresh the recommendation warn
     await page.getByRole("button",{name:"Создать закупку",exact:true}).click();
     await page.getByRole("tab",{name:"Рекомендации",exact:true}).click();
     const health=page.getByRole("region",{name:"Качество данных продаж",exact:true});
+    await health.getByRole("button",{name:"По каналам",exact:true}).click();
     if(unlinked) await expect(health).toContainText("Кодов без связи с товаром: 1");
     else await expect(health).not.toContainText("Рекомендации по неполным данным");
     await page.getByRole("dialog",{name:"Новая закупка",exact:true}).getByRole("button",{name:"Закрыть",exact:true}).last().click();
