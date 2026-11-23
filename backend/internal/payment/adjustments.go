@@ -9,6 +9,7 @@ import (
 
 	"github.com/avpavlo8/ficusin-store/backend/internal/integration"
 	"github.com/avpavlo8/ficusin-store/backend/internal/money"
+	"github.com/avpavlo8/ficusin-store/backend/internal/ordersale"
 	"github.com/avpavlo8/ficusin-store/backend/internal/orderworkflow"
 	"github.com/jackc/pgx/v5"
 )
@@ -249,17 +250,24 @@ func (service *Service) StartOutstanding(ctx context.Context, orderNumber string
 	if err != nil {
 		return "", Balance{}, err
 	}
+	return service.startOrderPayment(ctx, state.id, false)
+}
+
+func (service *Service) startOrderPayment(ctx context.Context, orderID int64, replace bool) (string, Balance, error) {
+	if !service.Configured() {
+		return "", Balance{}, errors.New("оплата картой временно недоступна")
+	}
 	// Share the preparation lock with packaging confirmation. It serializes
 	// concurrent link requests and prevents changing the amount during issuance.
-	guard, err := service.lockOrderPreparation(ctx, state.id)
+	guard, err := service.lockOrderPreparation(ctx, orderID)
 	if err != nil {
 		return "", Balance{}, err
 	}
 	defer func() { _ = guard.Rollback(ctx) }()
-	return service.startOutstandingLocked(ctx, state.id)
+	return service.startOutstandingLocked(ctx, guard, orderID, replace)
 }
 
-func (service *Service) startOutstandingLocked(ctx context.Context, orderID int64) (string, Balance, error) {
+func (service *Service) startOutstandingLocked(ctx context.Context, guard pgx.Tx, orderID int64, replace bool) (string, Balance, error) {
 	state, err := service.moneyStateByOrderID(ctx, orderID)
 	if err != nil {
 		return "", Balance{}, err
@@ -271,14 +279,30 @@ func (service *Service) startOutstandingLocked(ctx context.Context, orderID int6
 	if state.status == "cancelled" || state.status == "completed" {
 		return "", balance, errors.New("этот заказ уже закрыт")
 	}
-	if !balance.Ready {
-		return "", balance, errors.New("оплата будет доступна после подтверждения наличия всех растений менеджером")
+	if state.hasPreorder {
+		return "", balance, errors.New("сначала подтвердите наличие растений в составе заказа")
+	}
+	pending, err := ordersale.RevisionPending(ctx, guard, orderID)
+	if err != nil {
+		return "", balance, err
+	}
+	if pending {
+		return "", balance, errors.New("ссылка на оплату будет доступна после подтверждения нового состава заказа в СБИС")
+	}
+	if state.feePending && state.deliveryPayee == "shop" {
+		return "", balance, errors.New("сначала рассчитайте и подтвердите стоимость доставки")
 	}
 	if err := service.checkOrderStock(ctx, state.id); err != nil {
 		return "", balance, err
 	}
 	if cents(balance.Due) <= 0 {
 		return "", balance, errors.New("заказ уже полностью оплачен")
+	}
+
+	if replace {
+		if err := service.supersedePendingLocked(ctx, guard, orderID); err != nil {
+			return "", balance, err
+		}
 	}
 
 	// A changed order must never keep a live link for an obsolete amount.
@@ -349,11 +373,11 @@ func (service *Service) startOutstandingLocked(ctx context.Context, orderID int6
 }
 
 func (service *Service) StartOutstandingForOrderID(ctx context.Context, orderID int64) (string, Balance, error) {
-	state, err := service.moneyStateByOrderID(ctx, orderID)
-	if err != nil {
-		return "", Balance{}, err
-	}
-	return service.StartOutstanding(ctx, state.number)
+	return service.startOrderPayment(ctx, orderID, false)
+}
+
+func (service *Service) RenewOutstandingForOrderID(ctx context.Context, orderID int64) (string, Balance, error) {
+	return service.startOrderPayment(ctx, orderID, true)
 }
 
 // StartShipmentOffer charges one immutable shipment, not the mutable balance

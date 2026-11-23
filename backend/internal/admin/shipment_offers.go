@@ -226,7 +226,7 @@ func (repository *PostgresRepository) CreateShipmentOffer(ctx context.Context, a
 		return ShipmentOffer{}, errors.New("для заказа уже подтверждена полная отправка")
 	}
 	var activeCDEK bool
-	if err := tx.QueryRow(ctx, `SELECT (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled') OR cdek_create_state IN ('creating','unknown') FROM orders WHERE id=$1`, orderID).Scan(&activeCDEK); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT (cdek_uuid<>'' AND cdek_cancel_state<>'cancelled') OR cdek_create_state IN ('creating','unknown','manual') FROM orders WHERE id=$1`, orderID).Scan(&activeCDEK); err != nil {
 		return ShipmentOffer{}, err
 	}
 	if activeCDEK {

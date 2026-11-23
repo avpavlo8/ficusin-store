@@ -117,6 +117,18 @@ func testCreatedLifecycle(t *testing.T, pool *pgxpool.Pool) {
 			t.Fatal("unpaid did not deduct in test", pub(e))
 		}
 	})
+	t.Run("a preorder waits for confirmation before contacting Saby", func(t *testing.T) {
+		e := create(9099)
+		exec(`UPDATE orders SET has_preorder=1 WHERE id=9099`)
+		if step(MockProvider{}) || pub(e).DocumentID != "" {
+			t.Fatal("sent a preorder before the composition was confirmed")
+		}
+		exec(`UPDATE orders SET has_preorder=0 WHERE id=9099`)
+		drain()
+		if pub(e).Status != "posted" {
+			t.Fatalf("confirmed order stayed blocked: %+v", pub(e))
+		}
+	})
 	t.Run("cancel before first claim sends zero provider calls", func(t *testing.T) {
 		e := create(9002)
 		cancel(9002)

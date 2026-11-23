@@ -87,9 +87,7 @@ function orderWarnings(order: Order): OrderWarning[] {
       ? [
           {
             code: "delivery_fee",
-            message: order.repackRequested
-              ? "Запрошена одна коробка"
-              : "Доставка требует уточнения",
+            message: "Доставка требует уточнения",
           },
         ]
       : []),

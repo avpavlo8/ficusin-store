@@ -1491,19 +1491,16 @@
   margin: 0;
   font-size: 16px;
 }
-.admin-page .order-now-more {
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-  list-style: none;
-  font-weight: 600;
-}
-.admin-page .order-now-more li {
+.admin-page .order-next-step {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 12px 16px;
+}
+.admin-page .order-next-step p {
+  margin: 4px 0 0;
+  font-size: 14px;
 }
 .admin-page .order-section-head {
   margin-bottom: 6px;
@@ -1879,13 +1876,6 @@
   background: var(--ws-green);
   color: #fff;
 }
-.admin-page .order-now-more small {
-  display: block;
-  margin-top: 2px;
-  color: var(--ws-text);
-  font-weight: 400;
-}
-
 .admin-page .order-payment-link {
   display: grid;
   gap: 8px;

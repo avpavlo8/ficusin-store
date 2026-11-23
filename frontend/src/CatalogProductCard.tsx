@@ -1,5 +1,5 @@
 import { ProductImage } from "./ProductImage";
-import { catalogSize } from "./lib/storefront-format";
+import { catalogSize, expectedArrivalDateText } from "./lib/storefront-format";
 import { CareLevel } from "./product/CareLevel";
 import { money } from "./product/types";
 import { openSavedCart } from "./lib/cart";
@@ -13,6 +13,8 @@ export type CatalogCardProduct = {
   image: string;
   size: string;
   stock?: number;
+  hasIncomingStock?: boolean;
+  expectedArrivalDate?: string;
   heightCm?: number;
   catalogSection: string;
   careLevel?: string;
@@ -41,6 +43,8 @@ export function CatalogProductCard({
   preserveSKU?: boolean;
 }) {
   const preorder = (product.stock ?? 0) <= 0;
+  const arrival = preorder && product.expectedArrivalDate;
+  const incoming = preorder && (product.hasIncomingStock || arrival);
   const maximum = product.stock && product.stock > 0 ? Math.min(product.stock, 20) : 20;
   const cartIcon = (
     <svg className="catalog-cart-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -48,7 +52,7 @@ export function CatalogProductCard({
     </svg>
   );
   const pot = product.size?.match(/[dдø]\s*(\d+(?:[.,]\d+)?)/i)?.[1];
-  const href = `/product/${product.id}${preserveSKU ? `?sku=${encodeURIComponent(product.sku)}` : ""}`;
+  const href = `/product/${product.id}${preserveSKU || incoming ? `?sku=${encodeURIComponent(product.sku)}` : ""}`;
   return (
     <article className={preorder ? "storefront-card preorder" : "storefront-card"}>
       <a className="storefront-image" href={href} onClick={onSelect}>
@@ -97,8 +101,19 @@ export function CatalogProductCard({
             {preorder && "≈ "}
             {money(product.price)}
           </strong>
-          {preorder && <em>Под заказ</em>}
+          {preorder && <em>{incoming ? "Нет в наличии" : "Под заказ"}</em>}
         </span>
+        {incoming && (
+          <small className="storefront-expected-arrival">
+            Ожидаем поступление
+            {arrival && (
+              <>
+                {" "}
+                <b>{expectedArrivalDateText(arrival)}</b>
+              </>
+            )}
+          </small>
+        )}
         <span
           className="storefront-rating"
           role={(product.reviewsCount ?? 0) > 0 ? "img" : undefined}

@@ -16,6 +16,7 @@ import {
 } from "react";
 import {
   useProcurementDialog,
+  useProcurementLineNavigation,
   useProcurementError,
   validateProcurementPDF,
   uploadProcurementPDF,
@@ -105,11 +106,11 @@ export function ProcurementPlanDialog({
   initialRecommendations: ProcurementRecommendation[];
   renderRecommendations: (
     add: (items: ProcurementRecommendation[]) => boolean,
-    navigate: (target: "unlinkedSales" | "integrations") => void,
+    navigate: (target: "unlinkedSales" | "integrations" | "requests") => void,
     addedSabyIds: string[],
     draftSupplierId?: number,
   ) => ReactNode;
-  onNavigate: (target: "unlinkedSales" | "integrations") => void;
+  onNavigate: (target: "unlinkedSales" | "integrations" | "requests") => void;
   settings: ProcurementSettings;
   draftId?: number | null;
   onClose: () => void;
@@ -213,6 +214,10 @@ export function ProcurementPlanDialog({
     initialRecommendations.length ? initialRecommendations.map(makeLine) : [makeLine()],
   );
   const [sortOrder, setSortOrder] = useState(() => sortPlanLines(items).map((item) => item.id));
+  const { setFirstField, pendingNewLine, rememberRow } = useProcurementLineNavigation(
+    items,
+    sortOrder,
+  );
   const sabyIDsKey = [...new Set(items.map((item) => item.sabyId).filter(Boolean))]
     .sort()
     .join("\u001f");
@@ -359,32 +364,39 @@ export function ProcurementPlanDialog({
   );
   const hasDraftContent =
     initialRecommendations.length > 0 || items.some((item) => !isEmptyLine(item));
-  const commitPlan = useCallback(() => {
-    // Sorting after focus changes keeps the row in place while a price or category is edited.
-    const normalizedItems = items.map((item) => ({
-      ...item,
-      expectedUnitPrice: displayPrice(item.expectedUnitPrice),
-    }));
-    if (
-      normalizedItems.some(
-        (item, index) => item.expectedUnitPrice !== items[index].expectedUnitPrice,
+  const commitPlan = useCallback(
+    (editedRow?: HTMLElement) => {
+      // Sorting after focus changes keeps the row in place while a price or category is edited.
+      const normalizedItems = items.map((item) => ({
+        ...item,
+        expectedUnitPrice: displayPrice(item.expectedUnitPrice),
+      }));
+      if (
+        normalizedItems.some(
+          (item, index) => item.expectedUnitPrice !== items[index].expectedUnitPrice,
+        )
       )
-    )
-      setItems(normalizedItems);
-    window.setTimeout(() => setSortOrder(sortPlanLines(normalizedItems).map((item) => item.id)), 0);
-    if (
-      !draftLoading &&
-      !saving &&
-      hasDraftContent &&
-      draftSignature !== savedSignatureRef.current &&
-      draftSignature !== failedSignatureRef.current
-    ) {
-      void persistDraft(draftSignature);
-    }
-  }, [draftLoading, draftSignature, hasDraftContent, items, persistDraft, saving]);
+        setItems(normalizedItems);
+      window.setTimeout(() => {
+        rememberRow(editedRow);
+        setSortOrder(sortPlanLines(normalizedItems).map((item) => item.id));
+      }, 0);
+      if (
+        !draftLoading &&
+        !saving &&
+        hasDraftContent &&
+        draftSignature !== savedSignatureRef.current &&
+        draftSignature !== failedSignatureRef.current
+      ) {
+        void persistDraft(draftSignature);
+      }
+    },
+    [draftLoading, draftSignature, hasDraftContent, items, persistDraft, rememberRow, saving],
+  );
   useEffect(() => {
-    window.addEventListener("blur", commitPlan);
-    return () => window.removeEventListener("blur", commitPlan);
+    const saveOnWindowBlur = () => commitPlan();
+    window.addEventListener("blur", saveOnWindowBlur);
+    return () => window.removeEventListener("blur", saveOnWindowBlur);
   }, [commitPlan]);
   const closePlan = async () => {
     if (
@@ -662,7 +674,7 @@ export function ProcurementPlanDialog({
         aria-busy={draftLoading || draftSaving}
         onBlurCapture={(event) => {
           const row = (event.target as HTMLElement).closest("tr");
-          if (row && !row.contains(event.relatedTarget as Node | null)) commitPlan();
+          if (row && !row.contains(event.relatedTarget as Node | null)) commitPlan(row);
           else if (!row && hasDraftContent && draftSignature !== savedSignatureRef.current)
             void persistDraft(draftSignature);
         }}
@@ -815,7 +827,13 @@ export function ProcurementPlanDialog({
               )}
             </div>
             <div className="procurement-plan-tools">
-              <button onClick={() => setItems((current) => [...current, makeLine()])}>
+              <button
+                onClick={() => {
+                  const line = makeLine();
+                  pendingNewLine.current = line.id;
+                  setItems((current) => [...current, line]);
+                }}
+              >
                 + Новая строка
               </button>
               <button
@@ -890,6 +908,7 @@ export function ProcurementPlanDialog({
                       >
                         <td data-label="Название у поставщика">
                           <input
+                            ref={(field) => setFirstField(item.id, field)}
                             aria-invalid={Boolean(item.rowTouched && !item.category.trim())}
                             value={item.category}
                             onChange={(event) =>
@@ -1294,6 +1313,7 @@ export function ProcurementOrderDetailDialog({
   const [detail, setDetail] = useState<ProcurementOrderDetail | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [arrivalDate, setArrivalDate] = useState<string | null>(null);
   const [pairingLineID, setPairingLineID] = useState<number | null>(null);
   const [matchingLine, setMatchingLine] = useState<ProcurementOrderLine | null>(null);
   const [pricingLine, setPricingLine] = useState<ProcurementOrderLine | null>(null);
@@ -1685,6 +1705,23 @@ export function ProcurementOrderDetailDialog({
       setSaving(false);
     }
   };
+  const saveArrivalDate = async () => {
+    if (arrivalDate === null) return;
+    setSaving(true);
+    try {
+      const item = await api<ProcurementOrderDetail>(
+        `/api/v1/admin/procurement/orders/${orderId}/status`,
+        { method: "PATCH", body: JSON.stringify({ expectedArrivalDate: arrivalDate }) },
+      );
+      setDetail(normalizeProcurementOrderDetail(item));
+      setArrivalDate(null);
+      onSaved();
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
   const uploadInvoice = async (file: File | null) => {
     if (!file || !detail) return;
     setUploading(true);
@@ -1693,6 +1730,7 @@ export function ProcurementOrderDetailDialog({
       const body = new FormData();
       body.append("supplierId", String(detail.order.supplierId));
       body.append("orderId", String(orderId));
+      if (arrivalDate) body.append("expectedArrivalDate", arrivalDate);
       body.append("file", file);
       const result = await uploadProcurementPDF<{ duplicate: boolean; order: ProcurementOrder }>(
         body,
@@ -1701,6 +1739,7 @@ export function ProcurementOrderDetailDialog({
         throw new Error(
           `Этот PDF уже загружен в закупку ${result.order.orderNumber || `№${result.order.id}`}.`,
         );
+      setArrivalDate(null);
       await load();
       onSaved();
     } catch (error) {
@@ -2066,6 +2105,31 @@ export function ProcurementOrderDetailDialog({
                   />
                 </label>
               </div>
+              {!closed && (
+                <div className="procurement-arrival-fields admin-form-grid">
+                  <label>
+                    Ориентировочная дата поступления
+                    <input
+                      type="date"
+                      value={arrivalDate ?? detail.order.expectedArrivalDate ?? ""}
+                      onChange={(event) => setArrivalDate(event.target.value)}
+                      disabled={saving || uploading}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      saving ||
+                      uploading ||
+                      arrivalDate === null ||
+                      arrivalDate === (detail.order.expectedArrivalDate ?? "")
+                    }
+                    onClick={() => void saveArrivalDate()}
+                  >
+                    Сохранить дату
+                  </button>
+                </div>
+              )}
               {documents.length ? (
                 <ul className="procurement-document-list">
                   {[...documents]
@@ -3329,6 +3393,7 @@ export function ProcurementUploadDialog({
   });
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id || 0);
   const [orderId, setOrderId] = useState(0);
+  const [expectedArrivalDate, setExpectedArrivalDate] = useState("");
   const [fileError, setFileError] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -3338,6 +3403,7 @@ export function ProcurementUploadDialog({
   const changeSupplier = (value: number) => {
     setSupplierId(value);
     setOrderId(0);
+    setExpectedArrivalDate("");
   };
   const save = async () => {
     if (!file || !supplierId || orderId < 0) return;
@@ -3348,6 +3414,7 @@ export function ProcurementUploadDialog({
       const body = new FormData();
       body.append("supplierId", String(supplierId));
       if (orderId) body.append("orderId", String(orderId));
+      if (expectedArrivalDate) body.append("expectedArrivalDate", expectedArrivalDate);
       body.append("file", file);
       const result = await uploadProcurementPDF<{ duplicate: boolean; order: ProcurementOrder }>(
         body,
@@ -3411,7 +3478,16 @@ export function ProcurementUploadDialog({
           </label>
           <label className="wide">
             Связать с закупкой
-            <select value={orderId} onChange={(event) => setOrderId(Number(event.target.value))}>
+            <select
+              value={orderId}
+              onChange={(event) => {
+                const id = Number(event.target.value);
+                setOrderId(id);
+                setExpectedArrivalDate(
+                  availableOrders.find((item) => item.id === id)?.expectedArrivalDate ?? "",
+                );
+              }}
+            >
               {orderId < 0 && <option value={-1}>Выберите закупку или создание новой</option>}
               <option value={0}>Создать новую закупку из документа</option>
               {availableOrders.map((item) => (
@@ -3430,6 +3506,18 @@ export function ProcurementUploadDialog({
               уже отправленному заказу.
             </p>
           )}
+          <label className="wide">
+            Ориентировочная дата поступления
+            <input
+              type="date"
+              value={expectedArrivalDate}
+              onChange={(event) => setExpectedArrivalDate(event.target.value)}
+              disabled={saving}
+            />
+            <small>
+              Покупатели увидят дату у отсутствующих товаров после сопоставления строк инвойса.
+            </small>
+          </label>
           <label className="wide procurement-file">
             PDF-файл
             <input

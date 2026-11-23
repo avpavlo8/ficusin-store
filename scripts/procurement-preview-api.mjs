@@ -61,6 +61,8 @@ export function procurementPreview() {
       name,
       balance,
       balanceKnown: true,
+      observedStockDays: 42,
+      inStockDays: balance > 0 ? 39 : 20,
       balanceAsOf: now,
       totalSales,
       grossSales: totalSales + (index === 0 ? 1 : 0),
@@ -182,20 +184,19 @@ export function procurementPreview() {
   ];
   const channels = ["saby", "site", "wb", "ozon"].map((channel, i) => ({
     channel,
-    status: i === 3 ? "error" : "ok",
-    freshness: i === 3 ? "stale" : "fresh",
-    lastSuccessAt: i === 3 ? "2026-10-19T06:27:27Z" : now,
-    latestSale: i === 3 ? "2026-10-15" : "2026-11-14",
-    lastError:
-      i === 3
-        ? "Ozon: /v3/posting/fbs/list — 404; /v2/posting/fbo/list — obsolete method cannot be used"
-        : "",
+    status: "ok",
+    freshness: "fresh",
+    lastSuccessAt: now,
+    latestSale: "2026-11-14",
+    lastError: "",
     rowsSynced: [116, 113, 702, 420][i],
-    rowsUnlinked: [15, 0, 4, 1][i],
+    rowsUnlinked: channel === "ozon" ? 1 : 0,
     rowsLinked: 100,
     periodFrom: "2026-09-15",
     periodTo: "2026-11-14",
   }));
+  let salesResolved = false;
+  let salesIgnored = false;
   const procurement = {
     summary: {
       openOrders: 0,
@@ -386,7 +387,7 @@ export function procurementPreview() {
     details.set(order.id, detail);
     return detail;
   }
-  function route(path, method, body) {
+  function route(path, method, body, query) {
     if (
       path === "/api/v1/admin/instructions/cdek-credentials" &&
       method === "GET"
@@ -480,6 +481,8 @@ export function procurementPreview() {
         orders.unshift(order);
         procurement.summary.openOrders++;
       }
+      if (body.expectedArrivalDate)
+        order.expectedArrivalDate = body.expectedArrivalDate;
       const previous = procurement.documents.filter(
         (doc) => doc.orderId === order.id,
       );
@@ -622,6 +625,17 @@ export function procurementPreview() {
       procurement.summary.openOrders++;
       return { order };
     }
+    const arrivalOrderId = path.match(/\/orders\/(\d+)\/status$/)?.[1];
+    if (
+      method === "PATCH" &&
+      arrivalOrderId &&
+      typeof body.expectedArrivalDate === "string"
+    ) {
+      const order = orders.find((item) => item.id === Number(arrivalOrderId));
+      if (!order) return { status: 404, error: "Закупка не найдена" };
+      order.expectedArrivalDate = body.expectedArrivalDate;
+      return orderDetail(order);
+    }
     const orderId = path.match(/\/orders\/(\d+)$/)?.[1];
     if (orderId) {
       const order = orders.find((item) => item.id === Number(orderId));
@@ -642,8 +656,19 @@ export function procurementPreview() {
       return {};
     }
     if (path === "/api/v1/admin/procurement/exclusions" && method === "PUT") {
-      const item = recommendations.find((item) => item.sabyId === body.sabyId);
-      if (item) item.status = body.excluded ? "excluded" : "recommended";
+      const ids = new Set(body.sabyIds || [body.sabyId]);
+      const items = recommendations.filter((item) => ids.has(item.sabyId));
+      if (items.length !== ids.size)
+        return { status: 404, error: "Товар не найден" };
+      for (const item of items) {
+        item.hiddenFromRestock = body.excluded;
+        item.status =
+          body.excluded && !item.customerRequests
+            ? "excluded"
+            : item.suggestedQty || !item.incoming
+              ? "recommended"
+              : "already_ordered";
+      }
       return {};
     }
     if (
@@ -652,27 +677,19 @@ export function procurementPreview() {
     ) {
       const item = recommendations.find((item) => item.sabyId === body.sabyId);
       if (item) {
-        item.status =
-          body.status === "check"
-            ? "check_availability"
-            : body.status === "available"
-              ? "recommended"
-              : "supplier_unavailable";
+        item.availability = body.status;
         procurement.availability = recommendations
-          .filter((item) =>
-            ["check_availability", "supplier_unavailable"].includes(
-              item.status,
+          .filter((entry) =>
+            ["check", "temporarily_unavailable", "discontinued"].includes(
+              entry.availability,
             ),
           )
-          .map((item) => ({
-            ...item,
+          .map((entry) => ({
+            ...entry,
             supplierName: suppliers.find(
-              (supplier) => supplier.id === item.supplierId,
+              (supplier) => supplier.id === entry.supplierId,
             )?.name,
-            availabilityStatus:
-              item.status === "check_availability"
-                ? "check"
-                : "temporarily_unavailable",
+            status: entry.availability,
             due: true,
           }));
         procurement.summary.availabilityChecks =
@@ -694,8 +711,9 @@ export function procurementPreview() {
       path === "/api/v1/admin/procurement/sales/nomenclature"
     )
       return {
-        items: recommendations.map((item) => ({
+        items: recommendations.map((item, index) => ({
           ...item,
+          variantId: index + 1,
           code: item.supplierArticle,
           price: 1490,
           supplierLinked: true,
@@ -703,23 +721,48 @@ export function procurementPreview() {
       };
     if (path === "/api/v1/admin/procurement/sales/unlinked")
       return {
-        items: [
-          {
-            channel: "ozon",
-            externalId: "preview-olive",
-            article: "preview-olive",
-            name: "Олива Европейская D12",
-            days: 3,
-            units: 7,
-            grossRub: 4900,
-            lastSale: "2026-11-12",
-          },
-        ],
+        items:
+          salesResolved ||
+          query.get("channel") !== "ozon" ||
+          (salesIgnored && query.get("ignored") !== "1")
+            ? []
+            : [
+                {
+                  ignored: salesIgnored,
+                  channel: "ozon",
+                  externalId: "preview-olive",
+                  article: "preview-olive",
+                  name: "Олива Европейская D12",
+                  days: 3,
+                  units: 7,
+                  grossRub: 4900,
+                  lastSale: "2026-11-12",
+                },
+              ],
       };
+    if (path === "/api/v1/admin/procurement/sales/ignore" && method === "PUT") {
+      salesIgnored = body.ignored;
+      const channel = channels.find((item) => item.channel === body.channel);
+      if (channel) channel.rowsUnlinked = salesIgnored ? 0 : 1;
+      return { ok: true };
+    }
     if (path === "/api/v1/admin/procurement/sales/link" && method === "POST") {
+      const candidate = recommendations[body.variantId - 1];
+      if (!candidate)
+        return { status: 400, error: "Выберите товар справочника" };
+      salesResolved = true;
       const channel = channels.find((item) => item.channel === body.channel);
       if (channel) channel.rowsUnlinked = 0;
-      return { link: { ...body, linkedRows: 1, linkedUnits: 7, remaining: 0 } };
+      return {
+        link: {
+          ...body,
+          sabyId: candidate.sabyId,
+          sabyName: candidate.name,
+          linkedRows: 1,
+          linkedUnits: 7,
+          remaining: 0,
+        },
+      };
     }
     if (path === "/api/v1/admin/procurement/pricing/preview")
       return {
@@ -784,7 +827,8 @@ export function procurementPreview() {
     },
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const path = new URL(req.url || "/", "http://localhost").pathname;
+        const parsed = new URL(req.url || "/", "http://localhost");
+        const path = parsed.pathname;
         if (!path.startsWith("/api/")) return next();
         try {
           const sourceId = path.match(/\/documents\/(\d+)\/source\.pdf$/)?.[1];
@@ -839,7 +883,12 @@ export function procurementPreview() {
                 : value.toString("utf8");
             }
           } else if (raw.length) body = JSON.parse(raw.toString("utf8"));
-          const result = route(path, req.method || "GET", body);
+          const result = route(
+            path,
+            req.method || "GET",
+            body,
+            parsed.searchParams,
+          );
           res.statusCode = result.status || 200;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
           res.setHeader("Cache-Control", "no-store");

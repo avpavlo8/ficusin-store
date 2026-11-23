@@ -57,9 +57,13 @@ func createReviewHandler(logger *slog.Logger, authentication authService, store 
 			writeJSON(w, http.StatusConflict, errorResponse{Error: "Вы уже оставили отзыв на этот товар"})
 			return
 		}
+		if errors.Is(err, reviews.ErrInvalidReview) {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте оценку, текст и медиафайлы"})
+			return
+		}
 		if err != nil {
 			logger.Error("create review failed", "error", err)
-			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "Проверьте оценку, текст и медиафайлы"})
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "Не удалось отправить отзыв. Попробуйте позже."})
 			return
 		}
 		writeJSON(w, http.StatusCreated, map[string]any{"id": id, "status": "published"})

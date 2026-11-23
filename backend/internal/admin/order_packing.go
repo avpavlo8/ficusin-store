@@ -20,6 +20,8 @@ import (
 
 type packingSettings interface{ Enabled(string) bool }
 
+const packingRevisionBlocker = "Подтверждение доставки доступно после сверки состава в СБИС"
+
 func (repository *PostgresRepository) OrderForPacking(ctx context.Context, id int64) (Order, error) {
 	return currentAdminOrder(ctx, repository, id)
 }
@@ -43,6 +45,7 @@ type OrderPackingState struct {
 	Revision           int                 `json:"revision"`
 	CanReopen          bool                `json:"canReopen"`
 	DeliveryFeePending bool                `json:"deliveryFeePending"`
+	RevisionPending    bool                `json:"revisionPending"`
 	Boxes              []ShipmentBoxInput  `json:"boxes"`
 	TariffCode         int                 `json:"tariffCode"`
 	TariffName         string              `json:"tariffName"`
@@ -73,8 +76,8 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 	state := OrderPackingState{Boxes: []ShipmentBoxInput{}, State: "draft", Notification: PackingNotification{State: "not_queued"}, Blockers: []string{}, QuoteBlockers: []string{}, Push: PackingNotification{State: "unavailable", Error: "Покупатель не включил push-уведомления"}}
 	var delivery, status, method, email, uuid, lastError string
 	var preorder, activeOffers bool
-	err := repository.pool.QueryRow(ctx, `SELECT shipment_revision,delivery_fee_pending=1,COALESCE(cdek_tariff_code,0),delivery_fee::double precision,delivery_payee,COALESCE(cdek_office_code,''),COALESCE(cdek_city_code,0),cdek_create_state,COALESCE(cdek_track_number,''),delivery_method,status,payment_method,COALESCE(email,''),cdek_uuid,cdek_last_error,has_preorder=1,
- EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=orders.id AND status NOT IN ('draft','packaging_required','cancelled','expired','stale')) FROM orders WHERE id=$1`, id).Scan(&state.Revision, &state.DeliveryFeePending, &state.TariffCode, &state.DeliveryFee, &state.DeliveryPayee, &state.OfficeCode, &state.CityCode, &state.CDEKState, &state.TrackNumber, &delivery, &status, &method, &email, &uuid, &lastError, &preorder, &activeOffers)
+	err := repository.pool.QueryRow(ctx, `SELECT shipment_revision,delivery_fee_pending=1,COALESCE(cdek_tariff_code,0),delivery_fee::double precision,delivery_payee,COALESCE(cdek_office_code,''),COALESCE(cdek_city_code,0),cdek_create_state,COALESCE(cdek_track_number,''),delivery_method,status,payment_method,COALESCE(email,''),cdek_uuid,cdek_last_error,has_preorder=1,order_sale_revision_pending(id),
+ EXISTS(SELECT 1 FROM shipment_offers WHERE order_id=orders.id AND status NOT IN ('draft','packaging_required','cancelled','expired','stale')) FROM orders WHERE id=$1`, id).Scan(&state.Revision, &state.DeliveryFeePending, &state.TariffCode, &state.DeliveryFee, &state.DeliveryPayee, &state.OfficeCode, &state.CityCode, &state.CDEKState, &state.TrackNumber, &delivery, &status, &method, &email, &uuid, &lastError, &preorder, &state.RevisionPending, &activeOffers)
 	if err != nil {
 		return state, err
 	}
@@ -98,6 +101,9 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 	}
 	if preorder {
 		state.Blockers = append(state.Blockers, "Сначала подтвердите наличие всех растений и сохраните состав заказа")
+	}
+	if state.RevisionPending {
+		state.Blockers = append(state.Blockers, packingRevisionBlocker)
 	}
 	if email == "" {
 		state.Notification = PackingNotification{State: "unavailable", Error: "Email покупателя не указан"}
@@ -157,14 +163,14 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 		case activeOffers:
 			state.Notification.State = "queued"
 		}
-	} else if uuid != "" || state.CDEKState == "creating" || state.CDEKState == "unknown" || state.CDEKState == "registered" {
+	} else if uuid != "" || state.CDEKState == "creating" || state.CDEKState == "unknown" || (state.CDEKState == "registered" || state.CDEKState == "manual") {
 		state.Blockers = append(state.Blockers, "Заявка СДЭК уже создаётся или зарегистрирована; сначала сверьте её у перевозчика")
 	}
 	if state.State != "draft" && state.Error == "" {
 		state.Error = lastError
 	}
 	// A historical missing-tariff failure is resolved by the current quote flow.
-	if state.State == "draft" && (uuid != "" || state.CDEKState == "unknown" || state.CDEKState == "creating" || state.CDEKState == "registered") {
+	if state.State == "draft" && (uuid != "" || state.CDEKState == "unknown" || state.CDEKState == "creating" || (state.CDEKState == "registered" || state.CDEKState == "manual")) {
 		state.QuoteBlockers = append(state.QuoteBlockers, "Заявка СДЭК уже создаётся или зарегистрирована; сначала сверьте её у перевозчика")
 	}
 	var queued, sent, failed int
@@ -190,7 +196,7 @@ func (repository *PostgresRepository) OrderPacking(ctx context.Context, id int64
 		}
 	}
 
-	state.CanReopen = state.State != "draft" && state.State != "reopening" && status != "cancelled" && status != "shipped" && status != "completed" && state.CDEKState != "creating" && state.CDEKState != "unknown"
+	state.CanReopen = state.State != "draft" && state.State != "reopening" && status != "cancelled" && status != "shipped" && status != "completed" && state.CDEKState != "creating" && state.CDEKState != "unknown" && state.CDEKState != "manual" && state.CDEKState != "retry_cancel"
 	return state, nil
 }
 
@@ -343,6 +349,20 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return OrderPackingState{}, err
 	}
+	currentState, err := repository.OrderPacking(ctx, id)
+	if err != nil {
+		return OrderPackingState{}, err
+	}
+	finalBlockers := []string{}
+	for _, blocker := range currentState.Blockers {
+		if input.CityCode > 0 && input.OfficeCode != "" && (blocker == "В заказе не указан пункт выдачи СДЭК" || blocker == "В заказе не указан город СДЭК") {
+			continue
+		}
+		finalBlockers = append(finalBlockers, blocker)
+	}
+	if len(finalBlockers) > 0 {
+		return OrderPackingState{}, errors.New(strings.Join(finalBlockers, ". "))
+	}
 	quoted, err := repository.QuoteOrderPacking(ctx, actor, id, input)
 	if err != nil {
 		var replay string
@@ -363,20 +383,6 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 	}
 	if money.Kopecks(*input.QuotedDeliveryFee) != int64(chosen.Price)*100 {
 		return OrderPackingState{}, errors.New("стоимость тарифа СДЭК изменилась — пересчитайте доставку и подтвердите новую сумму")
-	}
-	currentState, err := repository.OrderPacking(ctx, id)
-	if err != nil {
-		return OrderPackingState{}, err
-	}
-	finalBlockers := []string{}
-	for _, blocker := range currentState.Blockers {
-		if input.CityCode > 0 && input.OfficeCode != "" && (blocker == "В заказе не указан пункт выдачи СДЭК" || blocker == "В заказе не указан город СДЭК") {
-			continue
-		}
-		finalBlockers = append(finalBlockers, blocker)
-	}
-	if len(finalBlockers) > 0 {
-		return OrderPackingState{}, errors.New(strings.Join(finalBlockers, ". "))
 	}
 	selectedCity, selectedOffice, selectedAddress, selectedCityName, err := repository.packingDestination(ctx, currentState, input)
 	if err != nil {
@@ -439,7 +445,7 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 		return OrderPackingState{}, err
 	}
 	if pendingRevision {
-		return OrderPackingState{}, errors.New("дождитесь обновления состава заказа в СБИС перед подтверждением упаковки")
+		return OrderPackingState{}, errors.New(packingRevisionBlocker)
 	}
 	if revision != input.Revision {
 		return OrderPackingState{}, errors.New("заказ изменился — обновите карточку")
@@ -447,7 +453,7 @@ func (repository *PostgresRepository) FinalizeOrderPacking(ctx context.Context, 
 	if status == "cancelled" || status == "completed" || status == "shipped" || delivery != "cdek" || method != "online" || payee != "shop" || preorder {
 		return OrderPackingState{}, errors.New("условия заказа изменились — обновите карточку и проверьте причины")
 	}
-	if uuid != "" || cdekState == "creating" || cdekState == "unknown" || cdekState == "registered" {
+	if uuid != "" || cdekState == "creating" || cdekState == "unknown" || cdekState == "registered" || cdekState == "manual" {
 		return OrderPackingState{}, errors.New("заявка СДЭК уже создаётся или зарегистрирована; повторное создание запрещено")
 	}
 	var conflict bool

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -89,6 +90,18 @@ func TestOutstandingPaymentSerializationOnLiveDatabase(t *testing.T) {
 	}
 	if creates != 1 || count != 1 || amount != 1530 || storedAmount != 1530 {
 		t.Fatalf("payment requests were not serialized: creates=%d count=%d provider=%.2f stored=%.2f", creates, count, amount, storedAmount)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE orders SET delivery_fee_pending=1 WHERE id=$1`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = service.RenewOutstandingForOrderID(ctx, id); err == nil || !strings.Contains(err.Error(), "стоимость доставки") {
+		t.Fatalf("renewal without approved delivery: %v", err)
+	}
+	if err = pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE order_id=$1 AND status='pending'`, id).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("a rejected renewal retired the existing link: %d %v", count, err)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE orders SET delivery_fee_pending=0 WHERE id=$1`, id); err != nil {
+		t.Fatal(err)
 	}
 	if _, err = pool.Exec(ctx, `INSERT INTO order_packing_workflows(order_id,order_revision,idempotency_key,fingerprint,boxes,tariff_code,delivery_fee) VALUES($1,1,$2,'fixture','[]',136,840)`, id, number); err != nil {
 		t.Fatal(err)

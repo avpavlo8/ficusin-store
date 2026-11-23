@@ -38,12 +38,12 @@ func TestCustomerDemandSurvivesInsufficientIncomingOrder(t *testing.T) {
 	}
 }
 
-func TestUnavailableDemandMovesToAvailabilityQueue(t *testing.T) {
+func TestCheckWithSupplierLeavesCalculatedDemandVisible(t *testing.T) {
 	item, ok := calculateRecommendation(recommendationInput{
 		Recommendation:     Recommendation{SabySales: 8, MinimumOrderQty: 1, OrderMultiple: 1},
 		AvailabilityStatus: "check",
 	}, 30, 30)
-	if !ok || item.Status != RecommendationAvailability || item.SuggestedQty != 0 {
+	if !ok || item.Status != RecommendationReady || item.SuggestedQty != 8 {
 		t.Fatalf("recommendation = %+v, included = %v", item, ok)
 	}
 }
@@ -132,12 +132,12 @@ func TestStage05ExplainsSupplierRounding(t *testing.T) {
 	}
 }
 
-func TestMissingAtSupplierLeavesTheOrderQueue(t *testing.T) {
+func TestUnavailableSupplierLeavesSoldOutItemVisible(t *testing.T) {
 	item, ok := calculateRecommendation(recommendationInput{
 		Recommendation:     Recommendation{Balance: 0, MinimumOrderQty: 1, OrderMultiple: 1},
 		AvailabilityStatus: "temporarily_unavailable",
 	}, 60, 60)
-	if !ok || item.Status != RecommendationUnavailable || item.SuggestedQty != 0 {
+	if !ok || item.Status != RecommendationReady || item.SuggestedQty != 0 || item.QuantityKnown {
 		t.Fatalf("recommendation = %+v, included = %v", item, ok)
 	}
 }
@@ -177,6 +177,16 @@ func TestUnknownSupplierAvailabilityDoesNotHideDemand(t *testing.T) {
 		AvailabilityStatus: "unknown",
 	}, 60, 60)
 	if !ok || item.Status != RecommendationReady || item.SuggestedQty != 6 {
+		t.Fatalf("recommendation = %+v, included = %v", item, ok)
+	}
+}
+
+func TestHiddenPlantWithClientRequestOnlyRecommendsClientQuantity(t *testing.T) {
+	item, ok := calculateRecommendation(recommendationInput{
+		Recommendation: Recommendation{SabySales: 25, CustomerRequests: 2, CustomerWaiting: 3, AllocatedRequests: 1, Incoming: 1},
+		Excluded:       true,
+	}, 30, 30)
+	if !ok || !item.HiddenFromRestock || item.Status != RecommendationReady || item.SuggestedQty != 2 {
 		t.Fatalf("recommendation = %+v, included = %v", item, ok)
 	}
 }

@@ -25,35 +25,6 @@ export const salesSyncLabel = (value: string) =>
     disabled: "Не подключено",
   })[value] || value;
 
-export const recommendationStatusLabel = (value: string) =>
-  ({
-    recommended: "К заказу",
-    already_ordered: "Уже заказано",
-    check_availability: "Проверить наличие",
-    supplier_unavailable: "Нет у поставщика",
-    excluded: "Не закупаем",
-  })[value] || value;
-
-export const recommendationEmptyTitle = (value: string) =>
-  ({
-    recommended: "Дефицита нет",
-    already_ordered: "Товаров в пути нет",
-    check_availability: "Проверять нечего",
-    supplier_unavailable: "Нет отмеченных отсутствующих товаров",
-    excluded: "Ничего не снято с закупки",
-  })[value] || "Список пуст";
-
-export const recommendationEmptyText = (value: string) =>
-  value === "recommended"
-    ? "Текущий остаток и товары в пути покрывают рассчитанный спрос."
-    : value === "already_ordered"
-      ? "Здесь появятся позиции из действующих закупок, чтобы не заказать их повторно."
-      : value === "check_availability"
-        ? "Отметьте кнопкой «Проверить наличие» то, чего у поставщика может не оказаться."
-        : value === "supplier_unavailable"
-          ? "Растения, которых у поставщика нет, уходят сюда и не мешают собирать заказ."
-          : "Снятое с закупки решением магазина видно здесь и в заказ не попадает.";
-
 export const integrationChannelLabel = (value: string) =>
   ({ saby: "СБИС / Saby", wb: "Wildberries", ozon: "Ozon" })[value] || value;
 
@@ -77,25 +48,6 @@ export async function updateAvailability(
         reason: details.reason || "",
         comment: details.comment || "",
       }),
-    });
-    await reload();
-  } catch (error) {
-    onError((error as Error).message);
-  }
-}
-
-export async function setExclusion(
-  sabyId: string,
-  excluded: boolean,
-  reason: string,
-  reload: () => Promise<unknown>,
-  onError: (message: string) => void,
-) {
-  const note = excluded ? reason.trim() : "";
-  try {
-    await api("/api/v1/admin/procurement/exclusions", {
-      method: "PUT",
-      body: JSON.stringify({ sabyId, excluded, reason: note }),
     });
     await reload();
   } catch (error) {

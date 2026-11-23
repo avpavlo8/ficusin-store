@@ -56,6 +56,7 @@ type adminOrderPaymentService interface {
 	RefundAmount(context.Context, int64, float64, string) (payment.Balance, error)
 	RefundExcess(context.Context, int64, string) (payment.Balance, error)
 	StartOutstandingForOrderID(context.Context, int64) (string, payment.Balance, error)
+	RenewOutstandingForOrderID(context.Context, int64) (string, payment.Balance, error)
 	RecoverUnknownForOrder(context.Context, int64, int64) (string, error)
 	ResolveUnknown(context.Context, int64, int64, string) (payment.Balance, error)
 	DismissUnknown(context.Context, int64, int64) (payment.Balance, error)
@@ -341,11 +342,7 @@ func (handlers adminHandlers) renewOrderPaymentLink(response http.ResponseWriter
 		handlers.failed(response, "payment link notifier unavailable", errors.New("payment link notifier unavailable"))
 		return
 	}
-	if err := payments.SupersedePending(request.Context(), id); err != nil {
-		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
-		return
-	}
-	url, balance, err := payments.StartOutstandingForOrderID(request.Context(), id)
+	url, balance, err := payments.RenewOutstandingForOrderID(request.Context(), id)
 	if err != nil {
 		writeJSON(response, http.StatusConflict, errorResponse{Error: err.Error()})
 		return

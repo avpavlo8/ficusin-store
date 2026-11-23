@@ -368,8 +368,6 @@ type CheckoutPanelProps = {
   cdekOfficeMatches: CdekOffice[];
   selectedOffice: CdekOffice | null;
   cdekFeePending: boolean;
-  cdekRepack: boolean;
-  setCdekRepack: Dispatch<SetStateAction<boolean>>;
   cartCount: number;
   cartLines: CartLine[];
   hasPreorder: boolean;
@@ -425,8 +423,6 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
     cdekOfficeMatches,
     selectedOffice,
     cdekFeePending,
-    cdekRepack,
-    setCdekRepack,
     cartCount,
     cartLines,
     hasPreorder,
@@ -1018,30 +1014,12 @@ export function CheckoutPanel(props: CheckoutPanelProps) {
                     {selectedOffice && (
                       <p className="cdek-status">Пункт выбран: {selectedOffice.location.address}</p>
                     )}
-                    {cartCount > 1 && selectedOffice && (
-                      <div className="cdek-repack">
-                        <label>
-                          <input
-                            type="checkbox"
-                            role="switch"
-                            checked={cdekRepack}
-                            onChange={(event) => setCdekRepack(event.target.checked)}
-                          />
-                          Упаковать в одну коробку, если поместятся
-                        </label>
-                        <small aria-live="polite">
-                          {cdekFeePending
-                            ? "Доставку рассчитает менеджер после оформления."
-                            : "Проверим, поместятся ли растения в одну коробку."}
-                        </small>
-                      </div>
-                    )}
-                    {cartCount <= 1 && cdekFeePending && selectedOffice && (
+                    {cdekFeePending && selectedOffice && (
                       <p className="cdek-quote pending" role="status">
                         Доставку рассчитает менеджер после оформления.
                       </p>
                     )}
-                    {!cdekRepack && cdekQuotes.length > 1 && (
+                    {cdekQuotes.length > 1 && (
                       <div className="cdek-tariffs" role="radiogroup" aria-label="Тарифы СДЭК">
                         {cdekQuotes.map((option) => (
                           <label key={option.tariffCode} className="cdek-tariff">

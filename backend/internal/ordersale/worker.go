@@ -32,7 +32,10 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, provider Provider,
 	var status, hash, desired string
 	var createAttempted, postAttempted, cancellationBlocked bool
 	var raw, stateRaw []byte
-	err = tx.QueryRow(ctx, `SELECT p.id,p.intent_id,p.status,p.request,p.request_hash,p.progress,p.desired_state,p.create_attempted,p.post_attempted,p.cancellation_blocked FROM order_sale_publications p JOIN order_sale_intents i ON i.id=p.intent_id JOIN orders o ON o.id=i.order_id WHERE p.execution_mode=$1 AND ((p.status='queued' AND p.next_attempt_at<=NOW()) OR (p.status='processing' AND p.lease_until<NOW())) ORDER BY p.next_attempt_at,p.id FOR UPDATE OF o SKIP LOCKED LIMIT 1`, mode).Scan(&id, &intentID, &status, &raw, &hash, &stateRaw, &desired, &createAttempted, &postAttempted, &cancellationBlocked)
+	err = tx.QueryRow(ctx, `SELECT p.id,p.intent_id,p.status,p.request,p.request_hash,p.progress,p.desired_state,p.create_attempted,p.post_attempted,p.cancellation_blocked FROM order_sale_publications p JOIN order_sale_intents i ON i.id=p.intent_id JOIN orders o ON o.id=i.order_id WHERE p.execution_mode=$1 AND ((p.status='queued' AND p.next_attempt_at<=NOW()) OR (p.status='processing' AND p.lease_until<NOW()))
+		AND NOT (o.has_preorder=1 AND i.event_trigger='created' AND p.status='queued'
+			AND NOT p.create_attempted AND p.desired_state='posted')
+		ORDER BY p.next_attempt_at,p.id FOR UPDATE OF o SKIP LOCKED LIMIT 1`, mode).Scan(&id, &intentID, &status, &raw, &hash, &stateRaw, &desired, &createAttempted, &postAttempted, &cancellationBlocked)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

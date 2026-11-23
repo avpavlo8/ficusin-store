@@ -1119,19 +1119,20 @@ func (store *PostgresStore) ImportDocument(
 		err = tx.QueryRow(ctx, `
 			INSERT INTO procurement_orders (
 				supplier_id, order_number, document_number, document_date,
-				source_kind, currency, status, created_by
-			) VALUES ($1, $2, $2, $3, $4, $5, 'invoice_received', $6)
+				source_kind, currency, status, created_by, expected_arrival_date
+			) VALUES ($1, $2, $2, $3, $4, $5, 'invoice_received', $6, NULLIF($7,'')::DATE)
 			RETURNING id
-		`, input.SupplierID, parsed.DocumentNumber, parsed.DocumentDate, sourceKind, parsed.Currency, actor.CustomerID).Scan(&orderID)
+		`, input.SupplierID, parsed.DocumentNumber, parsed.DocumentDate, sourceKind, parsed.Currency, actor.CustomerID, input.ExpectedArrivalDate).Scan(&orderID)
 	} else {
 		err = tx.QueryRow(ctx, `
 			UPDATE procurement_orders SET
 				order_number = CASE WHEN BTRIM(order_number)='' AND BTRIM($3)<>'' THEN $3 ELSE order_number END,
 				document_number = $3, document_date = $4, source_kind = $5,
-				currency = $6, status = 'invoice_received', updated_at = CURRENT_TIMESTAMP
+				currency = $6, status = 'invoice_received', updated_at = CURRENT_TIMESTAMP,
+				expected_arrival_date = COALESCE(NULLIF($7,'')::DATE, expected_arrival_date)
 			WHERE id = $1 AND supplier_id = $2 AND status NOT IN ('received', 'cancelled')
 			RETURNING id
-		`, orderID, input.SupplierID, parsed.DocumentNumber, parsed.DocumentDate, sourceKind, parsed.Currency).Scan(&orderID)
+		`, orderID, input.SupplierID, parsed.DocumentNumber, parsed.DocumentDate, sourceKind, parsed.Currency, input.ExpectedArrivalDate).Scan(&orderID)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ImportResult{}, ErrNotFound

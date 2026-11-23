@@ -229,7 +229,6 @@ func (c *FlowwowClient) batch(ctx context.Context, method, path, key string, ite
 // Advance uses the existing durable publication lease. The create boundary is
 // persisted by the worker BEFORE POST; an unknown response is only reconciled.
 func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Request, p ce.Progress) (ce.Result, error) {
-	r.Images = flowwowImages(r.Images)
 	result := func(stage, status, message string) ce.Result {
 		p.Stage = stage
 		return ce.Result{Progress: p, Status: status, Message: message}
@@ -251,6 +250,8 @@ func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Reques
 		return ce.Result{}, errors.New("Flowwow: артикул должен содержать от 1 до 50 символов")
 	}
 	switch p.Stage {
+	case "gallery-update-unknown":
+		return result(p.Stage, "needs_attention", "Flowwow не подтвердил сохранение. Проверьте карточку и галерею в кабинете"), nil
 	case "":
 		productID := ""
 		if r.Action == "link" {
@@ -318,6 +319,20 @@ func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Reques
 				return result("create", "needs_attention", "Не сохранён запрос создания Flowwow; повторная отправка остановлена"), nil
 			}
 		} else {
+			after := r.Images
+			if p.SitePhotos == nil {
+				after = flowwowImages(after)
+			}
+			changes, err := catalogGalleryDelta(ctx, nil, remote.Images, p.SitePhotos, after)
+			if err != nil {
+				return ce.Result{Progress: p}, err
+			}
+			r.Images = changes.apply(remote.Images)
+			if len(r.Images) > 6 {
+				return result("update", "needs_attention", "Flowwow допускает до 6 фото. Изменения не отправлены, чтобы сохранить фотографии площадки"), nil
+			}
+			count := len(r.Images)
+			p.PhotoCount, p.PhotoWrite = &count, changes.Added
 			item, e = c.productPayload(ctx, r, offer, remote)
 			if e != nil {
 				return ce.Result{}, e
@@ -331,6 +346,10 @@ func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Reques
 			if p.Stage == "create" && errors.As(e, &httpErr) && httpErr.Status == 429 {
 				p.CreateAttempted = false
 				return result("create", "queued", e.Error()), nil
+			}
+			if p.Stage == "update" && !errors.As(e, &rejected) && (!errors.As(e, &httpErr) || httpErr.Status >= 500) {
+				p.Ambiguous = true
+				return result("gallery-update-unknown", "needs_attention", "Flowwow не подтвердил сохранение. Проверьте карточку и галерею в кабинете"), nil
 			}
 			if p.Stage == "create" && (errors.As(e, &rejected) || errors.As(e, &httpErr) && (httpErr.Status == 400 || httpErr.Status == 401 || httpErr.Status == 403 || httpErr.Status == 422)) {
 				p.CreateAttempted = false
@@ -348,7 +367,17 @@ func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Reques
 			return ce.Result{}, e
 		}
 		p.Checks++
-		if remote == nil || fmt.Sprint(remote.ProductID) != p.IDs.ProductID || remote.Name != r.Name || remote.Description != r.Description || !flowwowPriceEqual(remote.Price, r.PriceMinor) || remote.Discount != "0" || len(remote.Images) != len(r.Images) {
+		photosVerified := false
+		if remote != nil {
+			photosVerified = len(remote.Images) == len(flowwowImages(r.Images))
+			if p.PhotoCount != nil {
+				photosVerified, e = catalogPhotoWriteConfirmed(ctx, nil, remote.Images, p)
+				if e != nil {
+					return ce.Result{Progress: p}, e
+				}
+			}
+		}
+		if remote == nil || fmt.Sprint(remote.ProductID) != p.IDs.ProductID || remote.Name != r.Name || remote.Description != r.Description || !flowwowPriceEqual(remote.Price, r.PriceMinor) || remote.Discount != "0" || !photosVerified {
 			if p.Checks >= 100 {
 				return result("verify", "needs_attention", "Flowwow пока не подтвердил все поля и фотографии; проверьте карточку"), nil
 			}

@@ -108,6 +108,24 @@ func TestOrderPackingFinalizeOnLiveDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
+	t.Run("a changed composition requires a new tariff", func(t *testing.T) {
+		id, _ := create("old-tariff")
+		if _, err := pool.Exec(ctx, `UPDATE orders SET delivery_fee_pending=0,cdek_tariff_code=136 WHERE id=$1`, id); err != nil {
+			t.Fatal(err)
+		}
+		lines := []OrderEditLine{{SKU: sku, Quantity: 2}}
+		updated, err := repository.EditOrder(ctx, actor, id, OrderEdit{Items: &lines})
+		if err != nil {
+			t.Fatal(err)
+		}
+		packing, err := repository.OrderPacking(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !updated.DeliveryFeePending || !packing.DeliveryFeePending || packing.TariffCode != 0 || packing.DeliveryFee != 840 {
+			t.Fatalf("the old fee remains an estimate until recalculated: %+v", packing)
+		}
+	})
 	t.Run("payment configuration gates confirmation but not quotation", func(t *testing.T) {
 		id, input := create("no-payment")
 		repo := NewPostgresRepository(pool).WithShipmentQuotes(quote).WithOrderPacking(packingSettingsStub{}, false, false, nil)

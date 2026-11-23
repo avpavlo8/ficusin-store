@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export function useProcurementError(report: (message: string) => void) {
   const [error, setError] = useState("");
@@ -136,3 +136,54 @@ export const receivingModeLabel = (mode?: string) =>
       : mode === "customer_handoff"
         ? "Под заказ · передать клиенту"
         : "Обычная приёмка";
+
+// Keep editing and scrolling together when the plan inserts or reorders rows.
+export function useProcurementLineNavigation(
+  items: readonly unknown[],
+  sortOrder: readonly string[],
+) {
+  const lineFirstFields = useRef(new Map<string, HTMLInputElement>());
+  const pendingNewLine = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const id = pendingNewLine.current;
+    if (!id) return;
+    const field = lineFirstFields.current.get(id);
+    if (!field) return;
+    pendingNewLine.current = null;
+    field.focus({ preventScroll: true });
+    field.scrollIntoView({ block: "center", inline: "nearest" });
+  }, [items]);
+  const rowScrollAnchor = useRef<{ row: HTMLElement; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const anchor = rowScrollAnchor.current;
+    rowScrollAnchor.current = null;
+    if (!anchor?.row.isConnected) return;
+    const offset = anchor.row.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(offset) < 1) return;
+    // Keep the row at its previous screen position, including in the mobile
+    // dialog where the dialog itself scrolls instead of the table wrapper.
+    for (let parent = anchor.row.parentElement; parent; parent = parent.parentElement) {
+      if (
+        parent.scrollHeight > parent.clientHeight &&
+        /auto|scroll|overlay/.test(window.getComputedStyle(parent).overflowY)
+      ) {
+        parent.scrollTop += offset;
+        break;
+      }
+    }
+  }, [sortOrder]);
+  const setFirstField = (id: string, field: HTMLInputElement | null) => {
+    if (field) lineFirstFields.current.set(id, field);
+    else lineFirstFields.current.delete(id);
+  };
+  const rememberRow = useCallback((editedRow?: HTMLElement) => {
+    // Focus has moved by now. Follow the newly focused row when editing
+    // continues in the table; otherwise follow the row that was edited.
+    const activeRow = document.activeElement?.closest<HTMLElement>(
+      ".procurement-plan-table tbody tr",
+    );
+    const row = activeRow || editedRow;
+    if (row?.isConnected) rowScrollAnchor.current = { row, top: row.getBoundingClientRect().top };
+  }, []);
+  return { setFirstField, pendingNewLine, rememberRow };
+}

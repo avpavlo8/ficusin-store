@@ -2302,6 +2302,53 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/admin.OrderEdit"
+  /admin/orders/{id}/cdek:
+    get:
+      operationId: get_admin_orders_id_cdek
+      responses:
+        "200":
+          description: Трек-номер, состояние регистрации и подробности отказа СДЭК для сотрудника
+        default:
+          $ref: "#/components/responses/ValidationError"
+      x-source: backend/internal/httpapi/admin_order_cdek.go#orderCDEK
+      tags:
+        - Administration
+      security:
+        - Session: []
+      x-permissions:
+        - orders.read
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+    post:
+      operationId: post_admin_orders_id_cdek
+      responses:
+        "200":
+          description: Повтор поставлен в очередь или ручной трек-номер сохранён
+        default:
+          $ref: "#/components/responses/ValidationError"
+      x-source: backend/internal/httpapi/admin_order_cdek.go#updateOrderCDEK
+      tags:
+        - Administration
+      security:
+        - Session: []
+      x-permissions:
+        - orders.edit
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/admin.OrderCDEKInput"
   /admin/orders/{id}/packing:
     get:
       operationId: get_admin_orders_id_packing
@@ -2954,6 +3001,24 @@ paths:
       description:
         "Requires an authenticated administrator. Permission checks in the handler depend on
         the operation: procurement.edit."
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [supplierId, file]
+              properties:
+                supplierId:
+                  type: integer
+                orderId:
+                  type: integer
+                expectedArrivalDate:
+                  type: string
+                  format: date
+                file:
+                  type: string
+                  format: binary
   /admin/procurement/documents/{id}/source.pdf:
     get:
       operationId: get_admin_procurement_documents_id_source_pdf
@@ -4076,7 +4141,7 @@ paths:
       security:
         - Session: []
       x-permissions: [products.read]
-      description: Shared marketplace content, channel-specific categories and typed attributes, verified external IDs and resumable publication status. publicationMode is disabled, mock or live. links maps variant IDs to established channel identifiers. Each channel accepts its own optional article and replaceLink flag. Legacy shared article remains a fallback. An explicit changed channel article resolves an existing seller card or creates a replacement, preserving the previous remote card. Occupied links are rejected before writes. Creation checkboxes never disable established links; updates preserve remote fields and queue the latest pending snapshot. Mock dictionaries and IDs are isolated from live integration data.
+      description: Shared marketplace content, channel-specific categories and typed attributes, verified external IDs and resumable publication status. publicationMode is disabled, mock or live. links maps variant IDs to established channel identifiers. Each channel accepts its own optional article and replaceLink flag. Legacy shared article remains a fallback. An explicit changed channel article resolves an existing seller card or creates a replacement, preserving the previous remote card. Occupied links are rejected before writes. Creation checkboxes never disable established links; updates preserve remote fields and queue the latest pending snapshot. Site gallery additions and confirmed removals are merged into the current vendor gallery. Mock dictionaries and IDs are isolated from live integration data.
       responses:
         2XX:
           description: Editor settings or references returned successfully.
@@ -4153,7 +4218,7 @@ paths:
       tags: [Administration]
       security: [{ Session: [] }]
       x-permissions: [products.edit]
-      description: Refresh saved product content, photos, attributes and seasonal packaging for already linked channels using their established publication payload. Accepts no configuration. Preserves prices, seller articles, categories, links and draft plans; never creates or relinks a vendor card. Missing configuration or unresolved operations are reported as skipped warnings while site content remains saved. In-flight updates retain their receipts and coalesce the latest content snapshot.
+      description: Refresh saved product content, photos, attributes and seasonal packaging for already linked channels using their established publication payload. For photos, the worker applies site additions and confirmed removals to the vendor gallery. Accepts no configuration. Preserves prices, seller articles, categories, links and draft plans; never creates or relinks a vendor card. Missing configuration or unresolved operations are reported as skipped warnings while site content remains saved. In-flight updates retain their receipts and coalesce the latest content snapshot.
       parameters:
         - in: path
           name: id
@@ -4277,7 +4342,7 @@ paths:
       tags: [Administration]
       security:
         - Session: []
-      x-permissions: [catalog.delete]
+      x-permissions: [products.manage]
       description: >-
         Removes a free never-published draft. Published cards or drafts with stock,
         reservations, external links, reviews or historical references are archived
@@ -4322,7 +4387,7 @@ paths:
         - products.edit
       description: >-
         Requires products.edit. SKU fields are updated only through variants; media use the
-        dedicated media API. Unknown fields are rejected. Owners and managers with products.manage
+        dedicated media API. Unknown fields are rejected. Staff with products.manage
         can submit commercial fields, new variants and variants with {id, remove: true}
         without other variant fields. Within the same transaction, unlinked variants are
         deleted; variants with stock, reservations, orders, Saby links or historical
@@ -6540,8 +6605,6 @@ paths:
                       type: string
                     officeCode:
                       type: string
-                    repack:
-                      type: boolean
                     tariffCode:
                       type: integer
                   type: object
@@ -6779,6 +6842,8 @@ paths:
       operationId: post_products_slug_reviews
       x-file-storage: New files use verified private S3 objects; existing bytea and legacy review object keys remain readable. No database fallback for new uploads.
       responses:
+        "500":
+          description: The server could not save the review.
         "503":
           $ref: "#/components/responses/PrivateFileStorageUnavailable"
         2XX:
@@ -7746,6 +7811,20 @@ components:
           minLength: 1
           description: Exact Ficusin SKU, including the selected size. Product-card identifiers are not accepted.
       type: object
+    admin.OrderCDEKInput:
+      type: object
+      required: [revision, action]
+      properties:
+        revision:
+          type: integer
+          minimum: 1
+        action:
+          type: string
+          enum: [retry, set_tracking]
+        trackNumber:
+          type: string
+          description: Обязателен для set_tracking.
+          maxLength: 64
     admin.OrderPackingInput:
       properties:
         boxes:
@@ -8550,6 +8629,11 @@ components:
           type: string
         sabyId:
           type: string
+        sabyIds:
+          description: A batch of product identifiers. Send one of sabyId or sabyIds.
+          type: array
+          items:
+            type: string
       type: object
     procurement.LogisticsNorm:
       properties:
@@ -8646,6 +8730,9 @@ components:
       type: object
     procurement.OrderStatusUpdate:
       properties:
+        expectedArrivalDate:
+          description: A calendar date for an active purchase, or an empty string to remove it. Send separately from status changes.
+          type: string
         force:
           type: boolean
         note:

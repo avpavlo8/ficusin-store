@@ -250,6 +250,7 @@ export type Product = {
   externalIds: Array<{ provider: string; type: string; externalId: string }>;
   attributes: Record<string, string | number | boolean | string[]>;
   variantTasks?: string[];
+  variantEnumTasks?: string[];
   variantCount?: number;
   stockUpdatedAt?: string;
   updatedAt?: string;
@@ -307,6 +308,7 @@ export type ProcurementOrder = {
   orderNumber: string;
   documentNumber: string;
   documentDate?: string;
+  expectedArrivalDate?: string;
   sourceKind: string;
   currency: string;
   status: string;
@@ -532,6 +534,12 @@ export type ProcurementRecommendation = {
   grossSales: number;
   returns: number;
   customerRequests: number;
+  customerWaiting: number;
+  customerDueDate?: string;
+  observedStockDays: number;
+  inStockDays: number;
+  hiddenFromRestock: boolean;
+  exclusionReason?: string;
   staffRequests: number;
   openRequests: number;
   allocatedRequests: number;
@@ -551,12 +559,7 @@ export type ProcurementRecommendation = {
   reason: string;
 };
 
-export type RecommendationStatus =
-  | "recommended"
-  | "already_ordered"
-  | "check_availability"
-  | "supplier_unavailable"
-  | "excluded";
+export type RecommendationStatus = "recommended" | "already_ordered" | "covered" | "excluded";
 
 export type ProcurementAvailability = {
   supplierId: number;

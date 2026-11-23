@@ -89,3 +89,26 @@ func TestCDEKFetchUsesLatestDatedStatusAndIgnoresOldDeleteFailure(t *testing.T) 
 		t.Fatalf("shipment=%+v error=%v", shipment, err)
 	}
 }
+
+func TestCDEKRejectedRegistrationRetainsProviderCode(t *testing.T) {
+	client, _ := cancellationClient(t, carrierReply{"GET", 200, `{
+		"entity":{"uuid":"known-uuid","statuses":[{"code":"INVALID","name":"Некорректный заказ"}]},
+		"requests":[
+			{"type":"DELETE","state":"INVALID","errors":[{"code":"unrelated_delete"}]},
+			{"type":"CREATE","state":"INVALID","errors":[{"code":"bad_delivery_point","message":"Недоступен пункт выдачи"}]}
+		]
+	}`})
+	shipment, err := client.FetchOrder(context.Background(), "known-uuid")
+	if err != nil || shipment.UUID != "known-uuid" || shipment.Status != "INVALID" ||
+		!strings.Contains(shipment.RegistrationError, "bad_delivery_point: Недоступен пункт выдачи") ||
+		strings.Contains(shipment.RegistrationError, "unrelated_delete") {
+		t.Fatalf("shipment=%+v error=%v", shipment, err)
+	}
+}
+
+func TestCDEKRetryCannotDeleteAnActiveShipment(t *testing.T) {
+	client, _ := cancellationClient(t, carrierReply{"GET", 200, activeCDEK})
+	if err := client.CancelRejectedOrder(context.Background(), "known-uuid"); !errors.Is(err, ErrCDEKRegistrationChanged) {
+		t.Fatalf("active shipment must be preserved: %v", err)
+	}
+}

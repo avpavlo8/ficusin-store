@@ -184,8 +184,10 @@ export default function AdminOrderRealizations({ allowed }: { allowed: boolean }
 }
 function Realizations() {
   const [view, setView] = useState<View | null>(null);
-  const [search, setSearch] = useState("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(
+    () => new URLSearchParams(window.location.search).get("q") || "",
+  );
+  const [search, setSearch] = useState(query);
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
   const [warehouse, setWarehouse] = useState("");

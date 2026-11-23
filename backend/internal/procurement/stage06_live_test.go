@@ -64,9 +64,12 @@ func TestStage06PlanAndInvoiceRevisionsOnLiveDatabase(t *testing.T) {
 			{SourcePage: 1, SourceLine: 1, RawName: "Ficus invoice", Quantity: 12, UnitPrice: 5.30, LineTotal: 63.60, LoadUnit: "2"},
 			{SourcePage: 1, SourceLine: 2, RawName: "New plant", SupplierArticle: "NEW-1", Quantity: 1, UnitPrice: 5.30, LineTotal: 5.30, LoadUnit: "2"},
 		}}
-	result, err := store.ImportDocument(ctx, Actor{CustomerID: actorID, Role: "owner"}, DocumentUpload{SupplierID: supplierID, OrderID: orderID, FileName: "invoice-v1.pdf", ContentType: "application/pdf", Content: []byte("%PDF-stage06-v1")}, first)
+	result, err := store.ImportDocument(ctx, Actor{CustomerID: actorID, Role: "owner"}, DocumentUpload{SupplierID: supplierID, OrderID: orderID, FileName: "invoice-v1.pdf", ContentType: "application/pdf", Content: []byte("%PDF-stage06-v1"), ExpectedArrivalDate: "2030-12-08"}, first)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if result.Order.ExpectedArrivalDate != "2030-12-08" {
+		t.Fatalf("invoice arrival date = %q", result.Order.ExpectedArrivalDate)
 	}
 	if result.Order.ID != orderID {
 		t.Fatalf("invoice attached to order %d, want %d", result.Order.ID, orderID)

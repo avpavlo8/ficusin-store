@@ -1,6 +1,7 @@
 FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/vendor/picomatch/ ./vendor/picomatch/
 RUN npm ci
 COPY frontend/ ./
 COPY public/ /src/public/

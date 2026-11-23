@@ -13,10 +13,6 @@ import {
 import {
   availabilityLabel,
   integrationChannelLabel,
-  recommendationEmptyText,
-  recommendationEmptyTitle,
-  recommendationStatusLabel,
-  setExclusion,
   updateAvailability,
   updateRequestStatus,
 } from "./AdminProcurementPanels";
@@ -36,7 +32,6 @@ import type {
   ProcurementOrder,
   ProcurementOrderDetail,
   ProcurementRecommendation,
-  RecommendationStatus,
   ProcurementRequest,
 } from "./adminTypes";
 import "./styles/admin-procurement-plan.css";
@@ -172,6 +167,21 @@ function AvailabilityRow({
   );
 }
 
+const recommendationTabs = {
+  soldOut: { label: "Распродали", empty: "Распроданных растений нет" },
+  lowStock: { label: "Заканчивается", empty: "Запаса хватает на выбранный период" },
+  customer: { label: "Ждёт клиент", empty: "Нет открытых клиентских заявок" },
+  hidden: { label: "Скрытые", empty: "Скрытых растений нет" },
+} as const;
+
+type RecommendationView = keyof typeof recommendationTabs;
+
+function recommendationViewFor(item: ProcurementRecommendation): RecommendationView {
+  if (item.customerWaiting > 0 || item.customerRequests > 0) return "customer";
+  if (item.hiddenFromRestock || item.status === "excluded") return "hidden";
+  return item.balance <= 0 && item.balanceKnown !== false ? "soldOut" : "lowStock";
+}
+
 type PlanDraftSummary = { id: number; title: string; updatedAt: string; createdAt: string };
 
 export function Procurement({
@@ -185,10 +195,15 @@ export function Procurement({
 }) {
   const [data, setData] = useState<ProcurementData | null>(null);
   const { view, setView, selectedOrder, setSelectedOrder } = useProcurementRoute();
-  const [recommendationView, setRecommendationView] = useState<RecommendationStatus>("recommended");
+  const [recommendationView, setRecommendationView] = useState<RecommendationView>("soldOut");
   const [selectedRecommendations, setSelectedRecommendations] = useState<string[]>([]);
   const [recommendationSupplierFilter, setRecommendationSupplierFilter] = useState(0);
   const [recommendationMinQty, setRecommendationMinQty] = useState(0);
+  const [changingRecommendation, setChangingRecommendation] = useState(false);
+  const [recommendationNotice, setRecommendationNotice] = useState("");
+  const [initialRecommendations, setInitialRecommendations] = useState<ProcurementRecommendation[]>(
+    [],
+  );
   const [savingRecommendationSupplier, setSavingRecommendationSupplier] = useState("");
   const [availabilityDueOnly, setAvailabilityDueOnly] = useState(true);
   const [checkingIntegration, setCheckingIntegration] = useState<string>("");
@@ -212,7 +227,7 @@ export function Procurement({
   const [recommendationQuery, setRecommendationQuery] = useProcurementParam("recommendedQuery", "");
   const [recommendationSort, setRecommendationSort] = useProcurementParam(
     "recommendedSort",
-    "quantity",
+    "priority",
   );
   const [requestFilter, setRequestFilter] = useProcurementParam("requests", "active");
   const [editingRequest, setEditingRequest] = useState<ProcurementRequest | undefined>();
@@ -244,7 +259,8 @@ export function Procurement({
   const openNewPlan = () => {
     setEditingDraftId(null);
     setSelectedRecommendations([]);
-    setRecommendationView("recommended");
+    setInitialRecommendations([]);
+    setRecommendationView("soldOut");
     setPlanDialog(true);
   };
   const deleteDraft = async (draft: PlanDraftSummary) => {
@@ -254,6 +270,33 @@ export function Procurement({
       await refreshPlanDrafts();
     } catch (error) {
       onError(`Не удалось удалить черновик: ${(error as Error).message}`);
+    }
+  };
+  const changeRecommendationVisibility = async (
+    items: ProcurementRecommendation[],
+    excluded: boolean,
+  ) => {
+    if (!items.length || changingRecommendation) return;
+    const ids = new Set(items.map((item) => item.sabyId));
+    setChangingRecommendation(true);
+    setRecommendationNotice("");
+    try {
+      await api("/api/v1/admin/procurement/exclusions", {
+        method: "PUT",
+        body: JSON.stringify({
+          sabyIds: [...ids],
+          excluded,
+          reason: excluded ? "Скрыто из рекомендаций" : "",
+        }),
+      });
+      setData(await api<ProcurementData>("/api/v1/admin/procurement"));
+      setSelectedRecommendations((current) => current.filter((id) => !ids.has(id)));
+      const label = items.length === 1 ? items[0].name : quantityLabel(ids.size);
+      setRecommendationNotice(excluded ? `Скрыто: ${label}` : `Возвращено: ${label}`);
+    } catch (error) {
+      onError((error as Error).message);
+    } finally {
+      setChangingRecommendation(false);
     }
   };
   const assignRecommendationSupplier = async (sabyId: string, supplierId: number) => {
@@ -419,34 +462,57 @@ export function Procurement({
       </>
     );
   const activeSuppliers = data.suppliers.filter((item) => item.active !== false);
+  const hiddenView = recommendationView === "hidden";
+  const activeClientRequests = data.requests.filter(
+    (item) => item.kind === "customer_order" && ["open", "included"].includes(item.status),
+  );
+  const clientRecommendations = new Set(
+    data.recommendations
+      .filter((item) => recommendationViewFor(item) === "customer")
+      .map((item) => item.sabyId),
+  );
+  const unmatchedClientRequests = activeClientRequests.filter(
+    (item) => !clientRecommendations.has(item.sabyId),
+  );
+  const matchesSearch = (value: string) =>
+    value.toLocaleLowerCase("ru").includes(recommendationQuery.trim().toLocaleLowerCase("ru"));
+  const inRecommendationView = (item: ProcurementRecommendation, view: RecommendationView) =>
+    view === "hidden"
+      ? item.hiddenFromRestock || item.status === "excluded"
+      : recommendationViewFor(item) === view;
   const recommendationItems = data.recommendations
     .filter(
       (item) =>
-        item.status === recommendationView &&
-        (recommendationSupplierFilter === 0 ||
-          (recommendationSupplierFilter === -1
-            ? item.supplierId === 0
-            : item.supplierId === recommendationSupplierFilter)) &&
-        (recommendationMinQty === 0 || item.suggestedQty > recommendationMinQty) &&
-        `${item.name} ${item.supplierArticle}`
-          .toLocaleLowerCase("ru")
-          .includes(recommendationQuery.toLocaleLowerCase("ru")),
+        inRecommendationView(item, recommendationView) &&
+        matchesSearch(`${item.name} ${item.supplierArticle}`) &&
+        (hiddenView ||
+          ((recommendationSupplierFilter === 0 ||
+            (recommendationSupplierFilter === -1
+              ? item.supplierId === 0
+              : item.supplierId === recommendationSupplierFilter)) &&
+            (recommendationMinQty === 0 || item.suggestedQty > recommendationMinQty))),
     )
-    .sort((a, b) =>
-      recommendationSort === "name"
-        ? a.name.localeCompare(b.name, "ru")
-        : recommendationSort === "urgent"
-          ? (a.daysOfCover ?? Infinity) - (b.daysOfCover ?? Infinity) ||
-            b.suggestedQty - a.suggestedQty
-          : b.suggestedQty - a.suggestedQty,
-    );
+    .sort((a, b) => {
+      const byName = () => a.name.localeCompare(b.name, "ru");
+      if (hiddenView || recommendationSort === "name") return byName();
+      if (recommendationSort === "quantity") return b.suggestedQty - a.suggestedQty || byName();
+      if (recommendationView === "customer")
+        return (a.customerDueDate || "9999").localeCompare(b.customerDueDate || "9999") || byName();
+      if (recommendationView === "soldOut")
+        return (
+          b.totalSales - a.totalSales ||
+          (b.lastSaleAt || "").localeCompare(a.lastSaleAt || "") ||
+          byName()
+        );
+      return (
+        (a.daysOfCover ?? Infinity) - (b.daysOfCover ?? Infinity) ||
+        b.suggestedQty - a.suggestedQty ||
+        byName()
+      );
+    });
   const actionableRecommendations = data.recommendations.filter(
     (item) => item.status === "recommended",
   );
-  const selectedRecommendationItems = actionableRecommendations.filter((item) =>
-    selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
-  );
-  const selectedSupplierId = selectedRecommendationItems[0]?.supplierId;
   const visibleOrders = data.orders.filter(
     (item) =>
       (orderFilter === "all" ||
@@ -486,201 +552,285 @@ export function Procurement({
   );
   const renderRecommendations = (
     add: (items: ProcurementRecommendation[]) => boolean,
-    navigate: (target: "unlinkedSales" | "integrations") => void,
+    navigate: (target: "unlinkedSales" | "integrations" | "requests") => void,
     addedSabyIds: string[],
     draftSupplierId?: number,
   ) => {
     const hasRecommendationFilters =
       Boolean(recommendationQuery.trim()) ||
-      recommendationSupplierFilter !== 0 ||
-      recommendationMinQty > 0;
-    const offeredItems = recommendationItems.filter((item) => !addedSabyIds.includes(item.sabyId));
+      (!hiddenView && (recommendationSupplierFilter !== 0 || recommendationMinQty > 0));
+    const offeredItems = recommendationItems.filter(
+      (item) => hiddenView || !addedSabyIds.includes(item.sabyId),
+    );
+    const unmatched =
+      recommendationView === "customer"
+        ? unmatchedClientRequests.filter((item) => matchesSearch(item.requestedName))
+        : [];
+    const selectedItems = offeredItems.filter((item) =>
+      selectedRecommendations.includes(item.sabyId),
+    );
+    const selectedSupplierId = selectedItems.find(
+      (item) => item.status === "recommended" && item.supplierId > 0,
+    )?.supplierId;
     const selectionSupplierId = draftSupplierId ?? selectedSupplierId;
+    const canAddSelected =
+      selectedItems.length > 0 &&
+      selectedItems.every(
+        (item) =>
+          item.status === "recommended" &&
+          item.supplierId > 0 &&
+          item.supplierId === selectionSupplierId,
+      );
+    const hideableItems = selectedItems.filter((item) => !item.hiddenFromRestock);
     const selectableVisibleRecommendations = bulkSelectableRecommendations(
       offeredItems,
       selectionSupplierId,
     );
-    const bulkSupplier = data.suppliers.find(
+    const bulkSupplier = activeSuppliers.find(
       (supplier) => supplier.id === selectableVisibleRecommendations[0]?.supplierId,
     );
     const allVisibleSelected =
       selectableVisibleRecommendations.length > 0 &&
       selectableVisibleRecommendations.every((item) =>
-        selectedRecommendations.includes(`${item.supplierId}:${item.sabyId}`),
+        selectedRecommendations.includes(item.sabyId),
       );
     const toggleVisibleRecommendations = () => {
-      const keys = selectableVisibleRecommendations.map(
-        (item) => `${item.supplierId}:${item.sabyId}`,
-      );
+      const ids = selectableVisibleRecommendations.map((item) => item.sabyId);
       setSelectedRecommendations((current) =>
-        allVisibleSelected
-          ? current.filter((key) => !keys.includes(key))
-          : [...new Set([...current, ...keys])],
+        allVisibleSelected ? [] : [...new Set([...current, ...ids])],
       );
     };
     return (
       <section className="admin-block procurement-block procurement-recommendations-block">
-        <ProcurementDataHealth
-          channels={data.salesSync || []}
-          onUnlinked={() => navigate("unlinkedSales")}
-          onIntegrations={canIntegrations ? () => navigate("integrations") : undefined}
-        />
-        <div className="procurement-recommendation-tabs">
-          {(
-            [
-              "recommended",
-              "already_ordered",
-              "check_availability",
-              "supplier_unavailable",
-              "excluded",
-            ] as const
-          ).map((status) => (
+        <nav className="procurement-recommendation-tabs" aria-label="Вкладки рекомендаций">
+          {(Object.keys(recommendationTabs) as RecommendationView[]).map((tab) => (
             <button
-              className={recommendationView === status ? "active" : ""}
-              aria-pressed={recommendationView === status}
-              key={status}
+              type="button"
+              className={recommendationView === tab ? "active" : ""}
+              aria-pressed={recommendationView === tab}
+              key={tab}
               onClick={() => {
-                setRecommendationView(status);
+                setRecommendationView(tab);
                 setSelectedRecommendations([]);
               }}
             >
-              {recommendationStatusLabel(status)}{" "}
-              <span>{data.recommendations.filter((item) => item.status === status).length}</span>
+              {recommendationTabs[tab].label}{" "}
+              <span>
+                {data.recommendations.filter((item) => inRecommendationView(item, tab)).length +
+                  (tab === "customer" ? unmatchedClientRequests.length : 0)}
+              </span>
             </button>
           ))}
-        </div>
+        </nav>
+        {!hiddenView && (
+          <ProcurementDataHealth
+            channels={data.salesSync || []}
+            onUnlinked={() => navigate("unlinkedSales")}
+            onIntegrations={canIntegrations ? () => navigate("integrations") : undefined}
+          />
+        )}
         <div className="procurement-recommendation-filters">
-          <label>
-            Поставщик
-            <select
-              aria-label="Фильтр по поставщику"
-              value={recommendationSupplierFilter}
-              onChange={(event) => {
-                setRecommendationSupplierFilter(Number(event.target.value));
-                setSelectedRecommendations([]);
-              }}
-            >
-              <option value={0}>Все поставщики</option>
-              <option value={-1}>Без поставщика</option>
-              {data.suppliers.map((supplier) => (
-                <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Рекомендовано
-            <select
-              aria-label="Фильтр по количеству"
-              value={recommendationMinQty}
-              onChange={(event) => {
-                setRecommendationMinQty(Number(event.target.value));
-                setSelectedRecommendations([]);
-              }}
-            >
-              <option value={0}>Любое количество</option>
-              <option value={10}>Больше 10 шт.</option>
-              <option value={20}>Больше 20 шт.</option>
-            </select>
-          </label>
           <label>
             Поиск
             <input
               value={recommendationQuery}
-              onChange={(event) => setRecommendationQuery(event.target.value)}
+              onChange={(event) => {
+                setRecommendationQuery(event.target.value);
+                setSelectedRecommendations([]);
+              }}
               placeholder="Название или артикул"
             />
           </label>
-          <label>
-            Сортировка
-            <select
-              value={recommendationSort}
-              onChange={(event) => setRecommendationSort(event.target.value)}
-            >
-              <option value="quantity">По количеству</option>
-              <option value="urgent">Сначала заканчивающиеся</option>
-              <option value="name">По названию</option>
-            </select>
-          </label>
-        </div>
-        <div className="procurement-selection-bar">
-          <span role="status" aria-live="polite">
-            {selectedRecommendationItems.length
-              ? `Выбрано: ${quantityLabel(selectedRecommendationItems.length)} · ${selectedRecommendationItems.reduce((sum, item) => sum + item.suggestedQty, 0)} шт.`
-              : quantityLabel(offeredItems.length)}
-          </span>
-          {recommendationView === "recommended" && (
-            <button
-              type="button"
-              onClick={toggleVisibleRecommendations}
-              disabled={!selectableVisibleRecommendations.length}
-            >
-              {allVisibleSelected ? "Снять выделение" : "Выделить все видимые"}
-            </button>
+          {!hiddenView && (
+            <details className="procurement-extra-filters">
+              <summary>Фильтры и сортировка</summary>
+              <div className="procurement-extra-filter-grid">
+                <label>
+                  Поставщик
+                  <select
+                    aria-label="Фильтр по поставщику"
+                    value={recommendationSupplierFilter}
+                    onChange={(event) => {
+                      setRecommendationSupplierFilter(Number(event.target.value));
+                      setSelectedRecommendations([]);
+                    }}
+                  >
+                    <option value={0}>Все поставщики</option>
+                    <option value={-1}>Без поставщика</option>
+                    {activeSuppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Рекомендовано
+                  <select
+                    aria-label="Фильтр по количеству"
+                    value={recommendationMinQty}
+                    onChange={(event) => {
+                      setRecommendationMinQty(Number(event.target.value));
+                      setSelectedRecommendations([]);
+                    }}
+                  >
+                    <option value={0}>Любое количество</option>
+                    <option value={10}>Больше 10 шт.</option>
+                    <option value={20}>Больше 20 шт.</option>
+                  </select>
+                </label>
+                <label>
+                  Сортировка
+                  <select
+                    value={recommendationSort}
+                    onChange={(event) => setRecommendationSort(event.target.value)}
+                  >
+                    <option value="priority">По приоритету</option>
+                    <option value="quantity">По количеству</option>
+                    <option value="name">По названию</option>
+                  </select>
+                </label>
+              </div>
+            </details>
           )}
-          {recommendationView === "recommended" && bulkSupplier && (
-            <span className="procurement-selection-hint">Поставщик: {bulkSupplier.name}</span>
-          )}
-          <button
-            aria-label="Добавить выбранное"
-            className="admin-primary"
-            disabled={!selectedRecommendationItems.length || !data.suppliers.length}
-            onClick={() => {
-              if (add(selectedRecommendationItems)) setSelectedRecommendations([]);
-            }}
-          >
-            Добавить в закупку · {selectedRecommendationItems.length}
-          </button>
         </div>
-        {offeredItems.length ? (
-          <ProcurementRecommendationTable
-            items={offeredItems}
-            suppliers={data.suppliers}
-            selected={selectedRecommendations}
-            selectedSupplierId={selectionSupplierId}
-            savingSupplier={savingRecommendationSupplier}
-            periodDays={data.settings.recommendationDays}
-            onSelect={(key, checked) =>
-              setSelectedRecommendations((current) =>
-                checked ? [...current, key] : current.filter((value) => value !== key),
-              )
-            }
-            onSupplier={(sabyId, supplierId) =>
-              void assignRecommendationSupplier(sabyId, supplierId)
-            }
-            onAvailability={(item, status) =>
-              void updateAvailability(item.supplierId, item.sabyId, status, load, onError)
-            }
-            onExclude={(item, excluded) =>
-              void setExclusion(item.sabyId, excluded, "", load, onError)
-            }
-          />
-        ) : (
-          <div className="procurement-zero">
-            <strong>
-              {hasRecommendationFilters
-                ? "Ничего не найдено"
-                : recommendationEmptyTitle(recommendationView)}
-            </strong>
-            <span>
-              {hasRecommendationFilters
-                ? "Измените поиск или фильтры, чтобы увидеть другие товары."
-                : recommendationEmptyText(recommendationView)}
+        {recommendationNotice && (
+          <p className="procurement-inline-notice" role="status">
+            {recommendationNotice}
+          </p>
+        )}
+        {!hiddenView && (
+          <div className="procurement-selection-bar">
+            <span role="status" aria-live="polite">
+              {selectedItems.length
+                ? `Выбрано: ${quantityLabel(selectedItems.length)} · ${selectedItems.reduce((sum, item) => sum + item.suggestedQty, 0)} шт.`
+                : quantityLabel(offeredItems.length)}
             </span>
-            {hasRecommendationFilters && (
+            {(selectableVisibleRecommendations.length > 0 || selectedItems.length > 0) && (
               <button
-                onClick={() => {
-                  setRecommendationQuery("");
-                  setRecommendationSupplierFilter(0);
-                  setRecommendationMinQty(0);
-                  setSelectedRecommendations([]);
-                }}
+                type="button"
+                onClick={toggleVisibleRecommendations}
+                disabled={!selectableVisibleRecommendations.length || changingRecommendation}
               >
-                Сбросить фильтры
+                {allVisibleSelected ? "Снять выделение" : "Выделить все видимые"}
               </button>
             )}
+            {selectedItems.length > 0 && !canAddSelected ? (
+              <span className="procurement-selection-hint">
+                Для закупки выберите позиции к заказу у одного поставщика
+              </span>
+            ) : (
+              bulkSupplier && (
+                <span className="procurement-selection-hint">Поставщик: {bulkSupplier.name}</span>
+              )
+            )}
+            {hideableItems.length > 0 && (
+              <button
+                type="button"
+                disabled={changingRecommendation}
+                onClick={() => void changeRecommendationVisibility(hideableItems, true)}
+              >
+                Скрыть выбранные · {hideableItems.length}
+              </button>
+            )}
+            <button
+              aria-label="Добавить выбранное"
+              className="admin-primary"
+              disabled={changingRecommendation || !canAddSelected}
+              onClick={() => {
+                if (add(selectedItems)) setSelectedRecommendations([]);
+              }}
+            >
+              Добавить в закупку · {selectedItems.length}
+            </button>
           </div>
+        )}
+        {unmatched.length > 0 && (
+          <ul
+            className="procurement-compact-list"
+            aria-label="Клиентские заявки без связанного товара"
+          >
+            {unmatched.map((item) => (
+              <li key={item.id}>
+                <div>
+                  <strong>{item.requestedName}</strong>
+                  <small>
+                    Осталось {item.remainingQuantity} шт.
+                    {item.dueDate &&
+                      ` · к ${new Date(`${item.dueDate}T00:00:00`).toLocaleDateString("ru-RU")}`}
+                  </small>
+                </div>
+                <button type="button" onClick={() => navigate("requests")}>
+                  Открыть заявки
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {offeredItems.length ? (
+          hiddenView ? (
+            <ul className="procurement-compact-list" aria-label="Скрытые растения">
+              {offeredItems.map((item) => (
+                <li key={item.sabyId}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    {item.supplierArticle && <small>{item.supplierArticle}</small>}
+                    {item.exclusionReason && item.exclusionReason !== "Скрыто из рекомендаций" && (
+                      <small>{item.exclusionReason}</small>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={changingRecommendation}
+                    aria-label={`Вернуть в рекомендации: ${item.name}`}
+                    onClick={() => void changeRecommendationVisibility([item], false)}
+                  >
+                    Вернуть
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ProcurementRecommendationTable
+              items={offeredItems}
+              suppliers={activeSuppliers}
+              selected={selectedRecommendations}
+              savingSupplier={savingRecommendationSupplier}
+              periodDays={data.settings.recommendationDays}
+              onSelect={(key, checked) =>
+                setSelectedRecommendations((current) =>
+                  checked ? [...current, key] : current.filter((value) => value !== key),
+                )
+              }
+              onSupplier={(sabyId, supplierId) =>
+                void assignRecommendationSupplier(sabyId, supplierId)
+              }
+              changingVisibility={changingRecommendation}
+              onHide={(item) => void changeRecommendationVisibility([item], true)}
+            />
+          )
+        ) : (
+          unmatched.length === 0 && (
+            <div className="procurement-zero">
+              <strong>
+                {hasRecommendationFilters
+                  ? "Ничего не найдено"
+                  : recommendationTabs[recommendationView].empty}
+              </strong>
+              {hasRecommendationFilters && (
+                <button
+                  onClick={() => {
+                    setRecommendationQuery("");
+                    setRecommendationSupplierFilter(0);
+                    setRecommendationMinQty(0);
+                    setSelectedRecommendations([]);
+                  }}
+                >
+                  Сбросить фильтры
+                </button>
+              )}
+            </div>
+          )
         )}
       </section>
     );
@@ -692,7 +842,7 @@ export function Procurement({
         draftId={editingDraftId}
         suppliers={activeSuppliers}
         recommendations={actionableRecommendations}
-        initialRecommendations={[]}
+        initialRecommendations={initialRecommendations}
         renderRecommendations={renderRecommendations}
         onNavigate={(target) => setView(target)}
         settings={data.settings}
@@ -729,11 +879,6 @@ export function Procurement({
           >
             Загрузить инвойс / счёт
           </button>
-          <WorkspaceMore label="Ещё действия">
-            <button type="button" onClick={() => setSupplierDialog(true)}>
-              Поставщики
-            </button>
-          </WorkspaceMore>
         </div>
       </div>
       {data.summary.unresolvedAliases > 0 && (
@@ -763,13 +908,14 @@ export function Procurement({
       <div className="procurement-workspace">
         <nav className="procurement-tabs" aria-label="Разделы закупок">
           {renderTab("orders", "Закупки")}
+          {renderTab("recommendations", "Рекомендации")}
           {renderTab("drafts", "Черновики ", drafts.length)}
           {renderTab("requests", "Под заказ ", data.summary.openRequests)}
-          {renderTab("availability", "Ожидают ответа ", data.summary.availabilityChecks)}
           <WorkspaceMore
             label="Справочники и сервисы"
             active={[
               "calculator",
+              "availability",
               "products",
               "unlinkedSales",
               "integrations",
@@ -777,7 +923,11 @@ export function Procurement({
             ].includes(view)}
           >
             {renderTab("calculator", "Калькулятор цены")}
+            <button type="button" onClick={() => setSupplierDialog(true)}>
+              Поставщики
+            </button>
             {renderTab("products", "Товары поставщиков")}
+            {renderTab("availability", "Наличие у поставщиков ", data.summary.availabilityChecks)}
             {renderTab("unlinkedSales", "Продажи без товара")}
             {canIntegrations && renderTab("integrations", "Интеграции")}
             {canIntegrations && (
@@ -786,6 +936,17 @@ export function Procurement({
           </WorkspaceMore>
         </nav>
         <div className="procurement-content">
+          {view === "recommendations" &&
+            renderRecommendations(
+              (items) => {
+                setInitialRecommendations(items);
+                setEditingDraftId(null);
+                setPlanDialog(true);
+                return true;
+              },
+              setView,
+              [],
+            )}
           <div hidden={view !== "calculator"}>
             <ProcurementCostCalculator
               initialDraft={calculatorDraft}
@@ -815,6 +976,7 @@ export function Procurement({
                       <div>
                         <button
                           onClick={() => {
+                            setInitialRecommendations([]);
                             setEditingDraftId(draft.id);
                             setPlanDialog(true);
                           }}
@@ -901,6 +1063,15 @@ export function Procurement({
                               <span className={`admin-pill procurement-${item.status}`}>
                                 {procurementStatusLabels[item.status] || item.status}
                               </span>
+                              {item.expectedArrivalDate &&
+                                !["received", "cancelled"].includes(item.status) && (
+                                  <small>
+                                    Ожидается{" "}
+                                    {new Date(
+                                      `${item.expectedArrivalDate}T00:00:00`,
+                                    ).toLocaleDateString("ru-RU")}
+                                  </small>
+                                )}
                             </td>
                             <td>
                               {item.units} шт.<small>{quantityLabel(item.lines)}</small>
@@ -1070,7 +1241,7 @@ export function Procurement({
 
           {view === "unlinkedSales" && (
             <Suspense fallback={<p className="admin-hint">Загружаем продажи…</p>}>
-              <ProcurementUnlinkedSales onError={onError} />
+              <ProcurementUnlinkedSales onError={onError} onChanged={load} />
             </Suspense>
           )}
 

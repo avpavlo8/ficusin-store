@@ -5,17 +5,18 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/avpavlo8/ficusin-store/backend/internal/fileassets"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var ErrNotPurchased = errors.New("completed purchase required")
 var ErrAlreadyReviewed = errors.New("already reviewed")
+var ErrInvalidReview = errors.New("invalid review")
 
 type Input struct {
 	Rating int          `json:"rating"`
@@ -70,7 +71,7 @@ func NewStore(pool *pgxpool.Pool, media ...mediaStorage) *Store {
 
 func (s *Store) Create(ctx context.Context, customerID int64, slug string, input Input) (int64, error) {
 	if input.Rating < 1 || input.Rating > 5 || len(strings.TrimSpace(input.Text)) < 10 || len(input.Text) > 3000 || len(input.Photos) > 4 {
-		return 0, errors.New("invalid review")
+		return 0, ErrInvalidReview
 	}
 	// Decode and validate everything before opening the database transaction.
 	// Invalid trailing media must not leave earlier objects behind or hold locks.
@@ -84,12 +85,12 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 		isVideo := media.ContentType == "video/mp4" || media.ContentType == "video/webm"
 		isImage := media.ContentType == "image/jpeg" || media.ContentType == "image/png" || media.ContentType == "image/webp"
 		if !isImage && !isVideo {
-			return 0, errors.New("invalid media type")
+			return 0, fmt.Errorf("%w: invalid media type", ErrInvalidReview)
 		}
 		if isVideo {
 			videoCount++
 			if videoCount > 1 {
-				return 0, errors.New("only one video is allowed")
+				return 0, fmt.Errorf("%w: only one video is allowed", ErrInvalidReview)
 			}
 		}
 		data, decodeErr := base64.StdEncoding.DecodeString(media.Data)
@@ -98,10 +99,10 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 			limit = 20 * 1024 * 1024
 		}
 		if decodeErr != nil || len(data) == 0 || len(data) > limit {
-			return 0, errors.New("invalid media size")
+			return 0, fmt.Errorf("%w: invalid media size", ErrInvalidReview)
 		}
 		if !validMediaSignature(media.ContentType, data) {
-			return 0, errors.New("media content does not match type")
+			return 0, fmt.Errorf("%w: media content does not match type", ErrInvalidReview)
 		}
 		prepared = append(prepared, preparedMedia{media.ContentType, data})
 	}
@@ -136,8 +137,8 @@ func (s *Store) Create(ctx context.Context, customerID int64, slug string, input
 	}
 	// Serialize submissions for this customer/product pair and count hidden reviews too:
 	// hiding a review in the admin panel must not create another review allowance.
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text, 0))`, productID, customerID); err != nil {
-		return 0, err
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::bigint::text || ':' || $2::bigint::text, 0))`, productID, customerID); err != nil {
+		return 0, fmt.Errorf("lock review submission: %w", err)
 	}
 	var alreadyReviewed bool
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM product_reviews WHERE product_id=$1 AND customer_id=$2)`, productID, customerID).Scan(&alreadyReviewed); err != nil {

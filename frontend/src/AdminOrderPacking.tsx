@@ -39,6 +39,7 @@ export type OrderPackingState = {
   revision: number;
   canReopen?: boolean;
   deliveryFeePending?: boolean;
+  revisionPending?: boolean;
   boxes: Box[];
   tariffCode: number;
   tariffName: string;
@@ -165,7 +166,7 @@ export function AdminOrderPacking({
         setTariffCode(0);
       }
       if (next.state !== "draft") setDirty(false);
-      const signature = `${next.revision}:${next.state}:${next.trackNumber}:${next.notification.state}:${next.push?.state}`;
+      const signature = `${next.revision}:${next.revisionPending}:${next.state}:${next.trackNumber}:${next.notification.state}:${next.push?.state}`;
       if (lastReported.current !== signature) {
         lastReported.current = signature;
         stateChange.current?.(next);
@@ -190,6 +191,7 @@ export function AdminOrderPacking({
     if (
       !packing ||
       (!activeStates.has(packing.state) &&
+        !packing.revisionPending &&
         packing.push?.state !== "queued" &&
         packing.notification.state !== "queued")
     )

@@ -178,8 +178,12 @@ func TestStage03CatalogueSafetyOnLiveDatabase(t *testing.T) {
 		}
 	})
 
-	price := int64(1)
-	if _, err := repository.UpdateProduct(ctx, Actor{CustomerID: staffID, Role: RoleAdministrator}, productA, ProductUpdate{Variants: []VariantEdit{{ID: variantA, PriceMinor: &price}}}); !errors.Is(err, ErrForbidden) {
-		t.Fatalf("content-only administrator changed commercial fields: %v", err)
+	price := int64(12345)
+	if _, err := repository.UpdateProduct(ctx, Actor{CustomerID: staffID, Role: RoleAdministrator}, productA, ProductUpdate{Variants: []VariantEdit{{ID: variantA, PriceMinor: &price}}}); err != nil {
+		t.Fatal(err)
+	}
+	var savedPrice int64
+	if err := pool.QueryRow(ctx, `SELECT base_price_minor FROM product_variants WHERE id=$1`, variantA).Scan(&savedPrice); err != nil || savedPrice != price {
+		t.Fatalf("administrator price=%d, want %d: %v", savedPrice, price, err)
 	}
 }

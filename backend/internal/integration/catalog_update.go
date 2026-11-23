@@ -217,26 +217,8 @@ func (p *CatalogPublisher) hydrateCatalogUpdate(ctx context.Context, ch string, 
 		}
 		r.Packaging = pack
 	}
-	if len(r.Images) == 0 {
-		key := "images"
-		if ch == "wb" {
-			key = "photos"
-		}
-		if images, ok := card[key].([]any); ok {
-			for _, image := range images {
-				switch v := image.(type) {
-				case string:
-					r.Images = append(r.Images, v)
-				case map[string]any:
-					for _, name := range []string{"big", "url", "file_name"} {
-						if link, ok := v[name].(string); ok && link != "" {
-							r.Images = append(r.Images, link)
-							break
-						}
-					}
-				}
-			}
-		}
+	if r.Action == "" && len(r.Images) == 0 {
+		r.Images = ids.Gallery.Photos
 	}
 	if ch == "wb" {
 		if _, err := catalogPrice(r.WBPrice); err != nil {

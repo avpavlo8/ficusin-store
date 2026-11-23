@@ -34,6 +34,7 @@ type checkoutCDEK struct {
 	requests    []integration.ShipmentRequest
 	cancelled   []string
 	beforeQuote func(context.Context)
+	noQuotes    bool
 }
 
 func (c *checkoutCDEK) GetOffices(context.Context, int) ([]integration.CDEKOffice, error) {
@@ -42,6 +43,9 @@ func (c *checkoutCDEK) GetOffices(context.Context, int) ([]integration.CDEKOffic
 func (c *checkoutCDEK) CalculatePVZ(ctx context.Context, _ int, _ integration.Parcel) ([]integration.CDEKQuote, error) {
 	if c.beforeQuote != nil {
 		c.beforeQuote(ctx)
+	}
+	if c.noQuotes {
+		return nil, nil
 	}
 	return []integration.CDEKQuote{{TariffCode: 136, Price: 450}}, nil
 }
@@ -112,9 +116,9 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	worker := NewShippingWorker(pool, client, shop, nil, quietLogger())
 	wakes := 0
 	service := NewService(pool, client, shop, quietLogger()).WithShipmentWake(func() { wakes++; worker.Wake() })
-	makeOrder := func(repack bool) int64 {
+	makeOrder := func() int64 {
 		t.Helper()
-		result, err := service.Create(ctx, CreateInput{CustomerID: &customerID, Customer: CustomerInput{Name: "Павловский Александр", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136, Repack: repack}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, OfferAccepted: true, ClientIP: "127.0.0.1"})
+		result, err := service.Create(ctx, CreateInput{CustomerID: &customerID, Customer: CustomerInput{Name: "Павловский Александр", Phone: "+70000000000", Email: email}, Delivery: "cdek", Items: []ItemInput{{ID: sku, Quantity: 1}}, CDEK: CDEKInput{CityCode: 44, OfficeCode: "CHECKOUT-PVZ", TariffCode: 136}, PaymentMethod: "online", OnlinePaymentReady: true, Consent: true, OfferAccepted: true, ClientIP: "127.0.0.1"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -144,7 +148,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	changedID := makeOrder(false)
+	changedID := makeOrder()
 	var changedPending int
 	var changedFee, changedSubtotal float64
 	if err := pool.QueryRow(ctx, `SELECT delivery_fee_pending,delivery_fee,subtotal FROM orders WHERE id=$1`, changedID).Scan(&changedPending, &changedFee, &changedSubtotal); err != nil {
@@ -162,7 +166,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	}
 	wakes = 0
 
-	orderID := makeOrder(false)
+	orderID := makeOrder()
 	var savedFee, savedTotal float64
 	if err := pool.QueryRow(ctx, `SELECT delivery_fee,total FROM orders WHERE id=$1`, orderID).Scan(&savedFee, &savedTotal); err != nil {
 		t.Fatal(err)
@@ -212,20 +216,22 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 		t.Fatalf("cancelled order did not cancel parcel: %v", client.cancelled)
 	}
 	// Unpaid orders made while off must stay outside the queue when enabled later.
-	legacyID := makeOrder(false)
+	legacyID := makeOrder()
 	shop.enabled = true
 	worker.sync(ctx)
 	if len(client.requests) != 1 {
 		t.Fatalf("enabling backfilled unpaid order %d", legacyID)
 	}
-	pendingFeeID := makeOrder(true)
+	client.noQuotes = true
+	pendingFeeID := makeOrder()
+	client.noQuotes = false
 	worker.sync(ctx)
 	if len(client.requests) != 1 {
 		t.Fatalf("created parcel with unconfirmed packing/fee: %d", pendingFeeID)
 	}
 	// Lost POST response is resolved with GET, including if cancellation won a race.
 	client.ambiguous = true
-	unknownID := makeOrder(false)
+	unknownID := makeOrder()
 	worker.sync(ctx)
 	if len(client.requests) != 2 {
 		t.Fatalf("expected ambiguous create, got %d", len(client.requests))
@@ -239,7 +245,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	}
 	// A crashed worker's creation lease must never grant another POST.
 	client.ambiguous = false
-	interruptedID := makeOrder(false)
+	interruptedID := makeOrder()
 	if _, err := pool.Exec(ctx, `UPDATE orders SET cdek_create_state='creating',cdek_next_attempt_at=CURRENT_TIMESTAMP-INTERVAL '1 second' WHERE id=$1`, interruptedID); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +260,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 		t.Fatalf("interrupted create should require lookup, got %s", state)
 	}
 	// Two application instances must claim a newly committed checkout only once.
-	concurrentID := makeOrder(false)
+	concurrentID := makeOrder()
 	secondWorker := NewShippingWorker(pool, client, shop, nil, quietLogger())
 	var workers sync.WaitGroup
 	workers.Add(2)
@@ -268,7 +274,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE inventory SET available_qty=0 WHERE variant_id=$1`, variantID); err != nil {
 		t.Fatal(err)
 	}
-	preorderID := makeOrder(false)
+	preorderID := makeOrder()
 	worker.sync(ctx)
 	if len(client.requests) != 3 {
 		t.Fatalf("preorder unexpectedly registered: %d", preorderID)
@@ -325,10 +331,10 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 		winter := integration.Parcel{LengthCM: 40, WidthCM: 20, HeightCM: 20, WeightGrams: 1500}
 		setSeason("summer")
 		checkParcel(summer)
-		summerID := makeOrder(false)
+		summerID := makeOrder()
 		setSeason("winter")
 		checkParcel(winter)
-		winterID := makeOrder(false)
+		winterID := makeOrder()
 		setSeason("summer")
 		for id, want := range map[int64]integration.Parcel{summerID: summer, winterID: winter} {
 			_, got, err := worker.shipmentContents(ctx, id)
@@ -338,7 +344,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 		}
 		// A flip while the carrier is replying invalidates its quote at checkout.
 		client.beforeQuote = func(context.Context) { setSeason("winter") }
-		changedID := makeOrder(false)
+		changedID := makeOrder()
 		client.beforeQuote = nil
 		var pending int
 		var fee float64
@@ -352,7 +358,7 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 		if _, err := pool.Exec(ctx, `DELETE FROM variant_attribute_values WHERE variant_id=$1 AND attribute_id=(SELECT id FROM attribute_definitions WHERE code='package_winter_width_cm')`, variantID); err != nil {
 			t.Fatal(err)
 		}
-		missingID := makeOrder(false)
+		missingID := makeOrder()
 		if err := pool.QueryRow(ctx, `SELECT delivery_fee_pending,delivery_fee FROM orders WHERE id=$1`, missingID).Scan(&pending, &fee); err != nil {
 			t.Fatal(err)
 		}
@@ -368,4 +374,8 @@ func TestCheckoutCDEKBeforePaymentOnLiveDatabase(t *testing.T) {
 		checkParcel(summer)
 	})
 
+}
+
+func (*checkoutCDEK) CancelRejectedOrder(context.Context, string) error {
+	panic("unexpected retry of rejected registration")
 }

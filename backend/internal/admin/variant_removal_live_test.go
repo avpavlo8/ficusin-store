@@ -116,8 +116,8 @@ func TestVariantRemovalOnLiveDatabase(t *testing.T) {
 	}
 }
 func TestVariantRemovalValidation(t *testing.T) {
-	if validateVariantEdits(Actor{Role: RoleAdministrator}, []VariantEdit{{ID: 1, Remove: true}}) == nil {
-		t.Fatal("administrator can delete")
+	if err := validateVariantEdits(Actor{Role: RoleAdministrator}, []VariantEdit{{ID: 1, Remove: true}}); err != nil {
+		t.Fatalf("administrator cannot remove variant: %v", err)
 	}
 	label := "new"
 	if validateVariantEdits(Actor{Role: RoleOwner}, []VariantEdit{{ID: 1, Remove: true, Label: &label}}) == nil {

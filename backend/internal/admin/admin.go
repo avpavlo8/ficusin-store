@@ -57,7 +57,7 @@ func Can(role, permission string) bool {
 		return permission == PermissionChat || permission == PermissionDashboard || permission == PermissionCustomersRead ||
 			permission == PermissionCustomersEdit || permission == PermissionOrdersRead ||
 			permission == PermissionOrdersEdit || permission == PermissionProductsRead ||
-			permission == PermissionProductsEdit || permission == PermissionReturnsRead ||
+			permission == PermissionProductsEdit || permission == PermissionProductsManage || permission == PermissionReturnsRead ||
 			permission == PermissionReturnsEdit || permission == PermissionReturnsReceipt || permission == PermissionReturnsDelete ||
 			permission == PermissionProcurementRead || permission == PermissionProcurementEdit ||
 			permission == PermissionAnalyticsRead
@@ -183,6 +183,7 @@ type Product struct {
 	MaxPrice             float64               `json:"maxPrice"`
 	VariantsReady        bool                  `json:"variantsReady"`
 	VariantTasks         []string              `json:"variantTasks"`
+	VariantEnumTasks     []string              `json:"variantEnumTasks"`
 	VariantCount         int                   `json:"variantCount"`
 	StockUpdatedAt       *time.Time            `json:"stockUpdatedAt"`
 	UpdatedAt            time.Time             `json:"updatedAt"`

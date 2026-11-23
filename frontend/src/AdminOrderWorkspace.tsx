@@ -13,11 +13,16 @@ type Props = {
   registerBeforeLeave?: (guard: () => Promise<boolean>) => () => void;
 };
 
-const urgentReasons = [
-  "Проверить отправление СДЭК",
-  "СДЭК ожидает повторной попытки",
-  "Уточнить результат оплаты",
-];
+type OrderReason = { title: string; text?: string; view?: OrderView; code?: string };
+
+const reasonPriority = (reason: OrderReason) => {
+  if (reason.code === "realization_attention") return 0;
+  if (reason.view === "items") return 1;
+  if (reason.code === "realization_sync") return 2;
+  if (reason.code === "payment_check" || reason.code === "cdek_review") return 3;
+  if (reason.view === "delivery") return 4;
+  return 5;
+};
 
 const dateFormat = new Intl.DateTimeFormat("ru-RU", {
   day: "numeric",
@@ -59,10 +64,10 @@ export function AdminOrderWorkspace({
   const currentStatus = workflow?.status || order.status;
   const closed = ["cancelled", "completed"].includes(currentStatus);
   const reasons = useMemo(() => {
-    const result: Array<{ title: string; text: string; view?: OrderView }> = [];
+    const result: OrderReason[] = [];
     if (workflow) {
       for (const blocker of workflow.blockers)
-        result.push({ title: blocker.message, text: blocker.message, view: blocker.view });
+        result.push({ title: blocker.message, view: blocker.view, code: blocker.code });
     }
     if (!closed && !workflow) {
       if (review?.hasPreorder ?? order.hasPreorder)
@@ -72,25 +77,13 @@ export function AdminOrderWorkspace({
           text: "Наличие части растений требует подтверждения. Проверьте актуальный остаток и согласуйте состав заказа.",
         });
       if (review?.deliveryFeePending ?? order.deliveryFeePending)
-        result.push(
-          order.repackRequested
-            ? {
-                title: "Собрать в одну коробку и рассчитать доставку",
-                view: "delivery",
-                text: "Покупатель просит объединить растения в одну коробку. Проверьте упаковку и стоимость доставки.",
-              }
-            : order.deliveryMethod === "cdek" && review?.packagingDimensionsMissing
-              ? {
-                  title: "Заполните размеры коробки",
-                  view: "delivery",
-                  text: "Для расчёта доставки не хватает размеров упаковки. Укажите фактические размеры и вес коробки — после этого посчитается доставка.",
-                }
-              : {
-                  title: "Рассчитать доставку",
-                  view: "delivery",
-                  text: "Стоимость доставки не рассчитана. Проверьте упаковку и уточните стоимость.",
-                },
-        );
+        result.push({
+          title:
+            order.deliveryMethod === "cdek" && review?.packagingDimensionsMissing
+              ? "Заполните размеры коробки"
+              : "Рассчитать доставку",
+          view: "delivery",
+        });
       if (order.paymentMethod === "manager_confirmation")
         result.push({
           title: "Подтвердить заказ перед оплатой",
@@ -104,6 +97,8 @@ export function AdminOrderWorkspace({
       if (order.deliveryMethod === "cdek" && review?.cdekCreateState === "manual_review")
         result.push({
           title: "Проверить отправление СДЭК",
+          code: "cdek_review",
+          view: "delivery",
           text:
             review.cdekLastError ||
             "Нужно сверить отправление в кабинете СДЭК. Новая заявка автоматически не создаётся.",
@@ -147,16 +142,13 @@ export function AdminOrderWorkspace({
     if (review?.paymentIssues.length)
       result.push({
         title: "Уточнить результат оплаты",
+        code: "payment_check",
         view: "payment",
         text: review.paymentIssues.some((issue) => issue.needsReview)
           ? "Автопроверка остановлена. Сверьте платёж в кабинете ЮKassa."
           : "ЮKassa ещё не подтвердила результат. Проверка продолжается автоматически.",
       });
-    // Сначала то, что остановилось с ошибкой (СДЭК, оплата): это срочнее
-    // обычных шагов вроде расчёта доставки.
-    return result.sort(
-      (a, b) => Number(urgentReasons.includes(b.title)) - Number(urgentReasons.includes(a.title)),
-    );
+    return result.sort((a, b) => reasonPriority(a) - reasonPriority(b));
   }, [order, review, closed, workflow]);
 
   const changeStatus = async (status: string) => {
@@ -171,35 +163,48 @@ export function AdminOrderWorkspace({
   // Следующий шаг заказа — главная зелёная кнопка под составом.
   const next = nextStep(order, workflow);
 
-  // Что требует внимания (СДЭК, оплата, коробки) — короткими строками над
-  // составом. Без длинных подсказок: заголовок и кнопка «Сделать».
+  const reason = reasons[0];
+  const realization =
+    reason?.code === "realization_attention" || reason?.code === "realization_sync";
+  const reasonDetail =
+    reason?.code === "realization_attention"
+      ? canRefund
+        ? "После сверки можно подтвердить доставку и выставить оплату."
+        : "Попросите владельца проверить реализацию в СБИС."
+      : reason?.code === "realization_sync"
+        ? "После подтверждения состава можно завершить подготовку доставки и выставить оплату."
+        : reason?.text;
+  const realizationUrl = `/admin?${new URLSearchParams({
+    section: "orders",
+    view: "realizations",
+    q: order.orderNumber,
+  })}`;
+
   const nowBlock =
     currentStatus === "cancelled" ? (
       <section className="order-now is-muted" aria-label="Что нужно сделать">
         <h2>Заказ отменён</h2>
       </section>
-    ) : reasons.length > 0 ? (
-      <section className="order-now" aria-label="Что нужно сделать">
-        <ul className="order-now-more">
-          {reasons.map((reason) => (
-            <li key={reason.title}>
-              <span>
-                {reason.title}
-                {/* Ошибку СДЭК или ЮKassa показываем словами сервера: без неё не понять, что делать. */}
-                {urgentReasons.includes(reason.title) && <small>{reason.text}</small>}
-              </span>
-              {reason.view && (
-                <button
-                  type="button"
-                  className="ws-link-button"
-                  onClick={() => setView(reason.view!)}
-                >
-                  Сделать
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+    ) : reason ? (
+      <section className="order-now order-next-step" aria-label="Что нужно сделать">
+        <div>
+          <h2>{reason.title}</h2>
+          {reasonDetail && <p>{reasonDetail}</p>}
+        </div>
+        {realization && canRefund && (
+          <a className="ws-button" href={realizationUrl} target="_blank" rel="noopener noreferrer">
+            Открыть реализацию
+          </a>
+        )}
+        {reason.view && reason.code !== "payment" && (
+          <button type="button" className="ws-button" onClick={() => setView(reason.view!)}>
+            {reason.view === "items"
+              ? "Проверить состав"
+              : reason.view === "delivery"
+                ? "Открыть доставку"
+                : "Проверить оплату"}
+          </button>
+        )}
       </section>
     ) : null;
 

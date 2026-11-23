@@ -2,7 +2,16 @@ import { OrderProductImage } from "./OrderProductImage";
 import { AdminOrderProductSearch } from "./AdminOrderProductSearch";
 import { OrderProductLink } from "./OrderProductLink";
 import { NumericInput } from "./NumericInput";
-import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { api, money } from "./adminShared";
 import type { Order, OrderWorkflow, Product } from "./adminTypes";
 import { AdminOrderPacking } from "./AdminOrderPacking";
@@ -464,6 +473,31 @@ export function AdminOrderEditor({
     });
   }, [adjustment, payment.issues, onReviewState, packingBoxesReady]);
 
+  const awaitingRealization = adjustment?.workflow?.blockers.some(
+    ({ code }) => code === "realization_sync" || code === "realization_attention",
+  );
+  useEffect(() => {
+    if (view !== "summary" || !awaitingRealization || hasAnyUnsavedChanges || busy) return;
+    const controller = new AbortController();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void api<{ order: Adjustment; payment: PaymentBalance }>(
+        `/api/v1/admin/orders/${order.id}/adjustment`,
+        { signal: controller.signal },
+      )
+        .then(({ order: next, payment: balance }) => {
+          if (controller.signal.aborted) return;
+          setAdjustment(next);
+          setPayment(balance);
+        })
+        .catch(() => undefined);
+    }, 10000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [awaitingRealization, busy, hasAnyUnsavedChanges, order.id, view]);
+
   const compositionChanged = () => setSaved(false);
 
   const discardChanges = () => {
@@ -621,6 +655,18 @@ export function AdminOrderEditor({
     ["pending", "payment_provider_pending", "partially_paid", "failed", "cancelled"].includes(
       order.paymentStatus,
     );
+  const paymentWorkflow = adjustment.workflow ?? order.workflow;
+  const paymentWait =
+    adjustment.hasPreorder || paymentWorkflow?.stockConfirmed === false
+      ? "Сначала проверьте наличие растений."
+      : paymentWorkflow?.blockers.some(
+            ({ code }) => code === "realization_sync" || code === "realization_attention",
+          )
+        ? "Ссылка появится после подтверждения состава в СБИС."
+        : adjustment.deliveryFeePending && adjustment.deliveryPayee === "shop"
+          ? "Сначала рассчитайте и подтвердите доставку."
+          : "";
+
   const paymentPill =
     order.paymentStatus === "paid"
       ? { tone: "ok", text: "Оплачен" }
@@ -717,7 +763,8 @@ export function AdminOrderEditor({
                 Переплата {money.format(payment.overpaid)} — нужен возврат.
               </p>
             )}
-            {unpaid && (
+            {unpaid && paymentWait && <p className="order-renew-notice">{paymentWait}</p>}
+            {unpaid && !paymentWait && !packingFrozen && (
               <button
                 type="button"
                 className="ws-button order-renew-link"
@@ -777,16 +824,25 @@ export function AdminOrderEditor({
             <span className="order-contacts-label">Доставка</span>
             <span>{deliveryLabel}</span>
             <CopyField label="адрес" value={order.address} />
-            {order.repackRequested && <span>Просьба: собрать в одну коробку</span>}
-            {order.deliveryMethod !== "pickup" && (
-              <>
-                <span className="order-contacts-label">Трек-номер</span>
-                <CopyField
-                  label="трек-номер"
-                  value={order.trackNumber || ""}
-                  empty="Появится после отправки"
-                />
-              </>
+            {order.repackRequested && <span>При оформлении покупатель попросил одну коробку</span>}
+            {order.deliveryMethod === "cdek" ? (
+              <OrderCDEKTracking
+                key={order.id}
+                order={order}
+                disabled={disabled || busy}
+                onSaved={onSaved}
+              />
+            ) : (
+              order.deliveryMethod !== "pickup" && (
+                <>
+                  <span className="order-contacts-label">Трек-номер</span>
+                  <CopyField
+                    label="трек-номер"
+                    value={order.trackNumber || ""}
+                    empty="Появится после отправки"
+                  />
+                </>
+              )
             )}
             {order.comment && (
               <>
@@ -1221,29 +1277,6 @@ export function AdminOrderEditor({
               ? "Доставка оплачивается перевозчику при получении и не входит в сумму оплаты растений."
               : "Стоимость доставки входит в сумму оплаты заказа."}
           </small>
-          {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "unknown" && (
-            <p className="admin-flag">
-              СДЭК не подтвердил создание. Система ищет заявку по номеру заказа без повторной
-              отправки.
-            </p>
-          )}
-          {order.deliveryMethod === "cdek" && adjustment.cdekCreateState === "manual_review" && (
-            <p className="admin-flag">
-              {adjustment.cdekLastError?.includes("остатка растений недостаточно")
-                ? `Отправка оплаченного заказа ${adjustment.orderNumber} остановлена: остатка растений недостаточно. Проверьте наличие и решите вручную.`
-                : `Проверьте заказ ${adjustment.orderNumber} в кабинете СДЭК. Новая заявка автоматически не создаётся.`}
-            </p>
-          )}
-          {order.deliveryMethod === "cdek" && adjustment.cdekStatus && (
-            <small>Статус СДЭК: {adjustment.cdekStatusReason || adjustment.cdekStatus}</small>
-          )}
-          {order.deliveryMethod === "cdek" &&
-            adjustment.cdekLastError &&
-            ["unknown", "manual_review", "retry"].includes(adjustment.cdekCreateState) &&
-            !(
-              adjustment.cdekCreateState === "manual_review" &&
-              adjustment.cdekLastError.includes("остатка растений недостаточно")
-            ) && <small>{adjustment.cdekLastError}</small>}
         </section>
       )}
 
@@ -1311,6 +1344,228 @@ export function AdminOrderEditor({
           the prepared order is frozen even while its summary is visible. */}
       <div hidden={view === "summary"}>{editor}</div>
     </>
+  );
+}
+
+type OrderCDEKState = {
+  revision: number;
+  trackNumber: string;
+  manualTrack: boolean;
+  orderStatus?: string;
+  error: string;
+  pending: boolean;
+  canRetry: boolean;
+  retryUnavailable: string;
+  canSetTracking: boolean;
+};
+
+function describeCDEKError(error: string) {
+  const httpStatus = /^СДЭК вернул ошибку \((\d{3})\):?\s*/.exec(error);
+  const body = httpStatus
+    ? error.slice(httpStatus[0].length)
+    : error.replace(/^СДЭК отклонил регистрацию:\s*/, "");
+  const codes = httpStatus ? [`HTTP ${httpStatus[1]}`] : [];
+  const messages = body
+    .split(/;\s+(?=[a-z][\w.-]*[_-][\w.-]*(?::|$))/i)
+    .map((issue) => {
+      const detail = /^([a-z][\w.-]*[_-][\w.-]*)(?::\s*(.*))?$/is.exec(issue.trim());
+      if (!detail) return issue.trim();
+      codes.push(detail[1]);
+      return detail[2]?.trim() ?? "";
+    })
+    .filter(Boolean);
+  return { messages, codes: [...new Set(codes)] };
+}
+
+function OrderCDEKTracking({
+  order,
+  disabled,
+  onSaved,
+}: {
+  order: Order;
+  disabled: boolean;
+  onSaved: (order: Order) => void;
+}) {
+  const path = `/api/v1/admin/orders/${order.id}/cdek`;
+  const [shipping, setShipping] = useState<OrderCDEKState | null>(null);
+  const [trackDraft, setTrackDraft] = useState<string | null>(null);
+  const [action, setAction] = useState<"" | "retry" | "set_tracking">("");
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [notice, setNotice] = useState("");
+  const watchShipping =
+    !shipping ||
+    shipping.pending ||
+    Boolean(shipping.error) ||
+    (shipping.manualTrack && !["completed", "cancelled"].includes(order.status));
+  const applyStatus = useEffectEvent((next: OrderCDEKState) => {
+    if (next.manualTrack && next.orderStatus && next.orderStatus !== order.status) {
+      onSaved({ ...order, status: next.orderStatus, workflow: undefined });
+    }
+  });
+
+  useEffect(() => {
+    if (action || !watchShipping) return;
+    const controller = new AbortController();
+    let timer = 0;
+    const refresh = async () => {
+      try {
+        const data = await api<{ shipping: OrderCDEKState }>(path, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        setShipping(data.shipping);
+        setLoadError("");
+        applyStatus(data.shipping);
+        const followsTrack =
+          data.shipping.manualTrack &&
+          !["completed", "cancelled"].includes(data.shipping.orderStatus || "");
+        if (!data.shipping.pending && !data.shipping.error && !followsTrack) return;
+        timer = window.setTimeout(() => void refresh(), data.shipping.pending ? 4000 : 15000);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setLoadError((error as Error).message);
+        timer = window.setTimeout(() => void refresh(), 15000);
+      }
+    };
+    void refresh();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [path, watchShipping, action]);
+
+  const trackNumber = shipping?.trackNumber ?? order.trackNumber ?? "";
+  const enteredTrack = trackDraft ?? trackNumber;
+  const registrationError = shipping?.error ? describeCDEKError(shipping.error) : null;
+  const save = async (next: "retry" | "set_tracking") => {
+    if (!shipping || action) return;
+    setAction(next);
+    setActionError("");
+    setNotice("");
+    try {
+      const data = await api<{ shipping: OrderCDEKState; order: Order }>(path, {
+        method: "POST",
+        body: JSON.stringify({
+          revision: shipping.revision,
+          action: next,
+          ...(next === "set_tracking" ? { trackNumber: enteredTrack.trim() } : {}),
+        }),
+      });
+      setShipping(data.shipping);
+      setTrackDraft(null);
+      setNotice(next === "set_tracking" ? "Трек-номер сохранён" : "");
+      onSaved(data.order);
+    } catch (error) {
+      setActionError((error as Error).message);
+      void api<{ shipping: OrderCDEKState }>(path)
+        .then((data) => setShipping(data.shipping))
+        .catch(() => {});
+    } finally {
+      setAction("");
+    }
+  };
+  const submitTracking = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void save("set_tracking");
+  };
+
+  return (
+    <div className="order-cdek-tracking">
+      <span className="order-contacts-label">Трек-номер</span>
+      <CopyField label="трек-номер" value={trackNumber} empty="Трек-номер пока не присвоен" />
+      {shipping?.manualTrack && <small>Добавлен вручную</small>}
+      {shipping?.pending && !trackNumber && (
+        <small role="status">Ожидаем подтверждения от СДЭК</small>
+      )}
+      {shipping && registrationError && (
+        <div className="order-cdek-error">
+          <div className="order-cdek-error-text" role="status">
+            <strong>
+              {shipping.manualTrack ? "Статус по треку" : "Ошибка регистрации в СДЭК"}
+            </strong>
+            {registrationError.messages.map((message, index) => (
+              <p key={`${index}-${message}`}>{message}</p>
+            ))}
+          </div>
+          {registrationError.codes.length > 0 && (
+            <div className="order-cdek-error-codes">
+              <span>{registrationError.codes.length === 1 ? "Код ошибки" : "Коды ошибок"}</span>
+              {registrationError.codes.map((code) => (
+                <code key={code}>{code}</code>
+              ))}
+            </div>
+          )}
+          {shipping.canRetry && (
+            <button
+              type="button"
+              className="ws-button"
+              onClick={() => void save("retry")}
+              disabled={disabled || !!action}
+            >
+              {action === "retry" ? "Отправляем…" : "Повторить"}
+            </button>
+          )}
+          {shipping.retryUnavailable && (
+            <small className="order-cdek-error-hint">{shipping.retryUnavailable}</small>
+          )}
+        </div>
+      )}
+      {shipping?.canSetTracking && trackDraft === null && (
+        <button
+          type="button"
+          className="ws-link-button"
+          disabled={disabled || !!action}
+          onClick={() => {
+            setNotice("");
+            setTrackDraft(trackNumber);
+          }}
+        >
+          {shipping.manualTrack ? "Изменить ручной трек" : "Указать трек-номер вручную"}
+        </button>
+      )}
+      {shipping?.canSetTracking && trackDraft !== null && (
+        <form onSubmit={submitTracking}>
+          <label>
+            Трек-номер СДЭК
+            <input
+              type="text"
+              name="trackNumber"
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              required
+              maxLength={64}
+              value={enteredTrack}
+              onChange={(event) => setTrackDraft(event.target.value)}
+              disabled={disabled || !!action}
+            />
+          </label>
+          <div className="order-cdek-form-actions">
+            <button
+              type="submit"
+              className="ws-button"
+              disabled={
+                disabled || !!action || !enteredTrack.trim() || enteredTrack.trim() === trackNumber
+              }
+            >
+              {action === "set_tracking" ? "Сохраняем…" : "Сохранить трек"}
+            </button>
+            <button
+              type="button"
+              className="ws-link-button"
+              disabled={!!action}
+              onClick={() => {
+                setTrackDraft(null);
+                setActionError("");
+              }}
+            >
+              Отмена
+            </button>
+          </div>
+        </form>
+      )}
+      {notice && <small role="status">{notice}</small>}
+      {(actionError || loadError) && <small role="alert">{actionError || loadError}</small>}
+    </div>
   );
 }
 

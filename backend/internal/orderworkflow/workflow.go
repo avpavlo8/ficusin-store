@@ -39,9 +39,9 @@ type Line struct {
 }
 type Facts struct {
 	Status, PaymentStatus, PaymentMethod, DeliveryMethod, CDEKState string
-	FeePending, RepackRequested, AddressConfirmed, PaymentUncertain bool
+	FeePending, AddressConfirmed, PaymentUncertain                  bool
 	Lines                                                           []Line
-	RevisionPending                                                 bool
+	RevisionPending, RevisionNeedsAttention                         bool
 	BoxesConfirmed                                                  bool
 }
 
@@ -77,7 +77,11 @@ func Evaluate(f Facts) State {
 		add("payment", message, "payment")
 	}
 	if f.RevisionPending {
-		add("realization_sync", "Изменения заказа ещё обновляются в СБИС", "items")
+		if f.RevisionNeedsAttention {
+			add("realization_attention", "СБИС остановил обновление состава заказа", "")
+		} else {
+			add("realization_sync", "СБИС обновляет состав заказа", "")
+		}
 	}
 	if f.PaymentUncertain {
 		add("payment_check", "Нужно уточнить результат оплаты", "payment")
@@ -99,9 +103,7 @@ func Evaluate(f Facts) State {
 		}
 	}
 	if f.DeliveryMethod == "cdek" {
-		if f.RepackRequested {
-			add("repack", "Нужно подтвердить состав коробки и пересчитать доставку", "delivery")
-		} else if f.FeePending {
+		if f.FeePending {
 			add("delivery_fee", "Нужно рассчитать и подтвердить стоимость доставки", "delivery")
 		}
 		if !f.AddressConfirmed {
@@ -140,7 +142,7 @@ type Querier interface {
 }
 
 const factsSQL = `
- SELECT o.id,o.status,o.payment_status,o.payment_method,o.delivery_method,o.delivery_fee_pending=1,o.delivery_repack_requested=1,
+ SELECT o.id,o.status,o.payment_status,o.payment_method,o.delivery_method,(o.delivery_fee_pending=1 OR o.delivery_repack_requested=1),
   o.cdek_create_state,(COALESCE(o.cdek_tariff_code,0)>0 AND COALESCE(o.cdek_office_code,'')<>''),
   EXISTS(SELECT 1 FROM payments pay WHERE pay.order_id=o.id AND (pay.status='waiting_for_capture' OR (pay.status='pending' AND pay.provider_payment_id=''))),
   COALESCE((SELECT jsonb_agg(jsonb_build_object('orderItemIds',lines.order_item_ids,'name',lines.name,'wanted',lines.wanted,'available',COALESCE(stock.available,0),'stockKnown',COALESCE(stock.known,false),'dimensions',lines.dimensions))
@@ -157,7 +159,9 @@ const factsSQL = `
     WHERE i.variant_id=lines.variant_id AND i.synced_at>=CURRENT_TIMESTAMP-INTERVAL '2 hours') stock ON TRUE),'[]'::jsonb),
   COALESCE((SELECT boxes FROM order_packing_workflows w WHERE w.order_id=o.id AND w.order_revision=o.shipment_revision AND w.state NOT IN ('draft','cancelled','stale') LIMIT 1),'[]'::jsonb),
   COALESCE((SELECT jsonb_object_agg(oi.id::text,oi.quantity) FROM order_items oi WHERE oi.order_id=o.id),'{}'::jsonb),
-  order_sale_revision_pending(o.id)
+  order_sale_revision_pending(o.id),
+  EXISTS(SELECT 1 FROM order_sale_intents i JOIN order_sale_publications p ON p.intent_id=i.id
+    WHERE i.order_id=o.id AND i.event_trigger='created' AND p.status IN ('needs_attention','failed'))
  FROM orders o WHERE o.id=ANY($1::bigint[]) ORDER BY o.id`
 
 func Read(ctx context.Context, db Querier, ids []int64) (map[int64]State, error) {
@@ -174,7 +178,7 @@ func Read(ctx context.Context, db Querier, ids []int64) (map[int64]State, error)
 		var id int64
 		var f Facts
 		var lines, boxes, quantities []byte
-		if err = rows.Scan(&id, &f.Status, &f.PaymentStatus, &f.PaymentMethod, &f.DeliveryMethod, &f.FeePending, &f.RepackRequested, &f.CDEKState, &f.AddressConfirmed, &f.PaymentUncertain, &lines, &boxes, &quantities, &f.RevisionPending); err != nil {
+		if err = rows.Scan(&id, &f.Status, &f.PaymentStatus, &f.PaymentMethod, &f.DeliveryMethod, &f.FeePending, &f.CDEKState, &f.AddressConfirmed, &f.PaymentUncertain, &lines, &boxes, &quantities, &f.RevisionPending, &f.RevisionNeedsAttention); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal(lines, &f.Lines); err != nil {

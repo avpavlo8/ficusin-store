@@ -71,7 +71,10 @@ func (p *SabyEditorPublisher) buildSabyEditorFields(card *sabyEditorNativeRecord
 			return nil, nil, err
 		}
 	}
-	images, ids, err := sabyEditorImageData(card.value("ImageData"), state.Images)
+	if state.Gallery != nil && !state.Gallery.changed() {
+		return fields, nil, nil
+	}
+	images, ids, err := sabyEditorImageDataWithDelta(card.value("ImageData"), state.Images, state.Gallery)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -79,6 +82,10 @@ func (p *SabyEditorPublisher) buildSabyEditorFields(card *sabyEditorNativeRecord
 	return fields, ids, nil
 }
 func sabyEditorImageData(raw json.RawMessage, uploads []sabyEditorUploadedImage) (json.RawMessage, []string, error) {
+	return sabyEditorImageDataWithDelta(raw, uploads, nil)
+}
+
+func sabyEditorImageDataWithDelta(raw json.RawMessage, uploads []sabyEditorUploadedImage, delta *sabyEditorGalleryDelta) (json.RawMessage, []string, error) {
 	set, err := parseSabyEditorNativeRecordSet(raw)
 	if err != nil {
 		return nil, nil, err
@@ -89,17 +96,21 @@ func sabyEditorImageData(raw json.RawMessage, uploads []sabyEditorUploadedImage)
 		}
 	}
 	protected := [][]json.RawMessage{}
-	for i, row := range set.rows {
-		var canDelete, canEdit, isMarket, isMaster bool
-		deleteKnown := json.Unmarshal(set.cell(i, "canDelete"), &canDelete) == nil
-		editKnown := json.Unmarshal(set.cell(i, "canEdit"), &canEdit) == nil
-		_ = json.Unmarshal(set.cell(i, "isMarketImage"), &isMarket)
-		if !deleteKnown || !editKnown || !canDelete || !canEdit || isMarket {
-			_ = json.Unmarshal(set.cell(i, "isMaster"), &isMaster)
-			if isMaster {
-				return nil, nil, errors.New("Главное фото СБИС недоступно для изменения: сначала проверьте обложку на площадке")
+	if delta != nil {
+		protected, err = delta.retainedRows(set)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		for i, row := range set.rows {
+			if !sabyEditorImageEditable(set, i) {
+				var isMaster bool
+				_ = json.Unmarshal(set.cell(i, "isMaster"), &isMaster)
+				if isMaster {
+					return nil, nil, errors.New("Главное фото СБИС недоступно для изменения: сначала проверьте обложку на площадке")
+				}
+				protected = append(protected, row)
 			}
-			protected = append(protected, row)
 		}
 	}
 	set.rows = nil
@@ -161,6 +172,28 @@ func sabyEditorImageData(raw json.RawMessage, uploads []sabyEditorUploadedImage)
 		seen[id] = true
 		set.rows = append(set.rows, row)
 		ids = append(ids, id)
+	}
+	if delta != nil {
+		if len(ids) == 0 || len(ids) > 30 {
+			return nil, nil, errors.New("СБИС допускает от 1 до 30 фото. Галерея площадки сохранена")
+		}
+		// Existing rows keep their order, cover and metadata. A newly uploaded
+		// image is appended; a replacement cover is needed only after deletion.
+		set.rows = append(append([][]json.RawMessage{}, set.rows[len(uploads):]...), set.rows[:len(uploads)]...)
+		ids = append(append([]string{}, ids[len(uploads):]...), ids[:len(uploads)]...)
+		hasMaster := false
+		for i := range protected {
+			var master bool
+			_ = json.Unmarshal(set.cell(i, "isMaster"), &master)
+			hasMaster = hasMaster || master
+		}
+		for i := range set.rows {
+			if i >= len(protected) || !hasMaster && i == 0 {
+				if err := set.set(i, "isMaster", !hasMaster && i == 0); err != nil {
+					return nil, nil, err
+				}
+			}
+		}
 	}
 	encoded, e := set.marshal()
 	return encoded, ids, e
@@ -232,19 +265,37 @@ func (p *SabyEditorPublisher) verifySabyEditorFields(card *sabyEditorNativeRecor
 			return errors.New("СБИС не подтвердил цену выбранного прайс-листа")
 		}
 	}
+	if state.Gallery != nil && !state.Gallery.changed() {
+		return nil
+	}
 	images, err := parseSabyEditorNativeRecordSet(card.value("ImageData"))
 	if err != nil {
 		return err
 	}
-	if len(images.rows) != len(state.ImageIDs) || len(state.ImageIDs) < len(r.Images) {
+	if len(images.rows) != len(state.ImageIDs) || state.Gallery == nil && len(state.ImageIDs) < len(r.Images) {
 		return errors.New("СБИС не подтвердил все фотографии")
+	}
+	var expectedPhotos *sabyEditorNativeRecordSet
+	if state.Gallery != nil {
+		prepared, err := parseSabyEditorNativeRecord(state.PreparedData)
+		if err != nil {
+			return err
+		}
+		expectedPhotos, err = parseSabyEditorNativeRecordSet(prepared.value("ImageData"))
+		if err != nil {
+			return err
+		}
 	}
 	for i, want := range state.ImageIDs {
 		var id string
 		json.Unmarshal(images.cell(i, "id"), &id)
 		var master bool
 		json.Unmarshal(images.cell(i, "isMaster"), &master)
-		if id != want || master != (i == 0) {
+		wantMaster := i == 0
+		if expectedPhotos != nil {
+			_ = json.Unmarshal(expectedPhotos.cell(i, "isMaster"), &wantMaster)
+		}
+		if id != want || master != wantMaster {
 			return errors.New("СБИС не подтвердил порядок фотографий и обложку")
 		}
 	}

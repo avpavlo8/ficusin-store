@@ -97,7 +97,7 @@ func Fit(source image.Image, maxSide int) image.Image {
 
 // Prepare разбирает исходный файл и возвращает готовый к отправке JPEG.
 func Prepare(raw []byte, maxSide int) ([]byte, error) {
-	source, _, err := image.Decode(bytes.NewReader(raw))
+	source, err := Decode(raw)
 	if err != nil {
 		return nil, fmt.Errorf("не разобрать изображение: %w", err)
 	}

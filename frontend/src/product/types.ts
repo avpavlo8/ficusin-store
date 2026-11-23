@@ -7,6 +7,8 @@ export type CatalogProduct = {
   image: string;
   size: string;
   stock: number;
+  hasIncomingStock?: boolean;
+  expectedArrivalDate?: string;
 };
 export type ProductAttribute = {
   code: string;
@@ -27,6 +29,8 @@ export type ProductVariant = {
   label: string;
   price: number;
   stock: number;
+  hasIncomingStock?: boolean;
+  expectedArrivalDate?: string;
   heightCm?: number;
   potDiameterCm?: number;
   wholesaleMinQty: number;

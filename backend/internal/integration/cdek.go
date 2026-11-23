@@ -368,6 +368,7 @@ type Shipment struct {
 	TrackNumber         string
 	Status              string
 	StatusReason        string
+	RegistrationError   string
 	CancellationPending bool
 }
 
@@ -457,69 +458,62 @@ func (client *CDEKClient) CreateOrder(
 		// Additional shop collection; do not use for the carrier tariff.
 		body["delivery_recipient_cost"] = map[string]any{"value": request.PaymentOnDelivery}
 	}
-	var result struct {
-		Entity struct {
-			UUID string `json:"uuid"`
-		} `json:"entity"`
-		Requests []struct {
-			Errors []struct {
-				Message string `json:"message"`
-			} `json:"errors"`
-		} `json:"requests"`
-	}
+	var result cdekOrderResponse
 	if err := client.request(ctx, http.MethodPost, "/orders", body, &result); err != nil {
 		return Shipment{}, err
 	}
-	for _, attempt := range result.Requests {
-		for _, failure := range attempt.Errors {
-			return Shipment{}, fmt.Errorf("СДЭК отказал: %s", failure.Message)
-		}
+	diagnostic := result.registrationError()
+	if diagnostic != "" && result.Entity.UUID == "" {
+		return Shipment{}, errors.New(diagnostic)
 	}
 	if result.Entity.UUID == "" {
 		return Shipment{}, fmt.Errorf("%w: СДЭК не вернул номер заявки", ErrCDEKOutcomeUnknown)
 	}
-	return Shipment{UUID: result.Entity.UUID}, nil
+	shipment := result.shipment()
+	if diagnostic != "" && shipment.TrackNumber == "" {
+		shipment.Status = "INVALID"
+		shipment.StatusReason = "Некорректный заказ"
+		shipment.RegistrationError = diagnostic
+	}
+	return shipment, nil
 }
 
 // FindOrderByNumber resolves a lost create response without issuing another
 // create request. The merchant order number is stable and unique in Ficusin.
 func (client *CDEKClient) FindOrderByNumber(ctx context.Context, number string) (Shipment, error) {
-	number = strings.TrimSpace(number)
-	if number == "" {
-		return Shipment{}, ErrCDEKOrderNotFound
-	}
-	var result struct {
-		Entity struct {
-			UUID       string `json:"uuid"`
-			CDEKNumber string `json:"cdek_number"`
-			Statuses   []struct {
-				Code string `json:"code"`
-				Name string `json:"name"`
-			} `json:"statuses"`
-		} `json:"entity"`
-		Requests []struct {
-			Errors []struct {
-				Message string `json:"message"`
-			} `json:"errors"`
-		} `json:"requests"`
-	}
-	if err := client.request(ctx, http.MethodGet, "/orders?im_number="+url.QueryEscape(number), nil, &result); err != nil {
+	return client.findOrder(ctx, "im_number", number)
+}
+
+// FindOrderByTrack reads a shipment already registered under the CDEK account.
+func (client *CDEKClient) FindOrderByTrack(ctx context.Context, track string) (Shipment, error) {
+	track = strings.TrimSpace(track)
+	shipment, err := client.findOrder(ctx, "cdek_number", track)
+	if err != nil {
 		return Shipment{}, err
 	}
-	for _, request := range result.Requests {
-		for _, failure := range request.Errors {
-			return Shipment{}, fmt.Errorf("СДЭК не нашёл заявку: %s", failure.Message)
-		}
+	if shipment.TrackNumber != track {
+		return Shipment{}, errors.New("СДЭК вернул другой трек-номер")
+	}
+	return shipment, nil
+}
+
+func (client *CDEKClient) findOrder(ctx context.Context, key, value string) (Shipment, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return Shipment{}, ErrCDEKOrderNotFound
+	}
+	query := url.Values{key: []string{value}}
+	var result cdekOrderResponse
+	if err := client.request(ctx, http.MethodGet, "/orders?"+query.Encode(), nil, &result); err != nil {
+		return Shipment{}, err
+	}
+	if err := result.lookupFailure(); err != nil {
+		return Shipment{}, err
 	}
 	if result.Entity.UUID == "" {
 		return Shipment{}, ErrCDEKOrderNotFound
 	}
-	shipment := Shipment{UUID: result.Entity.UUID, TrackNumber: result.Entity.CDEKNumber}
-	if count := len(result.Entity.Statuses); count > 0 {
-		shipment.Status = result.Entity.Statuses[count-1].Code
-		shipment.StatusReason = result.Entity.Statuses[count-1].Name
-	}
-	return shipment, nil
+	return result.shipment(), nil
 }
 
 // FetchOrder asks what has happened to a shipment. CDEK registers a parcel
@@ -542,18 +536,7 @@ func (client *CDEKClient) FetchOrder(ctx context.Context, uuid string) (Shipment
 	if result.Entity.UUID != uuid {
 		return Shipment{}, fmt.Errorf("%w: UUID в ответе СДЭК не совпал", ErrCDEKOutcomeUnknown)
 	}
-	shipment := Shipment{UUID: result.Entity.UUID, TrackNumber: result.Entity.CDEKNumber}
-	// Compare timestamps, not array order: the carrier may return newest first.
-	var latest time.Time
-	for index, status := range result.Entity.Statuses {
-		date, err := time.Parse(time.RFC3339, status.DateTime)
-		if err != nil {
-			date, _ = time.Parse("2006-01-02T15:04:05-0700", status.DateTime)
-		}
-		if index == 0 || date.After(latest) {
-			shipment.Status, shipment.StatusReason, latest = status.Code, status.Name, date
-		}
-	}
+	shipment := result.shipment()
 	for _, attempt := range result.Requests {
 		if attempt.Type != "DELETE" {
 			continue
@@ -573,12 +556,25 @@ func (client *CDEKClient) FetchOrder(ctx context.Context, uuid string) (Shipment
 // CancelOrder is idempotent for an already removed application. An accepted
 // asynchronous DELETE is only pending; a subsequent GET must confirm removal.
 func (client *CDEKClient) CancelOrder(ctx context.Context, uuid string) error {
+	return client.cancelOrder(ctx, uuid, false)
+}
+
+var ErrCDEKRegistrationChanged = errors.New("Статус заявки СДЭК изменился. Проверьте текущую заявку перед повтором")
+
+func (client *CDEKClient) CancelRejectedOrder(ctx context.Context, uuid string) error {
+	return client.cancelOrder(ctx, uuid, true)
+}
+
+func (client *CDEKClient) cancelOrder(ctx context.Context, uuid string, rejectedOnly bool) error {
 	shipment, err := client.FetchOrder(ctx, uuid)
 	if errors.Is(err, ErrCDEKOrderNotFound) || (err == nil && shipment.Status == "REMOVED") {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	if rejectedOnly && (!strings.EqualFold(shipment.Status, "INVALID") || shipment.TrackNumber != "") {
+		return ErrCDEKRegistrationChanged
 	}
 	if shipment.CancellationPending {
 		return ErrCDEKCancellationPending

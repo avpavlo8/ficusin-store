@@ -277,26 +277,39 @@ type Saby struct {
 	Mode         string   `json:"mode"`
 	ExistingCode string   `json:"existingCode"`
 }
+
+// RemoteGallery is returned by a live read and never written to a receipt.
+type RemoteGallery struct {
+	Photos     []string
+	Incomplete bool
+	Video      string
+}
+
 type RemoteIDs struct {
-	IsCreated    *bool  `json:"isCreated,omitempty"`
-	UUID         string `json:"uuid,omitempty"`
-	ImageCount   int    `json:"imageCount,omitempty"`
-	RemoteStatus string `json:"remoteStatus,omitempty"`
-	ProductID    string `json:"productId,omitempty"`
-	OfferID      string `json:"offerId,omitempty"`
-	SKU          string `json:"sku,omitempty"`
-	Barcode      string `json:"barcode,omitempty"`
+	Gallery      *RemoteGallery `json:"-"`
+	IsCreated    *bool          `json:"isCreated,omitempty"`
+	UUID         string         `json:"uuid,omitempty"`
+	ImageCount   int            `json:"imageCount,omitempty"`
+	RemoteStatus string         `json:"remoteStatus,omitempty"`
+	ProductID    string         `json:"productId,omitempty"`
+	OfferID      string         `json:"offerId,omitempty"`
+	SKU          string         `json:"sku,omitempty"`
+	Barcode      string         `json:"barcode,omitempty"`
 }
 type Progress struct {
-	ReapplyPayload  bool            `json:"reapplyPayload,omitempty"`
-	Native          json.RawMessage `json:"native,omitempty"`
-	UpdateRequest   *Request        `json:"updateRequest,omitempty"`
-	Stage           string          `json:"stage,omitempty"`
-	TaskID          int64           `json:"taskId,omitempty"`
-	IDs             RemoteIDs       `json:"ids"`
-	CreateAttempted bool            `json:"createAttempted,omitempty"`
-	Ambiguous       bool            `json:"ambiguous,omitempty"`
-	Checks          int             `json:"checks,omitempty"`
+	WBPhotoMatching bool               `json:"wbPhotoMatching,omitempty"`
+	PhotoCount      *int               `json:"photoCount,omitempty"`
+	SitePhotos      *SitePhotoBaseline `json:"sitePhotos,omitempty"`
+	PhotoWrite      []string           `json:"photoWrite,omitempty"`
+	ReapplyPayload  bool               `json:"reapplyPayload,omitempty"`
+	Native          json.RawMessage    `json:"native,omitempty"`
+	UpdateRequest   *Request           `json:"updateRequest,omitempty"`
+	Stage           string             `json:"stage,omitempty"`
+	TaskID          int64              `json:"taskId,omitempty"`
+	IDs             RemoteIDs          `json:"ids"`
+	CreateAttempted bool               `json:"createAttempted,omitempty"`
+	Ambiguous       bool               `json:"ambiguous,omitempty"`
+	Checks          int                `json:"checks,omitempty"`
 }
 type Result struct {
 	Progress Progress

@@ -64,7 +64,6 @@ export function useCheckout({
   const [cdekOfficeListOpen, setCdekOfficeListOpen] = useState(false);
   const [cdekQuotes, setCdekQuotes] = useState<CdekQuote[]>([]);
   const [cdekTariffCode, setCdekTariffCode] = useState(0);
-  const [cdekRepack, setCdekRepack] = useState(false);
   const [paymentOptions, setPaymentOptions] = useState<{
     delivery: string;
     methods: PaymentMethod[];
@@ -164,7 +163,7 @@ export function useCheckout({
   const deliveryOption = deliveryOptions.find((item) => item.id === delivery) ?? deliveryOptions[0];
   const cdekQuote =
     cdekQuotes.find((item) => item.tariffCode === cdekTariffCode) ?? cdekQuotes[0] ?? null;
-  const cdekFeePending = delivery === "cdek" && (!cdekQuote || cdekRepack);
+  const cdekFeePending = delivery === "cdek" && !cdekQuote;
   const deliveryFeePending = cdekFeePending;
   const deliveryFee =
     delivery === "cdek"
@@ -264,8 +263,7 @@ export function useCheckout({
               cityCode: cdekCity?.code,
               cityName: cdekCity?.city,
               officeCode: cdekOfficeCode,
-              tariffCode: cdekRepack ? 0 : (cdekQuote?.tariffCode ?? 0),
-              repack: cdekRepack,
+              tariffCode: cdekQuote?.tariffCode ?? 0,
             }
           : undefined,
       items: cartLines.map((item) => ({ id: item.id, quantity: item.quantity })),
@@ -408,8 +406,6 @@ export function useCheckout({
       cdekOfficeMatches,
       selectedOffice,
       cdekFeePending,
-      cdekRepack,
-      setCdekRepack,
       cartCount,
       hasPreorder,
       cdekQuotes,
