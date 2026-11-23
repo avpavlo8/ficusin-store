@@ -10,13 +10,13 @@ import {
   useCallback,
   useEffect,
   useId,
-  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
   useProcurementDialog,
+  useProcurementLineNavigation,
   useProcurementError,
   validateProcurementPDF,
   uploadProcurementPDF,
@@ -214,36 +214,10 @@ export function ProcurementPlanDialog({
     initialRecommendations.length ? initialRecommendations.map(makeLine) : [makeLine()],
   );
   const [sortOrder, setSortOrder] = useState(() => sortPlanLines(items).map((item) => item.id));
-  const lineFirstFields = useRef(new Map<string, HTMLInputElement>());
-  const pendingNewLine = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    const id = pendingNewLine.current;
-    if (!id) return;
-    const field = lineFirstFields.current.get(id);
-    if (!field) return;
-    pendingNewLine.current = null;
-    field.focus({ preventScroll: true });
-    field.scrollIntoView({ block: "center", inline: "nearest" });
-  }, [items]);
-  const rowScrollAnchor = useRef<{ row: HTMLElement; top: number } | null>(null);
-  useLayoutEffect(() => {
-    const anchor = rowScrollAnchor.current;
-    rowScrollAnchor.current = null;
-    if (!anchor?.row.isConnected) return;
-    const offset = anchor.row.getBoundingClientRect().top - anchor.top;
-    if (Math.abs(offset) < 1) return;
-    // Keep the row at its previous screen position, including in the mobile
-    // dialog where the dialog itself scrolls instead of the table wrapper.
-    for (let parent = anchor.row.parentElement; parent; parent = parent.parentElement) {
-      if (
-        parent.scrollHeight > parent.clientHeight &&
-        /auto|scroll|overlay/.test(window.getComputedStyle(parent).overflowY)
-      ) {
-        parent.scrollTop += offset;
-        break;
-      }
-    }
-  }, [sortOrder]);
+  const { setFirstField, pendingNewLine, rememberRow } = useProcurementLineNavigation(
+    items,
+    sortOrder,
+  );
   const sabyIDsKey = [...new Set(items.map((item) => item.sabyId).filter(Boolean))]
     .sort()
     .join("\u001f");
@@ -404,14 +378,7 @@ export function ProcurementPlanDialog({
       )
         setItems(normalizedItems);
       window.setTimeout(() => {
-        // Focus has already moved by now. Follow the newly focused row when
-        // the user continues in the table; otherwise follow the edited row.
-        const activeRow = document.activeElement?.closest<HTMLElement>(
-          ".procurement-plan-table tbody tr",
-        );
-        const row = activeRow || editedRow;
-        if (row?.isConnected)
-          rowScrollAnchor.current = { row, top: row.getBoundingClientRect().top };
+        rememberRow(editedRow);
         setSortOrder(sortPlanLines(normalizedItems).map((item) => item.id));
       }, 0);
       if (
@@ -424,7 +391,7 @@ export function ProcurementPlanDialog({
         void persistDraft(draftSignature);
       }
     },
-    [draftLoading, draftSignature, hasDraftContent, items, persistDraft, saving],
+    [draftLoading, draftSignature, hasDraftContent, items, persistDraft, rememberRow, saving],
   );
   useEffect(() => {
     const saveOnWindowBlur = () => commitPlan();
@@ -941,10 +908,7 @@ export function ProcurementPlanDialog({
                       >
                         <td data-label="Название у поставщика">
                           <input
-                            ref={(field) => {
-                              if (field) lineFirstFields.current.set(item.id, field);
-                              else lineFirstFields.current.delete(item.id);
-                            }}
+                            ref={(field) => setFirstField(item.id, field)}
                             aria-invalid={Boolean(item.rowTouched && !item.category.trim())}
                             value={item.category}
                             onChange={(event) =>
