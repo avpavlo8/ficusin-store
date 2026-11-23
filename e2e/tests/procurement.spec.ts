@@ -151,7 +151,7 @@ test("@desktop @phone several invoice rows fulfil one planned quantity",async({p
  await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; mixedRecommendations?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; mixedRecommendations?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean; salesReview?:boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -231,6 +231,9 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     });
   }
   if(options.sizeDefaults) Object.assign(procurement.recommendations[0],{potDiameterCm:null,heightCm:null});
+  if (options.salesReview) Object.assign(procurement.salesSync.find(item=>item.channel==="ozon")!, {
+    status:"ok",lastSuccessAt:"2026-08-10T12:00:00Z",rowsUnlinked:1,
+  });
   const dashboard = {
       user: { fullName: "Тестовый владелец" }, role: "owner",
       permissions: ["dashboard.read", "procurement.read", "procurement.edit", "integrations.edit", "catalog.delete"],
@@ -276,6 +279,8 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
   }
   await page.addInitScript(({ user, dashboard, procurement, orderDetail, requestError, catalogMatch, dimensionReview, sizeDefaults }) => {
     const originalFetch = window.fetch.bind(window);
+    let salesResolved = false;
+    let salesIgnored = false;
     const sabyExports: unknown[] = [];
     Object.assign(window, { sabyExports });
 
@@ -409,13 +414,21 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       if (path === "/api/v1/admin/procurement/sales/nomenclature") {
         // Живой справочник иногда отдаёт одну запись дважды. Разбору продаж
         // выбирать между копиями нечего — он обязан их схлопнуть.
-        const candidate = { sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Фикус Бенджамина D12", balance: 4, price: 100 };
+        const candidate = { variantId:101, sabyId: "TEST-SABY-1", code: "TEST-001", article: "TEST-ARTICLE", name: "Фикус Бенджамина D12", balance: 4, price: 100 };
         return json({ items: [candidate, candidate] });
       }
       if (path === "/api/v1/admin/procurement/sales/unlinked") {
-        return json({ items: [{ channel: "ozon", externalId: "fikus-benjamina-12", article: "fikus-benjamina-12", name: "Фикус Бенджамина 12 см", days: 3, units: 7, grossRub: 4900, lastSale: "2026-08-10" }] });
+        return json({ items: salesResolved || (salesIgnored && new URL(raw, window.location.origin).searchParams.get("ignored")!=="1") ? [] : [{ ignored:salesIgnored, channel: "ozon", externalId: "fikus-benjamina-12", article: "fikus-benjamina-12", name: "Фикус Бенджамина 12 см", days: 3, units: 7, grossRub: 4900, lastSale: "2026-08-10" }] });
+      }
+      if (path === "/api/v1/admin/procurement/sales/ignore" && init?.method === "PUT") {
+        salesIgnored=JSON.parse(String(init.body)).ignored;
+        Object.assign(procurement.salesSync.find(item=>item.channel==="ozon")!,{rowsUnlinked:salesIgnored?0:1});
+        return json({ok:true});
       }
       if (path === "/api/v1/admin/procurement/sales/link" && init?.method === "POST") {
+        if (JSON.parse(String(init.body)).variantId!==101) return Promise.resolve(new Response(JSON.stringify({error:"Wrong canonical variant"}),{status:400}));
+        salesResolved=true;
+        Object.assign(procurement.salesSync.find(item=>item.channel==="ozon")!,{rowsUnlinked:0});
         return json({ link: { channel: "ozon", externalId: "fikus-benjamina-12", sabyId: "TEST-SABY-1", sabyName: "Фикус Бенджамина D12", linkedRows: 3, linkedUnits: 7, takenFrom: "", remaining: 0 } });
       }
       if (path.startsWith("/api/v1/")) return json({});
@@ -579,7 +592,7 @@ test("@desktop marketplace check shows its result immediately", async ({ page })
 // конца: выбор товара обязан чинить уже загруженные строки, а не только
 // будущие выгрузки.
 test("@desktop unlinked marketplace sales are matched by hand", async ({ page }) => {
-  await mockProcurement(page);
+  await mockProcurement(page, {salesReview:true});
   await page.goto("/admin");
   await openProcurementSection(page);
   await procurementTab(page, "Продажи без товара");
@@ -595,6 +608,34 @@ test("@desktop unlinked marketplace sales are matched by hand", async ({ page })
   await expect(dialog.getByText("Фикус Бенджамина D12")).toBeVisible();
   await dialog.getByRole("button", { name: "Связать" }).click();
   await expect(page.getByRole("status")).toContainText("В расчёт вернулось строк продаж: 3");
+  await expect(page.getByText("Разбирать нечего",{exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Создать закупку",exact:true}).click();
+  await page.getByRole("tab",{name:"Рекомендации",exact:true}).click();
+  const health=page.getByRole("region",{name:"Качество данных продаж",exact:true});
+  await expect(health).toContainText("Данные продаж");
+  await expect(health).not.toContainText("Рекомендации по неполным данным");
+  await expect(health).not.toContainText("Кодов без связи");
+});
+
+test("@desktop @phone ignored and restored sales refresh the recommendation warning", async ({ page }) => {
+  await mockProcurement(page,{salesReview:true});
+  await page.goto("/admin?section=procurement&view=unlinkedSales");
+  await page.getByRole("button",{name:"Не учитывать",exact:true}).click();
+  await expect(page.getByText("Разбирать нечего",{exact:true})).toBeVisible();
+  const checkHealth=async (unlinked:boolean)=>{
+    await page.getByRole("button",{name:"Создать закупку",exact:true}).click();
+    await page.getByRole("tab",{name:"Рекомендации",exact:true}).click();
+    const health=page.getByRole("region",{name:"Качество данных продаж",exact:true});
+    await health.getByRole("button",{name:"По каналам",exact:true}).click();
+    if(unlinked) await expect(health).toContainText("Кодов без связи с товаром: 1");
+    else await expect(health).not.toContainText("Рекомендации по неполным данным");
+    await page.getByRole("dialog",{name:"Новая закупка",exact:true}).getByRole("button",{name:"Закрыть",exact:true}).last().click();
+  };
+  await checkHealth(false);
+  await page.getByRole("button",{name:"Показать пропущенные",exact:true}).click();
+  await page.getByRole("button",{name:"Учитывать",exact:true}).click();
+  await expect(page.getByRole("button",{name:"Сопоставить",exact:true})).toBeVisible();
+  await checkHealth(true);
 });
 
 test("@desktop procurement blocks calculation until invoice checks pass", async ({ page }) => {
@@ -847,6 +888,42 @@ test("@desktop saved procurement draft is shared and a new recommendation starts
   await page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByRole("button", { name: "Закрыть", exact: true }).first().click();
   await page.getByRole("button", { name: "Продолжить" }).first().click();
   await expect(page.getByRole("dialog", { name: "Новая закупка", exact: true }).getByPlaceholder("Артикул", { exact: true })).toHaveValue("NL-43");
+});
+
+test("@desktop @phone procurement follows a row when its category changes sort position", async ({page})=>{
+  await mockProcurement(page);
+  await page.goto("/admin?section=procurement");
+  await page.getByRole("button",{name:"Создать закупку",exact:true}).click();
+  const dialog=page.getByRole("dialog",{name:"Новая закупка",exact:true});
+  const rows=dialog.locator(".procurement-plan-table tbody tr");
+  for(let index=0;index<16;index++){
+    const row=rows.last();
+    await row.getByLabel("Название у поставщика",{exact:true}).fill(`Категория ${String(index).padStart(2,"0")}`);
+    await row.getByLabel("Название новой позиции",{exact:true}).fill(index===0?"Следим за строкой":`Растение ${index}`);
+    if(index<15){
+      await dialog.getByRole("button",{name:"+ Новая строка",exact:true}).click();
+      await expect(rows).toHaveCount(index+2);
+    }
+  }
+  const moving=rows.filter({has:page.locator('input[value="Следим за строкой"]')});
+  const category=moving.getByLabel("Название у поставщика",{exact:true});
+  const commit=dialog.getByRole("tab",{name:/^Состав закупки/});
+  await category.fill("Я — последняя категория");
+  await commit.click();
+  await expect(rows.last().getByLabel("Название у поставщика",{exact:true})).toHaveValue("Я — последняя категория");
+  await expect(category).toBeInViewport({ratio:1});
+  await category.fill("А — первая категория");
+  await commit.click();
+  await expect(rows.first().getByLabel("Название у поставщика",{exact:true})).toHaveValue("А — первая категория");
+  await expect(category).toBeInViewport({ratio:1});
+  await dialog.getByRole("button",{name:"+ Новая строка",exact:true}).click();
+  await expect(rows).toHaveCount(17);
+  const newCategory=rows.last().getByLabel("Название у поставщика",{exact:true});
+  await expect(newCategory).toBeFocused();
+  await expect(newCategory).toBeInViewport({ratio:1});
+  await newCategory.pressSequentially("Новая категория");
+  await expect(newCategory).toHaveValue("Новая категория");
+
 });
 
 test("@desktop procurement saves and sorts after leaving the edited row", async ({ page }) => {

@@ -1241,7 +1241,7 @@ export function Procurement({
 
           {view === "unlinkedSales" && (
             <Suspense fallback={<p className="admin-hint">Загружаем продажи…</p>}>
-              <ProcurementUnlinkedSales onError={onError} />
+              <ProcurementUnlinkedSales onError={onError} onChanged={load} />
             </Suspense>
           )}
 

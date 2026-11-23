@@ -16,6 +16,7 @@ import {
 } from "react";
 import {
   useProcurementDialog,
+  useProcurementLineNavigation,
   useProcurementError,
   validateProcurementPDF,
   uploadProcurementPDF,
@@ -213,6 +214,10 @@ export function ProcurementPlanDialog({
     initialRecommendations.length ? initialRecommendations.map(makeLine) : [makeLine()],
   );
   const [sortOrder, setSortOrder] = useState(() => sortPlanLines(items).map((item) => item.id));
+  const { setFirstField, pendingNewLine, rememberRow } = useProcurementLineNavigation(
+    items,
+    sortOrder,
+  );
   const sabyIDsKey = [...new Set(items.map((item) => item.sabyId).filter(Boolean))]
     .sort()
     .join("\u001f");
@@ -359,32 +364,39 @@ export function ProcurementPlanDialog({
   );
   const hasDraftContent =
     initialRecommendations.length > 0 || items.some((item) => !isEmptyLine(item));
-  const commitPlan = useCallback(() => {
-    // Sorting after focus changes keeps the row in place while a price or category is edited.
-    const normalizedItems = items.map((item) => ({
-      ...item,
-      expectedUnitPrice: displayPrice(item.expectedUnitPrice),
-    }));
-    if (
-      normalizedItems.some(
-        (item, index) => item.expectedUnitPrice !== items[index].expectedUnitPrice,
+  const commitPlan = useCallback(
+    (editedRow?: HTMLElement) => {
+      // Sorting after focus changes keeps the row in place while a price or category is edited.
+      const normalizedItems = items.map((item) => ({
+        ...item,
+        expectedUnitPrice: displayPrice(item.expectedUnitPrice),
+      }));
+      if (
+        normalizedItems.some(
+          (item, index) => item.expectedUnitPrice !== items[index].expectedUnitPrice,
+        )
       )
-    )
-      setItems(normalizedItems);
-    window.setTimeout(() => setSortOrder(sortPlanLines(normalizedItems).map((item) => item.id)), 0);
-    if (
-      !draftLoading &&
-      !saving &&
-      hasDraftContent &&
-      draftSignature !== savedSignatureRef.current &&
-      draftSignature !== failedSignatureRef.current
-    ) {
-      void persistDraft(draftSignature);
-    }
-  }, [draftLoading, draftSignature, hasDraftContent, items, persistDraft, saving]);
+        setItems(normalizedItems);
+      window.setTimeout(() => {
+        rememberRow(editedRow);
+        setSortOrder(sortPlanLines(normalizedItems).map((item) => item.id));
+      }, 0);
+      if (
+        !draftLoading &&
+        !saving &&
+        hasDraftContent &&
+        draftSignature !== savedSignatureRef.current &&
+        draftSignature !== failedSignatureRef.current
+      ) {
+        void persistDraft(draftSignature);
+      }
+    },
+    [draftLoading, draftSignature, hasDraftContent, items, persistDraft, rememberRow, saving],
+  );
   useEffect(() => {
-    window.addEventListener("blur", commitPlan);
-    return () => window.removeEventListener("blur", commitPlan);
+    const saveOnWindowBlur = () => commitPlan();
+    window.addEventListener("blur", saveOnWindowBlur);
+    return () => window.removeEventListener("blur", saveOnWindowBlur);
   }, [commitPlan]);
   const closePlan = async () => {
     if (
@@ -662,7 +674,7 @@ export function ProcurementPlanDialog({
         aria-busy={draftLoading || draftSaving}
         onBlurCapture={(event) => {
           const row = (event.target as HTMLElement).closest("tr");
-          if (row && !row.contains(event.relatedTarget as Node | null)) commitPlan();
+          if (row && !row.contains(event.relatedTarget as Node | null)) commitPlan(row);
           else if (!row && hasDraftContent && draftSignature !== savedSignatureRef.current)
             void persistDraft(draftSignature);
         }}
@@ -815,7 +827,13 @@ export function ProcurementPlanDialog({
               )}
             </div>
             <div className="procurement-plan-tools">
-              <button onClick={() => setItems((current) => [...current, makeLine()])}>
+              <button
+                onClick={() => {
+                  const line = makeLine();
+                  pendingNewLine.current = line.id;
+                  setItems((current) => [...current, line]);
+                }}
+              >
                 + Новая строка
               </button>
               <button
@@ -890,6 +908,7 @@ export function ProcurementPlanDialog({
                       >
                         <td data-label="Название у поставщика">
                           <input
+                            ref={(field) => setFirstField(item.id, field)}
                             aria-invalid={Boolean(item.rowTouched && !item.category.trim())}
                             value={item.category}
                             onChange={(event) =>
