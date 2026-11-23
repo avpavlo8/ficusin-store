@@ -390,7 +390,7 @@ export default function AdminInstructions() {
               aria-label={selectedService.label}
             >
               <a
-                className="instruction-back"
+                className="instruction-back instruction-service-back"
                 href="/admin?section=instructions"
                 onClick={(event) => {
                   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -398,7 +398,8 @@ export default function AdminInstructions() {
                   navigate({ guide: "", service: "all", query: "" });
                 }}
               >
-                Все сервисы
+                <AdminIcon name="arrow" />
+                <span>Все сервисы</span>
               </a>
               <header className="instruction-selected-heading" data-service={selectedService.id}>
                 <ServiceLogo id={selectedService.id} />
