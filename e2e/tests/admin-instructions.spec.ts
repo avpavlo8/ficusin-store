@@ -126,7 +126,16 @@ test("@desktop @phone instructions are available to staff, searchable and preser
   ).toHaveCount(2);
   await expect(
     instructions.getByRole("region", { name: "Общие инструкции", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  const serviceRows = instructions.locator(
+    ".instruction-selected-service .instruction-list > a",
+  );
+  const firstRow = await serviceRows.nth(0).boundingBox();
+  const secondRow = await serviceRows.nth(1).boundingBox();
+  expect(firstRow).not.toBeNull();
+  expect(secondRow).not.toBeNull();
+  expect(secondRow!.y).toBeGreaterThanOrEqual(firstRow!.y + firstRow!.height);
+  expect(Math.abs(secondRow!.x - firstRow!.x)).toBeLessThanOrEqual(1);
   await expect(page).toHaveURL(/service=cdek/);
   await instructions.getByRole("searchbox").fill("Возврат");
   const results = instructions.getByRole("region", {
@@ -152,6 +161,9 @@ test("@desktop @phone instructions are available to staff, searchable and preser
   await expect(
     instructions.getByText("Инструкции по 5Post ещё готовятся"),
   ).toBeVisible();
+  await expect(
+    instructions.getByRole("region", { name: "Общие инструкции", exact: true }),
+  ).toHaveCount(0);
   await instructions
     .getByRole("link", { name: "Все сервисы", exact: true })
     .click();

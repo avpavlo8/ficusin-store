@@ -412,7 +412,7 @@ export default function AdminInstructions() {
               ) : (
                 <div className="instruction-empty">
                   <h3>Инструкции по {selectedService.label} ещё готовятся</h3>
-                  <p>Пока можно воспользоваться общими памятками ниже.</p>
+                  <p>Выберите «Все сервисы», чтобы вернуться к списку разделов.</p>
                 </div>
               )}
             </section>
@@ -451,13 +451,18 @@ export default function AdminInstructions() {
               </nav>
             </section>
           )}
-          <section className="instruction-group instruction-general" aria-label="Общие инструкции">
-            <header>
-              <h3>Общие инструкции</h3>
-              <p>Памятки для ежедневной работы, независимо от сервиса.</p>
-            </header>
-            {renderGuides(generalGuides)}
-          </section>
+          {!selectedService && (
+            <section
+              className="instruction-group instruction-general"
+              aria-label="Общие инструкции"
+            >
+              <header>
+                <h3>Общие инструкции</h3>
+                <p>Памятки для ежедневной работы, независимо от сервиса.</p>
+              </header>
+              {renderGuides(generalGuides)}
+            </section>
+          )}
         </>
       )}
     </section>

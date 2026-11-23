@@ -81,8 +81,7 @@
 }
 .admin-page .instruction-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 32px;
+  grid-template-columns: minmax(0, 1fr);
 }
 .admin-page .instruction-list > a {
   display: flex;
@@ -311,9 +310,6 @@
   .admin-page .instruction-index-heading > span {
     padding: 0;
     font-size: 13px;
-  }
-  .admin-page .instruction-list {
-    grid-template-columns: minmax(0, 1fr);
   }
   .admin-page .instruction-step-heading {
     align-items: flex-start;
@@ -558,7 +554,6 @@
   font-size: 13px;
 }
 .admin-page .instruction-list[data-search] {
-  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .admin-page .instruction-list[data-search] > .instruction-guide-link {
