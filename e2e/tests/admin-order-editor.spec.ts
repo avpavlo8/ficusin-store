@@ -1,9 +1,19 @@
 import { expect, test } from "@playwright/test";
 import { owner } from "./helpers";
 
-async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination" | "prepared" | "registration", dimensionsKnown = false, refundRole?: "owner" | "manager", linkNotice = {email:"queued",push:"sent"}, needsRecheck = false) {
+async function mockOrderEditor(page: import("@playwright/test").Page, stockShortage = false, packingMode?: "success" | "retry" | "destination" | "prepared" | "registration" | "waiting_saby", dimensionsKnown = false, refundRole?: "owner" | "manager", linkNotice = {email:"queued",push:"sent"}, needsRecheck = false) {
   const dimensions = dimensionsKnown ? { packageLengthCm: 20, packageWidthCm: 20, packageHeightCm: 40, packageWeightGrams: 700 } : {};
+  const workflow = packingMode === "waiting_saby" ? {
+    status: "new", queue: "new", readyForAssembly: false, stockConfirmed: true, packagingConfirmed: false,
+    manualStatuses: [],
+    blockers: [
+      { code: "payment", message: "Заказ не оплачен", view: "payment" },
+      { code: "realization_attention", message: "СБИС остановил обновление состава заказа" },
+      { code: "delivery_fee", message: "Нужно рассчитать и подтвердить стоимость доставки", view: "delivery" },
+    ],
+  } : undefined;
   const order = {
+    workflow,
     id: 30,
     orderNumber: "0001-30",
     customerName: "Саша Александр",
@@ -27,6 +37,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
     ],
   };
   const adjustment = {
+    workflow,
     id: 30,
     orderNumber: "0001-30",
     subtotal: 1480,
@@ -53,7 +64,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       status, headers: { "Content-Type": "application/json" },
     }));
     const packing = {
-      revision: 1, boxes: [] as unknown[], tariffCode: 136, tariffName: "Посылка склад-склад",
+      revision: 1, revisionPending: packingMode === "waiting_saby", boxes: [] as unknown[], tariffCode: 136, tariffName: "Посылка склад-склад",
       deliveryFee: 0, deliveryPayee: order.deliveryPayee, officeCode: packingMode === "destination" ? "" : "RZN1", cityCode: packingMode === "destination" ? 0 : 28,
       state: "draft", cdekState: "", trackNumber: "", paymentUrl: "", error: "",
       notification: { state: "unavailable", error: "Отправка писем не настроена" },
@@ -61,6 +72,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       quoteBlockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : [],
       blockers: packingMode === "destination" ? ["В заказе не указан пункт выдачи СДЭК", "В заказе не указан город СДЭК"] : packingMode ? [] : ["В этом заказе доставка оплачивается перевозчику"],
     };
+    if (packing.revisionPending) packing.blockers.push("Подтверждение доставки доступно после сверки состава в СБИС");
     const refunds = refundRole ? [{ id: 1, amount: 100, status: "succeeded", providerId: "refund-1", actorId: 1, needsReview: false, receiptStatus: "pending", lastError: "" }, { id: 2, amount: 40, status: "pending", providerId: "refund-2", actorId: 1, needsReview: false, receiptStatus: "pending", lastError: "" }] : [];
     if (packingMode === "prepared") {
       Object.assign(packing, { state: "notification_queued", canReopen: true, deliveryFeePending: false, deliveryFee: 680, cdekState: "registered", trackNumber: "OLD-TRACK", paymentUrl: "https://pay.example.test/old", boxes: [{ lengthCm: 40, widthCm: 20, heightCm: 20, weightGrams: 1000, contents: [{ orderItemId: 11, quantity: 1 }, { orderItemId: 12, quantity: 1 }] }] });
@@ -95,7 +107,7 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
       if (path === "/api/v1/delivery/cdek" && url.searchParams.get("action") === "cities") return json({ cities: [{ code: 44, city: "Москва", region: "Москва" }] });
       if (path === "/api/v1/delivery/cdek" && url.searchParams.get("action") === "offices") return json({ offices: [{ code: "MSK1", name: "Пункт Ленина", location: { address: "Москва, ул. Ленина, 3" } }] });
       if (path === "/api/v1/admin/orders/30/cdek") {
-        const testState = window as typeof window & { __cdekActions?: unknown[]; __cdekRejectedAgain?: boolean };
+        const testState = window as typeof window & { __cdekActions?: unknown[]; __cdekRejectedAgain?: boolean; __manualOrderStatus?: string };
         if (init?.method === "POST") {
           const body = JSON.parse(String(init.body || "{}"));
           testState.__cdekActions = [...(testState.__cdekActions || []), body];
@@ -113,9 +125,13 @@ async function mockOrderEditor(page: import("@playwright/test").Page, stockShort
             canSetTracking: true,
           });
         }
-        return json({ shipping, order });
+        return json({ shipping: { ...shipping, orderStatus: testState.__manualOrderStatus || order.status }, order });
       }
       if (path === "/api/v1/admin/orders/30/packing") {
+        if (packing.revisionPending && (window as typeof window & { __compositionSynced?: boolean }).__compositionSynced) {
+          packing.revisionPending = false;
+          packing.blockers = [];
+        }
         if (reopening && (window as typeof window & { __reopenReady?: boolean }).__reopenReady) {
           reopening = false; finalized = false; packing.revision += 1;
           Object.assign(packing, { state: "draft", canReopen: false, cdekState: "new", trackNumber: "", boxes: [] });
@@ -334,14 +350,39 @@ async function preparePacking(page: import("@playwright/test").Page) {
   return packing;
 }
 
+test("@desktop @phone СБИС блокирует подтверждение, расчёт коробок и тарифа доступен", async ({ page }, testInfo) => {
+  const state = await mockOrderEditor(page, false, "waiting_saby", false, "owner");
+  await page.clock.install();
+  await page.goto("/admin?section=orders&order=30");
+  const nextStep = page.getByRole("region", { name: "Что нужно сделать" });
+  await expect(nextStep).toContainText("СБИС остановил обновление состава заказа");
+  await expect(nextStep.getByRole("link", { name: "Открыть реализацию" })).toHaveAttribute("href", /view=realizations&q=0001-30$/);
+  await expect(nextStep).not.toContainText("Заказ не оплачен");
+  await expect(page.getByRole("button", { name: "Создать новую ссылку на оплату" })).toHaveCount(0);
+  if (process.env.FICUSIN_PREVIEW_OUTPUT_DIR) {
+    await nextStep.screenshot({ path: `${process.env.FICUSIN_PREVIEW_OUTPUT_DIR}/order-next-step-${testInfo.project.name}.png` });
+  }
+
+  await page.goto("/admin?section=orders&order=30&edit=delivery");
+  const packing = await preparePacking(page);
+  const finalize = packing.getByRole("button", { name: "Сохранить и подтвердить", exact: true });
+  await expect(finalize).toBeDisabled();
+  expect(await state.packingFinalizations()).toHaveLength(0);
+  await page.evaluate(() => { (window as typeof window & { __compositionSynced?: boolean }).__compositionSynced = true; });
+  await page.clock.runFor(4500);
+  await expect(finalize).toBeEnabled();
+  await expect(packing.getByRole("radio")).toBeChecked();
+  await expect(packing.getByRole("textbox", { name: "Длина коробки, см" })).toHaveValue("40");
+});
+
 test("@desktop упаковка регистрируется один раз и показывает отдельные результаты СДЭК, оплаты и письма", async ({ page }) => {
   const state = await mockOrderEditor(page, false, "success");
   await page.clock.install({ time: new Date("2026-10-22T12:30:00Z") });
   await page.goto("/admin?section=orders&order=30");
   const todo = page.getByRole("region", { name: "Что нужно сделать" });
-  await expect(todo).toContainText("Собрать в одну коробку и рассчитать доставку");
-  // Кнопка «Сделать» ведёт прямо в правку коробок: сотруднику не нужно искать блок.
-  await todo.getByRole("button", { name: "Сделать", exact: true }).click();
+  await expect(todo).toContainText("Заполните размеры коробки");
+  // Действие ведёт прямо к упаковке и расчёту тарифа.
+  await todo.getByRole("button", { name: "Открыть доставку", exact: true }).click();
   await expect(page).toHaveURL(/edit=delivery/);
   const packing = await preparePacking(page);
 
@@ -785,6 +826,7 @@ test("@desktop @phone recheck availability sends no composition or price changes
 
 test("@desktop @phone ошибка регистрации СДЭК, повтор и ручной трек видны в заказе", async ({ page }, testInfo) => {
   await mockOrderEditor(page, false, "registration");
+  await page.clock.install();
   await page.goto("/admin?section=orders&order=30");
   const shipping = page.getByRole("region", { name: "Покупатель и доставка" });
   await expect(shipping.getByRole("status").filter({ hasText: "Ошибка регистрации в СДЭК" })).toContainText(
@@ -798,6 +840,7 @@ test("@desktop @phone ошибка регистрации СДЭК, повтор
   await page.evaluate(() => {
     (window as typeof window & { __cdekRejectedAgain?: boolean }).__cdekRejectedAgain = true;
   });
+  await page.clock.runFor(4500);
   await expect(shipping.getByText("Проверьте телефон получателя", { exact: true })).toBeVisible({ timeout: 10000 });
   await expect(shipping.locator("code").filter({ hasText: /^bad_recipient_phone$/ })).toBeVisible();
   await shipping.getByRole("button", { name: "Указать трек-номер вручную" }).click();
@@ -808,6 +851,10 @@ test("@desktop @phone ошибка регистрации СДЭК, повтор
   await shipping.getByRole("button", { name: "Сохранить трек" }).click();
   await expect(shipping.getByText("Добавлен вручную")).toBeVisible();
   await expect(shipping.getByRole("button", { name: /Скопировать трек-номер.*1234567890/ })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30" })).toHaveValue("new");
+  await page.evaluate(() => { (window as typeof window & { __manualOrderStatus?: string }).__manualOrderStatus = "shipped"; });
+  await page.clock.runFor(16000);
+  await expect(page.getByRole("combobox", { name: "Статус заказа 0001-30" })).toHaveValue("shipped");
   await expect(retry).toHaveCount(0);
   expect(await page.evaluate(() => (window as typeof window & { __cdekActions?: unknown[] }).__cdekActions)).toEqual([
     { revision: 1, action: "retry" },

@@ -82,7 +82,7 @@ func (worker *ShippingWorker) reopenPacking(ctx context.Context, workflowID int6
 	if _, err = tx.Exec(ctx, `UPDATE order_packing_workflows SET state='stale',last_error='',locked_until=NULL,next_attempt_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=$1`, workflowID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `UPDATE orders SET shipment_revision=shipment_revision+1,cdek_order_number=order_number||'-r'||(shipment_revision+1)::text,cdek_uuid='',cdek_track_number='',cdek_status='',cdek_status_reason='',cdek_create_state='new',cdek_cancel_state='',cdek_cancel_attempts=0,cdek_cancel_next_attempt_at=NULL,cdek_attempts=0,cdek_next_attempt_at=NULL,cdek_last_error='',cdek_tracking_notified_at=NULL,cdek_checkout_requested=0,delivery_fee_pending=1,delivery_repack_requested=1,cdek_tariff_code=NULL,status='new' WHERE id=$1`, orderID); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE orders SET shipment_revision=shipment_revision+1,cdek_order_number=order_number||'-r'||(shipment_revision+1)::text,cdek_uuid='',cdek_track_number='',cdek_status='',cdek_status_reason='',cdek_create_state='new',cdek_cancel_state='',cdek_cancel_attempts=0,cdek_cancel_next_attempt_at=NULL,cdek_attempts=0,cdek_next_attempt_at=NULL,cdek_last_error='',cdek_tracking_notified_at=NULL,cdek_checkout_requested=0,delivery_fee_pending=1,cdek_tariff_code=NULL,status='new' WHERE id=$1`, orderID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

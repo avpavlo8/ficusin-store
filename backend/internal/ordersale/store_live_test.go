@@ -59,7 +59,7 @@ func TestRealizationIntentsPostgres(t *testing.T) {
  CREATE TABLE customers(id BIGINT PRIMARY KEY);INSERT INTO customers VALUES(1);
  CREATE TABLE admin_users(customer_id BIGINT PRIMARY KEY REFERENCES customers(id),role TEXT NOT NULL,is_active BOOLEAN NOT NULL);
  CREATE TABLE warehouses(id BIGINT PRIMARY KEY,name TEXT,is_active INTEGER,saby_id TEXT DEFAULT 'saby-ryazan-main');INSERT INTO warehouses VALUES(1,'Warehouse',1),(2,'Other warehouse',1);
- CREATE TABLE orders(id BIGINT PRIMARY KEY,payment_method TEXT DEFAULT 'online',payment_status TEXT DEFAULT 'pending',order_number TEXT,status TEXT,delivery_method TEXT,cdek_status TEXT,created_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT '',cdek_cancel_state TEXT DEFAULT '',subtotal NUMERIC);
+ CREATE TABLE orders(id BIGINT PRIMARY KEY,has_preorder INTEGER NOT NULL DEFAULT 0,payment_method TEXT DEFAULT 'online',payment_status TEXT DEFAULT 'pending',order_number TEXT,status TEXT,delivery_method TEXT,cdek_status TEXT,created_at TIMESTAMPTZ DEFAULT now(),cdek_uuid TEXT DEFAULT '',cdek_create_state TEXT DEFAULT '',cdek_cancel_state TEXT DEFAULT '',subtotal NUMERIC);
  CREATE TABLE product_external_ids(variant_id BIGINT,provider TEXT,id_type TEXT,status TEXT,external_id TEXT);
  CREATE TABLE products(id BIGINT PRIMARY KEY,saby_fields TEXT[]);INSERT INTO products VALUES(1,ARRAY['stock']);
  CREATE TABLE saby_nomenclature(saby_id TEXT PRIMARY KEY,missing_since TIMESTAMPTZ);INSERT INTO saby_nomenclature VALUES('3980',NULL),('3981',NULL),('4000',NULL);

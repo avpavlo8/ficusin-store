@@ -481,12 +481,30 @@ func (client *CDEKClient) CreateOrder(
 // FindOrderByNumber resolves a lost create response without issuing another
 // create request. The merchant order number is stable and unique in Ficusin.
 func (client *CDEKClient) FindOrderByNumber(ctx context.Context, number string) (Shipment, error) {
-	number = strings.TrimSpace(number)
-	if number == "" {
+	return client.findOrder(ctx, "im_number", number)
+}
+
+// FindOrderByTrack reads a shipment already registered under the CDEK account.
+func (client *CDEKClient) FindOrderByTrack(ctx context.Context, track string) (Shipment, error) {
+	track = strings.TrimSpace(track)
+	shipment, err := client.findOrder(ctx, "cdek_number", track)
+	if err != nil {
+		return Shipment{}, err
+	}
+	if shipment.TrackNumber != track {
+		return Shipment{}, errors.New("СДЭК вернул другой трек-номер")
+	}
+	return shipment, nil
+}
+
+func (client *CDEKClient) findOrder(ctx context.Context, key, value string) (Shipment, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
 		return Shipment{}, ErrCDEKOrderNotFound
 	}
+	query := url.Values{key: []string{value}}
 	var result cdekOrderResponse
-	if err := client.request(ctx, http.MethodGet, "/orders?im_number="+url.QueryEscape(number), nil, &result); err != nil {
+	if err := client.request(ctx, http.MethodGet, "/orders?"+query.Encode(), nil, &result); err != nil {
 		return Shipment{}, err
 	}
 	if err := result.lookupFailure(); err != nil {

@@ -43,6 +43,32 @@ func TestCDEKFindOrderByMerchantNumberIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestCDEKFindOrderByTrackChecksCarrierNumber(t *testing.T) {
+	client := NewCDEKClient("client", "secret")
+	client.token = "test-token"
+	client.tokenExpiry = time.Now().Add(time.Hour)
+	carrierTrack := "1234567890"
+	client.httpClient = &http.Client{Transport: cdekRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodGet || request.URL.Path != "/v2/orders" ||
+			request.URL.Query().Get("cdek_number") != "1234567890" || request.URL.Query().Has("im_number") {
+			t.Fatalf("unexpected tracking lookup: %s %s", request.Method, request.URL)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"entity":{"uuid":"external-uuid","cdek_number":"` + carrierTrack + `","statuses":[{"code":"IN_TRANSIT"}]}}`)),
+			Header:     make(http.Header),
+		}, nil
+	})}
+	shipment, err := client.FindOrderByTrack(context.Background(), "1234567890")
+	if err != nil || shipment.Status != "IN_TRANSIT" {
+		t.Fatalf("tracking lookup: %+v, %v", shipment, err)
+	}
+	carrierTrack = "0987654321"
+	if _, err := client.FindOrderByTrack(context.Background(), "1234567890"); err == nil {
+		t.Fatal("accepted a different shipment")
+	}
+}
+
 func TestCDEKServerFailureMakesCreateOutcomeUnknown(t *testing.T) {
 	client := NewCDEKClient("client", "secret")
 	client.token = "test-token"

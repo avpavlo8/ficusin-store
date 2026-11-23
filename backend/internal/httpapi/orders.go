@@ -30,11 +30,11 @@ type createOrderBody struct {
 		Quantity int    `json:"quantity"`
 	} `json:"items"`
 	CDEK struct {
-		CityCode   int    `json:"cityCode"`
-		CityName   string `json:"cityName"`
-		OfficeCode string `json:"officeCode"`
-		TariffCode int    `json:"tariffCode"`
-		Repack     bool   `json:"repack"`
+		CityCode     int    `json:"cityCode"`
+		CityName     string `json:"cityName"`
+		OfficeCode   string `json:"officeCode"`
+		TariffCode   int    `json:"tariffCode"`
+		LegacyRepack bool   `json:"repack"` // Checkout pages opened before this release still send it.
 	} `json:"cdek"`
 	// Consent mirrors the checkbox under the checkout form. The browser
 	// marks it required, but the server has to see it too — that flag is
@@ -65,6 +65,11 @@ func createOrderHandler(
 		email := strings.ToLower(strings.TrimSpace(body.Customer.Email))
 		address := strings.TrimSpace(body.Customer.Address)
 		delivery := strings.TrimSpace(body.Delivery)
+
+		if delivery == "cdek" && body.CDEK.LegacyRepack {
+			writeJSON(response, http.StatusBadRequest, errorResponse{Error: "Расчёт доставки изменился. Обновите страницу оформления и выберите тариф СДЭК."})
+			return
+		}
 
 		var customerID *int64
 		wholesaleApproved := false
@@ -135,7 +140,6 @@ func createOrderHandler(
 				CityCode: body.CDEK.CityCode, CityName: strings.TrimSpace(body.CDEK.CityName),
 				OfficeCode: strings.TrimSpace(body.CDEK.OfficeCode),
 				TariffCode: body.CDEK.TariffCode,
-				Repack:     body.CDEK.Repack,
 			},
 			CustomerID:    customerID,
 			PaymentMethod: strings.TrimSpace(body.PaymentMethod),

@@ -51,7 +51,7 @@ func lockOrderEditStock(ctx context.Context, tx pgx.Tx, orderID int64, requested
 // Replace only the changed live composition. Frozen realization snapshots keep
 // removed IDs in their audit; retained rows keep their actual IDs and agreed
 // price/name/packing, rather than being deleted and reconstructed from catalogue.
-func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, customerID *int64, feePending bool, requested []OrderEditLine) error {
+func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, customerID *int64, requested []OrderEditLine) error {
 	rows, err := tx.Query(ctx, `SELECT id,COALESCE(sku,''),quantity FROM order_items WHERE order_id=$1 ORDER BY id FOR UPDATE`, orderID)
 	if err != nil {
 		return err
@@ -153,6 +153,6 @@ func replaceOrderEditLines(ctx context.Context, tx pgx.Tx, orderID int64, custom
 			return ErrInvalidInput
 		}
 	}
-	_, err = tx.Exec(ctx, `UPDATE orders SET has_preorder=$2,delivery_fee_pending=$3 WHERE id=$1`, orderID, boolToSmallInt(hasPreorder), boolToSmallInt(feePending))
+	_, err = tx.Exec(ctx, `UPDATE orders SET has_preorder=$2 WHERE id=$1`, orderID, boolToSmallInt(hasPreorder))
 	return err
 }

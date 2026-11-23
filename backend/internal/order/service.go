@@ -82,10 +82,6 @@ type CDEKInput struct {
 	// this only says which of the offered tariffs to charge for. Zero means
 	// "the cheapest one", which is what the checkout preselects.
 	TariffCode int
-	// Repack is the customer asking whether the plants could travel in one
-	// box instead of several. Only the person packing them can answer that,
-	// so the price waits for the manager.
-	Repack bool
 }
 
 type Created struct {
@@ -226,13 +222,9 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 		officeCode = &input.CDEK.OfficeCode
 		resolvedCityName := strings.TrimSpace(input.CDEK.CityName)
 
-		// A customer who asked us to pack everything into one box gets no
-		// automatic price: whether the plants fit together is a judgement
-		// only the person packing them can make.
-		box, measured := shippingBox(items)
-		if input.CDEK.Repack || !measured {
+		if !quotedMeasured {
 			feePending = true
-		} else if quotes, err := service.cdek.CalculatePVZ(ctx, input.CDEK.CityCode, box); err != nil {
+		} else if quotes, err := service.cdek.CalculatePVZ(ctx, input.CDEK.CityCode, quotedBox); err != nil {
 			service.logger.Error("cdek quote failed at checkout", "error", err)
 			feePending = true
 		} else if len(quotes) == 0 {
@@ -388,20 +380,20 @@ func (service *Service) Create(ctx context.Context, input CreateInput) (Created,
 	err = transaction.QueryRow(ctx, `
 		INSERT INTO orders (
 			order_number, customer_id, customer_name, phone, email, address, comment,
-			delivery_method, delivery_fee, delivery_fee_pending, delivery_repack_requested,
+			delivery_method, delivery_fee, delivery_fee_pending,
 			cdek_city_code, cdek_city_name,
 			cdek_office_code, cdek_tariff_code, subtotal, total,
 			payment_method, payment_status, has_preorder, status, delivery_payee, cdek_checkout_requested, guest_payment_token_hash
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7,
-			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'new', 'shop', $21, $22
+			$8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'new', 'shop', $20, $21
 		)
 		RETURNING id
 	`,
 		orderNumber, customerID, input.Customer.Name, input.Customer.Phone,
 		input.Customer.Email, deliveryAddress, input.Customer.Comment, input.Delivery,
-		deliveryFee, boolToInt(feePending), boolToInt(input.CDEK.Repack && input.Delivery == "cdek"),
+		deliveryFee, boolToInt(feePending),
 		cityCode, cityName, officeCode, tariffCode, subtotal, total,
 		paymentMethod, payment.InitialStatus(paymentMethod), boolToInt(hasPreorder), boolToInt(checkoutShipment), guestTokenHash,
 	).Scan(&orderID)

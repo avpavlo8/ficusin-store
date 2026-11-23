@@ -132,6 +132,7 @@ func (worker *ShippingWorker) sync(ctx context.Context) {
 	worker.reopenPackings(ctx)
 	worker.cancelShipments(ctx)
 	worker.refreshStatuses(ctx)
+	worker.refreshManualTracking(ctx)
 	worker.refreshOfferStatuses(ctx)
 	worker.queueTrackingLetters(ctx)
 }
