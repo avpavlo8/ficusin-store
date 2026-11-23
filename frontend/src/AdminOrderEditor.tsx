@@ -484,11 +484,13 @@ export function AdminOrderEditor({
       void api<{ order: Adjustment; payment: PaymentBalance }>(
         `/api/v1/admin/orders/${order.id}/adjustment`,
         { signal: controller.signal },
-      ).then(({ order: next, payment: balance }) => {
-        if (controller.signal.aborted) return;
-        setAdjustment(next);
-        setPayment(balance);
-      }).catch(() => undefined);
+      )
+        .then(({ order: next, payment: balance }) => {
+          if (controller.signal.aborted) return;
+          setAdjustment(next);
+          setPayment(balance);
+        })
+        .catch(() => undefined);
     }, 10000);
     return () => {
       controller.abort();
@@ -654,13 +656,16 @@ export function AdminOrderEditor({
       order.paymentStatus,
     );
   const paymentWorkflow = adjustment.workflow ?? order.workflow;
-  const paymentWait = adjustment.hasPreorder || paymentWorkflow?.stockConfirmed === false
-    ? "Сначала проверьте наличие растений."
-    : paymentWorkflow?.blockers.some(({ code }) => code === "realization_sync" || code === "realization_attention")
-      ? "Ссылка появится после подтверждения состава в СБИС."
-      : adjustment.deliveryFeePending && adjustment.deliveryPayee === "shop"
-        ? "Сначала рассчитайте и подтвердите доставку."
-        : "";
+  const paymentWait =
+    adjustment.hasPreorder || paymentWorkflow?.stockConfirmed === false
+      ? "Сначала проверьте наличие растений."
+      : paymentWorkflow?.blockers.some(
+            ({ code }) => code === "realization_sync" || code === "realization_attention",
+          )
+        ? "Ссылка появится после подтверждения состава в СБИС."
+        : adjustment.deliveryFeePending && adjustment.deliveryPayee === "shop"
+          ? "Сначала рассчитайте и подтвердите доставку."
+          : "";
 
   const paymentPill =
     order.paymentStatus === "paid"
@@ -1389,7 +1394,9 @@ function OrderCDEKTracking({
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const watchShipping =
-    !shipping || shipping.pending || Boolean(shipping.error) ||
+    !shipping ||
+    shipping.pending ||
+    Boolean(shipping.error) ||
     (shipping.manualTrack && !["completed", "cancelled"].includes(order.status));
   const applyStatus = useEffectEvent((next: OrderCDEKState) => {
     if (next.manualTrack && next.orderStatus && next.orderStatus !== order.status) {
@@ -1408,7 +1415,8 @@ function OrderCDEKTracking({
         setShipping(data.shipping);
         setLoadError("");
         applyStatus(data.shipping);
-        const followsTrack = data.shipping.manualTrack &&
+        const followsTrack =
+          data.shipping.manualTrack &&
           !["completed", "cancelled"].includes(data.shipping.orderStatus || "");
         if (!data.shipping.pending && !data.shipping.error && !followsTrack) return;
         timer = window.setTimeout(() => void refresh(), data.shipping.pending ? 4000 : 15000);
@@ -1471,7 +1479,9 @@ function OrderCDEKTracking({
       {shipping && registrationError && (
         <div className="order-cdek-error">
           <div className="order-cdek-error-text" role="status">
-            <strong>{shipping.manualTrack ? "Статус по треку" : "Ошибка регистрации в СДЭК"}</strong>
+            <strong>
+              {shipping.manualTrack ? "Статус по треку" : "Ошибка регистрации в СДЭК"}
+            </strong>
             {registrationError.messages.map((message, index) => (
               <p key={`${index}-${message}`}>{message}</p>
             ))}

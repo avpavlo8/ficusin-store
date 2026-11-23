@@ -164,7 +164,8 @@ export function AdminOrderWorkspace({
   const next = nextStep(order, workflow);
 
   const reason = reasons[0];
-  const realization = reason?.code === "realization_attention" || reason?.code === "realization_sync";
+  const realization =
+    reason?.code === "realization_attention" || reason?.code === "realization_sync";
   const reasonDetail =
     reason?.code === "realization_attention"
       ? canRefund
