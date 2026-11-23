@@ -65,22 +65,6 @@
   outline: none;
   box-shadow: none;
 }
-.admin-page .instruction-services {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 20px 0 12px;
-}
-.admin-page .instruction-services button[aria-pressed="true"] {
-  background: var(--ws-green-soft);
-  color: var(--ws-green-dark);
-  border-color: var(--ws-green);
-}
-.admin-page .instruction-result-count {
-  color: var(--ws-muted);
-  font-size: 13px;
-  margin: 0 0 30px;
-}
 .admin-page .instruction-group {
   margin: 0 0 36px;
 }
@@ -331,9 +315,6 @@
   .admin-page .instruction-list {
     grid-template-columns: minmax(0, 1fr);
   }
-  .admin-page .instruction-services {
-    gap: 6px;
-  }
   .admin-page .instruction-step-heading {
     align-items: flex-start;
     gap: 8px;
@@ -428,5 +409,208 @@
 @media print {
   .admin-page .instruction-mobile-contents {
     display: none;
+  }
+}
+
+/* Мягкий цвет связывает раздел сервиса и его результаты в общем поиске. */
+.admin-page .instructions [data-service] {
+  --instruction-tint: var(--ws-soft);
+  --instruction-accent: var(--ws-text);
+}
+.admin-page .instructions [data-service="saby"] {
+  --instruction-tint: #edf6fa;
+  --instruction-accent: #255c71;
+}
+.admin-page .instructions [data-service="wb"] {
+  --instruction-tint: #f4edfa;
+  --instruction-accent: #614083;
+}
+.admin-page .instructions [data-service="ozon"] {
+  --instruction-tint: #edf3ff;
+  --instruction-accent: #28588f;
+}
+.admin-page .instructions [data-service="cdek"] {
+  --instruction-tint: #edf7ef;
+  --instruction-accent: #2f6841;
+}
+.admin-page .instructions [data-service="site"] {
+  --instruction-tint: #f3f4f6;
+  --instruction-accent: #41464e;
+}
+.admin-page .instructions [data-service="flowwow"] {
+  --instruction-tint: #fcf0f4;
+  --instruction-accent: #84445e;
+}
+.admin-page .instructions [data-service="avito"] {
+  --instruction-tint: #edf7f6;
+  --instruction-accent: #326962;
+}
+.admin-page .instructions [data-service="fivepost"] {
+  --instruction-tint: #f2f7e9;
+  --instruction-accent: #4c6827;
+}
+.admin-page .instructions [data-service="cash"] {
+  --instruction-tint: #eef0f6;
+  --instruction-accent: #4e5c80;
+}
+.admin-page .instruction-service-directory {
+  margin-top: 28px;
+}
+.admin-page .instruction-service-directory h3,
+.admin-page .instruction-results-heading h3 {
+  margin: 0 0 6px;
+  font-size: 21px;
+}
+.admin-page .instruction-service-directory > header p {
+  margin: 0 0 20px;
+  color: var(--ws-muted);
+}
+.admin-page .instruction-service-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-page .instruction-service-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 146px;
+  padding: 22px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius);
+  text-decoration: none;
+  color: var(--ws-ink);
+  background: var(--instruction-tint);
+}
+.admin-page .instruction-service-card:hover {
+  border-color: var(--instruction-accent);
+}
+.admin-page .instruction-service-card:focus-visible {
+  outline-color: var(--instruction-accent);
+}
+.admin-page .instruction-service-logo {
+  display: block;
+  width: min(160px, 100%);
+  height: 44px;
+  object-fit: contain;
+  object-position: left center;
+}
+.admin-page [data-service="cash"] .instruction-service-logo,
+.admin-page [data-service="fivepost"] .instruction-service-logo {
+  width: 52px;
+}
+.admin-page .instruction-service-card strong {
+  display: block;
+  font-size: 17px;
+  line-height: 1.4;
+}
+.admin-page .instruction-service-card small {
+  display: block;
+  margin-top: 3px;
+  color: var(--ws-text);
+  font-size: 13px;
+  line-height: 1.4;
+  padding-right: 18px;
+}
+.admin-page .instruction-service-card > svg {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  right: 20px;
+  bottom: 24px;
+  color: var(--instruction-accent);
+}
+.admin-page .instruction-general {
+  margin-top: 36px;
+  padding-top: 28px;
+  border-top: 1px solid var(--ws-line);
+}
+.admin-page .instruction-selected-service {
+  margin-top: 24px;
+}
+.admin-page .instruction-selected-heading {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding: 24px;
+  border-radius: var(--ws-radius);
+  background: var(--instruction-tint);
+  margin-bottom: 20px;
+}
+.admin-page .instruction-selected-heading p {
+  margin: 4px 0 0;
+}
+.admin-page .instruction-search-results {
+  margin-top: 28px;
+}
+.admin-page .instruction-results-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.admin-page .instruction-results-heading p {
+  margin: 0;
+  color: var(--ws-muted);
+  font-size: 13px;
+}
+.admin-page .instruction-list[data-search] {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.admin-page .instruction-list[data-search] > .instruction-guide-link {
+  padding: 18px 20px;
+  border: 1px solid transparent;
+  border-radius: var(--ws-radius);
+  background: var(--instruction-tint);
+  min-height: 0;
+}
+.admin-page .instruction-list[data-search] > .instruction-guide-link:hover {
+  border-color: var(--instruction-accent);
+}
+.admin-page .instruction-list[data-search] > a strong {
+  display: block;
+}
+.admin-page .instruction-service-badge {
+  display: block;
+  width: fit-content;
+  margin-bottom: 5px;
+  color: var(--instruction-accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+@media (max-width: 760px) {
+  .admin-page .instruction-service-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .admin-page .instruction-service-card {
+    padding: 16px;
+    min-height: 140px;
+    gap: 16px;
+  }
+  .admin-page .instruction-service-card strong {
+    font-size: 16px;
+  }
+  .admin-page .instruction-service-card small {
+    font-size: 12px;
+  }
+  .admin-page .instruction-service-card > svg {
+    right: 12px;
+    bottom: 20px;
+    width: 16px;
+  }
+  .admin-page .instruction-selected-heading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px;
+  }
+  .admin-page .instruction-results-heading {
+    flex-direction: column;
+    gap: 4px;
   }
 }

@@ -110,7 +110,7 @@ worker и затем публикует готовый router. Применён�
 | Заказы | `AdminOrders`, `AdminOrderWorkspace`, `AdminOrderEditor`, `orderworkflow` | Состав, статусы, причины задержки, журнал, расчёт оплаты, отмена, отгрузка |
 | Упаковка и отправка | `AdminOrderPacking`, `AdminShipmentOfferBuilder`, `admin/order_packing`, `order/shipping` | Коробки, размеры, тариф, предложения отправки, подтверждение и фоновые операции |
 | Чат | `AdminChat`, `chat`, staff push | Общение с покупателем, приватные вложения, ссылки на заказы/товары, доставка уведомлений |
-| Инструкции | `AdminInstructions`, `instructions/content.json`, статические PNG | 30 визуальных памяток для 7 сервисов; поиск, ссылки, увеличение, скачивание и печать; источники и ограничения — `admin-instructions.md` |
+| Инструкции | `AdminInstructions`, `instructions/content.json`, статические PNG | 33 визуальные памятки, 9 разделов с логотипами и общий блок; поиск с цветами сервисов, ссылки, увеличение, скачивание и печать; источники и ограничения — `admin-instructions.md` |
 | Каталог | `AdminCatalog`, общий `ProductCreationPage`, `admin/catalog_editor*` | Черновики, SKU, схемы характеристик, контент, галереи, каналы и публикация |
 | Категории/характеристики | `AdminCatalog.Categories`, `AdminPim`, `admin/catalog_pim` | Определения, наследуемая схема, обязательность, фасеты, системные ограничения |
 | Подборки | `AdminCollectionsV2`, `admin/collection_rules` | Ручные/динамические правила, предпросмотр, обложка, порядок и публикация |

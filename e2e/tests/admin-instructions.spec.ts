@@ -37,7 +37,38 @@ test("@desktop @phone instructions are available to staff, searchable and preser
   await expect(
     instructions.getByRole("heading", { name: "Инструкции", exact: true }),
   ).toBeVisible();
-  await expect(instructions.locator(".instruction-list > a")).toHaveCount(30);
+  await expect(instructions.locator(".instruction-list > a")).toHaveCount(3);
+  const directory = instructions.getByRole("navigation", {
+    name: "Сервисы инструкций",
+  });
+  await expect(directory.getByRole("link")).toHaveCount(9);
+  expect(
+    await directory
+      .getByRole("link")
+      .evaluateAll((links) =>
+        links.map((link) => link.getAttribute("aria-label")),
+      ),
+  ).toEqual([
+    "Saby",
+    "Wildberries",
+    "Ozon",
+    "СДЕК",
+    "Сайт",
+    "Flowwow",
+    "Avito",
+    "5Post",
+    "Касса",
+  ]);
+  await expect
+    .poll(() =>
+      directory
+        .locator("img")
+        .evaluateAll((images: HTMLImageElement[]) =>
+          images.every((image) => image.complete && image.naturalWidth > 0),
+        ),
+    )
+    .toBe(true);
+
   await instructions
     .getByRole("searchbox", { name: "Поиск по инструкциям" })
     .fill("возврат озон");
@@ -86,10 +117,50 @@ test("@desktop @phone instructions are available to staff, searchable and preser
   await instructions
     .getByRole("button", { name: "Сбросить поиск и фильтр" })
     .click();
-  await expect(instructions.locator(".instruction-list > a")).toHaveCount(30);
-  await instructions.getByRole("button", { name: "СДЭК", exact: true }).click();
-  await expect(instructions.locator(".instruction-list > a")).toHaveCount(2);
+  await expect(instructions.locator(".instruction-list > a")).toHaveCount(3);
+  await instructions.getByRole("link", { name: "СДЕК", exact: true }).click();
+  await expect(
+    instructions
+      .getByRole("region", { name: "СДЕК", exact: true })
+      .locator(".instruction-list > a"),
+  ).toHaveCount(2);
+  await expect(
+    instructions.getByRole("region", { name: "Общие инструкции", exact: true }),
+  ).toBeVisible();
   await expect(page).toHaveURL(/service=cdek/);
+  await instructions.getByRole("searchbox").fill("Возврат");
+  const results = instructions.getByRole("region", {
+    name: "Результаты поиска инструкций",
+  });
+  const wb = results.locator('a[data-service="wb"]');
+  const ozon = results.locator('a[data-service="ozon"]');
+  await expect(wb).toContainText("Wildberries");
+  await expect(ozon).toContainText("Ozon");
+  expect(
+    await wb.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).not.toBe(
+    await ozon.evaluate((element) => getComputedStyle(element).backgroundColor),
+  );
+  await expect(results.locator(".instruction-list > a").first()).toContainText(
+    /возврат/i,
+  );
+  await instructions.getByRole("searchbox").fill("");
+  await instructions
+    .getByRole("link", { name: "Все сервисы", exact: true })
+    .click();
+  await instructions.getByRole("link", { name: "5Post", exact: true }).click();
+  await expect(
+    instructions.getByText("Инструкции по 5Post ещё готовятся"),
+  ).toBeVisible();
+  await instructions
+    .getByRole("link", { name: "Все сервисы", exact: true })
+    .click();
+  await instructions.getByRole("link", { name: "Касса", exact: true }).click();
+  await expect(
+    instructions
+      .getByRole("region", { name: "Касса", exact: true })
+      .getByRole("link", { name: /Продать товар/ }),
+  ).toBeVisible();
   expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
 
@@ -135,6 +206,7 @@ test("@desktop @phone instruction image failures retain the step and can be retr
 test("@desktop guide deep links, PNG assets and accessibility are valid", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   await setup(page);
   const mutations: string[] = [];
   page.on("request", (request) => {
@@ -177,7 +249,7 @@ test("@desktop guide deep links, PNG assets and accessibility are valid", async 
 test("@desktop @phone instruction layouts", async ({ page }, testInfo) => {
   await setup(page);
   await page.goto("/admin?section=instructions");
-  await expect(page.locator(".instruction-list > a")).toHaveCount(30);
+  await expect(page.locator(".instruction-list > a")).toHaveCount(3);
   await page.screenshot({
     path: testInfo.outputPath("instructions-index.png"),
     fullPage: true,
