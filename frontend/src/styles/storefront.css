@@ -314,6 +314,19 @@
 .storefront-tree :is(button, a):hover {
   background: var(--cream);
 }
+.storefront-category-row {
+  position: relative;
+}
+.storefront-tree .storefront-category-toggle {
+  position: absolute;
+  inset-block: 0;
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+.storefront-category-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
 
 /* Карточки витрины под макет: рамка тоньше, скругление мягче, картинка
    лежит на тёплой подложке, а не на белом. */
@@ -2152,7 +2165,7 @@
 }
 
 /* A quick olive wipe confirms selection without delaying navigation. */
-.storefront-tree a:focus-visible {
+.storefront-tree :is(a, button):focus-visible {
   outline: 2px solid var(--home-green);
   outline-offset: -2px;
 }

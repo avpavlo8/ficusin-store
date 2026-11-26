@@ -8,6 +8,9 @@ asking search engines to index filter query strings:
 
 Only categories and collections containing published products are added to
 `/sitemap.xml`. Private pages remain `noindex` and blocked in `robots.txt`.
+Legacy category addresses redirect when their replacement exists. The server
+returns 404 for a missing category or collection and 503 when it cannot read
+the catalogue. The old `/?cart=1` link redirects directly to `/cart`.
 
 ## Product feeds
 

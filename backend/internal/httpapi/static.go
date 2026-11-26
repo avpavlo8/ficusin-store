@@ -71,6 +71,13 @@ func spaFallback(
 			http.Redirect(response, request, target+"#catalog", http.StatusMovedPermanently)
 			return
 		}
+		if (request.Method == http.MethodGet || request.Method == http.MethodHead) && request.URL.Path == "/" {
+			query := request.URL.Query()
+			if query.Has("cart") && strings.TrimSpace(query.Get("paid")) == "" {
+				http.Redirect(response, request, "/cart", http.StatusMovedPermanently)
+				return
+			}
+		}
 
 		// Карту сайта собирает обработчик, а не файл на диске: каталог
 		// меняется каждый день.
@@ -131,6 +138,7 @@ func spaFallback(
 		// принимает опечатку в ссылке за настоящую страницу магазина.
 		status := http.StatusOK
 		base := canonicalBase(configuredBase)
+		landingPath := request.URL.Path
 		// The launch taxonomy folds these former leaves into a single visible
 		// category. Preserve existing search and customer links.
 		if replacement, ok := map[string]string{
@@ -139,22 +147,22 @@ func spaFallback(
 			"lemonella": "citrus", "venus-flytrap": "carnivorous-plants",
 			"nepenthes": "carnivorous-plants", "paml": "soil",
 		}[landingSlug(request.URL.Path, "/catalog/")]; ok {
-			target := base + "/catalog/" + replacement
-			if request.URL.RawQuery != "" {
-				target += "?" + request.URL.RawQuery
-			}
-			http.Redirect(response, request, target, http.StatusMovedPermanently)
-			return
+			landingPath = "/catalog/" + replacement
 		}
 		if !knownAppRoute(request.URL.Path) {
 			status = http.StatusNotFound
 		}
-		if landingSlug(request.URL.Path, "/catalog/") != "" || landingSlug(request.URL.Path, "/collections/") != "" {
-			var found bool
-			body, found = withLandingMeta(request.Context(), logger, landings, collections, base, request.URL.Path, body)
-			if !found {
-				status = http.StatusNotFound
+		if landingSlug(landingPath, "/catalog/") != "" || landingSlug(landingPath, "/collections/") != "" {
+			body, status = withLandingMeta(request.Context(), logger, landings, collections, base, landingPath, body)
+			if status != http.StatusOK {
 				body = withRouteMeta(base, "/__not_found__", body)
+			} else if landingPath != request.URL.Path {
+				target := base + landingPath
+				if request.URL.RawQuery != "" {
+					target += "?" + request.URL.RawQuery
+				}
+				http.Redirect(response, request, target, http.StatusMovedPermanently)
+				return
 			}
 		} else {
 			body = withRouteMeta(base, request.URL.Path, body)

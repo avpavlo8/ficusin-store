@@ -54,12 +54,12 @@ func TestCrossOriginMutationIsRejected(t *testing.T) {
 	}
 }
 
-func TestSecurityHeadersScopeMapFramesToYandex(t *testing.T) {
+func TestSecurityHeadersScopeFramesToMapAndMetrikaMatch(t *testing.T) {
 	response := httptest.NewRecorder()
 	securityHeaders(true, http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/contacts", nil))
 	policy := response.Header().Get("Content-Security-Policy")
-	if !strings.Contains(policy, "frame-src 'self' https://yandex.ru;") || !strings.Contains(policy, "frame-ancestors 'none';") {
-		t.Fatalf("map frame permission or framing protection missing: %q", policy)
+	if !strings.Contains(policy, "frame-src 'self' https://yandex.ru https://mc.yandex.ru/metrika/match.html https://mc.yandex.com/metrika/match.html;") || !strings.Contains(policy, "frame-ancestors 'none';") {
+		t.Fatalf("frame allowlist or framing protection differs: %q", policy)
 	}
 }
 

@@ -55,6 +55,9 @@ journal, order attribution and Metrika delivery remain separate active paths.
 
 Set the Yandex Metrika counter in the store settings panel. An empty value keeps
 the external counter disabled while first-party analytics continues to work.
+The browser policy permits the counter's `/metrika/match.html` frame on
+`mc.yandex.ru` and `mc.yandex.com`. The production product smoke treats
+unexpected console errors from these hosts as failures.
 
 ## Yandex goals configured on 22 October 2026
 
