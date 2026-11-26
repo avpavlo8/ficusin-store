@@ -782,6 +782,20 @@ func (store *PostgresStore) ResolveAlias(
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
+	var siteOrderID int64
+	if input.VariantID > 0 {
+		err := tx.QueryRow(ctx, `SELECT o.id FROM procurement_orders o JOIN procurement_order_lines l ON o.id=l.procurement_order_id
+   WHERE l.id=$1 AND l.supplier_alias_id=$2 AND l.receiving_parent_line_id IS NULL AND NOT l.invoice_excluded
+    AND l.reconciliation_status NOT IN ('missing','superseded') AND l.invoiced_qty>0
+    AND l.receiving_mode IN ('catalog','awaiting_catalog') AND o.status IN ('review','invoice_received','ready_to_receive')
+   FOR UPDATE OF o`, input.OrderLineID, aliasID).Scan(&siteOrderID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AliasReview{}, ErrNotFound
+		}
+		if err != nil {
+			return AliasReview{}, fmt.Errorf("lock procurement order for site card: %w", err)
+		}
+	}
 	var exists bool
 	var canonicalVariantID int64
 	if err := tx.QueryRow(ctx, `SELECT TRUE FROM procurement_supplier_aliases WHERE id = $1 FOR UPDATE`, aliasID).Scan(&exists); errors.Is(err, pgx.ErrNoRows) {
@@ -789,7 +803,30 @@ func (store *PostgresStore) ResolveAlias(
 	} else if err != nil {
 		return AliasReview{}, fmt.Errorf("lock procurement alias: %w", err)
 	}
-	if input.MatchStatus == "confirmed" {
+	if input.VariantID > 0 {
+		err := tx.QueryRow(ctx, `SELECT d.variant_id, COALESCE(n.saby_id,'') FROM canonical_product_directory d
+   LEFT JOIN saby_nomenclature n ON n.saby_id=d.saby_id AND n.missing_since IS NULL
+   WHERE d.active AND d.product_status <> 'archived' AND d.variant_id=$1`, input.VariantID).Scan(&canonicalVariantID, &input.SabyID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AliasReview{}, ErrNotFound
+		}
+		if err != nil {
+			return AliasReview{}, fmt.Errorf("resolve exact site variant: %w", err)
+		}
+		var busy bool
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM procurement_order_lines l
+   JOIN procurement_orders o ON o.id=l.procurement_order_id
+   JOIN procurement_action_batches b ON b.procurement_order_id=o.id
+   JOIN procurement_action_items i ON i.batch_id=b.id
+   WHERE l.supplier_alias_id=$1 AND o.status NOT IN ('received','cancelled') AND b.status<>'cancelled' AND
+    (b.status='processing' OR (i.channel='saby_receipt' AND i.status IN ('completed','submitted','needs_attention'))))`, aliasID).Scan(&busy)
+		if err != nil {
+			return AliasReview{}, err
+		}
+		if busy {
+			return AliasReview{}, &UserFacingError{Message: "Поступление уже отправлено. Сначала сверьте документ учёта."}
+		}
+	} else if input.MatchStatus == "confirmed" {
 		var candidateExists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM saby_nomenclature WHERE saby_id=$1 AND missing_since IS NULL)`, input.SabyID).Scan(&candidateExists); err != nil {
 			return AliasReview{}, fmt.Errorf("validate Saby nomenclature candidate: %w", err)
@@ -821,6 +858,7 @@ func (store *PostgresStore) ResolveAlias(
 			saby_id = NULLIF($2, ''), match_status = $3,
  receiving_mode=CASE WHEN receiving_mode='awaiting_catalog' AND $3='confirmed' THEN 'catalog' ELSE receiving_mode END,
 			canonical_variant_id = CASE WHEN $3='confirmed' THEN NULLIF($4,0) ELSE NULL END,
+            dimensions_reviewed = dimensions_reviewed AND canonical_variant_id IS NOT DISTINCT FROM NULLIF($4,0),
 			purchase_unit_rub = NULL,additional_purchase_unit_rub=NULL, trolley_delivery_unit_rub = NULL,
 			ryazan_delivery_unit_rub = NULL, unit_cost_rub = NULL,
 			proposed_retail_rub = NULL, proposed_marketplace_rub = NULL,
@@ -832,12 +870,18 @@ func (store *PostgresStore) ResolveAlias(
 		return AliasReview{}, fmt.Errorf("resolve procurement order lines: %w", err)
 	}
 	if input.MatchStatus == "confirmed" {
-		if err := confirmOriginalPlanAliases(ctx, tx, actor.CustomerID, aliasID, input.SabyID, canonicalVariantID); err != nil {
-			return AliasReview{}, err
-		}
-		orderIDs, err := reconcileLateAliasMatches(ctx, tx, aliasID, input.SabyID)
-		if err != nil {
-			return AliasReview{}, fmt.Errorf("reconcile procurement lines after late alias match: %w", err)
+		var orderIDs []int64
+		if input.SabyID != "" {
+			if err := confirmOriginalPlanAliases(ctx, tx, actor.CustomerID, aliasID, input.SabyID, canonicalVariantID); err != nil {
+				return AliasReview{}, err
+			}
+			var err error
+			if input.VariantID == 0 {
+				orderIDs, err = reconcileLateAliasMatches(ctx, tx, aliasID, input.SabyID)
+			}
+			if err != nil {
+				return AliasReview{}, fmt.Errorf("reconcile procurement lines after late alias match: %w", err)
+			}
 		}
 		affected, err := tx.Query(ctx, `SELECT DISTINCT l.procurement_order_id FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id WHERE l.supplier_alias_id=$1 AND l.receiving_mode IN ('catalog','awaiting_catalog') AND o.status NOT IN ('received','cancelled')`, aliasID)
 		if err != nil {
@@ -869,6 +913,14 @@ func (store *PostgresStore) ResolveAlias(
 		}
 	}
 
+	if siteOrderID > 0 {
+		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET comparison_accepted=TRUE,
+   comparison_note='Связано с карточкой сайта',updated_at=CURRENT_TIMESTAMP
+   WHERE id=$1 AND procurement_order_id=$2 AND reconciliation_status='added' AND NOT comparison_accepted`, input.OrderLineID, siteOrderID); err != nil {
+			return AliasReview{}, err
+		}
+	}
+
 	// A prepared document contains a snapshot of the old Saby IDs and balances.
 	// After an alias is moved to another card that snapshot must not be reused.
 	// Cancel only batches which have not produced a successful external action;
@@ -894,7 +946,7 @@ func (store *PostgresStore) ResolveAlias(
 	`, aliasID); err != nil {
 		return AliasReview{}, fmt.Errorf("invalidate procurement calculation after rematch: %w", err)
 	}
-	if input.MatchStatus == "confirmed" {
+	if input.MatchStatus == "confirmed" && input.SabyID != "" {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO procurement_supplier_products (supplier_id, saby_id, canonical_variant_id, supplier_article, availability_status, updated_by)
 			SELECT supplier_id, $2, NULLIF($4,0), supplier_article, availability_status, NULLIF($3,0)
@@ -1065,7 +1117,7 @@ func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, p
 	if err != nil {
 		return fmt.Errorf("lock manual procurement reconciliation pair: %w", err)
 	}
-	if plannedSaby != "" {
+	if plannedSaby != "" || plannedCanonical > 0 {
 		var planAliasID int64
 		if err := tx.QueryRow(ctx, `SELECT COALESCE(supplier_alias_id,0) FROM procurement_order_lines WHERE id=$1`, plannedID).Scan(&planAliasID); err != nil {
 			return err
@@ -1090,7 +1142,7 @@ func pairInvoiceLineWithPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, p
 		canonical_variant_id=CASE WHEN $5>0 THEN $5 ELSE COALESCE(invoice.canonical_variant_id,planned.canonical_variant_id) END,
 		invoice_raw_name=invoice.invoice_raw_name,invoice_supplier_article=invoice.invoice_supplier_article,dimensions_reviewed=FALSE,
 		invoiced_qty=invoice.invoiced_qty,unit_price=invoice.unit_price,line_total=invoice.line_total,load_unit=invoice.load_unit,
-		match_status=CASE WHEN $6<>'' THEN 'confirmed' ELSE invoice.match_status END,
+		match_status=CASE WHEN $6<>'' OR $5>0 THEN 'confirmed' ELSE invoice.match_status END,
 		source_page=invoice.source_page,source_line=$4,comparison_accepted=FALSE,comparison_note='',
 		reconciliation_status=CASE WHEN planned.ordered_qty IS DISTINCT FROM invoice.invoiced_qty
 			OR planned.expected_unit_price IS NULL OR invoice.unit_price IS NULL
@@ -1160,10 +1212,10 @@ func swapInvoiceAssignmentsBetweenPlans(ctx context.Context, tx pgx.Tx, actorID,
 	}
 	first, firstOK := plans[firstID]
 	second, secondOK := plans[secondID]
-	if !firstOK || !secondOK || first.sabyID == "" || second.sabyID == "" {
+	if !firstOK || !secondOK || (first.sabyID == "" && first.canonical == 0) || (second.sabyID == "" && second.canonical == 0) {
 		return &UserFacingError{Message: "Эти строки нельзя поменять местами. Обновите закупку и выберите две сопоставленные позиции"}
 	}
-	if first.invoice.aliasID == second.invoice.aliasID && first.sabyID != second.sabyID {
+	if first.invoice.aliasID == second.invoice.aliasID && (first.sabyID != second.sabyID || first.canonical != second.canonical) {
 		return &UserFacingError{Message: "У этих строк один ключ поставщика. Сначала уточните размеры, чтобы разделить варианты товара"}
 	}
 	aliasPlans := map[int64]procurementPlanIdentity{}
@@ -1184,7 +1236,7 @@ func swapInvoiceAssignmentsBetweenPlans(ctx context.Context, tx pgx.Tx, actorID,
 			if part.AliasID <= 0 {
 				continue
 			}
-			if previous, ok := aliasPlans[part.AliasID]; ok && previous.sabyID != pair.plan.sabyID {
+			if previous, ok := aliasPlans[part.AliasID]; ok && (previous.sabyID != pair.plan.sabyID || previous.canonical != pair.plan.canonical) {
 				return &UserFacingError{Message: "Один ключ поставщика встретился у разных товаров. Сначала уточните размеры."}
 			}
 			aliasPlans[part.AliasID] = pair.plan
@@ -1222,14 +1274,14 @@ func remapProcurementAlias(ctx context.Context, tx pgx.Tx, actorID, aliasID int6
 		return err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE procurement_supplier_aliases SET
-		matched_saby_id=$2,canonical_variant_id=NULLIF($3,0),match_status='confirmed',confidence=1,updated_at=CURRENT_TIMESTAMP
+		matched_saby_id=NULLIF($2,''),canonical_variant_id=NULLIF($3,0),match_status='confirmed',confidence=1,updated_at=CURRENT_TIMESTAMP
 		WHERE id=$1`, aliasID, sabyID, canonical); err != nil {
 		return fmt.Errorf("confirm supplier alias from manual invoice match: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO procurement_supplier_products(
 		supplier_id,saby_id,canonical_variant_id,supplier_article,availability_status,updated_by)
 		SELECT supplier_id,$2,NULLIF($3,0),supplier_article,'available',NULLIF($4,0)
-		FROM procurement_supplier_aliases WHERE id=$1
+		FROM procurement_supplier_aliases WHERE id=$1 AND $2<>''
 		ON CONFLICT (supplier_id,saby_id) DO UPDATE SET
 			canonical_variant_id=COALESCE(EXCLUDED.canonical_variant_id,procurement_supplier_products.canonical_variant_id),
 			supplier_article=CASE WHEN EXCLUDED.supplier_article<>'' THEN EXCLUDED.supplier_article ELSE procurement_supplier_products.supplier_article END,
@@ -1243,7 +1295,7 @@ func remapProcurementAlias(ctx context.Context, tx pgx.Tx, actorID, aliasID int6
 func applyProcurementInvoiceAssignment(ctx context.Context, tx pgx.Tx, lineID int64, plan procurementPlanIdentity, invoice procurementInvoiceAssignment) error {
 	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET
 		procurement_document_id=$2,supplier_alias_id=$3,dimensions_reviewed=FALSE,invoice_raw_name=$4,invoice_supplier_article=$5,
-		invoiced_qty=$6,unit_price=$7,line_total=$8,source_page=NULLIF($9,0),source_line=$10,invoice_components=$12::JSONB,load_unit=$13,saby_id=$14,
+		invoiced_qty=$6,unit_price=$7,line_total=$8,source_page=NULLIF($9,0),source_line=$10,invoice_components=$12::JSONB,load_unit=$13,saby_id=NULLIF($14,''),
 		match_status='confirmed',canonical_variant_id=NULLIF($11,0),comparison_accepted=FALSE,comparison_note='',
 		reconciliation_status=CASE WHEN ordered_qty IS DISTINCT FROM $6::INTEGER
 			OR expected_unit_price IS NULL OR ABS(expected_unit_price-$7::NUMERIC)>.005
@@ -1372,7 +1424,7 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 			expected_unit_price = CASE WHEN $2 THEN $3 ELSE expected_unit_price END,
 			pot_diameter_cm = CASE WHEN $4 THEN $5 ELSE pot_diameter_cm END,
 			height_cm = CASE WHEN $6 THEN $7 ELSE height_cm END,
-            dimensions_reviewed = CASE WHEN $4 OR $6 THEN TRUE ELSE dimensions_reviewed END,
+            dimensions_reviewed = CASE WHEN $4 OR $6 THEN COALESCE(CASE WHEN $4 THEN $5 ELSE pot_diameter_cm END,0)>0 AND COALESCE(CASE WHEN $6 THEN $7 ELSE height_cm END,0)>0 ELSE dimensions_reviewed END,
 			load_unit = CASE WHEN $8 THEN $9 ELSE load_unit END,
 			comparison_accepted = CASE WHEN $10 THEN $11 ELSE comparison_accepted END,
 			comparison_note = CASE WHEN $12 THEN $13 ELSE comparison_note END,
@@ -1504,7 +1556,7 @@ func (store *PostgresStore) UpdateOrderStatus(ctx context.Context, actor Actor, 
 		_, _ = tx.Exec(ctx, `UPDATE procurement_action_batches SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE procurement_order_id = $1 AND status = 'draft'`, orderID)
 	}
 	if input.Status == "received" {
-		if err := fulfilOrderAllocations(ctx, tx, orderID); err != nil {
+		if err := finalizeProcurementReceipt(ctx, tx, orderID); err != nil {
 			return OrderDetail{}, err
 		}
 	}

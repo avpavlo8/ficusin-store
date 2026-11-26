@@ -86,3 +86,18 @@ func TestReceivingPDFMarksAllocatedMixCardsIndividually(t *testing.T) {
 		t.Fatalf("rows = %#v", rows)
 	}
 }
+
+func TestMeasurementSheetBeforeCalculationKeepsOnlyPhysicalInvoiceRows(t *testing.T) {
+	quantity := 4
+	pot, height := 12.0, 32.0
+	detail := OrderDetail{Lines: []OrderLine{
+		{RawName: "Only in order", ReconciliationStatus: "missing"},
+		{RawName: "Only in invoice", ReconciliationStatus: "added", MatchStatus: "unmatched", InvoicedQuantity: &quantity},
+		{RawName: "Verified", CatalogueName: "Site variant", MatchStatus: "confirmed", InvoicedQuantity: &quantity, DimensionsReviewed: true, PotDiameterCM: &pot, HeightCM: &height},
+		{RawName: "Excluded", InvoiceExcluded: true, InvoicedQuantity: &quantity},
+	}}
+	rows, err := receivingRows(detail, true)
+	if err != nil || len(rows) != 2 || !rows[0].NeedsMeasurement || rows[1].NeedsMeasurement || rows[1].Name != "Site variant" {
+		t.Fatalf("measurement sheet: %+v, %v", rows, err)
+	}
+}

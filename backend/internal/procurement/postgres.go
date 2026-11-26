@@ -565,6 +565,8 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
               'supplierArticle',alias.supplier_article,'potDiameterCm',alias.pot_diameter_cm,
               'heightCm',alias.height_cm,'matchStatus',alias.match_status) END,
             l.receiving_mode,l.customer_handed_over,l.channel_costs,l.channel_quotes,l.channel_prices,l.dimensions_reviewed,l.retail_override_rub,l.additional_purchase_unit_rub::DOUBLE PRECISION,l.baseline_site_price_minor::DOUBLE PRECISION/100,COALESCE(pv.label,''),
+            COALESCE(p.name,''),variant_numeric_attribute(pv.id,'pot_diameter_cm')::DOUBLE PRECISION,
+            variant_numeric_attribute(pv.id,'height_cm')::DOUBLE PRECISION,
             COALESCE((SELECT jsonb_agg(jsonb_build_object('sabyId',child.saby_id,'name',n.name,'code',n.code,'quantity',child.invoiced_qty,'currentRetailRub',COALESCE(child.baseline_site_price_minor,child_variant.base_price_minor,0)::NUMERIC/100) ORDER BY child.id)
              FROM procurement_order_lines child JOIN saby_nomenclature n ON n.saby_id=child.saby_id
              LEFT JOIN product_variants child_variant ON child_variant.id=child.canonical_variant_id
@@ -573,6 +575,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
         LEFT JOIN procurement_supplier_aliases alias ON alias.id=l.supplier_alias_id
 		LEFT JOIN saby_nomenclature n ON n.saby_id = l.saby_id
 		LEFT JOIN product_variants pv ON pv.id=l.canonical_variant_id
+        LEFT JOIN products p ON p.id=pv.product_id
 		WHERE l.procurement_order_id = $1 AND l.receiving_parent_line_id IS NULL AND l.reconciliation_status <> 'superseded'
 		ORDER BY l.load_unit, l.id
 	`, orderID)
@@ -594,7 +597,7 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 			&line.UnitCostRUB, &line.CurrentUnitCostRUB, &line.CurrentUnitCostKind, &line.CurrentUnitCostEffectiveAt,
 			&line.CurrentRetailRUB, &line.ProposedRetailRUB,
 			&line.ProposedMarketplaceRUB, &line.ProposedMarketplaceStrikeRUB,
-			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ChannelCosts, &line.ChannelQuotes, &line.ChannelPrices, &line.DimensionsReviewed, &line.RetailOverrideRUB, &line.AdditionalPurchaseUnitRUB, &line.LabelRetailRUB, &line.CatalogueLabel, &line.ReceivingAllocations); err != nil {
+			&line.CustomerRequest, &line.ComparisonAccepted, &line.ComparisonNote, &line.InvoiceComponents, &line.MatchAlias, &line.ReceivingMode, &line.CustomerHandedOver, &line.ChannelCosts, &line.ChannelQuotes, &line.ChannelPrices, &line.DimensionsReviewed, &line.RetailOverrideRUB, &line.AdditionalPurchaseUnitRUB, &line.LabelRetailRUB, &line.CatalogueLabel, &line.CatalogueName, &line.CataloguePotDiameterCM, &line.CatalogueHeightCM, &line.ReceivingAllocations); err != nil {
 			return OrderDetail{}, fmt.Errorf("scan procurement order line: %w", err)
 		}
 		if line.ReceivingMode != "catalog" {
@@ -640,6 +643,11 @@ func (store *PostgresStore) OrderDetail(ctx context.Context, orderID int64) (Ord
 	for index := range detail.Lines {
 		line := &detail.Lines[index]
 		line.ComparisonMismatch = !line.InvoiceExcluded && (line.ReconciliationStatus == "changed" || line.ReconciliationStatus == "missing" || line.ReconciliationStatus == "added")
+	}
+	if oneOf(order.Status, "ready_to_receive", "received") {
+		if err := store.loadPublicationValues(ctx, &detail); err != nil {
+			return OrderDetail{}, err
+		}
 	}
 	detail.UnifiedPreview, err = loadUnifiedOrderPreview(ctx, store.pool, settings, orderID)
 	if err != nil {

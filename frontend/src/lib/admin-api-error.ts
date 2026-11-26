@@ -18,7 +18,10 @@ export function adminApiError(
             : "Сервер вернул некорректный ответ"
     : serverMessage;
   const endpoint = path.split(/[?#]/)[0];
-  return new Error(
-    `${message}. HTTP ${status}, ${method.toUpperCase()} ${endpoint}${requestId ? `. Код запроса: ${requestId}` : ""}`,
+  return Object.assign(
+    new Error(
+      `${message}. HTTP ${status}, ${method.toUpperCase()} ${endpoint}${requestId ? `. Код запроса: ${requestId}` : ""}`,
+    ),
+    { userMessage: generic ? undefined : message },
   );
 }

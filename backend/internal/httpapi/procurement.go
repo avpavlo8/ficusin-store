@@ -36,12 +36,14 @@ type procurementService interface {
 	OrderDetail(context.Context, int64) (procurement.OrderDetail, error)
 	SabyPriceXLSX(context.Context, int64) ([]byte, string, error)
 	ReceivingPDF(context.Context, int64) ([]byte, string, error)
+	MeasurementPDF(context.Context, int64) ([]byte, string, error)
 	CalculateOrder(context.Context, procurement.Actor, int64, procurement.CalculationInput) (procurement.OrderDetail, error)
 	UpdateOrderStatus(context.Context, procurement.Actor, int64, procurement.OrderStatusUpdate) (procurement.OrderDetail, error)
 	DeleteOrder(context.Context, procurement.Actor, int64) error
 	UpdateOrderLine(context.Context, procurement.Actor, int64, procurement.OrderLineUpdate) (procurement.OrderDetail, error)
 	ImportDocument(context.Context, procurement.Actor, procurement.DocumentUpload) (procurement.ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
+	SearchSiteNomenclature(context.Context, string) ([]procurement.NomenclatureCandidate, error)
 	ListNomenclatureBalances(context.Context, int64, []string) ([]procurement.NomenclatureBalance, error)
 	ResolveAlias(context.Context, procurement.Actor, int64, procurement.AliasResolution) (procurement.AliasReview, error)
 	CreateRequest(context.Context, procurement.Actor, procurement.RequestCreate) (procurement.Request, error)
@@ -52,7 +54,7 @@ type procurementService interface {
 	UpdateProduct(context.Context, procurement.Actor, procurement.ProductDirectoryUpdate) (procurement.ProductDirectoryItem, error)
 	AssignSupplier(context.Context, procurement.Actor, string, int64) error
 	PrepareBatch(context.Context, procurement.Actor, int64, string, []string) (procurement.ActionBatch, error)
-	ApproveBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
+	ApproveBatch(context.Context, procurement.Actor, int64, ...bool) (procurement.ActionBatch, error)
 	RetryBatch(context.Context, procurement.Actor, int64) (procurement.ActionBatch, error)
 	CheckIntegration(context.Context, procurement.Actor, string) (procurement.IntegrationHealth, error)
 	SyncChannelCatalog(context.Context, procurement.Actor, string) (procurement.ChannelLinkResult, error)
@@ -293,7 +295,11 @@ func (handlers procurementHandlers) receivingPDF(response http.ResponseWriter, r
 	if !ok {
 		return
 	}
-	content, name, err := handlers.service.ReceivingPDF(request.Context(), orderID)
+	buildPDF := handlers.service.ReceivingPDF
+	if request.URL.Query().Get("mode") == "measurements" {
+		buildPDF = handlers.service.MeasurementPDF
+	}
+	content, name, err := buildPDF(request.Context(), orderID)
 	if err != nil {
 		handlers.failed(response, "build procurement receiving PDF", err)
 		return
@@ -455,7 +461,12 @@ func (handlers procurementHandlers) searchNomenclature(response http.ResponseWri
 		writeJSON(response, http.StatusServiceUnavailable, errorResponse{Error: "Раздел закупок пока недоступен"})
 		return
 	}
-	items, err := handlers.service.SearchNomenclature(request.Context(), request.URL.Query().Get("q"))
+	query := request.URL.Query().Get("q")
+	search := handlers.service.SearchNomenclature
+	if request.URL.Query().Get("source") == "site" {
+		search = handlers.service.SearchSiteNomenclature
+	}
+	items, err := search(request.Context(), query)
 	if err != nil {
 		handlers.failed(response, "search procurement nomenclature", err)
 		return
@@ -736,7 +747,12 @@ func (handlers procurementHandlers) approveBatch(response http.ResponseWriter, r
 	if !ok {
 		return
 	}
-	item, err := handlers.service.ApproveBatch(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, batchID)
+	includeMeasurements := request.URL.Query().Get("includeMeasurements")
+	if includeMeasurements != "" && includeMeasurements != "1" {
+		writeJSON(response, http.StatusBadRequest, errorResponse{Error: "includeMeasurements принимает значение 1"})
+		return
+	}
+	item, err := handlers.service.ApproveBatch(request.Context(), procurement.Actor{CustomerID: actor.CustomerID, Role: actor.Role}, batchID, includeMeasurements == "1")
 	if err != nil {
 		handlers.failed(response, "approve procurement batch", err)
 		return

@@ -3,7 +3,6 @@ import { procurementOrderHref, quantityLabel } from "./procurementUX";
 import { bulkSelectableRecommendations } from "./lib/procurement-state";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import {
-  ProcurementMatchDialog,
   ProcurementOrderDetailDialog,
   ProcurementPlanDialog,
   ProcurementRequestDialog,
@@ -41,6 +40,7 @@ import "./styles/admin-procurement-workspace.css";
 import "./styles/admin-procurement-queues.css";
 import "./styles/admin-procurement-composition.css";
 
+const ProcurementMatchDialog = lazy(() => import("./ProcurementMatchDialog"));
 const ProcurementProducts = lazy(() =>
   import("./AdminProcurementProducts").then((module) => ({ default: module.ProcurementProducts })),
 );
@@ -1648,15 +1648,17 @@ export function Procurement({
         />
       )}
       {matchDialog && (
-        <ProcurementMatchDialog
-          alias={matchDialog}
-          onClose={() => setMatchDialog(null)}
-          onSaved={() => {
-            setMatchDialog(null);
-            void load();
-          }}
-          onError={onError}
-        />
+        <Suspense fallback={<p role="status">Загружаем справочник…</p>}>
+          <ProcurementMatchDialog
+            alias={matchDialog}
+            onClose={() => setMatchDialog(null)}
+            onSaved={() => {
+              setMatchDialog(null);
+              void load();
+            }}
+            onError={onError}
+          />
+        </Suspense>
       )}
       {selectedOrder && (
         <ProcurementOrderDetailDialog

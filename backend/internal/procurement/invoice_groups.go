@@ -73,8 +73,8 @@ func appendInvoiceLinesToPlan(ctx context.Context, tx pgx.Tx, actorID, orderID, 
 		Scan(&sabyID, &canonical, &planAlias, &documentID, &loadUnit); err != nil {
 		return &UserFacingError{Message: "Обновите закупку и выберите существующую позицию плана."}
 	}
-	if sabyID == "" {
-		return &UserFacingError{Message: "Сначала свяжите позицию плана с товаром СБИС."}
+	if sabyID == "" && canonical == 0 {
+		return &UserFacingError{Message: "Сначала свяжите позицию плана с карточкой сайта."}
 	}
 	var count int
 	var valid bool
@@ -173,7 +173,8 @@ func reconcileConfirmedInvoiceGroups(ctx context.Context, tx pgx.Tx, actorID, or
 	rows, err := tx.Query(ctx, `WITH destinations AS (
  SELECT i.id AS invoice_id,MIN(p.id) AS plan_id
  FROM procurement_order_lines i JOIN procurement_order_lines p
- ON p.procurement_order_id=i.procurement_order_id AND p.saby_id=i.saby_id
+ ON p.procurement_order_id=i.procurement_order_id AND
+ (p.canonical_variant_id=i.canonical_variant_id OR ((p.canonical_variant_id IS NULL OR i.canonical_variant_id IS NULL) AND p.saby_id=i.saby_id))
  AND p.pot_diameter_cm IS NOT DISTINCT FROM i.pot_diameter_cm
  AND p.height_cm IS NOT DISTINCT FROM i.height_cm AND p.load_unit=i.load_unit
  WHERE i.procurement_order_id=$1 AND i.reconciliation_status='added' AND i.match_status='confirmed'

@@ -143,6 +143,13 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		s.IDs.UUID, _ = card.scalarString("Identifier")
 		s.IDs.OfferID, _ = card.scalarString("Number")
 		s.IDs.SKU = r.SKU
+		if r.ProcurementMeasurements {
+			if r.Action != "update" || native.Created || strings.TrimSpace(r.Name) == "" {
+				return result("needs_attention", "Для изменения размеров нужна существующая карточка СБИС с подтверждённой связью.")
+			}
+			s.Stage = "save"
+			return result("queued", "Подготавливаем обновление диаметра в названии карточки СБИС.")
+		}
 		if r.Saby.Mode == "link" && r.Action != "update" && !native.Created {
 			s.Stage = "done"
 			return result("linked", "Карточка СБИС найдена и связана. Данные площадки не изменялись.")
@@ -236,9 +243,16 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		if err = validateSabyEditorNativeIdentity(card, r, s.IDs); err != nil {
 			return result("needs_attention", err.Error())
 		}
-		fields, imageIDs, err := p.buildSabyEditorFields(card, r, native)
-		if err != nil {
-			return ce.Result{Progress: s}, err
+		var fields map[string]json.RawMessage
+		var imageIDs []string
+		if r.ProcurementMeasurements {
+			name, _ := json.Marshal(strings.TrimSpace(r.Name))
+			fields = map[string]json.RawMessage{"Name": name, "NameBase": name}
+		} else {
+			fields, imageIDs, err = p.buildSabyEditorFields(card, r, native)
+			if err != nil {
+				return ce.Result{Progress: s}, err
+			}
 		}
 		data, err := card.selectFields(fields)
 		if err != nil {
@@ -283,6 +297,9 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 			s.Ambiguous = true
 			return result("queued", "Ответ сохранения СБИС не получен. Проверяем фактические данные без повторного создания.")
 		}
+		if r.ProcurementMeasurements {
+			return result("queued", "Проверяем новый диаметр в названии карточки СБИС.")
+		}
 		return result("queued", "СБИС принял сохранение. Проверяем цену, описание, штрихкод и фотографии.")
 	}
 	if s.Stage == "verify" || s.Stage == "verify-main-price" {
@@ -298,6 +315,16 @@ func (p *SabyEditorPublisher) Advance(ctx context.Context, ch string, r ce.Reque
 		}
 		if err = validateSabyEditorNativeIdentity(card, r, s.IDs); err != nil {
 			return result("needs_attention", err.Error())
+		}
+		if r.ProcurementMeasurements {
+			for _, field := range []string{"Name", "NameBase"} {
+				name, err := card.scalarString(field)
+				if err != nil || name != strings.TrimSpace(r.Name) {
+					return result("needs_attention", "СБИС ещё не подтвердил новый диаметр в названии карточки. Повторный запрос не отправлялся.")
+				}
+			}
+			s.Stage, s.Ambiguous = "done", false
+			return result("synced", "СБИС подтвердил диаметр в названии карточки.")
 		}
 		// First prove every content field and configured-list price from the
 		// frozen Update, including legacy receipts which did not send a main
@@ -389,6 +416,15 @@ func sabyEditorPreparedValid(native sabyEditorPublishState, r ce.Request, id str
 	photosPrepared := len(r.Images) > 0 && len(native.ImageIDs) >= len(r.Images)
 	if native.Gallery != nil {
 		photosPrepared = len(native.Images) == len(native.Gallery.Added) && len(native.ImageIDs) >= len(native.Images)
+	}
+	if r.ProcurementMeasurements {
+		prepared, err := parseSabyEditorNativeRecord(native.PreparedData)
+		if err != nil || len(prepared.fields) != 2 || native.Created || native.BasePriceIncluded {
+			return false
+		}
+		name, nameErr := prepared.scalarString("Name")
+		base, baseErr := prepared.scalarString("NameBase")
+		photosPrepared = nameErr == nil && baseErr == nil && name == strings.TrimSpace(r.Name) && base == name
 	}
 	return len(native.PreparedData) > 0 && native.PreparedHash != "" && native.PreparedRequestHash != "" && native.PreparedID == id && sabyEditorPayloadHash(native.PreparedData) == native.PreparedHash && sabyEditorPayloadHash(requestData) == native.PreparedRequestHash && photosPrepared
 }

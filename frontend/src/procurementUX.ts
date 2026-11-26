@@ -130,7 +130,7 @@ export const quantityLabel = (value: number) =>
 
 export const receivingModeLabel = (mode?: string) =>
   mode === "awaiting_catalog"
-    ? "Ожидает карточку СБИС"
+    ? "Ожидает карточку сайта"
     : mode === "assortment"
       ? "Разобрать после приезда"
       : mode === "customer_handoff"

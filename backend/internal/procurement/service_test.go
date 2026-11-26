@@ -68,6 +68,10 @@ func (stub *storeStub) ImportDocument(_ context.Context, _ Actor, input Document
 	stub.documentInput, stub.parsedInput = input, parsed
 	return ImportResult{Document: DocumentSummary{ID: 12}}, nil
 }
+func (stub *storeStub) SearchSiteNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
+	return stub.SearchNomenclature(ctx, query)
+}
+
 func (stub *storeStub) SearchNomenclature(_ context.Context, query string) ([]NomenclatureCandidate, error) {
 	stub.searchInput = query
 	return []NomenclatureCandidate{{SabyID: "X1", Name: "Фикус Лирата"}}, nil
@@ -125,7 +129,7 @@ func (stub *storeStub) PrepareBatch(_ context.Context, _ Actor, _ int64, kind st
 	stub.batchChannels = append([]string(nil), channels...)
 	return ActionBatch{Kind: kind}, nil
 }
-func (stub *storeStub) ApproveBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {
+func (stub *storeStub) ApproveBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool, _ ...bool) (ActionBatch, error) {
 	return ActionBatch{ID: batchID}, nil
 }
 func (stub *storeStub) RetryBatch(_ context.Context, _ Actor, batchID int64, _ map[string]bool) (ActionBatch, error) {

@@ -142,6 +142,16 @@ func TestAvitoAutoloadPricesAndManualStopsOnLiveDatabase(t *testing.T) {
 	if ads = feed(); len(ads) != 1 || ads[0].Price != 1200 {
 		t.Fatalf("price edit not reflected: %+v", ads)
 	}
+	// Receipt measurements use the latest site attributes even when the variant label is custom.
+	if _, err = pool.Exec(ctx, `INSERT INTO variant_attribute_values(variant_id,attribute_id,value)
+SELECT v.id,d.id,CASE d.code WHEN 'pot_diameter_cm' THEN '14.5'::jsonb ELSE '31.25'::jsonb END
+FROM product_variants v JOIN attribute_definitions d ON d.code IN ('pot_diameter_cm','height_cm')
+WHERE v.product_id=$1 AND v.label='D12'`, productID); err != nil {
+		t.Fatal(err)
+	}
+	if ads = feed(); len(ads) != 1 || !strings.Contains(ads[0].Description, "диаметр горшка 14,5 см · высота 31,25 см") {
+		t.Fatalf("measured site dimensions not reflected: %+v", ads)
+	}
 	// An archive in Avito is read before the next response and stays paused.
 	remoteStatus = "old"
 	if ads = feed(); len(ads) != 0 {

@@ -703,6 +703,9 @@ export type ProcurementActionItem = {
 
 export type ProcurementActionBatch = {
   unified?: boolean;
+  measurementsApplied?: number;
+  measurementsQueued?: number;
+  measurementsInFeed?: number;
   id: number;
   kind: string;
   status: string;
@@ -716,7 +719,20 @@ export type ProcurementReceivingAllocation = {
   code: string;
   quantity: number;
 };
+export type ProcurementPublicationValues = {
+  linked: boolean;
+  sizeLinked: boolean;
+  priceEligible?: boolean;
+  priceRub?: number;
+  potDiameterCm?: number;
+  heightCm?: number;
+};
+
 export type ProcurementOrderLine = {
+  publicationValues?: Record<string, ProcurementPublicationValues>;
+  catalogueName?: string;
+  cataloguePotDiameterCm?: number;
+  catalogueHeightCm?: number;
   canonicalVariantId?: number;
   receivingMode?: "catalog" | "assortment" | "customer_handoff" | "awaiting_catalog";
   receivingAllocations?: ProcurementReceivingAllocation[];

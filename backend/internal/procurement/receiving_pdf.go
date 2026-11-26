@@ -16,33 +16,49 @@ const (
 )
 
 type receivingPDFRow struct {
-	Name          string
-	InvoiceName   string
-	Pot           *float64
-	Height        *float64
-	Packages      *int
-	Units         *int
-	Quantity      int
-	Price         int64
-	PreviousPrice float64
-	ReprintLabel  bool
+	Name             string
+	InvoiceName      string
+	Pot              *float64
+	Height           *float64
+	Packages         *int
+	Units            *int
+	Quantity         int
+	Price            int64
+	PreviousPrice    float64
+	ReprintLabel     bool
+	NeedsMeasurement bool
 }
 
 func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
+	return receivingRows(detail, false)
+}
+
+func receivingRows(detail OrderDetail, measurements bool) ([]receivingPDFRow, error) {
 	rows := make([]receivingPDFRow, 0, len(detail.Lines))
 	for _, line := range detail.Lines {
 		if line.InvoiceExcluded || line.ReconciliationStatus == "superseded" || line.ReconciliationStatus == "missing" {
 			continue
 		}
-		if line.ReconciliationStatus == "added" && !line.ComparisonAccepted {
+		if !measurements && line.ReconciliationStatus == "added" && !line.ComparisonAccepted {
 			continue
 		}
 		if line.MatchStatus == "ignored" {
 			continue
 		}
-		name := strings.TrimSpace(line.SabyName)
+		name := strings.TrimSpace(line.CatalogueName)
+		if name == "" {
+			name = strings.TrimSpace(line.SabyName)
+		}
 		if name == "" {
 			name = strings.TrimSpace(line.RawName)
+		}
+		needsMeasurement := !line.DimensionsReviewed || line.PotDiameterCM == nil || *line.PotDiameterCM <= 0 || line.HeightCM == nil || *line.HeightCM <= 0
+		if measurements {
+			if line.InvoicedQuantity != nil && *line.InvoicedQuantity > 0 {
+				rows = append(rows, receivingPDFRow{Name: name, InvoiceName: strings.TrimSpace(line.InvoiceRawName), Pot: line.PotDiameterCM, Height: line.HeightCM,
+					Packages: line.PackageCount, Units: line.UnitsPerPackage, Quantity: *line.InvoicedQuantity, NeedsMeasurement: needsMeasurement})
+			}
+			continue
 		}
 		if line.MatchStatus != "confirmed" && line.MatchStatus != "deferred" {
 			return nil, &UserFacingError{Message: fmt.Sprintf("Не сопоставлена позиция для PDF приёмки: %s", blankDash(name))}
@@ -54,7 +70,7 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 			return nil, &UserFacingError{Message: fmt.Sprintf("Не рассчитана розничная цена для PDF приёмки: %s", blankDash(name))}
 		}
 		if line.ReceivingMode == "awaiting_catalog" {
-			name = line.RawName + " · выбрать карточку СБИС"
+			name = line.RawName + " · выбрать карточку сайта"
 		}
 		if line.ReceivingMode == "assortment" && len(line.ReceivingAllocations) > 0 {
 			for _, part := range line.ReceivingAllocations {
@@ -85,7 +101,15 @@ func receivingPDFRows(detail OrderDetail) ([]receivingPDFRow, error) {
 }
 
 func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
-	rows, err := receivingPDFRows(detail)
+	return buildReceivingPDF(detail, false)
+}
+
+func BuildMeasurementPDF(detail OrderDetail) ([]byte, int, error) {
+	return buildReceivingPDF(detail, true)
+}
+
+func buildReceivingPDF(detail OrderDetail, measurements bool) ([]byte, int, error) {
+	rows, err := receivingRows(detail, measurements)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -117,7 +141,11 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 			return err
 		}
 		pdf.SetXY(margin+14, 34)
-		if err := pdf.Cell(nil, "Лист приёмки · Фикусин"); err != nil {
+		title := "Лист приёмки · Фикусин"
+		if measurements {
+			title = "Лист проверки размеров · Фикусин"
+		}
+		if err := pdf.Cell(nil, title); err != nil {
 			return err
 		}
 
@@ -150,7 +178,11 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 			return err
 		}
 		pdf.SetTextColor(45, 55, 49)
-		headers := []string{"№", "Название СБИС", "Размер", "Упаковка", "Кол-во", "Цена, ₽", "Ценник", "Принято"}
+		headers := []string{"№", "Карточка / растение", "Размер", "Упаковка", "Кол-во", "Цена, ₽", "Ценник", "Принято"}
+		if measurements {
+			headers[5] = ""
+			headers[6] = "Фактические D / H"
+		}
 		x := margin
 		for index, header := range headers {
 			pdf.SetXY(x+4, y+7)
@@ -187,6 +219,9 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 		values := []string{
 			fmt.Sprintf("%d", index+1), shortenPDFText(row.Name, 48), sizePDFText(row), packagePDFText(row), fmt.Sprintf("%d", row.Quantity), formatPDFRUB(row.Price), "—", "□",
 		}
+		if measurements {
+			values[5] = ""
+		}
 		for column, value := range values {
 			pdf.SetTextColor(40, 48, 43)
 			size := 9.0
@@ -210,6 +245,22 @@ func BuildReceivingPDF(detail OrderDetail) ([]byte, int, error) {
 				}
 				pdf.SetXY(x+4, y+21)
 				if err := pdf.CellWithOption(&gopdf.Rect{W: widths[column] - 8, H: 9}, "Инвойс: "+shortenPDFText(row.InvoiceName, 60), gopdf.CellOption{Align: gopdf.Left}); err != nil {
+					return nil, 0, err
+				}
+			}
+			if column == 6 && measurements && row.NeedsMeasurement {
+				pdf.SetFillColor(250, 238, 216)
+				pdf.RectFromUpperLeftWithStyle(x+1, y+1, widths[column]-2, rowHeight-2, "F")
+				pdf.SetTextColor(93, 56, 22)
+				if err := pdf.SetFont("DejaVu", "", 8); err != nil {
+					return nil, 0, err
+				}
+				pdf.SetXY(x+4, y+6)
+				if err := pdf.Cell(nil, "□ Перемерить"); err != nil {
+					return nil, 0, err
+				}
+				pdf.SetXY(x+4, y+21)
+				if err := pdf.Cell(nil, "D ______  H ______"); err != nil {
 					return nil, 0, err
 				}
 			}

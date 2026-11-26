@@ -71,6 +71,52 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	if e = json.Unmarshal(stateRaw, &progress); e != nil {
 		return e
 	}
+	if request.ProcurementMeasurements {
+		// An Ozon content import includes a readback copy of the current price.
+		// A combined approval queues both jobs. Let its price upload finish
+		// before taking the first content lease to avoid restoring an old price.
+		if channel == "ozon" && progress.Stage == "" && status != "processing" {
+			if e = tx.QueryRow(ctx, `SELECT EXISTS (
+ SELECT 1 FROM procurement_action_items item JOIN procurement_action_batches b ON b.id=item.batch_id
+ LEFT JOIN procurement_order_lines line ON line.id=item.procurement_order_line_id
+ WHERE item.channel='ozon' AND item.status IN ('queued','processing') AND b.status<>'cancelled'
+   AND COALESCE(item.pricing_variant_id,line.canonical_variant_id)=$1
+)`, variant).Scan(&priceBusy); e != nil {
+				return e
+			}
+			if priceBusy {
+				if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET next_attempt_at=NOW()+INTERVAL '10 seconds',
+ message='Размеры будут отправлены после подтверждения цены Ozon.' WHERE variant_id=$1 AND channel=$2`, variant, channel); e != nil {
+					return e
+				}
+				return tx.Commit(ctx)
+			}
+		}
+		// Confirm that the queued physical data still belongs to this card.
+		// Complete readback for an already-sent revision before promoting its
+		// pending replacement. Never replay a stale write after a lost reply.
+		beforeWrite := progress.Stage == "" || progress.Stage == "hydrate" || progress.Stage == "save" || progress.Stage == "send-save" || progress.Stage == "update"
+		var current bool
+		if e = tx.QueryRow(ctx, `SELECT EXISTS (
+ SELECT 1 FROM catalog_editor_remote_links link JOIN product_variants v ON v.id=link.variant_id
+ JOIN catalog_editor_publications pub ON pub.variant_id=link.variant_id AND pub.channel=link.channel
+ WHERE link.variant_id=$1 AND link.channel=$2 AND link.execution_mode=$3
+ AND (CASE WHEN link.channel IN ('ozon','flowwow') THEN link.offer_id ELSE link.remote_id END)=$4
+ AND v.is_active<>0 AND v.archived_at IS NULL
+ AND (NOT $6 OR pub.pending_payload->>'procurementMeasurements'='true' OR NOT EXISTS (
+  SELECT 1 FROM jsonb_each(($5::jsonb)->'attributes') a(code,value)
+  WHERE variant_numeric_attribute(v.id,a.code) IS DISTINCT FROM (a.value#>>'{}')::numeric))
+)`, variant, channel, mode, request.ExistingID, raw, beforeWrite).Scan(&current); e != nil {
+			return e
+		}
+		if !current {
+			if _, e = tx.Exec(ctx, `UPDATE catalog_editor_publications SET status='needs_attention',lease_until=NULL,
+ message='Связь или размеры на сайте изменились. Старое обновление остановлено.',updated_at=NOW() WHERE variant_id=$1 AND channel=$2`, variant, channel); e != nil {
+				return e
+			}
+			return tx.Commit(ctx)
+		}
+	}
 	if progress.Stage == "" && request.Channel.Mode != "link" && request.Action != "resolve" {
 		var ids RemoteIDs
 		linkErr := tx.QueryRow(ctx, `SELECT remote_id,offer_id,sku,barcode FROM catalog_editor_remote_links WHERE variant_id=$1 AND channel=$2 AND execution_mode=$3`, variant, channel, mode).Scan(&ids.ProductID, &ids.OfferID, &ids.SKU, &ids.Barcode)
@@ -105,6 +151,9 @@ func PublicationStep(ctx context.Context, pool *pgxpool.Pool, publisher Publishe
 	}
 	if status == "processing" && request.Action == "update" {
 		switch {
+		case (channel == "ozon" || channel == "wb") && request.ProcurementMeasurements && progress.Stage == "update" && progress.UpdateRequest != nil:
+			progress.Stage = "measurements-readback"
+			progress.Ambiguous = true
 		case channel == "ozon" && progress.Stage == "update" && progress.UpdateRequest != nil,
 			channel == "wb" && progress.Stage == "media",
 			channel == "flowwow" && progress.Stage == "update":

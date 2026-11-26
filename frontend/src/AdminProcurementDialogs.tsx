@@ -2,6 +2,7 @@ import { AdminProductSearch } from "./AdminProductSearch";
 import { NumericInput } from "./NumericInput";
 import { currentActionFailures, recommendedPackageCount } from "./lib/procurement-state";
 import { receivingModeLabel } from "./procurementUX";
+import type { PublicationNotice } from "./ProcurementChangesTable";
 import { ProcurementLineEditor } from "./ProcurementLineEditor";
 import { ProcurementReceivingDialog } from "./ProcurementReceivingDialog";
 import {
@@ -23,17 +24,12 @@ import {
   quantityLabel,
 } from "./procurementUX";
 export { ProcurementRequestForm as ProcurementRequestDialog } from "./ProcurementRequestForm";
-import {
-  normalizeProcurementOrderDetail,
-  procurementStatusLabels,
-  procurementParserLabels,
-} from "./AdminProcurement";
+import { normalizeProcurementOrderDetail, procurementStatusLabels } from "./AdminProcurement";
 import { ConfirmDialog, api, money } from "./adminShared";
 import type {
   NomenclatureCandidate,
   ProcurementActionBatch,
   ProcurementActionItem,
-  ProcurementAlias,
   ProcurementOrder,
   ProcurementOrderDetail,
   ProcurementDocument,
@@ -43,7 +39,9 @@ import type {
   ProcurementSettings,
 } from "./adminTypes";
 
-const UnifiedPricingPreview = lazy(() => import("./UnifiedPricingPreview"));
+const ProcurementOrderDocuments = lazy(() => import("./ProcurementOrderDocuments"));
+const ProcurementSiteMatchDialog = lazy(() => import("./ProcurementSiteMatchDialog"));
+const ProcurementOrderCosts = lazy(() => import("./ProcurementOrderCosts"));
 
 const ProcurementInvoicePairDialog = lazy(() =>
   import("./ProcurementInvoicePairDialog").then((module) => ({
@@ -64,6 +62,11 @@ const reconciliationLabel = (value: string) =>
     excluded: "Исключено",
     superseded: "Прошлая версия",
   })[value] || value;
+const formatOrderUnitPrice = (value: number) =>
+  value.toLocaleString("ru-RU", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
 const decimalNumber = (value: string) => Number(value.trim().replace(",", "."));
 const displayPrice = (value: string | number | null | undefined) => {
   const text = String(value ?? "")
@@ -1307,10 +1310,17 @@ export function ProcurementOrderDetailDialog({
   const [lineQuery, setLineQuery] = useState("");
   const [lineWindow, setLineWindow] = useState({ scope: "", count: 5 });
   const [batchWindows, setBatchWindows] = useState<Record<number, number>>({});
-  const [lineFilter, setLineFilter] = useState("all");
+  const [selectedLineFilter, setLineFilter] = useState<string>();
+  const [orderSection, setOrderSection] = useState<"lines" | "documents" | "costs">(() =>
+    window.location.hash === "#procurement-prices" ? "costs" : "lines",
+  );
+  const [rowPricesVisible, setRowPricesVisible] = useState<boolean>();
   const lineTabsID = useId();
   const lineTabsRef = useRef<HTMLDivElement>(null);
   const [detail, setDetail] = useState<ProcurementOrderDetail | null>(null);
+  const [publicationNotices, setPublicationNotices] = useState<Record<string, PublicationNotice>>(
+    {},
+  );
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [arrivalDate, setArrivalDate] = useState<string | null>(null);
@@ -1322,13 +1332,22 @@ export function ProcurementOrderDetailDialog({
     line: ProcurementOrderLine;
     kind: "dimensions" | "comparison" | "exclusion";
   } | null>(null);
-  const lineTableRef = useRef<HTMLDivElement>(null);
   const [costs, setCosts] = useState({
     exchangeRate: 0,
     deliveryToMoscowRub: 0,
     deliveryToRyazanRub: 0,
     additionalCostsRub: 0,
   });
+  const openOrderSection = (section: typeof orderSection) => {
+    setOrderSection(section);
+    window.requestAnimationFrame(() => {
+      dialogRef.current
+        ?.querySelector<HTMLButtonElement>(
+          `.procurement-order-sections button[aria-pressed="true"]`,
+        )
+        ?.focus();
+    });
+  };
   const load = useCallback(
     (preserveCosts = false) =>
       api<ProcurementOrderDetail>(`/api/v1/admin/procurement/orders/${orderId}`)
@@ -1393,36 +1412,21 @@ export function ProcurementOrderDetailDialog({
   };
   const downloadSabyPrices = async () => {
     if (!detail) return;
-    const bySaby = new Map<string, { sabyId: string; priceRub: number; name: string }>();
+    const bySaby = new Map<string, number>();
     for (const line of detail.lines) {
       if (
         line.canonicalVariantId ||
         line.matchStatus !== "confirmed" ||
         line.invoiceExcluded ||
+        line.reconciliationStatus === "superseded" ||
         !line.sabyId ||
         !line.proposedRetailRub ||
         line.receivingMode !== "catalog"
       )
         continue;
-      const previous = bySaby.get(line.sabyId);
-      if (!previous || previous.priceRub < line.proposedRetailRub) {
-        bySaby.set(line.sabyId, {
-          sabyId: line.sabyId,
-          priceRub: line.proposedRetailRub,
-          name: line.sabyName || line.rawName,
-        });
-      }
+      bySaby.set(line.sabyId, Math.max(bySaby.get(line.sabyId) ?? 0, line.proposedRetailRub));
     }
-    const firstPrices = [...bySaby.values()];
-    if (
-      firstPrices.length &&
-      !window.confirm(
-        "Подтвердить первые цены новых товаров для файла СБИС?\n\n" +
-          firstPrices.map((price) => `${price.name}: ${money.format(price.priceRub)}`).join("\n") +
-          "\n\nБудет скачан файл. Импорт в СБИС выполняется отдельно.",
-      )
-    )
-      return;
+    const firstPrices = [...bySaby].map(([sabyId, priceRub]) => ({ sabyId, priceRub }));
     const response = await fetch(`/api/v1/admin/procurement/orders/${orderId}/saby-prices.xlsx`, {
       credentials: "same-origin",
       cache: "no-store",
@@ -1430,9 +1434,7 @@ export function ProcurementOrderDetailDialog({
         ? {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              firstPrices: firstPrices.map(({ sabyId, priceRub }) => ({ sabyId, priceRub })),
-            }),
+            body: JSON.stringify({ firstPrices }),
           }
         : {}),
     });
@@ -1452,11 +1454,14 @@ export function ProcurementOrderDetailDialog({
     link.remove();
     URL.revokeObjectURL(url);
   };
-  const downloadReceivingPDF = async () => {
-    const response = await fetch(`/api/v1/admin/procurement/orders/${orderId}/receiving.pdf`, {
-      credentials: "same-origin",
-      cache: "no-store",
-    });
+  const downloadReceivingPDF = async (measurements = false) => {
+    const response = await fetch(
+      `/api/v1/admin/procurement/orders/${orderId}/receiving.pdf${measurements ? "?mode=measurements" : ""}`,
+      {
+        credentials: "same-origin",
+        cache: "no-store",
+      },
+    );
     if (!response.ok) {
       const result = (await response.json().catch(() => ({}))) as { error?: string };
       throw new Error(result.error || "Не удалось сформировать PDF приёмки");
@@ -1473,18 +1478,77 @@ export function ProcurementOrderDetailDialog({
     link.remove();
     URL.revokeObjectURL(url);
   };
-  const prepare = async (kind: "receipt" | "prices", channel?: string) => {
+  const prepareReceipt = async () => {
     setSaving(true);
     try {
-      if (channel === "saby_price") await downloadSabyPrices();
-      else
-        await api(`/api/v1/admin/procurement/orders/${orderId}/batches`, {
-          method: "POST",
-          body: JSON.stringify({ kind, channels: channel ? [channel] : [] }),
-        });
-      await load();
+      await api(`/api/v1/admin/procurement/orders/${orderId}/batches`, {
+        method: "POST",
+        body: JSON.stringify({ kind: "receipt", channels: [] }),
+      });
+      await load(true);
+      window.requestAnimationFrame(() => {
+        const history = document.getElementById("procurement-action-history");
+        history?.focus();
+        history?.scrollIntoView({ block: "start" });
+      });
     } catch (error) {
       onError((error as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const publishChanges = async (channel: string) => {
+    const name = channel === "saby_price" ? "СБИС" : channelLabel(channel);
+    const note = (text: string, error = false, batchId?: number) =>
+      setPublicationNotices((current) => ({
+        ...current,
+        [channel]: { text: `${name} · ${text}`, error, batchId },
+      }));
+    setSaving(true);
+    note("Выгружаем…");
+    try {
+      const received = detail?.order.status === "received";
+      if (received && channel === "saby_price") {
+        await downloadSabyPrices();
+        note("Файл XLSX сохранён. Импортируйте его в СБИС.");
+        return;
+      }
+      const { batch: draft } = await api<{ batch: ProcurementActionBatch }>(
+        `/api/v1/admin/procurement/orders/${orderId}/batches`,
+        {
+          method: "POST",
+          body: JSON.stringify({ kind: "prices", channels: [channel] }),
+        },
+      );
+      const { batch } = await api<{ batch: ProcurementActionBatch }>(
+        `/api/v1/admin/procurement/batches/${draft.id}/approve${received ? "" : "?includeMeasurements=1"}`,
+        { method: "POST" },
+      );
+      const sizeNote = batch.measurementsQueued
+        ? ` Обновление размеров в очереди (${batch.measurementsQueued}).`
+        : batch.measurementsInFeed
+          ? ` Размеры обновлены в фиде (${batch.measurementsInFeed}).`
+          : "";
+      if (channel === "saby_price") {
+        if (draft.items.length) {
+          await downloadSabyPrices();
+          note(`Файл XLSX сохранён. Импортируйте его в СБИС.${sizeNote}`);
+        } else note(`Выгрузка цен не требуется.${sizeNote}`);
+      } else if (channel === "site") {
+        note("Изменения применены.");
+      } else {
+        note(
+          `${batch.items.length ? "Запрос на выгрузку цен принят." : "Выгрузка цен не требуется."}${sizeNote}`,
+          false,
+          batch.id,
+        );
+      }
+      await load(true);
+      onSaved();
+    } catch (error) {
+      const failure = error as Error & { userMessage?: string };
+      note(failure.userMessage || failure.message, true);
+      await load(true);
     } finally {
       setSaving(false);
     }
@@ -1631,13 +1695,7 @@ export function ProcurementOrderDetailDialog({
       setSaving(false);
     }
   };
-  const acceptAddedLine = async (line: ProcurementOrderLine) => {
-    if (
-      !window.confirm(
-        `Добавить «${line.invoiceRawName || line.rawName}» в закупку как новую позицию поставщика?`,
-      )
-    )
-      return;
+  const removeMissingLine = async (line: ProcurementOrderLine) => {
     setSaving(true);
     try {
       const item = await api<ProcurementOrderDetail>(
@@ -1645,8 +1703,8 @@ export function ProcurementOrderDetailDialog({
         {
           method: "PATCH",
           body: JSON.stringify({
-            acceptComparison: true,
-            comparisonNote: "Подтверждено как новая позиция из инвойса",
+            invoiceExcluded: true,
+            exclusionReason: "Нет в инвойсе поставщика",
           }),
         },
       );
@@ -1741,6 +1799,9 @@ export function ProcurementOrderDetailDialog({
         );
       setArrivalDate(null);
       await load();
+      openOrderSection("lines");
+      setLineFilter(undefined);
+      setLineQuery("");
       onSaved();
     } catch (error) {
       onError((error as Error).message);
@@ -1751,30 +1812,51 @@ export function ProcurementOrderDetailDialog({
   const currentFailures = detail ? currentActionFailures(detail.batches) : [];
   const failureChannels = [...new Set(currentFailures.map((item) => channelLabel(item.channel)))];
   const closed = detail ? ["received", "cancelled"].includes(detail.order.status) : false;
-  const needsSaby = (line: ProcurementOrderLine) =>
-    !line.invoiceExcluded && !["confirmed", "ignored", "deferred"].includes(line.matchStatus);
+  const isInvoicePlant = (line: ProcurementOrderLine) =>
+    !line.invoiceExcluded && (line.invoicedQuantity ?? 0) > 0 && line.matchStatus !== "ignored";
+  const needsSiteCard = (line: ProcurementOrderLine) =>
+    isInvoicePlant(line) &&
+    (!line.receivingMode || line.receivingMode === "catalog") &&
+    !line.canonicalVariantId;
   const needsDimensionReview = (line: ProcurementOrderLine) =>
-    detail?.order.currency !== "RUB" &&
-    !line.invoiceExcluded &&
-    ["confirmed", "deferred"].includes(line.matchStatus) &&
-    Boolean(line.dimensionWarning);
+    isInvoicePlant(line) &&
+    (!line.dimensionsReviewed || (line.potDiameterCm ?? 0) <= 0 || (line.heightCm ?? 0) <= 0);
+  const supplierDimensionsChanged = (line: ProcurementOrderLine) => {
+    if (!isInvoicePlant(line) || line.orderedQuantity <= 0 || line.dimensionsReviewed) return false;
+    const differs = (plan?: number, invoice?: number) =>
+      plan != null && invoice != null && Math.abs(plan - invoice) > 0.05;
+    return (
+      differs(line.potDiameterCm, line.matchAlias?.potDiameterCm) ||
+      differs(line.heightCm, line.matchAlias?.heightCm)
+    );
+  };
   const dimensionReviewLines = detail?.lines.filter(needsDimensionReview) || [];
   const dimensionBlockers = new Set(
-    dimensionReviewLines.map((line) => `${line.rawName}: ${line.dimensionWarning}`),
+    dimensionReviewLines
+      .filter((line) => line.dimensionWarning)
+      .map((line) => `${line.rawName}: ${line.dimensionWarning}`),
   );
-  const otherBlockers = (detail?.validation.blockers || []).filter(
-    (blocker) => !dimensionBlockers.has(blocker),
-  );
-  const needsAttention = (line: ProcurementOrderLine) =>
+  const blockers = detail?.validation.blockers || [];
+  const needsInvoice = blockers.includes("Не загружен инвойс или счёт");
+  const invoiceTotalMismatch = blockers.includes("Итог документа не совпадает с суммой строк");
+  const isReviewing = Boolean(detail && !closed && !needsInvoice);
+  const showRowPrices =
+    rowPricesVisible ?? (!isReviewing || detail?.order.status === "ready_to_receive");
+  const needsLoadUnit = (line: ProcurementOrderLine) =>
+    Boolean(detail?.validation.missingLoadUnits) && !/^\d+$/.test(line.loadUnit?.trim());
+  const needsCalculationData = (line: ProcurementOrderLine) =>
+    isReviewing &&
     !line.invoiceExcluded &&
-    line.matchStatus !== "ignored" &&
-    (needsDimensionReview(line) ||
-      needsSaby(line) ||
-      (line.comparisonMismatch && !line.comparisonAccepted) ||
-      !line.heightCm ||
-      (detail?.order.currency !== "RUB" && !line.potDiameterCm));
+    ["confirmed", "deferred"].includes(line.matchStatus) &&
+    line.reconciliationStatus !== "missing" &&
+    ((Boolean(detail?.validation.invalidLines) &&
+      (line.invoicedQuantity == null || line.quantity <= 0 || line.unitPrice <= 0)) ||
+      needsLoadUnit(line) ||
+      (line.reconciliationStatus !== "changed" &&
+        line.comparisonMismatch &&
+        !line.comparisonAccepted));
   const matchesSearch = (line: ProcurementOrderLine) =>
-    `${line.rawName} ${line.sabyName} ${line.supplierArticle} ${line.invoiceRawName}`
+    `${line.rawName} ${line.catalogueName || line.sabyName} ${line.supplierArticle} ${line.invoiceRawName}`
       .toLocaleLowerCase("ru")
       .includes(lineQuery.toLocaleLowerCase("ru"));
   const pendingInvoiceLines =
@@ -1782,50 +1864,112 @@ export function ProcurementOrderDetailDialog({
       (line) =>
         line.reconciliationStatus === "added" && !line.comparisonAccepted && !line.invoiceExcluded,
     ) || [];
-  const purchaseLines = detail?.lines.filter((line) => !pendingInvoiceLines.includes(line)) || [];
+  const pendingInvoiceIDs = new Set(pendingInvoiceLines.map((line) => line.id));
+  const purchaseLines = detail?.lines.filter((line) => !pendingInvoiceIDs.has(line.id)) || [];
   const matchesFilter = (line: ProcurementOrderLine, filter: string) =>
     filter === "all" ||
-    (filter === "attention"
-      ? needsAttention(line)
+    (filter === "calculation_data"
+      ? needsCalculationData(line)
       : filter === "dimensions"
         ? needsDimensionReview(line)
         : filter === "unmatched"
-          ? needsSaby(line)
-          : filter.startsWith("receiving_")
+          ? needsSiteCard(line)
+          : filter === "changed"
             ? !line.invoiceExcluded &&
-              line.receivingMode === filter.slice(10) &&
-              (line.receivingMode !== "customer_handoff" || !line.customerHandedOver) &&
-              (line.receivingMode !== "assortment" ||
-                (line.receivingAllocations || []).reduce((sum, part) => sum + part.quantity, 0) !==
-                  line.invoicedQuantity)
-            : !line.invoiceExcluded && line.reconciliationStatus === filter);
+              ((line.reconciliationStatus === "changed" &&
+                line.comparisonMismatch &&
+                !line.comparisonAccepted) ||
+                supplierDimensionsChanged(line))
+            : filter.startsWith("receiving_")
+              ? !line.invoiceExcluded &&
+                line.receivingMode === filter.slice(10) &&
+                (line.receivingMode !== "customer_handoff" || !line.customerHandedOver) &&
+                (line.receivingMode !== "assortment" ||
+                  (line.receivingAllocations || []).reduce(
+                    (sum, part) => sum + part.quantity,
+                    0,
+                  ) !== line.invoicedQuantity)
+              : !line.invoiceExcluded && line.reconciliationStatus === filter);
   const linesForFilter = (filter: string) =>
     filter === "invoice_only"
       ? pendingInvoiceLines
       : filter === "all"
         ? [...purchaseLines, ...pendingInvoiceLines]
         : purchaseLines.filter((line) => matchesFilter(line, filter));
-  const lineTabs = [
-    { value: "all", label: "Все" },
+  const reviewGroups = [
+    {
+      value: "missing",
+      label: "Только в закупке",
+      hint:
+        pendingInvoiceLines.length > 0
+          ? "Выберите строку инвойса или удалите позицию крестиком, если поставщик её не отправил."
+          : "Удалите крестиком позиции, которых нет в инвойсе.",
+    },
+    {
+      value: "invoice_only",
+      label: "Только в инвойсе",
+      hint:
+        linesForFilter("missing").length > 0
+          ? "Выберите карточку сайта или создайте новую. Если растение уже было в плане, свяжите его во вкладке «Только в закупке»."
+          : "Для каждой позиции выберите существующую карточку сайта или создайте новую.",
+    },
+    {
+      value: "changed",
+      label: "Изменения поставщика",
+      hint: "Сверьте изменения количества, цены и размеров по инвойсу.",
+    },
+    {
+      value: "unmatched",
+      label: "Без карточки сайта",
+      hint: "Выберите карточку сайта или укажите другой способ приёмки.",
+    },
+    {
+      value: "dimensions",
+      label: "Проверить размеры",
+      hint: "Измерьте диаметр горшка и высоту растения. После сохранения строка уйдёт из списка.",
+    },
+    {
+      value: "calculation_data",
+      label: "Данные инвойса",
+      hint: "Проверьте номер телеги, количество и закупочную цену. Если в счёте ошибка, загрузите исправленный PDF.",
+    },
     { value: "receiving_assortment", label: "Разобрать миксы" },
-    { value: "invoice_only", label: "Только в инвойсе" },
-    { value: "missing", label: "Только в закупке" },
     { value: "receiving_customer_handoff", label: "Передать клиенту" },
-    ...[
-      { value: "dimensions", label: "Проверить размеры" },
-      { value: "attention", label: "Требуют внимания" },
-      { value: "unmatched", label: "Нет товара СБИС" },
-      { value: "receiving_awaiting_catalog", label: "Выбрать карточки" },
-      { value: "changed", label: "Изменения поставщика" },
-    ].filter((tab) => linesForFilter(tab.value).length > 0 || lineFilter === tab.value),
-  ].map((tab) => ({ ...tab, count: linesForFilter(tab.value).length }));
-  const visibleLines =
-    lineFilter === "invoice_only"
-      ? []
-      : purchaseLines.filter((line) => matchesFilter(line, lineFilter) && matchesSearch(line));
-  const visibleInvoiceLines = ["all", "invoice_only"].includes(lineFilter)
-    ? pendingInvoiceLines.filter(matchesSearch)
-    : [];
+    { value: "receiving_awaiting_catalog", label: "Выбрать карточки" },
+  ].map((group) => ({ ...group, count: linesForFilter(group.value).length }));
+  const nextReview = isReviewing && reviewGroups.find((group) => group.hint && group.count > 0);
+  const lineFilter = selectedLineFilter ?? (nextReview ? nextReview.value : "all");
+  const missingInvoiceView = lineFilter === "missing";
+  useEffect(() => {
+    if (orderSection !== "lines") return;
+    const tabs = lineTabsRef.current;
+    const activeTab = tabs?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (!tabs || !activeTab || tabs.scrollWidth <= tabs.clientWidth) return;
+    const strip = tabs.getBoundingClientRect();
+    const selected = activeTab.getBoundingClientRect();
+    if (selected.left < strip.left) tabs.scrollBy({ left: selected.left - strip.left });
+    if (selected.right > strip.right) tabs.scrollBy({ left: selected.right - strip.right });
+  }, [lineFilter, orderSection]);
+  const activeReview = reviewGroups.find((group) => group.value === lineFilter && group.count > 0);
+  const lineTabs = [
+    { value: "all", label: "Все", count: linesForFilter("all").length },
+    ...reviewGroups.filter(
+      (group) =>
+        group.count > 0 ||
+        lineFilter === group.value ||
+        (group.value === "dimensions" && detail?.lines.some(isInvoicePlant)),
+    ),
+  ];
+  const otherBlockers = blockers.filter(
+    (blocker) =>
+      blocker !== "Не загружен инвойс или счёт" &&
+      !dimensionBlockers.has(blocker) &&
+      !blocker.startsWith("Не выбраны товары СБИС:") &&
+      !blocker.startsWith("Не заполнены размеры:"),
+  );
+  const filteredLines = linesForFilter(lineFilter).filter(matchesSearch);
+  const visibleInvoiceLines = filteredLines.filter((line) => pendingInvoiceIDs.has(line.id));
+  const visibleLines = filteredLines.filter((line) => !pendingInvoiceIDs.has(line.id));
   const shownLines = visibleLines.length + visibleInvoiceLines.length;
   const lineScope = JSON.stringify([orderId, lineFilter, lineQuery]);
   const lineLimit = lineWindow.scope === lineScope ? lineWindow.count : 5;
@@ -1840,8 +1984,7 @@ export function ProcurementOrderDetailDialog({
     setLineFilter(value);
     setLineWindow({ scope: "", count: 5 });
   };
-  const showDimensionReview = () => {
-    selectLineTab("dimensions");
+  const focusLineTab = () => {
     window.requestAnimationFrame(() => {
       const tab = lineTabsRef.current?.querySelector<HTMLElement>(
         '[role="tab"][aria-selected="true"]',
@@ -1850,14 +1993,12 @@ export function ProcurementOrderDetailDialog({
       tab?.scrollIntoView({ block: "nearest" });
     });
   };
-  const changedLines =
-    detail?.lines.filter(
-      (line) =>
-        line.reconciliationStatus === "changed" &&
-        line.comparisonMismatch &&
-        !line.comparisonAccepted &&
-        !line.invoiceExcluded,
-    ) || [];
+  const changedLines = linesForFilter("changed").filter(
+    (line) =>
+      line.reconciliationStatus === "changed" &&
+      line.comparisonMismatch &&
+      !line.comparisonAccepted,
+  );
   const pairingLine =
     pairingLineID == null ? null : detail?.lines.find((line) => line.id === pairingLineID) || null;
   const invoicePairCandidates =
@@ -2019,9 +2160,7 @@ export function ProcurementOrderDetailDialog({
         <header>
           <div>
             <p className="eyebrow">Закупка</p>
-            <h2 id="order-detail-title">
-              {detail?.order.title || detail?.order.orderNumber || `№${orderId}`}
-            </h2>
+            <h2 id="order-detail-title">{`Закупка № ${orderId}`}</h2>
           </div>
           <button onClick={onClose} aria-label="Закрыть">
             ×
@@ -2042,21 +2181,21 @@ export function ProcurementOrderDetailDialog({
           <div className="procurement-order-body">
             <div className="procurement-order-summary">
               <strong>{detail.order.supplierName}</strong>
-              <span>
-                {
-                  (
-                    {
-                      ordered: "Заказано",
-                      received: "Завершено",
-                      cancelled: "Отменено",
-                      review: "Сверка",
-                      ready_to_receive: "К поступлению",
-                      invoice_received: "Инвойс загружен",
-                      draft: "Черновик",
-                    } as Record<string, string>
-                  )[detail.order.status]
-                }
-              </span>
+              {(detail.order.title || detail.order.orderNumber) && (
+                <span>{detail.order.title || detail.order.orderNumber}</span>
+              )}
+              {detail.order.status !== "review" && (
+                <span>
+                  {detail.order.status === "received"
+                    ? "Завершено"
+                    : procurementStatusLabels[detail.order.status] || detail.order.status}
+                </span>
+              )}
+              {detail.order.expectedArrivalDate && (
+                <span>
+                  Ожидается {detail.order.expectedArrivalDate.split("-").reverse().join(".")}
+                </span>
+              )}
               <span>
                 {quantityLabel(detail.order.lines)} · {detail.order.units} шт.
               </span>
@@ -2067,739 +2206,630 @@ export function ProcurementOrderDetailDialog({
                 })}
               </strong>
             </div>
-            {detail.order.status !== "cancelled" && currentFailures.length > 0 && (
-              <div className="procurement-checklist blocked" role="alert">
-                <strong>Не выполнены действия: {failureChannels.join(", ")}</strong>
-                <p>
-                  Состояние закупки и результат каждого канала проверяются отдельно. Откройте
-                  журнал, чтобы увидеть причину и результат последней попытки.
-                </p>
-                <button
-                  onClick={() => {
-                    const history = document.getElementById("procurement-action-history");
-                    if (history instanceof HTMLDetailsElement) history.open = true;
-                    history?.scrollIntoView({ block: "start", behavior: "smooth" });
-                    history?.focus();
-                  }}
-                >
-                  Перейти к действиям по каналам
-                </button>
-              </div>
-            )}
-            <section className="procurement-order-documents" aria-label="Документы закупки">
-              <div className="procurement-documents-heading">
-                <h3>
-                  Документы <span>{documents.length}</span>
-                </h3>
-                <label className="secondary-button procurement-inline-upload">
-                  {uploading
-                    ? "Разбираем PDF…"
-                    : documents.length
-                      ? "Загрузить новую версию"
-                      : "Загрузить инвойс / счёт"}
-                  <input
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    disabled={closed || saving || uploading}
-                    onChange={(event) => void uploadInvoice(event.target.files?.[0] || null)}
-                  />
-                </label>
-              </div>
-              {!closed && (
-                <div className="procurement-arrival-fields admin-form-grid">
-                  <label>
-                    Ориентировочная дата поступления
-                    <input
-                      type="date"
-                      value={arrivalDate ?? detail.order.expectedArrivalDate ?? ""}
-                      onChange={(event) => setArrivalDate(event.target.value)}
-                      disabled={saving || uploading}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    disabled={
-                      saving ||
-                      uploading ||
-                      arrivalDate === null ||
-                      arrivalDate === (detail.order.expectedArrivalDate ?? "")
-                    }
-                    onClick={() => void saveArrivalDate()}
-                  >
-                    Сохранить дату
-                  </button>
-                </div>
-              )}
-              {documents.length ? (
-                <ul className="procurement-document-list">
-                  {[...documents]
-                    .sort(
-                      (a, b) =>
-                        (b.revisionNo || 1) - (a.revisionNo || 1) ||
-                        b.createdAt.localeCompare(a.createdAt),
-                    )
-                    .map((document) => (
-                      <li key={document.id}>
-                        <div>
-                          <a
-                            href={`/api/v1/admin/procurement/documents/${document.id}/source.pdf`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {document.documentNumber
-                              ? `${document.parserKind === "domestic_payment_invoice" ? "Счёт" : "Инвойс"} № ${document.documentNumber}`
-                              : document.fileName}{" "}
-                            · PDF
-                          </a>
-                          <small>
-                            {document.documentDate
-                              ? new Date(document.documentDate).toLocaleDateString("ru-RU")
-                              : new Date(document.createdAt).toLocaleDateString("ru-RU")}{" "}
-                            · версия {document.revisionNo || 1} ·{" "}
-                            {document.superseded ? "заменена" : "действующая"}
-                          </small>
-                        </div>
-                        <span
-                          className={
-                            document.arithmeticStatus === "ok"
-                              ? "procurement-ok"
-                              : "procurement-warning"
-                          }
-                        >
-                          {document.arithmeticStatus === "ok"
-                            ? "Суммы сходятся"
-                            : "Проверить суммы"}
-                        </span>
-                        <details>
-                          <summary>Суммы и разбор</summary>
-                          <p>
-                            {procurementParserLabels[document.parserKind] || document.parserKind} ·{" "}
-                            {quantityLabel(document.lines)} · {document.units} шт.
-                          </p>
-                          <p>
-                            Растения: {document.productSubtotal.toLocaleString("ru-RU")}{" "}
-                            {document.currency} · упаковка:{" "}
-                            {document.packageTotal.toLocaleString("ru-RU")} {document.currency} ·
-                            всего: {document.documentTotal.toLocaleString("ru-RU")}{" "}
-                            {document.currency}
-                          </p>
-                          <p>
-                            {document.parseStatus === "review"
-                              ? "Есть несопоставленные строки"
-                              : "Разобрано"}
-                          </p>
-                          {document.parseError && (
-                            <p className="procurement-warning">{document.parseError}</p>
-                          )}
-                        </details>
-                      </li>
-                    ))}
-                </ul>
-              ) : (
-                <p>Инвойс или счёт будет храниться здесь вместе с закупкой.</p>
-              )}
-            </section>
-            <details className="procurement-cost-details">
-              <summary>
-                Расчёт и доставка{" "}
-                <span>
-                  {detail.order.currency !== "RUB"
-                    ? `Курс ${costs.exchangeRate} · доставка ${money.format(costs.deliveryToMoscowRub + costs.deliveryToRyazanRub)}`
-                    : "Закупка в рублях"}
-                </span>
-              </summary>
-              <fieldset
-                className="procurement-readonly-fields"
-                disabled={closed || saving || uploading}
-              >
-                <div
-                  className={`procurement-costs ${detail.order.currency === "RUB" ? "procurement-costs-domestic" : ""}`}
-                >
-                  {detail.order.currency !== "RUB" && (
-                    <>
-                      <label>
-                        Курс оплаты
-                        <NumericInput
-                          step="0.01"
-                          value={costs.exchangeRate}
-                          onChange={(event) =>
-                            setCosts({ ...costs, exchangeRate: Number(event.target.value) })
-                          }
-                        />
-                      </label>
-                      <label>
-                        До Москвы, ₽
-                        <NumericInput
-                          step="0.01"
-                          value={costs.deliveryToMoscowRub}
-                          onChange={(event) =>
-                            setCosts({ ...costs, deliveryToMoscowRub: Number(event.target.value) })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Москва → Рязань, ₽
-                        <NumericInput
-                          value={costs.deliveryToRyazanRub}
-                          onChange={(event) =>
-                            setCosts({ ...costs, deliveryToRyazanRub: Number(event.target.value) })
-                          }
-                        />
-                      </label>
-                    </>
-                  )}
-                  {detail.order.currency === "RUB" && (
-                    <label>
-                      Доставка до склада, ₽
-                      <NumericInput
-                        min="0"
-                        step="0.01"
-                        value={costs.deliveryToMoscowRub}
-                        onChange={(event) =>
-                          setCosts({ ...costs, deliveryToMoscowRub: Number(event.target.value) })
-                        }
-                      />
-                    </label>
-                  )}
-                  <label>
-                    Прочие расходы закупки, ₽
-                    <NumericInput
-                      min="0"
-                      step="0.01"
-                      value={costs.additionalCostsRub}
-                      onChange={(event) =>
-                        setCosts({ ...costs, additionalCostsRub: Number(event.target.value) })
-                      }
-                    />
-                  </label>
-                  <button
-                    className="admin-primary"
-                    aria-describedby={
-                      !detail.validation.canCalculate
-                        ? `${lineTabsID}-calculation-blockers`
-                        : costs.exchangeRate <= 0
-                          ? `${lineTabsID}-exchange-error`
-                          : undefined
-                    }
-                    disabled={saving || !detail.validation.canCalculate || costs.exchangeRate <= 0}
-                    onClick={calculate}
-                  >
-                    {saving ? "Считаем…" : "Рассчитать"}
-                  </button>
-                </div>
-                {!closed && costs.exchangeRate <= 0 && (
-                  <p id={`${lineTabsID}-exchange-error`} className="procurement-warning">
-                    Для расчёта укажите курс оплаты больше нуля.
-                  </p>
-                )}
-                <p>
-                  Прочие расходы: банковская комиссия за закупку, пошлины, страхование и другие
-                  затраты до склада. Невозвратная тара и аренда из инвойса добавляются
-                  автоматически; повторно сюда их не включайте.
-                </p>
-                {Boolean(detail.costs.supplierChargesRub || detail.costs.returnableDepositRub) && (
+            {orderSection !== "costs" &&
+              detail.order.status !== "cancelled" &&
+              currentFailures.length > 0 && (
+                <div className="procurement-checklist blocked" role="alert">
+                  <strong>Не выполнены действия: {failureChannels.join(", ")}</strong>
                   <p>
-                    Тара и аренда поставщика: {money.format(detail.costs.supplierChargesRub || 0)} —
-                    в себестоимости. Возвратный залог:{" "}
-                    {money.format(detail.costs.returnableDepositRub || 0)} — отдельно от расхода.
+                    Состояние закупки и результат каждого канала проверяются отдельно. Откройте
+                    журнал, чтобы увидеть причину и результат последней попытки.
                   </p>
-                )}
-              </fieldset>
-            </details>
-            {detail.unifiedPreview && (
-              <Suspense fallback={<p role="status">Загружаем расчёт цен…</p>}>
-                <UnifiedPricingPreview
-                  preview={detail.unifiedPreview}
+                  <button
+                    onClick={() => {
+                      const history = document.getElementById("procurement-action-history");
+                      if (history instanceof HTMLDetailsElement) history.open = true;
+                      history?.scrollIntoView({ block: "start", behavior: "smooth" });
+                      history?.focus();
+                    }}
+                  >
+                    Перейти к действиям по каналам
+                  </button>
+                </div>
+              )}
+            <nav className="procurement-order-sections" aria-label="Разделы закупки">
+              <button
+                type="button"
+                aria-pressed={orderSection === "lines"}
+                onClick={() => setOrderSection("lines")}
+              >
+                {closed ? "Состав" : "Сверка"}
+              </button>
+              <button
+                type="button"
+                aria-pressed={orderSection === "documents"}
+                onClick={() => setOrderSection("documents")}
+              >
+                Документы
+              </button>
+              <button
+                type="button"
+                aria-pressed={orderSection === "costs"}
+                onClick={() => setOrderSection("costs")}
+              >
+                Расчёт и цены
+              </button>
+            </nav>
+            {orderSection === "documents" && (
+              <Suspense fallback={<p role="status">Загружаем документы…</p>}>
+                <ProcurementOrderDocuments
+                  documents={documents}
+                  closed={closed}
                   saving={saving}
-                  status={detail.order.status}
-                  onPrepare={prepare}
+                  uploading={uploading}
+                  arrivalDate={arrivalDate}
+                  expectedArrivalDate={detail.order.expectedArrivalDate}
+                  onArrivalDateChange={setArrivalDate}
+                  onSaveArrivalDate={saveArrivalDate}
+                  onUpload={uploadInvoice}
                 />
               </Suspense>
             )}
-            {detail.order.status === "ready_to_receive" &&
-              (Math.abs(
-                detail.validation.allocatedTrolleyRub - detail.validation.expectedTrolleyRub,
-              ) > 1 ||
-                Math.abs(
-                  detail.validation.allocatedRyazanRub - detail.validation.expectedRyazanRub,
-                ) > 1) && (
-                <section className="procurement-checklist blocked" role="alert">
-                  <strong>Доставка распределена не полностью</strong>
-                  <p>
-                    До Москвы: {money.format(detail.validation.allocatedTrolleyRub)} из{" "}
-                    {money.format(detail.validation.expectedTrolleyRub)}. До Рязани:{" "}
-                    {money.format(detail.validation.allocatedRyazanRub)} из{" "}
-                    {money.format(detail.validation.expectedRyazanRub)}. Пересчитайте закупку.
-                  </p>
-                </section>
-              )}
-            {!closed && Boolean(detail.validation.blockers?.length) && (
-              <section
-                id={`${lineTabsID}-calculation-blockers`}
-                className="procurement-checklist blocked"
-                role="status"
-              >
-                <strong>Перед расчётом нужно проверить</strong>
-                {dimensionReviewLines.length > 0 && (
-                  <>
-                    <p>
-                      Размеры в {dimensionReviewLines.length} поз. отличаются от инвойса или
-                      выбранной карточки. От них зависит распределение доставки.
-                    </p>
-                    <button onClick={showDimensionReview}>
-                      Проверить размеры ({dimensionReviewLines.length})
+            {orderSection === "costs" && (
+              <Suspense fallback={<p role="status">Загружаем расчёт…</p>}>
+                <ProcurementOrderCosts
+                  costs={costs}
+                  detail={detail}
+                  closed={closed}
+                  saving={saving}
+                  uploading={uploading}
+                  needsInvoice={needsInvoice}
+                  invoiceTotalMismatch={invoiceTotalMismatch}
+                  onCostsChange={setCosts}
+                  onOpenReview={() => openOrderSection(needsInvoice ? "documents" : "lines")}
+                  onCalculate={calculate}
+                  onPublish={publishChanges}
+                  publicationNotices={publicationNotices}
+                  priceChangeThreshold={settings?.priceChangeThreshold ?? 0}
+                  onEditPrice={setPricingLine}
+                />
+              </Suspense>
+            )}
+            <section
+              aria-label={closed ? "Состав закупки" : "Сверка закупки"}
+              hidden={orderSection !== "lines"}
+            >
+              {!closed && (
+                <div className="procurement-review-heading">
+                  <div>
+                    <h3>{needsInvoice ? "Загрузите инвойс" : "Сверка инвойса"}</h3>
+                    {needsInvoice ? (
+                      <p>После загрузки здесь появятся расхождения с планом.</p>
+                    ) : activeReview?.hint ? (
+                      <p>{activeReview.hint}</p>
+                    ) : nextReview ? (
+                      <p>Следующий шаг · {nextReview.label.toLocaleLowerCase("ru")}</p>
+                    ) : !detail.validation.canCalculate && otherBlockers.length > 0 ? (
+                      <p>Проверьте данные, которые мешают расчёту.</p>
+                    ) : null}
+                  </div>
+                  {needsInvoice ? (
+                    <button className="admin-primary" onClick={() => openOrderSection("documents")}>
+                      Открыть документы
                     </button>
-                  </>
-                )}
-                {otherBlockers.length > 0 && (
+                  ) : !activeReview?.hint && nextReview ? (
+                    <button
+                      className="admin-primary"
+                      onClick={() => {
+                        selectLineTab(nextReview.value);
+                        focusLineTab();
+                      }}
+                    >
+                      Продолжить сверку
+                    </button>
+                  ) : detail.validation.canCalculate ? (
+                    <button className="admin-primary" onClick={() => openOrderSection("costs")}>
+                      {detail.order.status === "ready_to_receive"
+                        ? "Перейти к ценам"
+                        : "Перейти к расчёту"}
+                    </button>
+                  ) : null}
+                </div>
+              )}
+              {!closed && lineFilter === "dimensions" && (
+                <div className="procurement-measurement-print">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void downloadReceivingPDF(true).catch((error) =>
+                        onError((error as Error).message),
+                      )
+                    }
+                  >
+                    Скачать лист проверки PDF
+                  </button>
+                </div>
+              )}
+              {!closed && otherBlockers.length > 0 && (
+                <details className="procurement-review-blockers" open={invoiceTotalMismatch}>
+                  <summary>Что мешает расчёту</summary>
                   <ul>
                     {otherBlockers.map((blocker) => (
-                      <li key={blocker}>
-                        {blocker === "Не загружен инвойс или счёт" ? "Загрузите инвойс" : blocker}
-                      </li>
+                      <li key={blocker}>{blocker}</li>
                     ))}
                   </ul>
-                )}
-                {detail.validation.unmatched > 0 && (
+                </details>
+              )}
+              <div
+                ref={lineTabsRef}
+                className="procurement-line-tabs"
+                role="tablist"
+                aria-label="Строки закупки"
+              >
+                {lineTabs.map((tab, index) => (
                   <button
-                    onClick={() => {
-                      setLineQuery("");
-                      setLineFilter("unmatched");
-                      lineTableRef.current?.scrollIntoView({ block: "start" });
+                    key={tab.value}
+                    id={`${lineTabsID}-${tab.value}`}
+                    role="tab"
+                    aria-selected={lineFilter === tab.value}
+                    aria-controls={`${lineTabsID}-panel`}
+                    tabIndex={lineFilter === tab.value ? 0 : -1}
+                    onClick={() => selectLineTab(tab.value)}
+                    onKeyDown={(event) => {
+                      const next =
+                        event.key === "ArrowRight"
+                          ? (index + 1) % lineTabs.length
+                          : event.key === "ArrowLeft"
+                            ? (index + lineTabs.length - 1) % lineTabs.length
+                            : event.key === "Home"
+                              ? 0
+                              : event.key === "End"
+                                ? lineTabs.length - 1
+                                : null;
+                      if (next == null) return;
+                      event.preventDefault();
+                      selectLineTab(lineTabs[next].value);
+                      event.currentTarget.parentElement
+                        ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
+                        [next]?.focus();
                     }}
                   >
-                    Показать строки без товара СБИС ({detail.validation.unmatched})
+                    {tab.label}
+                    <span>{tab.count}</span>
                   </button>
+                ))}
+              </div>
+              <div
+                id={`${lineTabsID}-panel`}
+                role="tabpanel"
+                aria-labelledby={`${lineTabsID}-${lineFilter}`}
+              >
+                <div className="procurement-filter-bar">
+                  <input
+                    aria-label="Поиск строки закупки"
+                    value={lineQuery}
+                    onChange={(event) => {
+                      setLineQuery(event.target.value);
+                      setLineFilter(lineFilter);
+                      setLineWindow({ scope: "", count: 5 });
+                    }}
+                    placeholder="Название или артикул"
+                  />
+                  {purchaseLines.length > 0 &&
+                    !missingInvoiceView &&
+                    lineFilter !== "invoice_only" && (
+                      <button
+                        type="button"
+                        aria-pressed={showRowPrices}
+                        onClick={() => setRowPricesVisible(!showRowPrices)}
+                      >
+                        Себестоимость и цены продажи
+                      </button>
+                    )}
+                </div>
+                {!closed && lineFilter === "changed" && changedLines.length > 1 && !lineQuery && (
+                  <div className="procurement-batch-buttons">
+                    <button disabled={saving} onClick={() => void acceptAllChanged()}>
+                      Принять изменения количества и цены ({changedLines.length})
+                    </button>
+                  </div>
                 )}
-              </section>
-            )}
-            {changedLines.length > 0 && (
-              <div className="procurement-batch-buttons">
-                <button disabled={closed || saving} onClick={() => void acceptAllChanged()}>
-                  Принять все изменения ({changedLines.length})
-                </button>
-                <small>
-                  Только изменения количества/цены. «Нет в инвойсе» и новые строки нужно разобрать
-                  отдельно.
-                </small>
-              </div>
-            )}
-            <div
-              ref={lineTabsRef}
-              className="procurement-line-tabs"
-              role="tablist"
-              aria-label="Строки закупки"
-            >
-              {lineTabs.map((tab, index) => (
-                <button
-                  key={tab.value}
-                  id={`${lineTabsID}-${tab.value}`}
-                  role="tab"
-                  aria-selected={lineFilter === tab.value}
-                  aria-controls={`${lineTabsID}-panel`}
-                  tabIndex={lineFilter === tab.value ? 0 : -1}
-                  onClick={() => selectLineTab(tab.value)}
-                  onKeyDown={(event) => {
-                    const next =
-                      event.key === "ArrowRight"
-                        ? (index + 1) % lineTabs.length
-                        : event.key === "ArrowLeft"
-                          ? (index + lineTabs.length - 1) % lineTabs.length
-                          : event.key === "Home"
-                            ? 0
-                            : event.key === "End"
-                              ? lineTabs.length - 1
-                              : null;
-                    if (next == null) return;
-                    event.preventDefault();
-                    selectLineTab(lineTabs[next].value);
-                    event.currentTarget.parentElement
-                      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]')
-                      [next]?.focus();
-                  }}
-                >
-                  {tab.label}
-                  <span>{tab.count}</span>
-                </button>
-              ))}
-            </div>
-            <div
-              id={`${lineTabsID}-panel`}
-              role="tabpanel"
-              aria-labelledby={`${lineTabsID}-${lineFilter}`}
-            >
-              <div className="procurement-filter-bar">
-                <input
-                  aria-label="Поиск строки закупки"
-                  value={lineQuery}
-                  onChange={(event) => {
-                    setLineQuery(event.target.value);
-                    setLineWindow({ scope: "", count: 5 });
-                  }}
-                  placeholder="Название или артикул"
-                />
-                <span role="status">
-                  Показано {displayedLines} из {shownLines} строк
-                  {lineQuery && ` · всего в группе ${linesForFilter(lineFilter).length}`}
-                </span>
-              </div>
-              {shownLines === 0 && (
-                <p className="procurement-line-empty">
-                  {lineQuery ? "По запросу ничего не найдено." : "В этой группе пока нет позиций."}
-                </p>
-              )}
-              {pagedLines.length > 0 && (
-                <div className="admin-table-wrap" ref={lineTableRef}>
-                  <table className="admin-table procurement-lines procurement-order-lines">
-                    <thead>
-                      <tr>
-                        <th>План</th>
-                        <th>Инвойс</th>
-                        <th>Сверка</th>
-                        <th>Размер / телега</th>
-                        <th>Упаковки</th>
-                        <th>Количество</th>
-                        <th>
-                          Цена закупки<small>план / инвойс</small>
-                        </th>
-                        <th>Себестоимость</th>
-                        <th>
-                          Цена продажи<small>сайт сейчас / предложение</small>
-                        </th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pagedLines.map((line) => (
-                        <tr
-                          key={line.id}
-                          className={
-                            needsSaby(line) || (line.comparisonMismatch && !line.comparisonAccepted)
-                              ? "procurement-row-mismatch"
-                              : ""
-                          }
-                        >
-                          <td>
-                            <strong>
-                              {line.receivingMode && line.receivingMode !== "catalog"
-                                ? line.rawName
-                                : line.sabyName || line.rawName}
-                            </strong>
-                            <small>
-                              {[line.supplierCategory, line.supplierArticle]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </small>
-                          </td>
-                          <td>
-                            <strong>
-                              {line.invoiceRawName ||
-                                (line.reconciliationStatus === "missing"
-                                  ? "Позиция отсутствует"
-                                  : "—")}
-                            </strong>
-                            {line.invoiceSupplierArticle && (
-                              <small>{line.invoiceSupplierArticle}</small>
-                            )}
-                            {(line.invoiceComponents?.length || 0) > 1 && (
-                              <details>
-                                <summary>
-                                  {line.invoiceComponents!.length} строки инвойса ·{" "}
-                                  {line.invoicedQuantity} шт.
-                                </summary>
-                                {line.invoiceComponents!.map((part, index) => (
-                                  <p key={index}>
-                                    {part.rawName}: {part.quantity} шт. ×{" "}
-                                    {part.unitPrice.toLocaleString("ru-RU")} {detail.order.currency}
-                                    <small>
-                                      Страница {part.sourcePage || "—"}, строка{" "}
-                                      {part.sourceLine || "—"}
-                                    </small>
-                                  </p>
-                                ))}
-                              </details>
-                            )}
-                          </td>
-                          <td>
-                            <span
-                              className={`procurement-reconciliation procurement-reconciliation-${line.reconciliationStatus}`}
-                            >
-                              {reconciliationLabel(line.reconciliationStatus)}
-                            </span>
-                            {(needsSaby(line) ||
-                              (line.receivingMode && line.receivingMode !== "catalog")) && (
-                              <small className={needsSaby(line) ? "procurement-warning" : ""}>
+                {shownLines === 0 && (
+                  <p className="procurement-line-empty">
+                    {lineQuery
+                      ? "По запросу ничего не найдено."
+                      : lineFilter === "all"
+                        ? "В закупке пока нет позиций."
+                        : "В этой группе больше нет строк."}
+                  </p>
+                )}
+                {pagedLines.length > 0 && (
+                  <div className="admin-table-wrap">
+                    <table
+                      className="admin-table procurement-lines procurement-order-lines"
+                      data-show-prices={!missingInvoiceView && showRowPrices}
+                      data-view={lineFilter}
+                    >
+                      <thead>
+                        <tr>
+                          <th>{missingInvoiceView ? "Позиция в плане" : "План"}</th>
+                          <th hidden={missingInvoiceView}>Инвойс</th>
+                          <th hidden={missingInvoiceView}>Сверка</th>
+                          <th hidden={missingInvoiceView}>Размер / телега</th>
+                          <th hidden={missingInvoiceView}>Упаковки</th>
+                          <th>Количество{!missingInvoiceView && <small>план / инвойс</small>}</th>
+                          <th>Цена за шт.{!missingInvoiceView && <small>план / инвойс</small>}</th>
+                          <th hidden={missingInvoiceView || !showRowPrices}>Себестоимость</th>
+                          <th hidden={missingInvoiceView || !showRowPrices}>
+                            Цена продажи<small>сайт сейчас / предложение</small>
+                          </th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedLines.map((line) => (
+                          <tr
+                            key={line.id}
+                            className={
+                              !missingInvoiceView &&
+                              (needsSiteCard(line) ||
+                                (line.comparisonMismatch && !line.comparisonAccepted))
+                                ? "procurement-row-mismatch"
+                                : ""
+                            }
+                          >
+                            <td>
+                              <strong>
                                 {line.receivingMode && line.receivingMode !== "catalog"
-                                  ? receivingModeLabel(line.receivingMode)
-                                  : "Выберите товар СБИС"}
-                              </small>
-                            )}
-                            {line.receivingMode === "assortment" && (
+                                  ? line.rawName
+                                  : line.catalogueName || line.sabyName || line.rawName}
+                              </strong>
                               <small>
-                                Распределено{" "}
-                                {(line.receivingAllocations || []).reduce(
-                                  (sum, part) => sum + part.quantity,
-                                  0,
-                                )}{" "}
-                                / {line.invoicedQuantity} шт.
-                                {line.receivingAllocations?.map((part) => (
-                                  <span key={part.sabyId}>
-                                    {part.name}: {part.quantity} шт.
-                                  </span>
-                                ))}
+                                {[line.supplierCategory, line.supplierArticle]
+                                  .filter(Boolean)
+                                  .join(" · ")}
                               </small>
-                            )}
-                            {line.receivingMode === "customer_handoff" && (
-                              <small>
-                                {line.customerHandedOver
-                                  ? "Передано клиенту"
-                                  : "Ожидает передачи клиенту"}
-                              </small>
-                            )}
-                            {line.invoiceExclusionReason && (
-                              <small>{line.invoiceExclusionReason}</small>
-                            )}
-                            {line.comparisonAccepted && (
-                              <small className="procurement-ok">Расхождение принято</small>
-                            )}
-                          </td>
-                          <td>
-                            {line.loadUnit === "shelf" ? "Полка" : line.loadUnit || "—"}
-                            <small>
-                              {[
-                                line.potDiameterCm && `D${line.potDiameterCm}`,
-                                line.heightCm && `${line.heightCm} см`,
-                              ]
-                                .filter(Boolean)
-                                .join(" · ") || "Размер не заполнен"}
-                            </small>
-                            {line.dimensionWarning && (
-                              <small className="procurement-warning">
-                                Размеры требуют подтверждения
-                              </small>
-                            )}
-                          </td>
-                          <td>
-                            {line.packageCount && line.unitsPerPackage
-                              ? `${line.packageCount} × ${line.unitsPerPackage}`
-                              : "—"}
-                          </td>
-                          <td>
-                            {line.orderedQuantity || "—"} / {line.invoicedQuantity ?? "—"}
-                          </td>
-                          <td>
-                            {line.expectedUnitPrice
-                              ? line.expectedUnitPrice.toLocaleString("ru-RU", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 4,
-                                })
-                              : "—"}{" "}
-                            /{" "}
-                            {line.invoicedQuantity == null
-                              ? "—"
-                              : line.unitPrice.toLocaleString("ru-RU", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 4,
-                                })}{" "}
-                            {detail.order.currency}
-                          </td>
-                          <td>
-                            {line.unitCostRub == null ? "—" : money.format(line.unitCostRub)}
-                            <small>
-                              {line.additionalPurchaseUnitRub
-                                ? `Тара и прочие затраты: ${money.format(line.additionalPurchaseUnitRub)} · `
-                                : ""}
-                              {detail.order.status === "ordered" ? "Плановая оценка · " : ""}
-                              {line.currentUnitCostRub == null
-                                ? ""
-                                : `В учёте (отдельно от партии): ${money.format(line.currentUnitCostRub)}`}
-                            </small>
-                          </td>
-                          <td className={line.priceChangeNeeded ? "procurement-retail-change" : ""}>
-                            {line.receivingMode && line.receivingMode !== "catalog" ? (
-                              <>
-                                {line.proposedRetailRub == null
-                                  ? "—"
-                                  : money.format(line.proposedRetailRub)}
-                                <small>
-                                  {line.receivingMode === "assortment"
-                                    ? "После разбора"
-                                    : line.receivingMode === "awaiting_catalog"
-                                      ? "Для новой карточки"
-                                      : "Под заказ"}
+                            </td>
+                            <td hidden={missingInvoiceView}>
+                              <strong>{line.invoiceRawName || "—"}</strong>
+                              {line.invoiceSupplierArticle && (
+                                <small>{line.invoiceSupplierArticle}</small>
+                              )}
+                              {(line.invoiceComponents?.length || 0) > 1 && (
+                                <details>
+                                  <summary>
+                                    {line.invoiceComponents!.length} строки инвойса ·{" "}
+                                    {line.invoicedQuantity} шт.
+                                  </summary>
+                                  {line.invoiceComponents!.map((part, index) => (
+                                    <p key={index}>
+                                      {part.rawName}: {part.quantity} шт. ×{" "}
+                                      {part.unitPrice.toLocaleString("ru-RU")}{" "}
+                                      {detail.order.currency}
+                                      <small>
+                                        Страница {part.sourcePage || "—"}, строка{" "}
+                                        {part.sourceLine || "—"}
+                                      </small>
+                                    </p>
+                                  ))}
+                                </details>
+                              )}
+                            </td>
+                            <td hidden={missingInvoiceView}>
+                              <span
+                                className={`procurement-reconciliation procurement-reconciliation-${line.reconciliationStatus}`}
+                              >
+                                {reconciliationLabel(line.reconciliationStatus)}
+                              </span>
+                              {(needsSiteCard(line) ||
+                                (line.receivingMode && line.receivingMode !== "catalog")) && (
+                                <small className={needsSiteCard(line) ? "procurement-warning" : ""}>
+                                  {line.receivingMode && line.receivingMode !== "catalog"
+                                    ? receivingModeLabel(line.receivingMode)
+                                    : "Выберите карточку сайта"}
                                 </small>
-                              </>
-                            ) : (
-                              <>
-                                {line.currentRetailRub > 0
-                                  ? money.format(line.currentRetailRub)
-                                  : "—"}{" "}
-                                /{" "}
-                                <span
-                                  className={line.priceChangeNeeded ? "procurement-price-new" : ""}
-                                >
+                              )}
+                              {line.receivingMode === "assortment" && (
+                                <small>
+                                  Распределено{" "}
+                                  {(line.receivingAllocations || []).reduce(
+                                    (sum, part) => sum + part.quantity,
+                                    0,
+                                  )}{" "}
+                                  / {line.invoicedQuantity} шт.
+                                  {line.receivingAllocations?.map((part) => (
+                                    <span key={part.sabyId}>
+                                      {part.name}: {part.quantity} шт.
+                                    </span>
+                                  ))}
+                                </small>
+                              )}
+                              {line.receivingMode === "customer_handoff" && (
+                                <small>
+                                  {line.customerHandedOver
+                                    ? "Передано клиенту"
+                                    : "Ожидает передачи клиенту"}
+                                </small>
+                              )}
+                              {line.invoiceExclusionReason && (
+                                <small>{line.invoiceExclusionReason}</small>
+                              )}
+                              {line.comparisonAccepted && (
+                                <small className="procurement-ok">Расхождение принято</small>
+                              )}
+                            </td>
+                            <td hidden={missingInvoiceView}>
+                              {line.loadUnit === "shelf" ? "Полка" : line.loadUnit || "—"}
+                              <small>
+                                {[
+                                  line.potDiameterCm && `D${line.potDiameterCm}`,
+                                  line.heightCm && `${line.heightCm} см`,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ") || "Размер не заполнен"}
+                              </small>
+                              {lineFilter === "calculation_data" && needsLoadUnit(line) && (
+                                <small className="procurement-warning">Укажите номер телеги</small>
+                              )}
+                              {supplierDimensionsChanged(line) && (
+                                <small>
+                                  Инвойс:{" "}
+                                  {[
+                                    line.matchAlias?.potDiameterCm &&
+                                      `D${line.matchAlias.potDiameterCm}`,
+                                    line.matchAlias?.heightCm && `H${line.matchAlias.heightCm} см`,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </small>
+                              )}
+                              {line.dimensionWarning && (
+                                <small className="procurement-warning">
+                                  Размеры требуют подтверждения
+                                </small>
+                              )}
+                            </td>
+                            <td hidden={missingInvoiceView}>
+                              {line.packageCount && line.unitsPerPackage
+                                ? `${line.packageCount} × ${line.unitsPerPackage}`
+                                : "—"}
+                            </td>
+                            <td>
+                              {missingInvoiceView
+                                ? `${line.orderedQuantity} шт.`
+                                : line.orderedQuantity > 0 &&
+                                    line.orderedQuantity === line.invoicedQuantity
+                                  ? `${line.invoicedQuantity} шт.`
+                                  : `${line.orderedQuantity || "—"} → ${line.invoicedQuantity ?? "—"}`}
+                            </td>
+                            <td>
+                              {missingInvoiceView
+                                ? line.expectedUnitPrice
+                                  ? formatOrderUnitPrice(line.expectedUnitPrice)
+                                  : "—"
+                                : line.expectedUnitPrice === line.unitPrice &&
+                                    line.invoicedQuantity != null
+                                  ? formatOrderUnitPrice(line.unitPrice)
+                                  : `${line.expectedUnitPrice ? formatOrderUnitPrice(line.expectedUnitPrice) : "—"} → ${line.invoicedQuantity == null ? "—" : formatOrderUnitPrice(line.unitPrice)}`}{" "}
+                              {detail.order.currency}
+                            </td>
+                            <td hidden={missingInvoiceView || !showRowPrices}>
+                              {line.unitCostRub == null ? "—" : money.format(line.unitCostRub)}
+                              <small>
+                                {line.additionalPurchaseUnitRub
+                                  ? `Тара и прочие затраты: ${money.format(line.additionalPurchaseUnitRub)} · `
+                                  : ""}
+                                {detail.order.status === "ordered" ? "Плановая оценка · " : ""}
+                                {line.currentUnitCostRub == null
+                                  ? ""
+                                  : `В учёте (отдельно от партии): ${money.format(line.currentUnitCostRub)}`}
+                              </small>
+                            </td>
+                            <td
+                              hidden={missingInvoiceView || !showRowPrices}
+                              className={line.priceChangeNeeded ? "procurement-retail-change" : ""}
+                            >
+                              {line.receivingMode && line.receivingMode !== "catalog" ? (
+                                <>
                                   {line.proposedRetailRub == null
                                     ? "—"
                                     : money.format(line.proposedRetailRub)}
-                                </span>
-                                {line.priceChangeNeeded && <small>Изменение выше порога</small>}
-                              </>
-                            )}
-                            {line.channelQuotes && (
-                              <details>
-                                <summary>Доход и цены по каналам</summary>
-                                {Object.entries(line.channelQuotes).map(([channel, q]) => (
-                                  <p key={channel}>
-                                    {channel === "site" ? "Сайт" : channel === "wb" ? "WB" : "Ozon"}
-                                    :{" "}
-                                    {q.priceRub == null
-                                      ? `нет расчёта: ${q.missing.join(", ")}`
-                                      : `${money.format(q.priceRub)} · остаток ${money.format(q.contributionRub || 0)}`}
-                                  </p>
-                                ))}
-                              </details>
-                            )}
-                          </td>
-                          <td>
-                            <div className="procurement-inline-actions">
-                              {needsDimensionReview(line) && (
-                                <button disabled={closed || saving} onClick={() => editLine(line)}>
-                                  Проверить размеры
-                                </button>
+                                  <small>
+                                    {line.receivingMode === "assortment"
+                                      ? "После разбора"
+                                      : line.receivingMode === "awaiting_catalog"
+                                        ? "Для новой карточки"
+                                        : "Под заказ"}
+                                  </small>
+                                </>
+                              ) : (
+                                <>
+                                  {line.currentRetailRub > 0
+                                    ? money.format(line.currentRetailRub)
+                                    : "—"}{" "}
+                                  /{" "}
+                                  <span
+                                    className={
+                                      line.priceChangeNeeded ? "procurement-price-new" : ""
+                                    }
+                                  >
+                                    {line.proposedRetailRub == null
+                                      ? "—"
+                                      : money.format(line.proposedRetailRub)}
+                                  </span>
+                                  {line.priceChangeNeeded && <small>Изменение выше порога</small>}
+                                </>
                               )}
-                              {!line.invoiceExcluded && (line.invoicedQuantity || 0) > 0 && (
-                                <button
-                                  disabled={closed || saving}
-                                  onClick={() => setReceivingLine(line)}
-                                >
-                                  {line.receivingMode === "assortment"
-                                    ? "Разобрать микс"
-                                    : "Способ приёмки"}
-                                </button>
+                              {line.channelQuotes && (
+                                <details>
+                                  <summary>Доход и цены по каналам</summary>
+                                  {Object.entries(line.channelQuotes).map(([channel, q]) => (
+                                    <p key={channel}>
+                                      {channel === "site"
+                                        ? "Сайт"
+                                        : channel === "wb"
+                                          ? "WB"
+                                          : "Ozon"}
+                                      :{" "}
+                                      {q.priceRub == null
+                                        ? `нет расчёта: ${q.missing.join(", ")}`
+                                        : `${money.format(q.priceRub)} · остаток ${money.format(q.contributionRub || 0)}`}
+                                    </p>
+                                  ))}
+                                </details>
                               )}
-                              {line.receivingMode === "customer_handoff" &&
-                                !line.customerHandedOver && (
-                                  <button
-                                    disabled={closed || saving}
-                                    onClick={() => void handOver(line)}
-                                  >
-                                    Передано клиенту
-                                  </button>
-                                )}
-                              {(needsSaby(line) ||
-                                line.receivingMode === "awaiting_catalog" ||
-                                (needsDimensionReview(line) &&
-                                  (!line.receivingMode || line.receivingMode === "catalog"))) &&
-                                line.matchAlias && (
-                                  <button
-                                    disabled={closed || saving}
-                                    onClick={() => setMatchingLine(line)}
-                                  >
-                                    Выбрать товар СБИС
-                                  </button>
-                                )}
-                              {line.reconciliationStatus === "changed" &&
-                                line.comparisonMismatch &&
-                                !line.comparisonAccepted &&
-                                !line.invoiceExcluded && (
-                                  <button
-                                    disabled={closed || saving}
-                                    onClick={() => void acceptMismatch(line)}
-                                  >
-                                    Принять расхождение
-                                  </button>
-                                )}
-                              {line.reconciliationStatus === "missing" &&
-                                !line.invoiceExcluded &&
-                                pendingInvoiceLines.length > 0 && (
-                                  <button
-                                    disabled={closed || saving}
-                                    onClick={() => setPairingLineID(line.id)}
-                                  >
-                                    Выбрать из инвойса
-                                  </button>
-                                )}
-                              <details className="procurement-row-more">
-                                <summary>
-                                  Ещё<span className="sr-only">: {line.rawName}</span>
-                                </summary>
-                                <div>
-                                  {detail.order.status !== "ordered" && (
+                            </td>
+                            <td>
+                              <div className="procurement-inline-actions">
+                                {lineFilter === "calculation_data" &&
+                                  !needsDimensionReview(line) &&
+                                  (needsLoadUnit(line) ||
+                                    (line.heightCm ?? 0) <= 0 ||
+                                    (line.potDiameterCm ?? 0) <= 0) && (
                                     <button
                                       disabled={closed || saving}
-                                      onClick={() => void editLine(line)}
+                                      onClick={() => editLine(line)}
                                     >
-                                      Исправить размеры
+                                      Размеры и телега
                                     </button>
                                   )}
-                                  <button
-                                    disabled={closed || saving}
-                                    onClick={() => setPricingLine(line)}
-                                  >
-                                    Расходы продажи
-                                  </button>
-                                  {["matched", "changed"].includes(line.reconciliationStatus) &&
-                                    !line.invoiceExcluded &&
-                                    pendingInvoiceLines.length > 0 && (
-                                      <button
-                                        disabled={closed || saving}
-                                        onClick={() => setPairingLineID(line.id)}
-                                      >
-                                        Добавить строки инвойса
-                                      </button>
-                                    )}
-                                  {["matched", "changed"].includes(line.reconciliationStatus) &&
-                                    !line.invoiceExcluded &&
-                                    line.invoicedQuantity != null &&
-                                    invoicePairCandidates.length > 0 && (
-                                      <button
-                                        disabled={closed || saving}
-                                        onClick={() => setPairingLineID(line.id)}
-                                      >
-                                        Сменить строку инвойса
-                                      </button>
-                                    )}
-                                  {["missing", "added", "changed"].includes(
-                                    line.reconciliationStatus,
-                                  ) &&
-                                    !line.invoiceExcluded && (
-                                      <button
-                                        disabled={closed || saving}
-                                        onClick={() => void setInvoiceExcluded(line, true)}
-                                      >
-                                        Исключить
-                                      </button>
-                                    )}
-                                  {line.invoiceExcluded && (
+                                {needsDimensionReview(line) &&
+                                  ["dimensions", "changed"].includes(lineFilter) && (
                                     <button
                                       disabled={closed || saving}
-                                      onClick={() => void setInvoiceExcluded(line, false)}
+                                      onClick={() => editLine(line)}
                                     >
-                                      Вернуть в сверку
+                                      Проверить размеры
                                     </button>
                                   )}
-                                </div>
-                              </details>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              {pagedInvoiceLines.length > 0 && (
-                <section className="procurement-checklist blocked">
-                  <strong>Несопоставленные строки инвойса: {pendingInvoiceLines.length}</strong>
-                  <p>Сопоставьте с позицией плана или добавьте как отдельный товар.</p>
+                                {!line.invoiceExcluded && (line.invoicedQuantity || 0) > 0 && (
+                                  <button
+                                    disabled={closed || saving}
+                                    onClick={() => setReceivingLine(line)}
+                                  >
+                                    {line.receivingMode === "assortment"
+                                      ? "Разобрать микс"
+                                      : "Способ приёмки"}
+                                  </button>
+                                )}
+                                {line.receivingMode === "customer_handoff" &&
+                                  !line.customerHandedOver && (
+                                    <button
+                                      disabled={closed || saving}
+                                      onClick={() => void handOver(line)}
+                                    >
+                                      Передано клиенту
+                                    </button>
+                                  )}
+                                {(needsSiteCard(line) ||
+                                  line.receivingMode === "awaiting_catalog" ||
+                                  (needsDimensionReview(line) &&
+                                    (!line.receivingMode || line.receivingMode === "catalog"))) &&
+                                  line.matchAlias && (
+                                    <button
+                                      disabled={closed || saving}
+                                      onClick={() => setMatchingLine(line)}
+                                    >
+                                      Выбрать карточку сайта
+                                    </button>
+                                  )}
+                                {(line.reconciliationStatus === "changed" ||
+                                  lineFilter === "calculation_data") &&
+                                  line.comparisonMismatch &&
+                                  !line.comparisonAccepted &&
+                                  !line.invoiceExcluded && (
+                                    <button
+                                      disabled={closed || saving}
+                                      onClick={() => void acceptMismatch(line)}
+                                    >
+                                      Принять расхождение
+                                    </button>
+                                  )}
+                                {line.reconciliationStatus === "missing" &&
+                                  !line.invoiceExcluded && (
+                                    <div className="procurement-missing-actions">
+                                      {pendingInvoiceLines.length > 0 && (
+                                        <button
+                                          disabled={closed || saving}
+                                          onClick={() => setPairingLineID(line.id)}
+                                        >
+                                          Выбрать из инвойса
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        className="procurement-remove-line"
+                                        aria-label={`Удалить из закупки: ${line.rawName}`}
+                                        title="Удалить из закупки"
+                                        disabled={closed || saving}
+                                        onClick={() => void removeMissingLine(line)}
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  )}
+                                <details className="procurement-row-more">
+                                  <summary>
+                                    Ещё<span className="sr-only">: {line.rawName}</span>
+                                  </summary>
+                                  <div>
+                                    {detail.order.status !== "ordered" && (
+                                      <button
+                                        disabled={closed || saving}
+                                        onClick={() => void editLine(line)}
+                                      >
+                                        Исправить размеры
+                                      </button>
+                                    )}
+                                    {line.reconciliationStatus !== "missing" && (
+                                      <button
+                                        disabled={closed || saving}
+                                        onClick={() => setPricingLine(line)}
+                                      >
+                                        Цена и расходы продажи
+                                      </button>
+                                    )}
+                                    {["matched", "changed"].includes(line.reconciliationStatus) &&
+                                      !line.invoiceExcluded &&
+                                      pendingInvoiceLines.length > 0 && (
+                                        <button
+                                          disabled={closed || saving}
+                                          onClick={() => setPairingLineID(line.id)}
+                                        >
+                                          Добавить строки инвойса
+                                        </button>
+                                      )}
+                                    {["matched", "changed"].includes(line.reconciliationStatus) &&
+                                      !line.invoiceExcluded &&
+                                      line.invoicedQuantity != null &&
+                                      invoicePairCandidates.length > 0 && (
+                                        <button
+                                          disabled={closed || saving}
+                                          onClick={() => setPairingLineID(line.id)}
+                                        >
+                                          Сменить строку инвойса
+                                        </button>
+                                      )}
+                                    {line.invoiceExcluded && (
+                                      <button
+                                        disabled={closed || saving}
+                                        onClick={() => void setInvoiceExcluded(line, false)}
+                                      >
+                                        Вернуть в сверку
+                                      </button>
+                                    )}
+                                  </div>
+                                </details>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {pagedInvoiceLines.length > 0 && (
                   <div className="admin-table-wrap">
-                    <table className="admin-table procurement-lines">
+                    <table
+                      className="admin-table procurement-lines procurement-invoice-only-lines"
+                      aria-label="Строки только в инвойсе"
+                    >
                       <thead>
                         <tr>
                           <th>Инвойс</th>
                           <th>Количество</th>
                           <th>Цена</th>
-                          <th>Связь с СБИС</th>
+                          <th>Карточка сайта</th>
                           <th></th>
                         </tr>
                       </thead>
@@ -2812,55 +2842,72 @@ export function ProcurementOrderDetailDialog({
                                 <small>{line.invoiceSupplierArticle}</small>
                               )}
                             </td>
-                            <td>{line.invoicedQuantity ?? "—"}</td>
-                            <td>
+                            <td data-label="Количество">{line.invoicedQuantity ?? "—"}</td>
+                            <td data-label="Цена">
                               {line.unitPrice.toLocaleString("ru-RU", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 4,
                               })}{" "}
                               {detail.order.currency}
                             </td>
-                            <td>
-                              {line.sabyName ||
-                                (line.matchStatus === "confirmed"
-                                  ? line.sabyId
-                                  : "Не сопоставлено")}
+                            <td data-label="Карточка сайта">
+                              {line.catalogueName || "Не выбрана"}
                             </td>
                             <td>
-                              <button
-                                disabled={closed || saving}
-                                onClick={() => void acceptAddedLine(line)}
-                              >
-                                Это новая позиция
-                              </button>
+                              <div className="procurement-inline-actions">
+                                <button
+                                  disabled={closed || saving || !line.matchAlias}
+                                  onClick={() => setMatchingLine(line)}
+                                >
+                                  Выбрать карточку сайта
+                                </button>
+                                <a
+                                  href="/admin?section=products&create=1"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  Создать карточку
+                                </a>
+                                <button
+                                  disabled={closed || saving}
+                                  onClick={() => setReceivingLine(line)}
+                                >
+                                  Способ приёмки
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </section>
-              )}
-              {shownLines > displayedLines && (
-                <div className="dialog-actions">
-                  <button
-                    aria-label="Показать ещё строки закупки"
-                    onClick={() => setLineWindow({ scope: lineScope, count: lineLimit + 5 })}
-                  >
-                    Показать ещё
-                  </button>
+                )}
+                <div className="dialog-actions procurement-line-pagination">
+                  <small role="status">
+                    Показано {displayedLines} из {shownLines} строк
+                    {lineQuery && ` · всего в группе ${linesForFilter(lineFilter).length}`}
+                  </small>
+                  {shownLines > displayedLines && (
+                    <button
+                      aria-label="Показать ещё строки закупки"
+                      onClick={() => setLineWindow({ scope: lineScope, count: lineLimit + 5 })}
+                    >
+                      Показать ещё
+                    </button>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
+            </section>
 
-            {detail.order.status === "ready_to_receive" && (
+            {orderSection === "lines" && detail.order.status === "ready_to_receive" && (
               <>
                 <div className="procurement-receipt-actions">
                   <button
                     className="primary"
-                    onClick={() => void prepare("receipt")}
+                    onClick={() => void prepareReceipt()}
                     disabled={
                       saving ||
+                      dimensionReviewLines.length > 0 ||
                       !(detail.validation.canPrepareReceipt ?? detail.validation.canPrepareActions)
                     }
                   >
@@ -2876,39 +2923,17 @@ export function ProcurementOrderDetailDialog({
                   >
                     Скачать PDF приёмки
                   </button>
-                  {!(
-                    detail.validation.canPrepareReceipt ?? detail.validation.canPrepareActions
-                  ) && <span>Сначала распределите миксы и выберите карточки.</span>}
+                  {dimensionReviewLines.length > 0 ? (
+                    <span>Подтвердите замеры перед поступлением.</span>
+                  ) : (
+                    !(
+                      detail.validation.canPrepareReceipt ?? detail.validation.canPrepareActions
+                    ) && <span>Сначала распределите миксы и выберите карточки.</span>
+                  )}
                 </div>
-                <details className="procurement-section-details">
-                  <summary>Цены и каналы продаж</summary>
-                  <fieldset className="procurement-price-channels">
-                    <legend>Подготовить изменения</legend>
-                    {[
-                      ["site", "Подготовить цену сайта"],
-                      ["saby_price", "Скачать цены для СБИС"],
-                      ["wb", "Подготовить Wildberries"],
-                      ["ozon", "Подготовить Ozon"],
-                      ["avito", "Подготовить Авито"],
-                    ].map(([channel, label]) => (
-                      <button
-                        key={channel}
-                        disabled={saving || !detail.validation.canPrepareActions}
-                        onClick={() => void prepare("prices", channel)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </fieldset>
-                </details>
               </>
             )}
-            {detail.order.status === "received" && (
-              <button disabled={saving} onClick={() => void prepare("prices", "saby_price")}>
-                Скачать цены для СБИС
-              </button>
-            )}
-            <div id="procurement-action-history" tabIndex={-1}>
+            <div id="procurement-action-history" tabIndex={-1} hidden={orderSection === "costs"}>
               {detail.batches
                 .filter((batch) => !["completed", "cancelled"].includes(batch.status))
                 .map(renderBatch)}
@@ -2932,7 +2957,7 @@ export function ProcurementOrderDetailDialog({
                 </details>
               )}
             </div>
-            {!closed && (
+            {orderSection !== "costs" && !closed && (
               <div className="procurement-order-final">
                 {detail.order.status === "ready_to_receive" &&
                   (detail.batches.some(
@@ -3035,9 +3060,10 @@ export function ProcurementOrderDetailDialog({
           onClose={() => setLineEditor(null)}
           onSaved={() => {
             const reviewing = lineEditor.kind === "dimensions" && lineFilter === "dimensions";
+            if (reviewing) setLineFilter("dimensions");
             setLineEditor(null);
             void load(true).then(() => {
-              if (reviewing) showDimensionReview();
+              if (reviewing) focusLineTab();
             });
             onSaved();
           }}
@@ -3059,18 +3085,18 @@ export function ProcurementOrderDetailDialog({
         </Suspense>
       )}
       {matchingLine?.matchAlias && (
-        <ProcurementMatchDialog
-          alias={matchingLine.matchAlias}
-          initialQuery={matchingLine.rawName}
-          nested
-          onClose={() => setMatchingLine(null)}
-          onSaved={() => {
-            setMatchingLine(null);
-            void load(true);
-            onSaved();
-          }}
-          onError={externalError}
-        />
+        <Suspense fallback={<p role="status">Загружаем каталог сайта…</p>}>
+          <ProcurementSiteMatchDialog
+            line={matchingLine}
+            onClose={() => setMatchingLine(null)}
+            onSaved={() => {
+              setMatchingLine(null);
+              void load(true);
+              onSaved();
+            }}
+            onError={externalError}
+          />
+        </Suspense>
       )}
       {receivingLine && (
         <ProcurementReceivingDialog
@@ -3192,190 +3218,6 @@ export const actionStatus = (item: ProcurementActionItem) => {
     </>
   );
 };
-
-export function ProcurementMatchDialog({
-  alias,
-  initialQuery,
-  nested = false,
-  onClose,
-  onSaved,
-  onError: externalError,
-}: {
-  alias: ProcurementAlias;
-  initialQuery?: string;
-  nested?: boolean;
-  onClose: () => void;
-  onSaved: () => void;
-  onError: (value: string) => void;
-}) {
-  const {
-    error: dialogError,
-    errorRef,
-    notify: onError,
-    clear: clearError,
-  } = useProcurementError(externalError);
-  const dialogRef = useProcurementDialog(onClose);
-  const [query, setQuery] = useState(initialQuery || alias.rawName);
-  const [items, setItems] = useState<NomenclatureCandidate[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  useEffect(() => {
-    if (query.trim().length < 2) {
-      setItems([]);
-      setSearching(false);
-      return;
-    }
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setSearching(true);
-      api<{ items: NomenclatureCandidate[] }>(
-        `/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(query.trim())}`,
-      )
-        .then((result) => {
-          if (!cancelled) setItems(result.items);
-        })
-        .catch((error) => {
-          if (!cancelled) onError((error as Error).message);
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
-    }, 250);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [query, onError]);
-  const resolve = async (matchStatus: "confirmed" | "new_product" | "ignored", sabyId = "") => {
-    setSaving(true);
-    try {
-      await api(`/api/v1/admin/procurement/aliases/${alias.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ matchStatus, sabyId }),
-      });
-      onSaved();
-    } catch (error) {
-      onError((error as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-  const refreshSaby = async () => {
-    setRefreshing(true);
-    try {
-      await api("/api/v1/admin/procurement/integrations/saby/catalog", { method: "POST" });
-      const result = await api<{ items: NomenclatureCandidate[] }>(
-        `/api/v1/admin/procurement/nomenclature?q=${encodeURIComponent(query.trim())}`,
-      );
-      setItems(result.items);
-    } catch (error) {
-      onError((error as Error).message);
-    } finally {
-      setRefreshing(false);
-    }
-  };
-  return (
-    <>
-      <button
-        tabIndex={-1}
-        className={`admin-dialog-backdrop ${nested ? "procurement-match-backdrop" : ""}`}
-        aria-label="Закрыть"
-        onClick={onClose}
-      />
-      <div
-        className="admin-dialog procurement-match-dialog"
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="match-title"
-      >
-        <header>
-          <div>
-            <p className="eyebrow">{alias.supplierName}</p>
-            <h2 id="match-title">Выбрать товар СБИС</h2>
-          </div>
-          <button onClick={onClose} aria-label="Закрыть">
-            ×
-          </button>
-        </header>
-        {dialogError && (
-          <div ref={errorRef} tabIndex={-1} className="procurement-dialog-error" role="alert">
-            <strong>Не удалось выполнить действие</strong>
-            <span>{dialogError}</span>
-            <button aria-label="Закрыть сообщение об ошибке" onClick={clearError}>
-              ×
-            </button>
-          </div>
-        )}
-        <div className="procurement-match-source">
-          <strong>{alias.rawName}</strong>
-          <span>
-            {[
-              alias.supplierArticle && `Артикул ${alias.supplierArticle}`,
-              alias.potDiameterCm && `D${alias.potDiameterCm}`,
-              alias.heightCm && `${alias.heightCm} см`,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "Размер не указан"}
-          </span>
-        </div>
-        <p className="admin-hint">
-          Выбор сохранится для следующих инвойсов с тем же названием и размером.
-        </p>
-        <label className="procurement-match-search">
-          Поиск товара СБИС
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            autoFocus
-            placeholder="Название, артикул или код X…"
-          />
-        </label>
-        <div className="procurement-candidates">
-          {searching ? (
-            <div className="procurement-zero">
-              <span>Ищем в справочнике…</span>
-            </div>
-          ) : items.length ? (
-            items.map((item) => (
-              <article key={item.sabyId}>
-                <div>
-                  <strong>{item.name}</strong>
-                  <span>{[item.code, item.article].filter(Boolean).join(" · ")}</span>
-                  <small>
-                    Остаток СБИС: {item.balance} · {money.format(item.price)}
-                  </small>
-                </div>
-                <button disabled={saving} onClick={() => void resolve("confirmed", item.sabyId)}>
-                  Выбрать
-                </button>
-              </article>
-            ))
-          ) : (
-            <div className="procurement-zero">
-              <strong>Кандидаты не найдены</strong>
-              <span>Импортируйте новую карточку СБИС или измените запрос.</span>
-            </div>
-          )}
-        </div>
-
-        <div className="dialog-actions procurement-match-actions">
-          <button onClick={() => void resolve("ignored")} disabled={saving || refreshing}>
-            Игнорировать строку
-          </button>
-          <button onClick={() => void resolve("new_product")} disabled={saving || refreshing}>
-            Это новый товар
-          </button>
-          <button onClick={() => void refreshSaby()} disabled={saving || refreshing}>
-            {refreshing ? "Обновляем СБИС…" : "Обновить из СБИС"}
-          </button>
-          <button onClick={onClose}>Отмена</button>
-        </div>
-      </div>
-    </>
-  );
-}
 
 export function ProcurementUploadDialog({
   suppliers,

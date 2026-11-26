@@ -111,6 +111,9 @@ func catalogAttributes(ch string, r ce.Request) ([]map[string]any, error) {
 		raw := r.Channel.Attributes[strconv.FormatInt(a.Key(), 10)]
 		if code := ce.SiteAttributeCode(a); code != "" {
 			value := r.SiteAttributes[code]
+			if r.ProcurementMeasurements {
+				value = procurementMarketplaceMeasurement(a, value, ch)
+			}
 			if value != nil || r.Action != "updating" {
 				raw = value
 			}
@@ -414,6 +417,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			if e != nil {
 				return ce.Result{}, e
 			}
+			if r.ProcurementMeasurements && !hasProcurementMarketplaceMeasurement(hydrated, ch) {
+				return ce.Result{Progress: s, Status: "needs_attention", Message: "В категории площадки не найдено поле для подтверждённого размера растения. Проверьте карточку."}, nil
+			}
 			s.UpdateRequest = &hydrated
 			s.IDs = ids
 			s.Stage = "update"
@@ -515,6 +521,10 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 				s.Ambiguous = false
 				return result("queued", "Созданная этой попыткой карточка проверена. Отправим исправленные данные.")
 			} else if ch == "wb" {
+				if r.ProcurementMeasurements {
+					s.Stage = "measurements-readback"
+					return result("queued", "Проверяем размеры растения в карточке Wildberries.")
+				}
 				s.Stage = "media"
 				if r.Action == "updating" && s.SitePhotos != nil {
 					removed, added := catalogSitePhotoDelta(s.SitePhotos, r.Images)
@@ -571,14 +581,18 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 				if live.Gallery.Incomplete {
 					return result("needs_attention", "Ozon не вернул полный список фотографий. Галерею нужно проверить")
 				}
-				changes, err := catalogGalleryDelta(ctx, nil, live.Gallery.Photos, s.SitePhotos, r.Images)
-				if err != nil {
-					return ce.Result{Progress: s}, err
-				}
-				r.Images = changes.apply(live.Gallery.Photos)
-				if len(changes.Added)+len(changes.Removed) > 0 {
-					count := len(r.Images)
-					s.PhotoCount, s.PhotoWrite = &count, changes.Added
+				if r.ProcurementMeasurements {
+					r.Images = live.Gallery.Photos
+				} else {
+					changes, err := catalogGalleryDelta(ctx, nil, live.Gallery.Photos, s.SitePhotos, r.Images)
+					if err != nil {
+						return ce.Result{Progress: s}, err
+					}
+					r.Images = changes.apply(live.Gallery.Photos)
+					if len(changes.Added)+len(changes.Removed) > 0 {
+						count := len(r.Images)
+						s.PhotoCount, s.PhotoWrite = &count, changes.Added
+					}
 				}
 			}
 			body, e := BuildOzonCard(r, p.Mock)
@@ -607,7 +621,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			if e != nil {
 				if ambiguousCatalogError(e) {
 					s.Stage = "reconcile"
-					if updating {
+					if r.ProcurementMeasurements {
+						s.Stage = "measurements-readback"
+					} else if updating {
 						s.Stage = "gallery-update-unknown"
 						if s.ReapplyPayload {
 							s.Stage = "ozon-reapply-unknown"
@@ -626,7 +642,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			}
 			if out.Result.TaskID <= 0 {
 				s.Stage = "reconcile"
-				if updating {
+				if r.ProcurementMeasurements {
+					s.Stage = "measurements-readback"
+				} else if updating {
 					s.Stage = "gallery-update-unknown"
 					if s.ReapplyPayload {
 						s.Stage = "ozon-reapply-unknown"
@@ -660,7 +678,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			if e != nil {
 				if ambiguousCatalogError(e) {
 					s.Stage = "reconcile"
-					if updating {
+					if r.ProcurementMeasurements {
+						s.Stage = "measurements-readback"
+					} else if updating {
 						s.Stage = "update"
 					}
 					s.Ambiguous = true
@@ -672,6 +692,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 				return ce.Result{Progress: ce.Progress{Stage: "check", SitePhotos: s.SitePhotos}}, errors.New(safeRemoteMessage(out.ErrorText))
 			}
 			s.Stage = "reconcile"
+			if r.ProcurementMeasurements {
+				s.Stage = "measurements-readback"
+			}
 		}
 		return result("queued", "Данные отправлены. Площадка обрабатывает карточку.")
 	case "ozon-poll":
@@ -709,6 +732,9 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 				s.IDs.ProductID = strconv.FormatInt(v.ProductID, 10)
 				s.IDs.OfferID = v.Offer
 				s.Stage = "ozon-readback"
+				if r.ProcurementMeasurements {
+					s.Stage = "measurements-readback"
+				}
 				return result("queued", "Ozon импортировал карточку. Проверяем данные и модерацию.")
 			}
 		}
@@ -717,6 +743,8 @@ func (p *CatalogPublisher) Advance(ctx context.Context, ch string, r ce.Request,
 			return result("needs_attention", "Ozon долго обрабатывает задание. Повторная отправка не выполнялась.")
 		}
 		return result("queued", "Ожидаем результат задания Ozon.")
+	case "measurements-readback":
+		return p.verifyProcurementMarketplaceMeasurements(ctx, ch, r, s)
 	case "ozon-reapply-unknown":
 		// No task receipt means the corrected import may already be in flight.
 		// Read ownership again, but do not claim its content was applied or

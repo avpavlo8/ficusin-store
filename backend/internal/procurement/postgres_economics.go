@@ -20,7 +20,7 @@ func validatePriceQuotes(ctx context.Context, tx pgx.Tx, orderID int64, channels
 	rows, err := tx.Query(ctx, `SELECT l.raw_name,l.channel_quotes,pv.marketplace_scope
 		FROM procurement_order_lines l JOIN product_variants pv ON pv.id=l.canonical_variant_id
 		WHERE l.procurement_order_id=$1 AND l.match_status='confirmed' AND NOT l.invoice_excluded
-		AND l.reconciliation_status<>'superseded' AND l.saby_id IS NOT NULL`, orderID)
+		AND l.reconciliation_status<>'superseded'`, orderID)
 	if err != nil {
 		return err
 	}

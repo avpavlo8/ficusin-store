@@ -84,6 +84,9 @@ func (stub *procurementStub) FirstSabyPriceXLSX(_ context.Context, actor procure
 func (stub *procurementStub) ReceivingPDF(context.Context, int64) ([]byte, string, error) {
 	return []byte("%PDF-test"), "receiving.pdf", nil
 }
+func (*procurementStub) MeasurementPDF(context.Context, int64) ([]byte, string, error) {
+	return []byte("%PDF-test"), "measurements.pdf", nil
+}
 func (stub *procurementStub) CalculateOrder(_ context.Context, _ procurement.Actor, _ int64, _ procurement.CalculationInput) (procurement.OrderDetail, error) {
 	return procurement.OrderDetail{}, nil
 }
@@ -102,6 +105,10 @@ func (stub *procurementStub) ImportDocument(_ context.Context, _ procurement.Act
 	stub.documentInputs = append(stub.documentInputs, input)
 	return procurement.ImportResult{Document: procurement.DocumentSummary{ID: 12}}, nil
 }
+func (stub *procurementStub) SearchSiteNomenclature(ctx context.Context, query string) ([]procurement.NomenclatureCandidate, error) {
+	return stub.SearchNomenclature(ctx, query)
+}
+
 func (stub *procurementStub) SearchNomenclature(_ context.Context, query string) ([]procurement.NomenclatureCandidate, error) {
 	stub.searchInputs = append(stub.searchInputs, query)
 	return []procurement.NomenclatureCandidate{{SabyID: "X1", Name: "Фикус Лирата"}}, nil
@@ -140,7 +147,7 @@ func (stub *procurementStub) SyncChannelCatalog(_ context.Context, _ procurement
 func (stub *procurementStub) PrepareBatch(_ context.Context, _ procurement.Actor, _ int64, kind string, _ []string) (procurement.ActionBatch, error) {
 	return procurement.ActionBatch{ID: 1, Kind: kind}, nil
 }
-func (stub *procurementStub) ApproveBatch(_ context.Context, _ procurement.Actor, batchID int64) (procurement.ActionBatch, error) {
+func (stub *procurementStub) ApproveBatch(_ context.Context, _ procurement.Actor, batchID int64, _ ...bool) (procurement.ActionBatch, error) {
 	return procurement.ActionBatch{ID: batchID, Status: "completed"}, nil
 }
 func (stub *procurementStub) RetryBatch(_ context.Context, _ procurement.Actor, batchID int64) (procurement.ActionBatch, error) {

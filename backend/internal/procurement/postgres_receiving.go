@@ -85,7 +85,8 @@ func updateReceivingLine(ctx context.Context, tx pgx.Tx, actor Actor, lineID, or
 		}
 	}
 	if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET receiving_mode=$2,
-  match_status=CASE WHEN $2<>'catalog' THEN 'deferred' WHEN saby_id IS NOT NULL THEN 'confirmed' ELSE 'unmatched' END,
+  match_status=CASE WHEN $2<>'catalog' THEN 'deferred' WHEN canonical_variant_id IS NOT NULL OR saby_id IS NOT NULL THEN 'confirmed' ELSE 'unmatched' END,
+  comparison_accepted=CASE WHEN $2<>'catalog' AND reconciliation_status='added' THEN TRUE ELSE comparison_accepted END,
   customer_handed_over=FALSE,purchase_unit_rub=NULL,additional_purchase_unit_rub=NULL,trolley_delivery_unit_rub=NULL,ryazan_delivery_unit_rub=NULL,
   unit_cost_rub=NULL,proposed_retail_rub=NULL,proposed_marketplace_rub=NULL,proposed_marketplace_strike_rub=NULL,channel_quotes='{}'::JSONB,
   updated_at=CURRENT_TIMESTAMP WHERE id=$1`, lineID, mode); err != nil {

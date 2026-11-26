@@ -12,8 +12,18 @@ async function openProcurementSection(page: Page) {
     .click();
 }
 async function openPurchaseCosts(scope: Page | Locator) {
+  const section = scope.getByRole("button", { name: "Расчёт и цены", exact: true });
+  await expect(section).toBeVisible();
+  if ((await section.getAttribute("aria-pressed")) !== "true") await section.click();
   const details = scope.locator(".procurement-cost-details");
+  await expect(details).toBeVisible();
   if (await details.getAttribute("open") === null) await details.locator("summary").click();
+}
+async function openPurchaseReview(scope: Page | Locator) {
+  await scope.getByRole("button", { name: "Сверка", exact: true }).click();
+}
+async function openPurchaseDocuments(scope: Page | Locator) {
+  await scope.getByRole("button", { name: "Документы", exact: true }).click();
 }
 async function procurementAction(page: Page, name: string) {
   if (name === "Загрузить инвойс") { await page.getByRole("button", {name: "Загрузить инвойс / счёт", exact:true}).click(); return; }
@@ -39,17 +49,21 @@ async function openCalculatorSettings(page: Page) {
 test("@desktop @phone assortment waits for arrival and distributes into existing cards",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true,currency:"EUR"});
  await page.goto('/admin?section=procurement&order=4');
- const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const order=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
  await openPurchaseCosts(order);
+ await order.getByRole('textbox',{name:'Курс оплаты',exact:true}).fill('123');
+ await openPurchaseReview(order);
+ await order.getByRole('tab',{name:/^Все /}).click();
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
- await order.getByRole('textbox',{name:'Курс оплаты',exact:true}).fill('123');
  await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Способ приёмки',exact:true});
  await dialog.getByRole('combobox',{name:'Способ приёмки растения'}).selectOption('assortment');
  await dialog.getByRole('button',{name:'Сохранить способ приёмки',exact:true}).click();
  await expect(dialog).toBeHidden();
+ await openPurchaseCosts(order);
  await expect(order.getByRole('textbox',{name:'Курс оплаты',exact:true})).toHaveValue('123');
+ await openPurchaseReview(order);
  await expect(row).toContainText('Разобрать после приезда');
  await expect(row).toContainText('Распределено 0 / 60 шт.');
  await order.getByRole('tab',{name:'Разобрать миксы 1',exact:true}).click();
@@ -70,43 +84,47 @@ test("@desktop @phone assortment waits for arrival and distributes into existing
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  await expect(row).toContainText('Распределено 60 / 60 шт.');
  await page.reload();
+ await order.getByRole('tab',{name:/^Все /}).click();
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
- await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'})).toContainText('Bonsai Zantaxilum D15: 60 шт.');
+ await expect(page.getByRole('dialog',{name:'Закупка № 4',exact:true}).getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'})).toContainText('Bonsai Zantaxilum D15: 60 шт.');
 });
 
 test("@desktop @phone accidental card can be detached while waiting for a new Saby card",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
  await page.goto('/admin?section=procurement&order=4');
- const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const order=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
+ await order.getByRole('tab',{name:/^Все /}).click();
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
- await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
- await page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true}).getByRole('button',{name:'Выбрать',exact:true}).click();
+ await row.getByRole('button',{name:'Выбрать карточку сайта',exact:true}).click();
+ await page.getByRole('dialog',{name:'Выбрать карточку сайта',exact:true}).getByRole('button',{name:'Выбрать',exact:true}).click();
  await expect(row).toContainText('Bonsai Zantaxilum D15');
  await row.getByRole('button',{name:'Способ приёмки',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Способ приёмки',exact:true});
  await dialog.getByRole('combobox',{name:'Способ приёмки растения'}).selectOption('awaiting_catalog');
  await dialog.getByRole('button',{name:'Сохранить способ приёмки',exact:true}).click();
  await expect(dialog).toBeHidden();
- await expect(row).toContainText('Ожидает карточку СБИС');
+ await expect(row).toContainText('Ожидает карточку сайта');
  await expect(row).not.toContainText('Bonsai Zantaxilum D15');
- await expect(row).toContainText('60 / 60');
+ await expect(row).toContainText('60 шт.');
  await page.reload();
+ await order.getByRole('tab',{name:/^Все /}).click();
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
- await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Ожидает карточку СБИС');
+ await expect(page.getByRole('dialog',{name:'Закупка № 4',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Ожидает карточку сайта');
 });
 
-test("@desktop @phone invoice match exposes missing Saby card and resolves it inside purchase",async({page})=>{
+test("@desktop @phone invoice match exposes missing site card and resolves it inside purchase",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
  await page.goto('/admin?section=procurement&order=4');
- const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
- await order.getByRole('button',{name:'Показать строки без товара СБИС (1)',exact:true}).click();
- await expect(order.getByRole('tab',{name:'Нет товара СБИС 1',exact:true})).toHaveAttribute('aria-selected','true');
+ const order=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
+ const sabyTab = order.getByRole('tab',{name:'Без карточки сайта 1',exact:true});
+ await sabyTab.click();
+ await expect(sabyTab).toHaveAttribute('aria-selected','true');
  const row=order.getByRole('row').filter({hasText:'Бонсай Зантоксилум D15'});
  await expect(row).toContainText('Совпадает');
- await expect(row).toContainText('Выберите товар СБИС');
- await row.getByRole('button',{name:'Выбрать товар СБИС',exact:true}).click();
- const picker=page.getByRole('dialog',{name:'Выбрать товар СБИС',exact:true});
+ await expect(row).toContainText('Выберите карточку сайта');
+ await row.getByRole('button',{name:'Выбрать карточку сайта',exact:true}).click();
+ const picker=page.getByRole('dialog',{name:'Выбрать карточку сайта',exact:true});
  await expect(picker).toBeVisible();
  const box=await picker.boundingBox();const viewport=page.viewportSize()!;
  expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.y+box!.height).toBeLessThanOrEqual(viewport.height);
@@ -117,10 +135,27 @@ test("@desktop @phone invoice match exposes missing Saby card and resolves it in
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const matched=order.getByRole('row').filter({hasText:'Bonsai Zantaxilum'});
  await expect(matched).toContainText('Bonsai Zantaxilum D15');
- await expect(matched).toContainText('60 / 60');
+ await expect(matched).toContainText('60 шт.');
  await page.reload();
+ await order.getByRole('tab',{name:/^Все /}).click();
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
- await expect(page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Bonsai Zantaxilum D15');
+ await expect(page.getByRole('dialog',{name:'Закупка № 4',exact:true}).getByRole('row').filter({hasText:'Bonsai Zantaxilum'})).toContainText('Bonsai Zantaxilum D15');
+});
+
+test("@desktop @phone lines only in the invoice are not counted again in the Saby queue", async ({ page }) => {
+  await mockProcurement(page, { invoicePicker: true, catalogMatch: true, mixedReview: true });
+  await page.goto("/admin?section=procurement&order=4");
+  const order = page.getByRole("dialog", { name: "Закупка № 4", exact: true });
+  const pending = order.getByRole("tab", { name: "Только в инвойсе 30", exact: true });
+  await expect(pending).toHaveAttribute("aria-selected", "true");
+  await expect(order.getByText("Не выбраны товары СБИС: 31", { exact: true })).toHaveCount(0);
+  await order.getByRole("tab", { name: "Без карточки сайта 1", exact: true }).click();
+  const rows = order.getByRole("tabpanel").locator("tbody > tr");
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText("Бонсай Зантоксилум D15");
+  await pending.click();
+  await expect(rows).toHaveCount(5);
+  await expect(rows.first()).toContainText("Added invoice 1");
 });
 
 test("@desktop @phone manager can inspect incoming plants without editing controls",async({page})=>{
@@ -139,19 +174,19 @@ test("@desktop @phone manager can inspect incoming plants without editing contro
 test("@desktop @phone several invoice rows fulfil one planned quantity",async({page})=>{
  await mockProcurement(page,{invoicePicker:true});
  await page.goto('/admin?section=procurement&order=4');
- await page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('tab',{name:'Только в закупке 1',exact:true}).click();
+ await page.getByRole('dialog',{name:'Закупка № 4',exact:true}).getByRole('tab',{name:'Только в закупке 1',exact:true}).click();
  await page.getByRole('button',{name:'Выбрать из инвойса',exact:true}).click();
  const picker=page.getByRole('dialog',{name:'Выбрать строки инвойса',exact:true});
  for(const id of [2000,2001,2002])await picker.getByRole('checkbox',{name:new RegExp(`Добавить строку ${id}:`)}).check();
  await expect(picker.getByText('Выбрано: 3 · +60 шт. · итог 60 / 60 шт.',{exact:true})).toBeVisible();
  await picker.getByRole('button',{name:'Сопоставить выбранные',exact:true}).click();
  await expect(picker).toBeHidden();
- await page.getByRole('dialog',{name:'TEST-100',exact:true}).getByRole('tab',{name:/^Все /}).click();
+ await page.getByRole('dialog',{name:'Закупка № 4',exact:true}).getByRole('tab',{name:/^Все /}).click();
  await page.getByLabel('Поиск строки закупки').fill('Нижняя строка');
- await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 / 60');
+ await expect(page.getByRole('row').filter({hasText:'Нижняя строка без инвойса'})).toContainText('60 шт.');
 });
 
-async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; mixedRecommendations?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean; salesReview?:boolean } = {}) {
+async function mockProcurement(page: import("@playwright/test").Page, options: { sizeDefaults?: boolean; firstSabyPrices?: boolean; blockers?: string[] | null; currency?: "RUB" | "EUR"; anotherRecommendation?: boolean; mixedRecommendations?: boolean; requestError?: string; invoicePicker?: boolean; catalogMatch?: boolean; manager?: boolean; receivingTabs?: boolean; dimensionReview?: boolean; unified?:boolean; unifiedReceived?:boolean; salesReview?:boolean; mixedReview?: boolean } = {}) {
   const procurement = {
     summary: { openOrders: 1, unresolvedAliases: 12, availabilityChecks: 3, openRequests: 2 },
     integrations: { wb: true, ozon: false, saby: false },
@@ -190,9 +225,9 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     procurement.orders[0].status = "review";
     const baseLine = { supplierCategory: "Растения", orderedQuantity: 1, invoicedQuantity: 1, expectedUnitPrice: 4.85, unitPrice: 4.85, potDiameterCm: 14, heightCm: 40, packageCount: 1, unitsPerPackage: 1, loadUnit: "shelf", comparisonAccepted: false, currentRetailRub: 0, matchStatus: "confirmed" };
     orderDetail.lines = [
-      ...Array.from({ length: 60 }, (_, index) => ({ ...baseLine, id: index + 1, rawName: `Товар ${index + 1}`, sabyName: `Товар ${index + 1}`, sabyId: `SABY-${index + 1}`, invoiceRawName: `Invoice ${index + 1}`, reconciliationStatus: "matched" })),
+      ...Array.from({ length: 60 }, (_, index) => ({ ...baseLine, id: index + 1, canonicalVariantId: index + 101, dimensionsReviewed: true, rawName: `Товар ${index + 1}`, sabyName: `Товар ${index + 1}`, sabyId: `SABY-${index + 1}`, invoiceRawName: `Invoice ${index + 1}`, reconciliationStatus: "matched" })),
       { ...baseLine, id: 1001, rawName: "Нижняя строка без инвойса", sabyName: "Нижняя строка без инвойса", sabyId: "SABY-MISSING", orderedQuantity:60, invoicedQuantity: null, reconciliationStatus: "missing" },
-      ...Array.from({ length: 30 }, (_, index) => ({ ...baseLine, id: index + 2000, rawName: `Добавлено ${index + 1}`, invoiceRawName: `Added invoice ${index + 1}`, sabyId: "", orderedQuantity: 0, invoicedQuantity: index<3?[10,20,30][index]:1, reconciliationStatus: "added" })),
+      ...Array.from({ length: 30 }, (_, index) => ({ ...baseLine, id: index + 2000, matchAlias: {id:index+2000}, rawName: `Добавлено ${index + 1}`, invoiceRawName: `Added invoice ${index + 1}`, sabyId: "", orderedQuantity: 0, invoicedQuantity: index<3?[10,20,30][index]:1, reconciliationStatus: "added" })),
     ];
   }
   if (options.receivingTabs) {
@@ -208,11 +243,18 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     orderDetail.validation.unmatched=1;
     orderDetail.validation.blockers=["Не выбраны товары СБИС: 1"];
   }
+  if (options.mixedReview) {
+    for (const line of orderDetail.lines.filter(line => line.reconciliationStatus === "added")) {
+      line.matchStatus = "unmatched";
+    }
+    orderDetail.validation.unmatched = 31;
+    orderDetail.validation.blockers = ["Не выбраны товары СБИС: 31"];
+  }
   if(options.dimensionReview) {
     const first=orderDetail.lines[0];
     orderDetail.lines=[
-      {...first,id:1001,rawName:"Бонсай D10",sabyName:"Бонсай D10",catalogueLabel:"D10",potDiameterCm:12,heightCm:20,matchAlias:{potDiameterCm:12,heightCm:20},dimensionWarning:"Карточка D10, инвойс D12: проверьте вариант товара."},
-      {...first,id:1002,rawName:"Непентес микс",sabyName:"",receivingMode:"customer_handoff",matchStatus:"deferred",potDiameterCm:12,heightCm:40,matchAlias:{potDiameterCm:9,heightCm:20},dimensionWarning:"Размеры отличаются от инвойса: проверьте фактические размеры"},
+      {...first,id:1001,dimensionsReviewed:false,rawName:"Бонсай D10",sabyName:"Бонсай D10",catalogueLabel:"D10",potDiameterCm:12,heightCm:20,matchAlias:{potDiameterCm:12,heightCm:20},dimensionWarning:"Карточка D10, инвойс D12: проверьте вариант товара."},
+      {...first,id:1002,dimensionsReviewed:false,rawName:"Непентес микс",sabyName:"",receivingMode:"customer_handoff",matchStatus:"deferred",potDiameterCm:12,heightCm:40,matchAlias:{potDiameterCm:9,heightCm:20},dimensionWarning:"Размеры отличаются от инвойса: проверьте фактические размеры"},
       {...first,id:1003,rawName:"Исключённая строка",invoiceExcluded:true,dimensionWarning:"Карточка D10, инвойс D12"},
       {...first,id:1004,rawName:"Проверенная строка",dimensionsReviewed:true,dimensionWarning:""},
     ];
@@ -251,8 +293,8 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
     const body=JSON.parse(rawBody);
     const line=orderDetail.lines.find(line=>line.id===1001)!;
     if(path.endsWith("/aliases/9")){
-      if(body.matchStatus!=="confirmed" || body.sabyId!=="TEST-SABY-BONSAI")throw new Error("Wrong catalog candidate");
-      Object.assign(line,{sabyId:body.sabyId,sabyCode:"X616872557",sabyName:"Bonsai Zantaxilum D15",matchStatus:"confirmed",receivingMode:"catalog"});
+      if(body.matchStatus!=="confirmed" || body.variantId!==777 || body.orderLineId!==1001)throw new Error("Wrong site candidate");
+      Object.assign(line,{sabyId:"TEST-SABY-BONSAI",sabyCode:"X616872557",sabyName:"Bonsai Zantaxilum D15",catalogueName:"Bonsai Zantaxilum D15",canonicalVariantId:777,matchStatus:"confirmed",receivingMode:"catalog"});
       Object.assign(orderDetail.validation,{pendingCatalog:0});
       procurement.review=[];procurement.summary.unresolvedAliases=0;
     }else if("channelCosts" in body || "retailOverrideRub" in body){
@@ -261,7 +303,7 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       Object.assign(line,{receivingMode:body.receivingMode,matchStatus:body.receivingMode==="catalog"?"unmatched":"deferred",receivingAllocations:(body.receivingAllocations || []).map((part:{sabyId:string;quantity:number})=>({...part,name:"Bonsai Zantaxilum D15",code:"X616872557"}))});
     }
     if(body.receivingMode==="awaiting_catalog"){
-      Object.assign(line,{sabyId:"",sabyName:"",sabyCode:""});
+      Object.assign(line,{sabyId:"",sabyName:"",sabyCode:"",catalogueName:"",canonicalVariantId:undefined});
       Object.assign(orderDetail.validation,{pendingCatalog:1});
     }
     orderDetail.validation.pendingAssortments=line.receivingMode==="assortment" && (line.receivingAllocations || []).reduce((sum,part)=>sum+part.quantity,0)!==line.invoicedQuantity?1:0;
@@ -296,6 +338,9 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
       }
       if(catalogMatch && ["/api/v1/admin/procurement","/api/v1/admin/procurement/orders/4","/api/v1/admin/procurement/aliases/9","/api/v1/admin/procurement/order-lines/1001"].includes(path)){
         return (window as unknown as {procurementFixture:(path:string,body:string)=>Promise<unknown>}).procurementFixture(path,String(init?.body || "")).then(json);
+      }
+      if (path === "/api/v1/admin/procurement/nomenclature" && new URL(raw, window.location.origin).searchParams.get("source") === "site") {
+        return json({ items: [{ variantId: 777, code: "SITE-777", name: "Bonsai Zantaxilum D15", sabyId: "", balance: 0, price: 1800 }] });
       }
       if (path === "/api/v1/auth/me") return json({ user });
       if (path === "/api/v1/admin/dashboard") return json(dashboard);
@@ -373,6 +418,12 @@ async function mockProcurement(page: import("@playwright/test").Page, options: {
         if(body.kind!=="prices"||body.channels?.length!==1||body.channels[0]!=="ozon")return Promise.resolve(new Response(JSON.stringify({error:"Wrong channel"}),{status:400}));
         const batch={id:99,kind:"prices",unified:true,status:"draft",createdAt:"2026-10-19T18:00:00Z",items:[{id:991,lineId:1,productName:"Unified plant D12",productCode:"X1",channel:"ozon",externalArticle:"plant-d12",oldValue:3000,newValue:2191,status:"draft",errorMessage:""}]};
         Object.assign(orderDetail,{batches:[batch]});return json({batch});
+      }
+      if (path === "/api/v1/admin/procurement/batches/99/approve" && init?.method === "POST") {
+        const batch = (orderDetail.batches as {status:string;items:{status:string}[]}[])[0];
+        batch.status = "completed";
+        batch.items[0].status = "completed";
+        return json({batch});
       }
       if (path === "/api/v1/admin/procurement/orders/4/saby-prices.xlsx") {
         sabyExports.push({method:init?.method || "GET",body:JSON.parse(String(init?.body || "{}"))});
@@ -506,9 +557,9 @@ test("@desktop calculator keeps its inputs across tabs and creates a request", a
 test("@desktop procurement direct order and filters survive reload", async ({ page }) => {
   await mockProcurement(page);
   await page.goto("/admin?section=procurement&view=orders&order=4&q=TEST&status=all");
-  await expect(page.getByRole("dialog", { name: "TEST-100" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Закупка № 4" })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("dialog", { name: "TEST-100" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Закупка № 4" })).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Закрыть", exact: true }).click();
   await expect(page.getByLabel("Поиск закупки")).toHaveValue("TEST");
   await expect(page.getByLabel("Статус закупки")).toHaveValue("all");
@@ -533,7 +584,9 @@ test("@desktop procurement opens inside the existing admin panel", async ({ page
   await expect(page.getByRole("link", { name: "Закупка № 4", exact: true })).toBeVisible();
   await expect(page.getByText("Инвойсы и счета", { exact: false })).toHaveCount(0);
   await page.getByRole("link", { name: "Закупка № 4", exact: true }).click();
-  const documentOrder = page.getByRole("dialog", {name: "TEST-100", exact:true});
+  const documentOrder = page.getByRole("dialog", {name: "Закупка № 4", exact:true});
+  await expect(documentOrder.getByRole("region", {name: "Документы закупки"})).toHaveCount(0);
+  await openPurchaseDocuments(documentOrder);
   await expect(documentOrder.getByRole("region", {name: "Документы закупки"})).toContainText("Суммы сходятся");
   await expect(documentOrder.getByRole("link", {name: /Счёт № TEST-100/})).toHaveAttribute("href", "/api/v1/admin/procurement/documents/7/source.pdf");
   await expect(documentOrder.getByText(/OTHER-ORDER/)).toHaveCount(0);
@@ -643,8 +696,8 @@ test("@desktop procurement blocks calculation until invoice checks pass", async 
   await page.goto("/admin");
   await openProcurementSection(page);
   await page.locator(".procurement-orders").getByRole("link", { name: "Закупка № 4", exact: true }).click();
-  await expect(page.getByText("Нужно проверить")).toBeVisible();
-  await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Загрузите инвойс"})).toBeVisible();
+
   await openPurchaseCosts(page);
   await expect(page.getByRole("button", { name: "Рассчитать" })).toBeDisabled();
 });
@@ -680,11 +733,12 @@ test("@desktop invoice can be attached from the saved order", async ({ page }) =
   await page.goto("/admin");
   await openProcurementSection(page);
   await page.locator(".procurement-orders").getByRole("link", { name: "Закупка № 4", exact: true }).click();
-  await expect(page.getByText("Нужно проверить")).toBeVisible();
-  await expect(page.getByText("Загрузите инвойс",{exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Загрузите инвойс",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:"Открыть документы",exact:true}).click();
   await page.getByLabel("Ориентировочная дата поступления", { exact: true }).fill("2030-12-08");
   await page.getByRole("region", {name:"Документы закупки",exact:true}).getByLabel("Загрузить новую версию", {exact:true}).setInputFiles({ name: "invoice.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") });
-  await expect(page.getByText("Не выбраны товары СБИС: 2")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Сверка инвойса", exact: true })).toBeVisible();
+  await openPurchaseDocuments(page);
   await expect(page.getByLabel("Ориентировочная дата поступления", { exact: true })).toHaveValue("2030-12-08");
   await expect(page.getByRole("button", { name: "Сохранить дату", exact: true })).toBeDisabled();
   await page.getByLabel("Ориентировочная дата поступления", { exact: true }).fill("2030-12-10");
@@ -1032,7 +1086,8 @@ test("@desktop procurement can add a linked Saby product outside recommendations
 test("@desktop @phone invoice picker stays in viewport from a scrolled row and restores focus", async ({ page }) => {
   await mockProcurement(page, { invoicePicker: true });
   await page.goto("/admin?section=procurement&view=orders&order=4");
-  const order = page.getByRole("dialog", { name: "TEST-100", exact: true });
+  const order = page.getByRole("dialog", { name: "Закупка № 4", exact: true });
+  await order.getByRole("tab", { name: /^Все / }).click();
   await expect(order.getByRole("tabpanel")).toBeVisible();
   const more = order.getByRole("button", { name: "Показать ещё строки закупки", exact: true });
   while (await more.count()) await more.click();
@@ -1076,7 +1131,7 @@ test("@desktop @phone invoice picker stays in viewport from a scrolled row and r
 test("@desktop @phone procurement uses quiet checks, styled controls and a single dimension form",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,blockers:[]});
  await page.goto('/admin?section=procurement&order=4');
- const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const order=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
  await expect(order.getByText('Проверки пройдены',{exact:true})).toHaveCount(0);
  await expect(order.getByText('Артикул в PDF не указан',{exact:true})).toHaveCount(0);
  await order.getByRole('tab',{name:'Только в закупке 1',exact:true}).click();
@@ -1105,11 +1160,16 @@ test("@desktop @phone procurement uses quiet checks, styled controls and a singl
 test("@desktop @phone purchase tabs switch groups, keep totals and return to all",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,receivingTabs:true,blockers:[]});
  await page.goto('/admin?section=procurement&order=4');
- const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const order=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
  const tabs=order.getByRole('tablist',{name:'Строки закупки'});
  const all=tabs.getByRole('tab',{name:'Все 91',exact:true});
+ const missing=tabs.getByRole('tab',{name:'Только в закупке 1',exact:true});
+ await expect(missing).toHaveAttribute('aria-selected','true');
+ await expect(order.getByRole('button',{name:'Выбрать из инвойса',exact:true})).toBeVisible();
+ await expect(order.getByRole('button',{name:'Рассчитать',exact:true})).toHaveCount(0);
+ await all.click();
  await expect(all).toHaveAttribute('aria-selected','true');
- await expect(tabs.getByRole('tab')).toHaveCount(5);
+ await expect(tabs.getByRole('tab')).toHaveCount(6);
  await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(5);
  await order.getByRole('button',{name:'Показать ещё строки закупки',exact:true}).click();
  await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(10);
@@ -1119,7 +1179,7 @@ test("@desktop @phone purchase tabs switch groups, keep totals and return to all
  await expect(order.getByRole('tabpanel')).not.toContainText('Товар 4');
  await tabs.getByRole('tab',{name:'Только в инвойсе 30',exact:true}).click();
  await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(5);
- await expect(order.getByRole('button',{name:'Это новая позиция',exact:true})).toHaveCount(5);
+ await expect(order.getByRole('button',{name:'Выбрать карточку сайта',exact:true})).toHaveCount(5);
  await order.getByLabel('Поиск строки закупки').fill('Added invoice 1');
  await expect(order.getByRole('tabpanel').locator('tbody > tr')).toHaveCount(5);
  await expect(tabs.getByRole('tab',{name:'Только в инвойсе 30',exact:true})).toHaveAttribute('aria-selected','true');
@@ -1143,11 +1203,12 @@ test("@desktop @phone purchase tabs switch groups, keep totals and return to all
 test("@desktop @phone product pricing keeps market retail and Ozon FBS costs after reload",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,catalogMatch:true});
  await page.goto("/admin?section=procurement&order=4");
- const order=page.getByRole("dialog",{name:"TEST-100",exact:true});
+ const order=page.getByRole("dialog",{name:"Закупка № 4",exact:true});
+ await order.getByRole('tab',{name:/^Все /}).click();
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
  const row=order.getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
  await row.locator(".procurement-row-more > summary").click();
- await row.getByRole("button",{name:"Расходы продажи",exact:true}).click();
+ await row.getByRole("button",{name:"Цена и расходы продажи",exact:true}).click();
  const editor=page.getByRole("dialog",{name:"Цена и расходы продажи",exact:true});
  await editor.getByLabel("Розничная цена после проверки рынка, ₽").fill("1650");
  await editor.locator("summary").filter({hasText:"Ozon · FBS"}).click();
@@ -1161,10 +1222,11 @@ test("@desktop @phone product pricing keeps market retail and Ozon FBS costs aft
  await editor.getByRole("button",{name:"Сохранить для пересчёта",exact:true}).click();
  await expect(editor).toBeHidden();
  await page.reload();
+ await order.getByRole('tab',{name:/^Все /}).click();
  await order.getByRole("textbox",{name:"Поиск строки закупки",exact:true}).fill("BONSAI");
- const reloaded=page.getByRole("dialog",{name:"TEST-100",exact:true}).getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
+ const reloaded=page.getByRole("dialog",{name:"Закупка № 4",exact:true}).getByRole("row").filter({hasText:"Бонсай Зантоксилум D15"});
  await reloaded.locator(".procurement-row-more > summary").click();
- await reloaded.getByRole("button",{name:"Расходы продажи",exact:true}).click();
+ await reloaded.getByRole("button",{name:"Цена и расходы продажи",exact:true}).click();
  await expect(editor.getByLabel("Розничная цена после проверки рынка, ₽")).toHaveValue("1650");
  await editor.locator("summary").filter({hasText:"Ozon · FBS"}).click();
  await expect(editor.getByLabel("Цена Ozon после проверки рынка, ₽")).toHaveValue("2700");
@@ -1192,30 +1254,33 @@ test("@desktop @phone pricing shows monthly costs and leaves unknown marketplace
 test("@desktop @phone dimension blockers lead to explicit review and unblock calculation",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,currency:"EUR",dimensionReview:true});
  await page.goto('/admin?section=procurement&order=4');
- const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const order=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
  await openPurchaseCosts(order);
  const calculate=order.getByRole('button',{name:'Рассчитать',exact:true});
  await expect(calculate).toBeDisabled();
- await expect(calculate).toHaveAccessibleDescription(/Размеры в 2 поз/);
+ await expect(calculate).toHaveAccessibleDescription(/Завершите сверку перед расчётом/);
  await expect(order.locator('.procurement-checklist li')).toHaveCount(0);
  await order.getByRole('textbox',{name:'Курс оплаты',exact:true}).fill('123');
- await order.getByRole('button',{name:'Проверить размеры (2)',exact:true}).click();
- await expect(order.getByRole('tab',{name:'Проверить размеры 2',exact:true})).toBeFocused();
+ await order.getByRole('button',{name:'Перейти к сверке',exact:true}).click();
+ await order.getByRole('tab',{name:'Проверить размеры 2',exact:true}).click();
+ await expect(order.getByRole('tab',{name:'Проверить размеры 2',exact:true})).toHaveAttribute('aria-selected','true');
  await expect(order.locator('.procurement-order-lines > tbody > tr')).toHaveCount(2);
  const first=order.getByRole('row').filter({hasText:'Бонсай D10'});
  await first.getByRole('button',{name:'Проверить размеры',exact:true}).click();
  const editor=page.getByRole('dialog',{name:'Проверить размеры',exact:true});
- await expect(editor).toContainText('Инвойс: D12, H20 см. Карточка: D10.');
+ await expect(editor).toContainText('Инвойс: D12, H20 см. Карточка сайта: D10.');
  await editor.getByRole('button',{name:'Отмена',exact:true}).click();
  await expect(order.getByRole('tab',{name:'Проверить размеры 2',exact:true})).toBeVisible();
  await first.getByRole('button',{name:'Проверить размеры',exact:true}).click();
  await editor.getByRole('button',{name:'Использовать размеры инвойса',exact:true}).click();
- await expect(calculate).toBeDisabled();
  await editor.getByLabel('Высота растения, см').fill('21');
  await editor.getByRole('button',{name:'Подтвердить размеры',exact:true}).click();
  await expect(editor).toBeHidden();
  await expect(order.getByRole('tab',{name:'Проверить размеры 1',exact:true})).toBeVisible();
+ await openPurchaseCosts(order);
  await expect(order.getByRole('textbox',{name:'Курс оплаты',exact:true})).toHaveValue('123');
+ await expect(calculate).toBeDisabled();
+ await openPurchaseReview(order);
  const second=order.getByRole('row').filter({hasText:'Непентес микс'});
  await expect(second.getByRole('button',{name:'Выбрать товар СБИС',exact:true})).toHaveCount(0);
  await second.getByRole('button',{name:'Проверить размеры',exact:true}).click();
@@ -1226,12 +1291,14 @@ test("@desktop @phone dimension blockers lead to explicit review and unblock cal
  await editor.getByRole('button',{name:'Подтвердить размеры',exact:true}).click();
  await expect(editor).toBeHidden();
  await expect(order.getByRole('tab',{name:'Проверить размеры 0',exact:true})).toHaveAttribute('aria-selected','true');
+ await openPurchaseCosts(order);
  await expect(calculate).toBeEnabled();
- await expect(order.locator('.procurement-checklist')).toHaveCount(0);
+ await expect(order.locator('.procurement-review-blockers')).toHaveCount(0);
  await page.reload();
  await openPurchaseCosts(order);
  await expect(calculate).toBeEnabled();
- await expect(order.getByRole('tab',{name:/^Проверить размеры /})).toHaveCount(0);
+ await openPurchaseReview(order);
+ await expect(order.getByRole('tab',{name:'Проверить размеры 0',exact:true})).toBeVisible();
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
 });
 
@@ -1239,9 +1306,8 @@ test("@desktop @phone dimension blockers lead to explicit review and unblock cal
 test("@desktop @phone dimension review keeps arithmetic blockers visible",async({page})=>{
  await mockProcurement(page,{invoicePicker:true,currency:"EUR",dimensionReview:true,blockers:["Итог документа не совпадает с суммой строк"]});
  await page.goto('/admin?section=procurement&order=4');
- const order=page.getByRole('dialog',{name:'TEST-100',exact:true});
- await openPurchaseCosts(order);
- await order.getByRole('button',{name:'Проверить размеры (2)',exact:true}).click();
+ const order=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
+ await order.getByRole('tab',{name:'Проверить размеры 2',exact:true}).click();
  for(let i=0;i<2;i++) {
    await order.getByRole('button',{name:'Проверить размеры',exact:true}).first().click();
    const editor=page.getByRole('dialog',{name:'Проверить размеры',exact:true});
@@ -1249,16 +1315,21 @@ test("@desktop @phone dimension review keeps arithmetic blockers visible",async(
    await expect(editor).toBeHidden();
    await expect(order.getByRole('tab',{name:`Проверить размеры ${1-i}`,exact:true})).toBeVisible();
  }
+ await expect(order.locator('.procurement-review-blockers li')).toHaveText(['Итог документа не совпадает с суммой строк']);
+ await openPurchaseCosts(order);
  await expect(order.getByRole('button',{name:'Рассчитать',exact:true})).toBeDisabled();
  await expect(order.getByRole('button',{name:'Рассчитать',exact:true})).toHaveAccessibleDescription(/Итог документа не совпадает/);
- await expect(order.locator('.procurement-checklist li')).toHaveText(['Итог документа не совпадает с суммой строк']);
 });
 
  test("@desktop @phone unified prices are searchable and do not send prices",async({page})=>{
  await mockProcurement(page,{unified:true});
  await page.goto('/admin?section=procurement&order=4');
- const dialog=page.getByRole('dialog',{name:'TEST-100',exact:true});
+ const dialog=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
+ await expect(dialog.getByRole('searchbox',{name:'Найти растение в расчёте'})).toHaveCount(0);
+ await openPurchaseCosts(dialog);
  const preview=dialog.locator('details').filter({has:page.getByText('Цены по общей формуле',{exact:true})});
+ await expect(preview.getByRole('searchbox',{name:'Найти растение в расчёте'})).toHaveCount(0);
+ await preview.locator(':scope > summary').click();
  await expect(preview).toContainText('Рассчитано для 3 из 3 растений');
  await expect(preview.getByRole('button',{name:/Отправить|Применить/})).toHaveCount(0);
  await expect(preview).toContainText('1 705');
@@ -1286,39 +1357,28 @@ test("@desktop @phone dimension review keeps arithmetic blockers visible",async(
  await expect(page.getByLabel('Материалы на отправление, ₽')).toHaveValue('100');
  });
 
- test("@desktop @phone completed supply prepares only the selected unified channel",async({page})=>{
+ test("@desktop @phone completed supply publishes the selected channel from one list",async({page})=>{
  await mockProcurement(page,{unified:true,unifiedReceived:true});
  await page.goto('/admin?section=procurement&order=4');
- const dialog=page.getByRole('dialog',{name:'TEST-100',exact:true});
- await dialog.locator('summary').filter({hasText:'Расчёт и доставка'}).click();
- await expect(dialog.getByRole('button',{name:'Рассчитать',exact:true})).toBeDisabled();
- await dialog.getByRole('button',{name:'Подготовить Ozon',exact:true}).click();
- const batch=dialog.locator('.procurement-batch').filter({has:page.getByRole('heading',{name:'Изменение цены · Ozon',exact:true})});
- await expect(batch).toContainText('Unified plant D12');
- await expect(batch).toContainText('2 191');
- await expect(batch).toContainText('Черновик');
- await expect(batch.getByRole('button',{name:'Подтвердить 1 строк',exact:true})).toBeEnabled();
- await expect(dialog.locator('.procurement-batch')).toHaveCount(1);
- await expect(dialog.getByText('Завершено',{exact:true})).toBeVisible();
+ const dialog=page.getByRole('dialog',{name:'Закупка № 4',exact:true});
+ await openPurchaseCosts(dialog);
+ const list=dialog.getByRole('table',{name:'Изменения цен и размеров по каналам'});
+ await expect(list.getByRole('columnheader')).toHaveText(['Растение','Сайт','СБИС','Ozon','Wildberries']);
+ await expect(list.getByRole('row').filter({hasText:'Unified plant D12'})).toContainText('2 191');
+ await dialog.getByRole('button',{name:'Выгрузить на Ozon',exact:true}).click();
+ await expect(dialog.getByText('Ozon · Цены выгружены.',{exact:true})).toBeVisible();
+ await expect(dialog.locator('#procurement-action-history')).toBeHidden();
+ await expect(list).toBeVisible();
  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
  });
 
-
-test("@desktop @phone first Saby file prices include hidden new rows after explicit review",async({page},testInfo)=>{
+test("@desktop @phone the Saby file downloads directly from the shared list",async({page},testInfo)=>{
  await mockProcurement(page,{firstSabyPrices:true});
- await page.goto('/admin?section=procurement&order=4');
- const button=page.getByRole('button',{name:'Скачать цены для СБИС',exact:true});
- await expect(button).toBeVisible();
- const rejected=page.waitForEvent('dialog');
- const click=button.click();
- const review=await rejected;
- expect(review.message()).toContain('Новый товар 8: 643');
- await review.dismiss();await click;
- expect(await page.evaluate(()=>Reflect.get(window,'sabyExports'))).toEqual([]);
- const accepted=page.waitForEvent('dialog');
+ await page.goto('/admin?section=procurement&order=4#procurement-prices');
+ const list=page.getByRole('table',{name:'Изменения цен и размеров по каналам'});
+ await expect(list.getByRole('row').filter({hasText:'Новый товар 8'})).toContainText('643');
  const download=page.waitForEvent('download');
- const exportClick=button.click();
- await (await accepted).accept();await exportClick;
+ await page.getByRole('button',{name:'Выгрузить для СБИС',exact:true}).click();
  expect((await download).suggestedFilename()).toBe('first-prices.xlsx');
  expect(await page.evaluate(()=>Reflect.get(window,'sabyExports'))).toEqual([{method:'POST',body:{firstPrices:Array.from({length:8},(_,index)=>({sabyId:`NEW-${index+1}`,priceRub:636+index}))}}]);
  await page.screenshot({path:testInfo.outputPath('first-saby-prices.png'),fullPage:true});
