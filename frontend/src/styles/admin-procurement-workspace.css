@@ -793,10 +793,15 @@
 }
 @media (max-width: 800px) {
   .admin-page .procurement-line-tabs {
+    flex-wrap: nowrap;
     gap: 4px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
   .admin-page .procurement-line-tabs button {
+    flex: 0 0 auto;
     min-height: 44px;
     padding: 9px 10px;
     font-size: 12px;
@@ -814,5 +819,307 @@
   .admin-page .procurement-arrival-fields {
     grid-template-columns: minmax(0, 1fr);
     justify-items: start;
+  }
+}
+
+.admin-page .procurement-order-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #d5d6d9;
+}
+.admin-page .procurement-order-sections button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #555d60;
+  font-weight: 600;
+}
+.admin-page .procurement-order-sections button[aria-pressed="true"] {
+  border-bottom-color: #285e43;
+  color: #285e43;
+}
+.admin-page .procurement-order-sections button:hover {
+  background: #eaf0ec;
+}
+.admin-page .procurement-review-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin-bottom: 12px;
+}
+.admin-page .procurement-review-heading h3 {
+  margin: 0;
+  font-size: 19px;
+}
+.admin-page .procurement-review-heading p,
+.admin-page .procurement-calculation-note {
+  margin: 6px 0 0;
+  color: #535b61;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.admin-page .procurement-review-blockers {
+  margin-bottom: 12px;
+  color: #70470e;
+  font-size: 14px;
+}
+.admin-page .procurement-review-blockers summary {
+  width: fit-content;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.admin-page .procurement-review-blockers ul {
+  margin: 6px 0 0;
+  padding-inline-start: 22px;
+  line-height: 1.6;
+}
+.admin-page .procurement-calculation-note {
+  margin-bottom: 16px;
+}
+.admin-page .procurement-order-prices > summary {
+  padding-block: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.admin-page .procurement-order-body .procurement-order-lines [hidden] {
+  display: none;
+}
+@media (min-width: 801px) {
+  .admin-page .procurement-order-body .procurement-order-lines[data-show-prices="false"],
+  .admin-page .procurement-order-body .procurement-invoice-only-lines {
+    min-width: 800px;
+  }
+}
+@media (max-width: 800px) {
+  .admin-page .procurement-order-sections {
+    margin-bottom: 14px;
+  }
+  .admin-page .procurement-order-sections button {
+    padding-inline: 8px;
+  }
+  .admin-page .procurement-order-dialog .procurement-order-body {
+    padding-top: 16px;
+  }
+  .admin-page .procurement-order-body .procurement-invoice-only-lines,
+  .admin-page .procurement-invoice-only-lines > tbody {
+    display: block;
+    min-width: 0;
+  }
+  .admin-page .procurement-invoice-only-lines > thead {
+    display: none;
+  }
+  .admin-page .procurement-invoice-only-lines > tbody > tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    padding: 14px;
+    border-bottom: 1px solid #d8d9db;
+  }
+  .admin-page .procurement-order-body .procurement-invoice-only-lines > tbody > tr > td {
+    display: block;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+  .admin-page .procurement-invoice-only-lines td:first-child,
+  .admin-page .procurement-invoice-only-lines td:nth-child(4),
+  .admin-page .procurement-invoice-only-lines td:last-child {
+    grid-column: 1 / -1;
+  }
+  .admin-page .procurement-invoice-only-lines td[data-label]::before {
+    display: block;
+    color: #626873;
+    content: attr(data-label);
+    font-size: 11px;
+  }
+}
+
+.admin-page
+  .procurement-order-lines[data-view="missing"]
+  td:last-child
+  .procurement-inline-actions
+  > button {
+  width: auto;
+}
+@media (max-width: 800px) {
+  .admin-page .procurement-order-lines[data-view="missing"] td:nth-child(6)::before {
+    content: "Количество в плане";
+  }
+  .admin-page .procurement-order-lines[data-view="missing"] td:nth-child(7)::before {
+    content: "Цена за шт. в плане";
+  }
+}
+
+.admin-page .procurement-line-pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #555d60;
+}
+
+.admin-page .procurement-missing-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.admin-page .procurement-missing-actions .procurement-remove-line {
+  flex: 0 0 40px;
+  min-height: 40px;
+  padding: 0;
+  font-size: 20px;
+  color: #854639;
+}
+.admin-page .procurement-measurement-print {
+  margin-bottom: 12px;
+}
+.admin-page .procurement-site-match-results {
+  display: grid;
+  gap: 8px;
+  max-height: 45vh;
+  overflow: auto;
+}
+.admin-page .procurement-site-match-results > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-block: 8px;
+  border-bottom: 1px solid #d5d6d9;
+}
+.admin-page .procurement-site-match-results small {
+  display: block;
+}
+
+.admin-page .procurement-price-review {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.admin-page .procurement-price-review h3,
+.admin-page .procurement-price-review p {
+  margin: 0;
+}
+.admin-page .procurement-changes-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.admin-page .procurement-changes-heading input {
+  flex: 0 1 20rem;
+  width: min(100%, 20rem);
+}
+.admin-page .procurement-price-review .procurement-price-channels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+.admin-page .procurement-publication-feedback:empty {
+  display: none;
+}
+.admin-page .procurement-publication-feedback p + p {
+  margin-top: 6px;
+}
+.admin-page .procurement-price-review-table th[scope="row"] {
+  width: 23%;
+  font-size: inherit;
+  color: inherit;
+}
+.admin-page .procurement-price-review-table th[scope="row"] small {
+  display: block;
+}
+.admin-page .procurement-order-dialog .procurement-change-edit {
+  display: block;
+  margin-top: 6px;
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.admin-page .procurement-change-values {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 8px;
+  margin: 0;
+  white-space: normal;
+  font-size: 13px;
+}
+.admin-page .procurement-change-values dt,
+.admin-page .procurement-change-note,
+.admin-page .procurement-change-muted {
+  color: #555d60;
+}
+.admin-page .procurement-change-values dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 860px) {
+  .admin-page .procurement-price-review-table,
+  .admin-page .procurement-price-review-table tbody {
+    display: block;
+    min-width: 0;
+  }
+  .admin-page .procurement-order-body .procurement-price-review-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+  }
+  .admin-page .procurement-price-review-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 12px;
+    border-bottom: 1px solid #d5d6d9;
+  }
+  .admin-page .procurement-order-body .procurement-price-review-table td,
+  .admin-page .procurement-price-review-table th[scope="row"] {
+    width: auto;
+    padding: 0;
+    border: 0;
+    white-space: normal;
+  }
+  .admin-page .procurement-price-review-table th[scope="row"] {
+    grid-column: 1 / -1;
+  }
+  .admin-page .procurement-price-review-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 650;
+    font-size: 13px;
+  }
+}
+@media (max-width: 560px) {
+  .admin-page .procurement-price-review .procurement-price-channels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-page .procurement-order-dialog .procurement-price-channels button {
+    padding-inline: 8px;
+    white-space: normal;
+    font-size: 13px;
+  }
+}
+@media (max-width: 410px) {
+  .admin-page .procurement-change-values {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .admin-page .procurement-change-values dd + dt {
+    margin-top: 4px;
   }
 }

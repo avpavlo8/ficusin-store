@@ -249,27 +249,28 @@ type PriceRequest struct {
 }
 
 type Request struct {
-	Price          *PriceRequest  `json:"price,omitempty"`
-	Saby           Saby           `json:"saby,omitempty"`
-	SabyID         string         `json:"sabyId,omitempty"`
-	SabyUUID       string         `json:"sabyUUID,omitempty"`
-	PriceMinor     int64          `json:"priceMinor,omitempty"`
-	Action         string         `json:"action,omitempty"`
-	ExistingID     string         `json:"existingId,omitempty"`
-	SiteAttributes map[string]any `json:"attributes,omitempty"`
-	VariantID      int64          `json:"variantId"`
-	ProductID      int64          `json:"productId"`
-	Name           string         `json:"name"`
-	Description    string         `json:"description"`
-	SKU            string         `json:"sku"`
-	Barcode        string         `json:"barcode"`
-	Images         []string       `json:"images"`
-	Packaging      Packaging      `json:"packaging"`
-	Marketplace    Marketplace    `json:"marketplace"`
-	Channel        Channel        `json:"channel"`
-	OzonPrice      string         `json:"ozonPrice"`
-	WBPrice        string         `json:"wbPrice"`
-	Schema         []Attribute    `json:"schema"`
+	ProcurementMeasurements bool           `json:"procurementMeasurements,omitempty"`
+	Price                   *PriceRequest  `json:"price,omitempty"`
+	Saby                    Saby           `json:"saby,omitempty"`
+	SabyID                  string         `json:"sabyId,omitempty"`
+	SabyUUID                string         `json:"sabyUUID,omitempty"`
+	PriceMinor              int64          `json:"priceMinor,omitempty"`
+	Action                  string         `json:"action,omitempty"`
+	ExistingID              string         `json:"existingId,omitempty"`
+	SiteAttributes          map[string]any `json:"attributes,omitempty"`
+	VariantID               int64          `json:"variantId"`
+	ProductID               int64          `json:"productId"`
+	Name                    string         `json:"name"`
+	Description             string         `json:"description"`
+	SKU                     string         `json:"sku"`
+	Barcode                 string         `json:"barcode"`
+	Images                  []string       `json:"images"`
+	Packaging               Packaging      `json:"packaging"`
+	Marketplace             Marketplace    `json:"marketplace"`
+	Channel                 Channel        `json:"channel"`
+	OzonPrice               string         `json:"ozonPrice"`
+	WBPrice                 string         `json:"wbPrice"`
+	Schema                  []Attribute    `json:"schema"`
 }
 type Saby struct {
 	Category     Category `json:"category"`
@@ -333,9 +334,15 @@ func (p ChannelPublishers) Advance(ctx context.Context, channel string, request 
 }
 
 func SiteAttributeCode(a Attribute) string {
-	n := strings.ToLower(a.Name)
+	n := strings.ToLower(strings.TrimSpace(a.Name))
+	if strings.Contains(n, "упаков") {
+		return ""
+	}
 	if strings.Contains(n, "диаметр") && (strings.Contains(n, "горш") || strings.Contains(n, "кашпо")) {
 		return "pot_diameter_cm"
+	}
+	if strings.Contains(n, "высота растения") || strings.Contains(n, "высота цветка") {
+		return "height_cm"
 	}
 	return ""
 }

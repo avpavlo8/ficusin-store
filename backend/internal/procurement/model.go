@@ -211,61 +211,65 @@ type ReceivingAllocation struct {
 }
 
 type OrderLine struct {
-	CatalogueLabel               string                  `json:"catalogueLabel"`
-	ChannelPrices                map[string]int64        `json:"channelPrices"`
-	LabelRetailRUB               *float64                `json:"labelRetailRub,omitempty"`
-	LabelReprintNeeded           bool                    `json:"labelReprintNeeded"`
-	AdditionalPurchaseUnitRUB    *float64                `json:"additionalPurchaseUnitRub,omitempty"`
-	RetailOverrideRUB            *int64                  `json:"retailOverrideRub,omitempty"`
-	ChannelCosts                 map[string]ChannelCosts `json:"channelCosts"`
-	ChannelQuotes                map[string]ChannelQuote `json:"channelQuotes"`
-	DimensionWarning             string                  `json:"dimensionWarning"`
-	DimensionsReviewed           bool                    `json:"dimensionsReviewed"`
-	ReceivingMode                string                  `json:"receivingMode"`
-	ReceivingAllocations         []ReceivingAllocation   `json:"receivingAllocations"`
-	CustomerHandedOver           bool                    `json:"customerHandedOver"`
-	MatchAlias                   *AliasReview            `json:"matchAlias,omitempty"`
-	InvoiceComponents            json.RawMessage         `json:"invoiceComponents,omitempty"`
-	ID                           int64                   `json:"id"`
-	CanonicalVariantID           *int64                  `json:"canonicalVariantId,omitempty"`
-	SabyID                       string                  `json:"sabyId"`
-	SabyCode                     string                  `json:"sabyCode"`
-	SabyName                     string                  `json:"sabyName"`
-	RawName                      string                  `json:"rawName"`
-	SupplierArticle              string                  `json:"supplierArticle"`
-	SupplierCategory             string                  `json:"supplierCategory"`
-	PackageCount                 *int                    `json:"packageCount,omitempty"`
-	UnitsPerPackage              *int                    `json:"unitsPerPackage,omitempty"`
-	InvoiceRawName               string                  `json:"invoiceRawName"`
-	InvoiceSupplierArticle       string                  `json:"invoiceSupplierArticle"`
-	ReconciliationStatus         string                  `json:"reconciliationStatus"`
-	InvoiceExcluded              bool                    `json:"invoiceExcluded"`
-	InvoiceExclusionReason       string                  `json:"invoiceExclusionReason"`
-	Quantity                     int                     `json:"quantity"`
-	OrderedQuantity              int                     `json:"orderedQuantity"`
-	InvoicedQuantity             *int                    `json:"invoicedQuantity,omitempty"`
-	UnitPrice                    float64                 `json:"unitPrice"`
-	ExpectedUnitPrice            *float64                `json:"expectedUnitPrice,omitempty"`
-	LoadUnit                     string                  `json:"loadUnit"`
-	PotDiameterCM                *float64                `json:"potDiameterCm,omitempty"`
-	HeightCM                     *float64                `json:"heightCm,omitempty"`
-	MatchStatus                  string                  `json:"matchStatus"`
-	PurchaseUnitRUB              *float64                `json:"purchaseUnitRub,omitempty"`
-	TrolleyDeliveryUnitRUB       *float64                `json:"trolleyDeliveryUnitRub,omitempty"`
-	RyazanDeliveryUnitRUB        *float64                `json:"ryazanDeliveryUnitRub,omitempty"`
-	UnitCostRUB                  *float64                `json:"unitCostRub,omitempty"`
-	CurrentUnitCostRUB           *float64                `json:"currentUnitCostRub,omitempty"`
-	CurrentUnitCostKind          string                  `json:"currentUnitCostKind"`
-	CurrentUnitCostEffectiveAt   *time.Time              `json:"currentUnitCostEffectiveAt,omitempty"`
-	CurrentRetailRUB             float64                 `json:"currentRetailRub"`
-	ProposedRetailRUB            *int64                  `json:"proposedRetailRub,omitempty"`
-	ProposedMarketplaceRUB       *int64                  `json:"proposedMarketplaceRub,omitempty"`
-	ProposedMarketplaceStrikeRUB *int64                  `json:"proposedMarketplaceStrikeRub,omitempty"`
-	PriceChangeNeeded            bool                    `json:"priceChangeNeeded"`
-	CustomerRequest              bool                    `json:"customerRequest"`
-	ComparisonMismatch           bool                    `json:"comparisonMismatch"`
-	ComparisonAccepted           bool                    `json:"comparisonAccepted"`
-	ComparisonNote               string                  `json:"comparisonNote"`
+	PublicationValues            map[string]PublicationValues `json:"publicationValues,omitempty"`
+	CatalogueName                string                       `json:"catalogueName"`
+	CataloguePotDiameterCM       *float64                     `json:"cataloguePotDiameterCm,omitempty"`
+	CatalogueHeightCM            *float64                     `json:"catalogueHeightCm,omitempty"`
+	CatalogueLabel               string                       `json:"catalogueLabel"`
+	ChannelPrices                map[string]int64             `json:"channelPrices"`
+	LabelRetailRUB               *float64                     `json:"labelRetailRub,omitempty"`
+	LabelReprintNeeded           bool                         `json:"labelReprintNeeded"`
+	AdditionalPurchaseUnitRUB    *float64                     `json:"additionalPurchaseUnitRub,omitempty"`
+	RetailOverrideRUB            *int64                       `json:"retailOverrideRub,omitempty"`
+	ChannelCosts                 map[string]ChannelCosts      `json:"channelCosts"`
+	ChannelQuotes                map[string]ChannelQuote      `json:"channelQuotes"`
+	DimensionWarning             string                       `json:"dimensionWarning"`
+	DimensionsReviewed           bool                         `json:"dimensionsReviewed"`
+	ReceivingMode                string                       `json:"receivingMode"`
+	ReceivingAllocations         []ReceivingAllocation        `json:"receivingAllocations"`
+	CustomerHandedOver           bool                         `json:"customerHandedOver"`
+	MatchAlias                   *AliasReview                 `json:"matchAlias,omitempty"`
+	InvoiceComponents            json.RawMessage              `json:"invoiceComponents,omitempty"`
+	ID                           int64                        `json:"id"`
+	CanonicalVariantID           *int64                       `json:"canonicalVariantId,omitempty"`
+	SabyID                       string                       `json:"sabyId"`
+	SabyCode                     string                       `json:"sabyCode"`
+	SabyName                     string                       `json:"sabyName"`
+	RawName                      string                       `json:"rawName"`
+	SupplierArticle              string                       `json:"supplierArticle"`
+	SupplierCategory             string                       `json:"supplierCategory"`
+	PackageCount                 *int                         `json:"packageCount,omitempty"`
+	UnitsPerPackage              *int                         `json:"unitsPerPackage,omitempty"`
+	InvoiceRawName               string                       `json:"invoiceRawName"`
+	InvoiceSupplierArticle       string                       `json:"invoiceSupplierArticle"`
+	ReconciliationStatus         string                       `json:"reconciliationStatus"`
+	InvoiceExcluded              bool                         `json:"invoiceExcluded"`
+	InvoiceExclusionReason       string                       `json:"invoiceExclusionReason"`
+	Quantity                     int                          `json:"quantity"`
+	OrderedQuantity              int                          `json:"orderedQuantity"`
+	InvoicedQuantity             *int                         `json:"invoicedQuantity,omitempty"`
+	UnitPrice                    float64                      `json:"unitPrice"`
+	ExpectedUnitPrice            *float64                     `json:"expectedUnitPrice,omitempty"`
+	LoadUnit                     string                       `json:"loadUnit"`
+	PotDiameterCM                *float64                     `json:"potDiameterCm,omitempty"`
+	HeightCM                     *float64                     `json:"heightCm,omitempty"`
+	MatchStatus                  string                       `json:"matchStatus"`
+	PurchaseUnitRUB              *float64                     `json:"purchaseUnitRub,omitempty"`
+	TrolleyDeliveryUnitRUB       *float64                     `json:"trolleyDeliveryUnitRub,omitempty"`
+	RyazanDeliveryUnitRUB        *float64                     `json:"ryazanDeliveryUnitRub,omitempty"`
+	UnitCostRUB                  *float64                     `json:"unitCostRub,omitempty"`
+	CurrentUnitCostRUB           *float64                     `json:"currentUnitCostRub,omitempty"`
+	CurrentUnitCostKind          string                       `json:"currentUnitCostKind"`
+	CurrentUnitCostEffectiveAt   *time.Time                   `json:"currentUnitCostEffectiveAt,omitempty"`
+	CurrentRetailRUB             float64                      `json:"currentRetailRub"`
+	ProposedRetailRUB            *int64                       `json:"proposedRetailRub,omitempty"`
+	ProposedMarketplaceRUB       *int64                       `json:"proposedMarketplaceRub,omitempty"`
+	ProposedMarketplaceStrikeRUB *int64                       `json:"proposedMarketplaceStrikeRub,omitempty"`
+	PriceChangeNeeded            bool                         `json:"priceChangeNeeded"`
+	CustomerRequest              bool                         `json:"customerRequest"`
+	ComparisonMismatch           bool                         `json:"comparisonMismatch"`
+	ComparisonAccepted           bool                         `json:"comparisonAccepted"`
+	ComparisonNote               string                       `json:"comparisonNote"`
 }
 
 type CalculationInput struct {
@@ -344,6 +348,7 @@ type OrderStatusUpdate struct {
 }
 
 type OrderLineUpdate struct {
+	SiteVariantID        *int64                  `json:"siteVariantId,omitempty"`
 	ChannelPrices        map[string]int64        `json:"channelPrices"`
 	RetailOverrideRUB    *int64                  `json:"retailOverrideRub"`
 	ChannelCosts         map[string]ChannelCosts `json:"channelCosts"`
@@ -585,12 +590,15 @@ type ProductDirectoryUpdate struct {
 }
 
 type ActionBatch struct {
-	Unified   bool         `json:"unified,omitempty"`
-	ID        int64        `json:"id"`
-	Kind      string       `json:"kind"`
-	Status    string       `json:"status"`
-	CreatedAt time.Time    `json:"createdAt"`
-	Items     []ActionItem `json:"items"`
+	MeasurementsApplied int          `json:"measurementsApplied,omitempty"`
+	MeasurementsQueued  int          `json:"measurementsQueued,omitempty"`
+	MeasurementsInFeed  int          `json:"measurementsInFeed,omitempty"`
+	Unified             bool         `json:"unified,omitempty"`
+	ID                  int64        `json:"id"`
+	Kind                string       `json:"kind"`
+	Status              string       `json:"status"`
+	CreatedAt           time.Time    `json:"createdAt"`
+	Items               []ActionItem `json:"items"`
 }
 
 type ActionItem struct {
@@ -719,6 +727,8 @@ type PlanProductDefault struct {
 }
 
 type AliasResolution struct {
+	VariantID   int64  `json:"variantId"`
+	OrderLineID int64  `json:"orderLineId"`
 	MatchStatus string `json:"matchStatus"`
 	SabyID      string `json:"sabyId"`
 }

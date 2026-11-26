@@ -246,6 +246,9 @@ func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Reques
 	if p.IDs.OfferID != "" {
 		offer = p.IDs.OfferID
 	}
+	if r.ProcurementMeasurements && (r.Action != "update" || r.ExistingID == "" || r.ExistingID != offer) {
+		return result(p.Stage, "needs_attention", "Для изменения размеров нужна прежняя подтверждённая связь с карточкой Flowwow"), nil
+	}
 	if offer == "" || len(offer) > 50 {
 		return ce.Result{}, errors.New("Flowwow: артикул должен содержать от 1 до 50 символов")
 	}
@@ -318,6 +321,14 @@ func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Reques
 			if json.Unmarshal(p.Native, &item) != nil || item["offerId"] != offer {
 				return result("create", "needs_attention", "Не сохранён запрос создания Flowwow; повторная отправка остановлена"), nil
 			}
+		} else if r.ProcurementMeasurements {
+			item, p.Native, e = c.flowwowMeasurementUpdate(ctx, r, offer, remote)
+			if errors.Is(e, errFlowwowPlantMeasurementsUnavailable) {
+				return result("update", "needs_attention", "В подкатегории Flowwow нет доступных полей для подтверждённых размеров растения."), nil
+			}
+			if e != nil {
+				return ce.Result{Progress: p}, e
+			}
 		} else {
 			after := r.Images
 			if p.SitePhotos == nil {
@@ -367,6 +378,9 @@ func (c *FlowwowClient) Advance(ctx context.Context, channel string, r ce.Reques
 			return ce.Result{}, e
 		}
 		p.Checks++
+		if r.ProcurementMeasurements {
+			return flowwowMeasurementReadback(r, p, remote), nil
+		}
 		photosVerified := false
 		if remote != nil {
 			photosVerified = len(remote.Images) == len(flowwowImages(r.Images))
@@ -395,6 +409,10 @@ func flowwowPriceEqual(s string, minor int64) bool {
 	return e == nil && v == float64(minor)/100
 }
 func (c *FlowwowClient) productPayload(ctx context.Context, r ce.Request, offer string, remote *FlowwowProduct) (map[string]any, error) {
+	return c.productPayloadWithMeasurements(ctx, r, offer, remote, nil)
+}
+
+func (c *FlowwowClient) productPayloadWithMeasurements(ctx context.Context, r ce.Request, offer string, remote *FlowwowProduct, measurements map[string]string) (map[string]any, error) {
 	r.Images = flowwowImages(r.Images)
 	category := r.Channel.Category.ID
 	if remote != nil {
@@ -433,6 +451,12 @@ func (c *FlowwowClient) productPayload(ctx context.Context, r ce.Request, offer 
 		if v, ok := r.Channel.Attributes[f.Field]; ok {
 			item[f.Field] = v
 		}
+		if r.ProcurementMeasurements && measurements != nil {
+			if code, value := flowwowPlantMeasurement(f, r.SiteAttributes); code != "" {
+				item[f.Field] = value
+				measurements[f.Field] = code
+			}
+		}
 	}
 	if remote != nil && remote.Stock > 0 && item["stock"] == nil {
 		item["stock"] = remote.Stock
@@ -452,6 +476,12 @@ func (c *FlowwowClient) productPayload(ctx context.Context, r ce.Request, offer 
 	}
 	item["offerId"], item["productType"], item["subCategoryId"] = offer, 1, mustFlowwowID(category)
 	item["name"], item["description"], item["price"], item["discount"], item["images"] = r.Name, r.Description, fmt.Sprintf("%d.%02d", r.PriceMinor/100, r.PriceMinor%100), "0", r.Images
+	if r.ProcurementMeasurements {
+		if len(measurements) == 0 {
+			return nil, errFlowwowPlantMeasurementsUnavailable
+		}
+		item["price"], item["discount"] = remote.Price, remote.Discount
+	}
 	if r.PriceMinor <= 0 || strings.TrimSpace(r.Name) == "" || len([]rune(r.Name)) > 255 || len([]rune(r.Description)) > 5000 || len(r.Images) == 0 {
 		return nil, errors.New("Flowwow: нужны название до 255 символов, описание до 5000, положительная цена и фото")
 	}

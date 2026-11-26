@@ -30,7 +30,14 @@ export function ProcurementLineEditor({
     if (!saving) onClose();
   };
   const ref = useProcurementDialog(close);
-  const reviewingDimensions = kind === "dimensions" && Boolean(line.dimensionWarning);
+  const reviewingDimensions =
+    kind === "dimensions" && (line.invoicedQuantity ?? 0) > 0 && !line.dimensionsReviewed;
+  const siteDimensions = [
+    line.cataloguePotDiameterCm && `D${line.cataloguePotDiameterCm}`,
+    line.catalogueHeightCm && `H${line.catalogueHeightCm} см`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const title =
     kind === "dimensions"
       ? reviewingDimensions
@@ -45,7 +52,7 @@ export function ProcurementLineEditor({
       ? Number.isFinite(number(height)) &&
         Number.isFinite(number(pot)) &&
         number(height) > 0 &&
-        (currency === "RUB" ? pot === "" || number(pot) >= 0 : number(pot) > 0)
+        number(pot) > 0
       : Boolean(note.trim());
   const save = async () => {
     if (!valid || saving) return;
@@ -112,7 +119,7 @@ export function ProcurementLineEditor({
                     ? `D${line.matchAlias.potDiameterCm}`
                     : "D не указан"}
                   , {line.matchAlias?.heightCm ? `H${line.matchAlias.heightCm} см` : "H не указана"}
-                  . Карточка: {line.catalogueLabel || "размер не указан"}.
+                  . Карточка сайта: {siteDimensions || line.catalogueLabel || "размеры не указаны"}.
                 </p>
                 {reviewingDimensions && (
                   <p className="procurement-warning">
@@ -140,7 +147,7 @@ export function ProcurementLineEditor({
                       inputMode="decimal"
                       value={pot}
                       onChange={(event) => setPot(event.target.value)}
-                      required={currency !== "RUB"}
+                      required
                     />
                   </label>
                   <label>

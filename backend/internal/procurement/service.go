@@ -39,6 +39,7 @@ type Store interface {
 	UpdateOrderLine(context.Context, Actor, int64, OrderLineUpdate) (OrderDetail, error)
 	ImportDocument(context.Context, Actor, DocumentUpload, ParsedDocument) (ImportResult, error)
 	SearchNomenclature(context.Context, string) ([]NomenclatureCandidate, error)
+	SearchSiteNomenclature(context.Context, string) ([]NomenclatureCandidate, error)
 	ListNomenclatureBalances(context.Context, int64, []string) ([]NomenclatureBalance, error)
 	ResolveAlias(context.Context, Actor, int64, AliasResolution) (AliasReview, error)
 	CreateRequest(context.Context, Actor, RequestCreate) (Request, error)
@@ -50,7 +51,7 @@ type Store interface {
 	UpdateProduct(context.Context, Actor, ProductDirectoryUpdate) (ProductDirectoryItem, error)
 	AssignSupplier(context.Context, Actor, string, int64) error
 	PrepareBatch(context.Context, Actor, int64, string, []string) (ActionBatch, error)
-	ApproveBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
+	ApproveBatch(context.Context, Actor, int64, map[string]bool, ...bool) (ActionBatch, error)
 	RetryBatch(context.Context, Actor, int64, map[string]bool) (ActionBatch, error)
 	ListIntegrationHealth(context.Context) ([]IntegrationHealth, error)
 	RecordIntegrationCheck(context.Context, string, bool, error) (IntegrationHealth, error)
@@ -157,6 +158,21 @@ func (service *Service) ReceivingPDF(ctx context.Context, orderID int64) ([]byte
 		return nil, "", err
 	}
 	return content, fmt.Sprintf("receiving-%d-%d-items.pdf", orderID, count), nil
+}
+
+func (service *Service) MeasurementPDF(ctx context.Context, orderID int64) ([]byte, string, error) {
+	if orderID <= 0 {
+		return nil, "", ErrInvalidInput
+	}
+	detail, err := service.store.OrderDetail(ctx, orderID)
+	if err != nil {
+		return nil, "", err
+	}
+	if detail.Order.Status == "cancelled" {
+		return nil, "", ErrInvalidInput
+	}
+	content, _, err := BuildMeasurementPDF(detail)
+	return content, fmt.Sprintf("measurements-%d.pdf", orderID), err
 }
 
 func NewServiceWithExecutor(store Store, executor Executor) *Service {
@@ -473,6 +489,17 @@ func (service *Service) DeleteOrder(ctx context.Context, actor Actor, orderID in
 }
 
 func (service *Service) UpdateOrderLine(ctx context.Context, actor Actor, lineID int64, input OrderLineUpdate) (OrderDetail, error) {
+	if input.SiteVariantID != nil {
+		if lineID <= 0 || *input.SiteVariantID <= 0 ||
+			input.ChannelCosts != nil || input.ChannelPrices != nil || input.RetailOverrideRUB != nil ||
+			input.ReceivingMode != nil || input.ReceivingAllocations != nil || input.CustomerHandedOver != nil ||
+			input.ExpectedUnitPrice != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil ||
+			input.InvoiceLineID != nil || input.InvoiceLineIDs != nil || input.InvoiceExcluded != nil || input.ExclusionReason != nil ||
+			input.AcceptComparison != nil || input.ComparisonNote != nil {
+			return OrderDetail{}, ErrInvalidInput
+		}
+		return service.store.UpdateOrderLine(ctx, actor, lineID, input)
+	}
 	if input.ChannelCosts != nil || input.ChannelPrices != nil || input.RetailOverrideRUB != nil {
 		if lineID <= 0 || input.ReceivingMode != nil || input.ReceivingAllocations != nil || input.CustomerHandedOver != nil || input.ExpectedUnitPrice != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil || input.InvoiceLineID != nil || input.InvoiceLineIDs != nil || input.InvoiceExcluded != nil || input.AcceptComparison != nil || input.ComparisonNote != nil {
 			return OrderDetail{}, ErrInvalidInput
@@ -595,6 +622,17 @@ func (service *Service) ImportDocument(
 	return service.store.ImportDocument(ctx, actor, input, parsed)
 }
 
+func (service *Service) SearchSiteNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
+	query = strings.TrimSpace(query)
+	if len([]rune(query)) < 2 {
+		return []NomenclatureCandidate{}, nil
+	}
+	if len([]rune(query)) > 200 {
+		return nil, ErrInvalidInput
+	}
+	return service.store.SearchSiteNomenclature(ctx, query)
+}
+
 func (service *Service) SearchNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
 	query = strings.TrimSpace(query)
 	if len([]rune(query)) < 2 || len(query) > 200 {
@@ -624,7 +662,9 @@ func (service *Service) ResolveAlias(
 	input.MatchStatus = strings.TrimSpace(input.MatchStatus)
 	input.SabyID = strings.TrimSpace(input.SabyID)
 	if aliasID <= 0 || !oneOf(input.MatchStatus, "confirmed", "new_product", "ignored") ||
-		(input.MatchStatus == "confirmed" && input.SabyID == "") ||
+		input.VariantID < 0 || input.OrderLineID < 0 || (input.VariantID > 0) != (input.OrderLineID > 0) ||
+		(input.VariantID > 0 && (input.MatchStatus != "confirmed" || input.SabyID != "")) ||
+		(input.MatchStatus == "confirmed" && input.SabyID == "" && input.VariantID == 0) ||
 		(input.MatchStatus != "confirmed" && input.SabyID != "") {
 		return AliasReview{}, ErrInvalidInput
 	}
@@ -823,7 +863,7 @@ func channelDisplayName(channel string) string {
 	return channel
 }
 
-func (service *Service) ApproveBatch(ctx context.Context, actor Actor, batchID int64) (ActionBatch, error) {
+func (service *Service) ApproveBatch(ctx context.Context, actor Actor, batchID int64, includeMeasurements ...bool) (ActionBatch, error) {
 	if batchID <= 0 {
 		return ActionBatch{}, ErrInvalidInput
 	}
@@ -833,7 +873,7 @@ func (service *Service) ApproveBatch(ctx context.Context, actor Actor, batchID i
 			configured[channel] = service.executor.Configured(channel)
 		}
 	}
-	return service.store.ApproveBatch(ctx, actor, batchID, configured)
+	return service.store.ApproveBatch(ctx, actor, batchID, configured, includeMeasurements...)
 }
 
 func (service *Service) RetryBatch(ctx context.Context, actor Actor, batchID int64) (ActionBatch, error) {

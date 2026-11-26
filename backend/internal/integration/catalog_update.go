@@ -52,6 +52,14 @@ func (p *CatalogPublisher) hydrateCatalogUpdate(ctx context.Context, ch string, 
 	if card == nil {
 		return r, ids, errors.New("не удалось получить характеристики связанной карточки")
 	}
+	if r.ProcurementMeasurements {
+		// Use the card's current content and transport dimensions. The only
+		// overrides below are the checked physical attributes from procurement.
+		r.Name, r.Description = "", ""
+		r.Packaging = ce.Packaging{}
+		r.Channel, r.Marketplace = ce.Channel{}, ce.Marketplace{}
+		r.WBPrice, r.OzonPrice = "", ""
+	}
 	if r.Name == "" {
 		key := "name"
 		if ch == "wb" {

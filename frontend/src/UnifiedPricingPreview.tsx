@@ -6,14 +6,8 @@ const rub = (value: number) => value.toLocaleString("ru-RU", { maximumFractionDi
 
 export default function UnifiedPricingPreview({
   preview,
-  status,
-  onPrepare,
-  saving = false,
 }: {
-  status: string;
   preview?: ProcurementUnifiedPreview;
-  onPrepare?: (kind: "prices", channel: "wb" | "ozon") => void;
-  saving?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(10);
@@ -22,7 +16,7 @@ export default function UnifiedPricingPreview({
     line.name.toLocaleLowerCase("ru").includes(query.toLocaleLowerCase("ru")),
   );
   return (
-    <details className="procurement-explanation" open>
+    <details className="procurement-explanation procurement-order-prices">
       <summary>Цены по общей формуле</summary>
       <p>
         Заработок с продажи — {rub(preview.markupRate * 100)}% себестоимости после плановых расходов
@@ -115,27 +109,6 @@ export default function UnifiedPricingPreview({
         друг друга; прибыль отдельного заказа отличается от плана. Наличие расчётной цены не
         подтверждает связь или активность карточки МП. Неполные исходные данные показаны в строке.
       </p>
-      {status === "received" && onPrepare && (
-        <details className="procurement-section-details" open>
-          <summary>Отправка цен по общей формуле</summary>
-          <p>
-            Подготовьте список, затем подтвердите отправку в журнале действий. Используется
-            сохранённая себестоимость поставки.
-          </p>
-          <fieldset className="procurement-price-channels">
-            <legend>Выберите площадку</legend>
-            {(["wb", "ozon"] as const).map((channel) => (
-              <button
-                key={channel}
-                disabled={saving || !preview.units || preview.pricedUnits !== preview.units}
-                onClick={() => onPrepare("prices", channel)}
-              >
-                {channel === "wb" ? "Подготовить Wildberries" : "Подготовить Ozon"}
-              </button>
-            ))}
-          </fieldset>
-        </details>
-      )}
     </details>
   );
 }

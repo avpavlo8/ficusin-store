@@ -342,7 +342,9 @@ func (s *Service) WriteFeed(ctx context.Context, token string, w http.ResponseWr
 	if uncertain {
 		return errors.New("остаток СБИС не подтверждён для всех размеров; выгрузка Авито временно недоступна")
 	}
-	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT l.item_id,l.title,p.name,p.description,v.label,f.base_price_minor,f.qty,COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l JOIN avito_listing_products lp ON lp.item_id=l.item_id JOIN products p ON p.id=lp.product_id JOIN fresh_stock f ON f.product_id=p.id AND f.qty>0 JOIN product_variants v ON v.id=f.variant_id WHERE l.desired_published IS TRUE AND NOT l.manual_paused AND LOWER(l.status) NOT IN ('blocked','rejected') ORDER BY l.item_id,p.name,f.base_price_minor,v.id`)
+	rows, err := s.pool.Query(ctx, freshStockCTE+` SELECT l.item_id,l.title,p.name,p.description,v.label,
+ variant_numeric_attribute(v.id,'pot_diameter_cm')::float8,variant_numeric_attribute(v.id,'height_cm')::float8,
+ f.base_price_minor,f.qty,COALESCE((SELECT object_key FROM product_media WHERE product_id=p.id ORDER BY is_primary DESC,sort_order,id LIMIT 1),'') FROM avito_listings l JOIN avito_listing_products lp ON lp.item_id=l.item_id JOIN products p ON p.id=lp.product_id JOIN fresh_stock f ON f.product_id=p.id AND f.qty>0 JOIN product_variants v ON v.id=f.variant_id WHERE l.desired_published IS TRUE AND NOT l.manual_paused AND LOWER(l.status) NOT IN ('blocked','rejected') ORDER BY l.item_id,p.name,f.base_price_minor,v.id`)
 	if err != nil {
 		return err
 	}
@@ -351,23 +353,25 @@ func (s *Service) WriteFeed(ctx context.Context, token string, w http.ResponseWr
 	index := map[string]int{}
 	for rows.Next() {
 		var id, title, name, description, label, image string
+		var pot, height *float64
 		var price int64
 		var qty int
-		if err := rows.Scan(&id, &title, &name, &description, &label, &price, &qty, &image); err != nil {
+		if err := rows.Scan(&id, &title, &name, &description, &label, &pot, &height, &price, &qty, &image); err != nil {
 			return err
 		}
 		if (price+50)/100 <= 0 {
 			return errors.New("для доступного размера не задана положительная цена сайта")
 		}
+		offer := feedVariantDescription(name, label, price, qty, pot, height)
 		pos, exists := index[id]
 		if exists {
 			if value := int((price + 50) / 100); value < ads[pos].Price {
 				ads[pos].Price = value
 			}
-			ads[pos].Description += fmt.Sprintf("\n%s · %s — %s ₽ · в наличии %d шт.", name, label, formatPrice(price), qty)
+			ads[pos].Description += "\n" + offer
 			continue
 		}
-		ad := feedAd{ID: id, AvitoID: id, Title: title, Description: description + "\n\nРазмеры и цены в наличии:\n" + fmt.Sprintf("%s · %s — %s ₽ · в наличии %d шт.", name, label, formatPrice(price), qty), Category: s.category, GoodsType: s.goodsType, Condition: "Новое", Price: int((price + 50) / 100), Address: s.address, ManagerName: s.managerName, ContactPhone: s.contactPhone}
+		ad := feedAd{ID: id, AvitoID: id, Title: title, Description: description + "\n\nРазмеры и цены в наличии:\n" + offer, Category: s.category, GoodsType: s.goodsType, Condition: "Новое", Price: int((price + 50) / 100), Address: s.address, ManagerName: s.managerName, ContactPhone: s.contactPhone}
 		if image != "" {
 			if !strings.HasPrefix(image, "http") {
 				image = s.siteURL + "/" + strings.TrimLeft(image, "/")
@@ -384,6 +388,24 @@ func (s *Service) WriteFeed(ctx context.Context, token string, w http.ResponseWr
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(xml.Header))
 	return xml.NewEncoder(w).Encode(feedAds{FormatVersion: "3", Target: "Avito.ru", Ads: ads})
+}
+
+func feedVariantDescription(name, label string, price int64, qty int, pot, height *float64) string {
+	text := fmt.Sprintf("%s · %s — %s ₽ · в наличии %d шт.", name, label, formatPrice(price), qty)
+	label = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(label), ",", "."))
+	if pot != nil && *pot > 0 {
+		value := strconv.FormatFloat(*pot, 'f', -1, 64)
+		if label != "d"+value && !strings.HasSuffix(label, "· d"+value) {
+			text += " · диаметр горшка " + strings.ReplaceAll(value, ".", ",") + " см"
+		}
+	}
+	if height != nil && *height > 0 {
+		value := strconv.FormatFloat(*height, 'f', -1, 64)
+		if label != value+" см" && !strings.HasPrefix(label, value+" см ·") {
+			text += " · высота " + strings.ReplaceAll(value, ".", ",") + " см"
+		}
+	}
+	return text
 }
 
 func formatPrice(minor int64) string {

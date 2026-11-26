@@ -126,8 +126,8 @@ export function ProcurementReceivingDialog({
               disabled={saving}
               onChange={(event) => setMode(event.target.value)}
             >
-              <option value="catalog">В одну карточку СБИС</option>
-              <option value="awaiting_catalog">Карточки СБИС пока нет — выбрать позже</option>
+              <option value="catalog">В одну карточку сайта</option>
+              <option value="awaiting_catalog">Карточки пока нет — выбрать позже</option>
               <option value="assortment">Разобрать по карточкам после приезда</option>
               <option value="customer_handoff">Под заказ — передать клиенту</option>
             </select>
@@ -137,7 +137,7 @@ export function ProcurementReceivingDialog({
           )}
           {mode === "catalog" && (
             <p>
-              {line.sabyName || "Выберите карточку в строке закупки."}{" "}
+              {line.catalogueName || "Выберите карточку сайта в строке закупки."}{" "}
               {line.sabyCode && `· ${line.sabyCode}`}
             </p>
           )}

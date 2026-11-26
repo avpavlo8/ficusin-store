@@ -63,6 +63,8 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	for _, line := range detail.Lines {
 		_, err = store.UpdateOrderLine(ctx, actor, line.ID, OrderLineUpdate{AcceptComparison: &yes, ComparisonNote: &note})
 		must(err)
+		_, err = store.UpdateOrderLine(ctx, actor, line.ID, OrderLineUpdate{PotDiameterCM: &pot, HeightCM: &height})
+		must(err)
 	}
 	_, err = store.ResolveAlias(ctx, actor, regularAlias, AliasResolution{MatchStatus: "confirmed", SabyID: cards[0]})
 	must(err)
@@ -206,6 +208,8 @@ func TestReceivingAssortmentAndCustomerHandoffPreserveInvoiceAndLogistics(t *tes
 	_, err = store.UpdateOrderLine(ctx, actor, customerLine, OrderLineUpdate{AcceptComparison: &yes, ComparisonNote: &note})
 	must(err)
 	_, err = store.UpdateOrderLine(ctx, actor, customerLine, OrderLineUpdate{ReceivingMode: &handoffMode})
+	must(err)
+	_, err = store.UpdateOrderLine(ctx, actor, customerLine, OrderLineUpdate{PotDiameterCM: &pot, HeightCM: &height})
 	must(err)
 	customerDetail, err = store.CalculateOrder(ctx, actor, customerOrder.Order.ID, costs)
 	must(err)
