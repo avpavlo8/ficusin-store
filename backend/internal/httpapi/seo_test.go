@@ -84,6 +84,29 @@ func TestSPAFallbackServesDirectCartURL(t *testing.T) {
 	}
 }
 
+func TestSPAFallbackRedirectsLegacyCartBeforeRendering(t *testing.T) {
+	staticDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte(`<html><head></head><body></body></html>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler := spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, nil, nil, nil, "https://ficusin.ru")
+	for _, tc := range []struct {
+		name, path, location string
+		status               int
+	}{
+		{"cart", "/?cart=1", "/cart", http.StatusMovedPermanently},
+		{"payment return", "/?paid=123&cart=1", "", http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if response.Code != tc.status || response.Header().Get("Location") != tc.location {
+				t.Fatalf("status=%d location=%q, want %d %q", response.Code, response.Header().Get("Location"), tc.status, tc.location)
+			}
+		})
+	}
+}
+
 func sitemapBody(t *testing.T, repository sitemapCatalog, collections sitemapCollections) string {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -120,8 +143,8 @@ func TestSitemapSurvivesCatalogFailure(t *testing.T) {
 func TestLandingMetaUsesRealCategoryAndRejectsUnknownSlug(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	shell := []byte(`<html><head><title>shop</title><meta name="description" content="shop"></head></html>`)
-	page, found := withLandingMeta(context.Background(), logger, sitemapCatalogStub{categories: []catalog.Category{{ID: 1, Name: "Фикусы", Slug: "ficus"}}}, nil, "https://ficusin.ru", "/catalog/ficus", shell)
-	if !found {
+	page, status := withLandingMeta(context.Background(), logger, sitemapCatalogStub{categories: []catalog.Category{{ID: 1, Name: "Фикусы", Slug: "ficus"}}}, nil, "https://ficusin.ru", "/catalog/ficus", shell)
+	if status != http.StatusOK {
 		t.Fatal("категория не найдена")
 	}
 	for _, want := range []string{"Фикусы — купить", `rel="canonical" href="https://ficusin.ru/catalog/ficus"`, `"@type":"CollectionPage"`, `"@type":"BreadcrumbList"`, `property="og:image" content="https://ficusin.ru/assets/brand/graphite-v1/og.png"`} {
@@ -129,7 +152,7 @@ func TestLandingMetaUsesRealCategoryAndRejectsUnknownSlug(t *testing.T) {
 			t.Errorf("нет %q", want)
 		}
 	}
-	if _, found = withLandingMeta(context.Background(), logger, sitemapCatalogStub{}, nil, "https://ficusin.ru", "/catalog/nope", shell); found {
+	if _, status = withLandingMeta(context.Background(), logger, sitemapCatalogStub{}, nil, "https://ficusin.ru", "/catalog/nope", shell); status != http.StatusNotFound {
 		t.Fatal("несуществующая категория индексируется")
 	}
 }
@@ -138,8 +161,8 @@ func TestCollectionShareImageUsesCoverBeforeBrandFallback(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	shell := []byte(`<html><head><title>shop</title></head></html>`)
 	for _, cover := range []string{"/images/collection.jpg", "https://images.example.test/collection.jpg", ""} {
-		page, found := withLandingMeta(context.Background(), logger, nil, sitemapCollectionsStub{items: []catalog.Collection{{Slug: "easy", Title: "Неприхотливые", CoverURL: cover}}}, "https://ficusin.ru", "/collections/easy", shell)
-		if !found {
+		page, status := withLandingMeta(context.Background(), logger, nil, sitemapCollectionsStub{items: []catalog.Collection{{Slug: "easy", Title: "Неприхотливые", CoverURL: cover}}}, "https://ficusin.ru", "/collections/easy", shell)
+		if status != http.StatusOK {
 			t.Fatal("collection not found")
 		}
 		want := "https://ficusin.ru/assets/brand/graphite-v1/og.png"
@@ -309,11 +332,40 @@ func TestSPAFallbackRedirectsConsolidatedPlantCategory(t *testing.T) {
 	for old, newSlug := range map[string]string{"limetta": "citrus", "venus-flytrap": "carnivorous-plants", "paml": "soil"} {
 		request := httptest.NewRequest(http.MethodGet, "https://ficusin.ru/catalog/"+old+"?sort=price", nil)
 		response := httptest.NewRecorder()
-		spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, nil, nil, nil, "https://ficusin.ru").ServeHTTP(response, request)
+		categories := sitemapCatalogStub{categories: []catalog.Category{{Name: newSlug, Slug: newSlug}}}
+		spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, categories, nil, nil, "https://ficusin.ru").ServeHTTP(response, request)
 		want := "https://ficusin.ru/catalog/" + newSlug + "?sort=price"
 		if response.Code != http.StatusMovedPermanently || response.Header().Get("Location") != want {
 			t.Errorf("old=%s status=%d location=%q want=%q", old, response.Code, response.Header().Get("Location"), want)
 		}
+	}
+}
+
+func TestSPAFallbackDoesNotRedirectToMissingCategoryOrReportTemporaryFailureAs404(t *testing.T) {
+	staticDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(staticDir, "index.html"), []byte(`<html><head></head><body></body></html>`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unavailable := errors.New("каталог временно недоступен")
+	for _, tc := range []struct {
+		name, path  string
+		categories  sitemapCatalogStub
+		collections sitemapCollectionsStub
+		status      int
+	}{
+		{name: "retired target", path: "/catalog/paml", status: http.StatusNotFound},
+		{name: "category lookup outage", path: "/catalog/ficus", categories: sitemapCatalogStub{err: unavailable}, status: http.StatusServiceUnavailable},
+		{name: "alias lookup outage", path: "/catalog/limetta", categories: sitemapCatalogStub{err: unavailable}, status: http.StatusServiceUnavailable},
+		{name: "collection lookup outage", path: "/collections/easy", collections: sitemapCollectionsStub{err: unavailable}, status: http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response := httptest.NewRecorder()
+			handler := spaFallback(slog.Default(), http.NotFoundHandler(), staticDir, nil, nil, nil, tc.categories, tc.collections, nil, "https://ficusin.ru")
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if response.Code != tc.status || response.Header().Get("Location") != "" {
+				t.Fatalf("status=%d location=%q, want %d without a redirect", response.Code, response.Header().Get("Location"), tc.status)
+			}
+		})
 	}
 }
 

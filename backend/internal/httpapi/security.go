@@ -17,6 +17,7 @@ import (
 //     draft photos and videos before they have been uploaded.
 //   - style-src allows inline styles: React writes a few through the style
 //     attribute, which the browser treats as inline.
+//   - frame-src allows the map and the counter's two regional match frames.
 //   - frame-ancestors none stops the site being framed, which is what makes
 //     clickjacking possible.
 const contentSecurityPolicy = "default-src 'self'; " +
@@ -25,7 +26,7 @@ const contentSecurityPolicy = "default-src 'self'; " +
 	"img-src 'self' data: blob: https:; " +
 	"media-src 'self' blob: https:; " +
 	"font-src 'self' data:; " +
-	"frame-src 'self' https://yandex.ru; " +
+	"frame-src 'self' https://yandex.ru https://mc.yandex.ru/metrika/match.html https://mc.yandex.com/metrika/match.html; " +
 	"connect-src 'self' https://mc.yandex.ru https://mc.yandex.com wss://mc.yandex.ru wss://mc.yandex.com; " +
 	"manifest-src 'self'; " +
 	"worker-src 'self'; " +

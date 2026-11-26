@@ -276,7 +276,7 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
   );
 
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [opened, setOpened] = useState<Set<number>>(new Set());
+  const [categoryExpansion, setCategoryExpansion] = useState(() => new Map<number, boolean>());
   const [inStockOnly, setInStockOnly] = useState(
     () => new URLSearchParams(window.location.search).get("stock") === "1",
   );
@@ -801,46 +801,51 @@ export default function StorefrontPage({ landing }: { landing?: Landing }) {
       });
   });
 
-  const toggleCategory = (id: number) =>
-    setOpened((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
   const branch = (node: CategoryNode, depth: number) => {
     const persistentRoot = depth === 0 && tree.length === 1;
-    const expanded = persistentRoot || opened.has(node.id) || activeCategoryPath.has(node.id);
+    const expanded =
+      persistentRoot || (categoryExpansion.get(node.id) ?? activeCategoryPath.has(node.id));
+    const canExpand = node.children.length > 0 && !persistentRoot;
+    const childrenID = `storefront-category-${node.id}`;
     return (
       <div key={node.id}>
-        <a
-          href={`/catalog/${encodeURIComponent(node.slug)}`}
-          onClick={(event) => categoryClick(event, node.id)}
-          className={category === node.id ? "active" : ""}
-          style={{ paddingLeft: 10 + depth * 14 }}
-          aria-current={category === node.id ? "page" : undefined}
-        >
-          <span>
-            {node.children.length > 0 && !persistentRoot && (
-              <i
-                className={expanded ? "twist open" : "twist"}
-                aria-hidden="true"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  toggleCategory(node.id);
-                }}
-              >
-                ›
-              </i>
-            )}
-            <CategoryIcon name={node.icon} />
-            {node.name}
-          </span>
-          <small>{node.count}</small>
-        </a>
-        {expanded && node.children.map((child) => branch(child, depth + 1))}
+        <div className="storefront-category-row">
+          {canExpand && (
+            <button
+              type="button"
+              className="storefront-category-toggle"
+              style={{ insetInlineStart: depth * 14 }}
+              aria-label={`Подкатегории: ${node.name}`}
+              aria-expanded={expanded}
+              aria-controls={childrenID}
+              onClick={() =>
+                setCategoryExpansion((current) => new Map(current).set(node.id, !expanded))
+              }
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m6 4 4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.7" />
+              </svg>
+            </button>
+          )}
+          <a
+            href={`/catalog/${encodeURIComponent(node.slug)}`}
+            onClick={(event) => categoryClick(event, node.id)}
+            className={category === node.id ? "active" : ""}
+            style={{ paddingLeft: 10 + depth * 14 + (canExpand ? 20 : 0) }}
+            aria-current={category === node.id ? "page" : undefined}
+          >
+            <span>
+              <CategoryIcon name={node.icon} />
+              {node.name}
+            </span>
+            <small>{node.count}</small>
+          </a>
+        </div>
+        {node.children.length > 0 && (
+          <div id={childrenID} hidden={!expanded}>
+            {expanded && node.children.map((child) => branch(child, depth + 1))}
+          </div>
+        )}
       </div>
     );
   };

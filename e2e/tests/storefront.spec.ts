@@ -95,13 +95,21 @@ test("@desktop дерево раскрывается сразу до видов"
   // Свёрнуто по умолчанию: виды не мозолят глаза, пока их не попросили.
   await expect(tree.getByText("Аглаонема")).toHaveCount(0);
 
-  await tree.getByText("Растения", { exact: false }).first().click();
+  const toggle = tree.getByRole("button", { name: "Подкатегории: Растения", exact: true });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page).not.toHaveURL(/category=/);
 
   await expect(tree.getByText("Аглаонема")).toBeVisible();
   await expect(tree.getByText("Фикус", { exact: true })).toBeVisible();
   // Ступень с единственной веткой и без своих товаров ничего не решает —
   // её не показываем, иначе до видов пришлось бы нажимать дважды.
   await expect(tree.getByText("Комнатные растения")).toHaveCount(0);
+  await page.keyboard.press("Space");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(tree.getByText("Аглаонема")).toHaveCount(0);
 });
 
 test("@desktop пустые разделы остаются в дереве", async ({ page }) => {

@@ -155,7 +155,24 @@ test("production categories are available beside the catalogue and open the chos
     expect(initial!.x+initial!.width).toBeLessThan(main!.x);
     await page.mouse.wheel(0,500);
     await expect.poll(async()=>Math.round((await side.boundingBox())!.y)).toBe(Math.round(stickyTop));
-    await navigation.locator(`a[href="/catalog/${category!.slug}"]`).click();
+    const ancestors: string[] = [];
+    const byId = new Map(categories.map(item => [item.id, item]));
+    let parent = category!.parentId;
+    while (parent != null) {
+      const ancestor = byId.get(parent);
+      if (!ancestor) break;
+      ancestors.unshift(ancestor.name);
+      parent = ancestor.parentId;
+    }
+    for (const name of ancestors) {
+      // The tree skips transparent intermediate nodes and may already show some levels.
+      const toggle = navigation.getByRole("button", { name: `Подкатегории: ${name}`, exact: true });
+      if (await toggle.count() && await toggle.getAttribute("aria-expanded") === "false") {
+        await toggle.click();
+        await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      }
+    }
+    await navigation.locator(`a[href="/catalog/${encodeURIComponent(category!.slug)}"]`).click();
   }
   await expect(page).toHaveURL(new RegExp(`/\\?category=${category!.id}#catalog$`));
   await expect(page.locator(".storefront-head h2")).toHaveText(category!.name);

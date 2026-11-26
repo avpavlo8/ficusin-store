@@ -278,13 +278,13 @@ func applyRouteMeta(base, path string, shell []byte, meta routeMeta, structured 
 	return bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)
 }
 
-func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitemapCatalog, collections sitemapCollections, base, path string, shell []byte) ([]byte, bool) {
+func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitemapCatalog, collections sitemapCollections, base, path string, shell []byte) ([]byte, int) {
 	var title, description, image string
 	if slug := landingSlug(path, "/catalog/"); slug != "" && repository != nil {
 		items, err := repository.ListCategories(ctx)
 		if err != nil {
 			logger.Error("category landing meta failed", "error", err)
-			return shell, false
+			return shell, http.StatusServiceUnavailable
 		}
 		for _, item := range items {
 			if item.Slug == slug {
@@ -297,7 +297,7 @@ func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitema
 		items, err := collections.ListCollections(ctx)
 		if err != nil {
 			logger.Error("collection landing meta failed", "error", err)
-			return shell, false
+			return shell, http.StatusServiceUnavailable
 		}
 		for _, item := range items {
 			if item.Slug == slug {
@@ -314,7 +314,7 @@ func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitema
 		}
 	}
 	if title == "" {
-		return shell, false
+		return shell, http.StatusNotFound
 	}
 	meta := routeMeta{Title: title + " — купить в Рязани с доставкой | Фикусин", Description: description, Index: true}
 	structured := map[string]any{"@context": "https://schema.org", "@graph": []any{
@@ -325,7 +325,7 @@ func withLandingMeta(ctx context.Context, logger *slog.Logger, repository sitema
 			map[string]any{"@type": "ListItem", "position": 3, "name": title, "item": base + path},
 		}},
 	}}
-	return applyRouteMeta(base, path, shell, meta, structured, image), true
+	return applyRouteMeta(base, path, shell, meta, structured, image), http.StatusOK
 }
 
 func writeShareImage(head *strings.Builder, base, image string) {
