@@ -59,10 +59,11 @@ test("Search puts results first and offers suggestions live", async ({page}) => 
   await expect(page.getByRole("heading", {name:"Результаты поиска"})).toBeVisible();
 });
 
-test("Product tabs keep all text mounted and show one section at a time live", async ({ page, request }) => {
+test("Product tabs keep all text mounted even when the detail API is unavailable live", async ({ page, request }) => {
   const response = await request.get("/api/v1/products/33");
   expect(response.ok()).toBeTruthy();
   const { product } = await response.json();
+  await page.route("**/api/v1/products/33", route => route.abort());
   await page.goto("/product/33");
   const tabs = page.getByRole("tablist", { name: "Разделы товара" });
   await expect(tabs).toBeVisible();

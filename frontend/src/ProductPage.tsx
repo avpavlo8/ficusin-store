@@ -53,19 +53,74 @@ function linkedProductTab(hash: string, product: ProductDetail): ProductTab | nu
   return null;
 }
 
+function normalizeProduct(item: ProductDetail): ProductDetail {
+  return {
+    ...item,
+    passport: item.passport || {},
+    importantWarnings: item.importantWarnings || [],
+    attributes: item.attributes || [],
+    images: item.images || [],
+    recommendations: item.recommendations || [],
+    variants: (item.variants || [])
+      .map((variant) => ({
+        ...variant,
+        images: variant.images || [],
+        attributes: variant.attributes || [],
+      }))
+      .sort(
+        (a, b) =>
+          (a.potDiameterCm ||
+            Number(a.label.match(/\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".")) ||
+            Infinity) -
+          (b.potDiameterCm ||
+            Number(b.label.match(/\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".")) ||
+            Infinity),
+      ),
+    reviews: (item.reviews || []).map((review) => ({
+      ...review,
+      photos: review.photos || [],
+      media: review.media || [],
+    })),
+    rating: Number(item.rating) || 0,
+    reviewsCount: Number(item.reviewsCount) || 0,
+  };
+}
+
+function readInitialProduct(slug: string): ProductDetail | null {
+  const data = document.getElementById("initial-product")?.textContent;
+  if (!data) return null;
+  try {
+    const product = JSON.parse(data) as ProductDetail | null;
+    return product?.id === slug ? normalizeProduct(product) : null;
+  } catch {
+    return null;
+  }
+}
+
+function initialProductTab(product: ProductDetail): ProductTab {
+  return (
+    linkedProductTab(window.location.hash, product) ??
+    (product.catalogSection === "plants" ? "about" : "characteristics")
+  );
+}
+
 export default function ProductPage({ slug }: { slug: string }) {
   const [categories, setCategories] = useState<
     Array<{ id: number; parentId: number | null; name: string; slug: string; sortOrder: number }>
   >([]);
-  const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [initialProduct] = useState(() => readInitialProduct(slug));
+  const [fetchedProduct, setFetchedProduct] = useState<ProductDetail | null>(null);
+  const product = initialProduct ?? fetchedProduct;
   const [selectedID, setSelectedID] = useState<number | null>(null);
   const [activeImage, setActiveImage] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [quantity, setQuantity] = useState(1);
-  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(() => window.location.hash === "#write-review");
 
-  const [activeTab, setActiveTab] = useState<ProductTab>("about");
+  const [activeTab, setActiveTab] = useState<ProductTab>(() =>
+    initialProduct ? initialProductTab(initialProduct) : "about",
+  );
   const linkedCareTarget = useRef<string | null>(null);
   const relatedTrack = useRef<HTMLDivElement>(null);
   const [relatedEdges, setRelatedEdges] = useState({ start: true, end: false });
@@ -92,68 +147,31 @@ export default function ProductPage({ slug }: { slug: string }) {
   const cartCount = Object.values(cart).reduce((sum, value) => sum + value, 0);
 
   useEffect(() => {
-    fetch(`/api/v1/products/${encodeURIComponent(slug)}`, { cache: "no-store" })
+    if (initialProduct) return;
+    const controller = new AbortController();
+    fetch(`/api/v1/products/${encodeURIComponent(slug)}`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
       .then(async (response) => {
         const body = (await response.json()) as { product?: ProductDetail; error?: string };
         if (!response.ok || !body.product) throw new Error(body.error || "Товар не найден");
         return body.product;
       })
       .then((item) => {
-        const normalized = {
-          ...item,
-          passport: item.passport || {},
-          importantWarnings: item.importantWarnings || [],
-          attributes: item.attributes || [],
-          variants: (item.variants || [])
-            .map((variant) => ({
-              ...variant,
-              images: variant.images || [],
-              attributes: variant.attributes || [],
-            }))
-            .sort(
-              (a, b) =>
-                (a.potDiameterCm ||
-                  Number(a.label.match(/\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".")) ||
-                  Infinity) -
-                (b.potDiameterCm ||
-                  Number(b.label.match(/\d+(?:[.,]\d+)?/)?.[0]?.replace(",", ".")) ||
-                  Infinity),
-            ),
-          reviews: (item.reviews || []).map((review) => ({
-            ...review,
-            photos: review.photos || [],
-            media: review.media || [],
-          })),
-          rating: Number(item.rating) || 0,
-          reviewsCount: Number(item.reviewsCount) || 0,
-        };
-        const requestedSKU = new URLSearchParams(window.location.search).get("sku");
-        setProduct(normalized);
-        setSelectedID(
-          normalized.variants.find((variant) => variant.sku === requestedSKU)?.id ??
-            normalized.variants[0]?.id ??
-            null,
-        );
-        setActiveImage(0);
+        if (controller.signal.aborted) return;
+        const normalized = normalizeProduct(item);
+        setFetchedProduct(normalized);
         setReviewOpen(window.location.hash === "#write-review");
-        setActiveTab(
-          linkedProductTab(window.location.hash, normalized) ??
-            (normalized.catalogSection === "plants" ? "about" : "characteristics"),
-        );
-        const viewed =
-          normalized.variants.find((variant) => variant.sku === requestedSKU) ??
-          normalized.variants[0];
-        track("view_item", {
-          productCode: normalized.id,
-          sku: viewed?.sku,
-          value: viewed?.price,
-          properties: { name: normalized.name, category: normalized.catalogSection },
-        });
+        setActiveTab(initialProductTab(normalized));
       })
-      .catch((reason) =>
-        setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар"),
-      );
-  }, [slug]);
+      .catch((reason) => {
+        if (!controller.signal.aborted) {
+          setError(reason instanceof Error ? reason.message : "Не удалось загрузить товар");
+        }
+      });
+    return () => controller.abort();
+  }, [initialProduct, slug]);
 
   useEffect(() => {
     fetch("/api/v1/categories")
@@ -177,10 +195,20 @@ export default function ProductPage({ slug }: { slug: string }) {
     return order(children.get(null) || []).map(branch);
   }, [categories]);
 
-  const variant = useMemo(
-    () => product?.variants.find((item) => item.id === selectedID) || product?.variants[0],
-    [product, selectedID],
-  );
+  const [requestedSKU] = useState(() => new URLSearchParams(window.location.search).get("sku"));
+  const requestedVariant =
+    product?.variants.find((item) => item.sku === requestedSKU) ?? product?.variants[0];
+  const variant = product?.variants.find((item) => item.id === selectedID) ?? requestedVariant;
+
+  useEffect(() => {
+    if (!product) return;
+    track("view_item", {
+      productCode: product.id,
+      sku: requestedVariant?.sku,
+      value: requestedVariant?.price,
+      properties: { name: product.name, category: product.catalogSection },
+    });
+  }, [product, requestedVariant]);
 
   useEffect(() => {
     if (!variant) return;
@@ -392,7 +420,7 @@ export default function ProductPage({ slug }: { slug: string }) {
           {product.recommendations.map((item) => (
             <a
               className="product-card related-card"
-              href={`/product/${item.id}`}
+              href={`/product/${encodeURIComponent(item.id)}`}
               onClick={() =>
                 track("select_item", {
                   productCode: item.id,

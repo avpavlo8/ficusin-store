@@ -57,12 +57,12 @@ continue to open the care tab and scroll to the requested topic.
 
 This removes the click requirement for content discovery in the rendered DOM.
 The initial HTTP response also includes a readable product body inside the
-React root: description, plant care/passport, warnings, FAQ and public reviews.
-This is ordinary visible HTML for every user agent, not a bot-only response or
-a `noscript` block. React replaces it with the interactive page on startup, so
-the enhanced page has no duplicate fallback text. Product data comes from the
-same catalogue lookup that supplies metadata; no extra database call is needed.
-This removes the JavaScript requirement for primary catalogue text, while the
-interactive tabs keep all panels mounted after product data loads. It does not
-guarantee indexing or ranking. The production smoke checks both JavaScript-free
-content and normal tab behavior against current public catalogue data.
+React root with the description, plant care/passport, warnings, FAQ and public
+reviews. The server sends the same HTML to every visitor. The catalogue lookup
+supplies the HTML, metadata and embedded public product data. React uses that
+data on its first render and fetches the detail API only if the HTML lacks
+usable product data, as in local Vite preview. A separate detail API failure
+therefore leaves a published card usable when its HTML has loaded.
+
+The production smoke checks the readable page with JavaScript disabled and
+the interactive tabs with the detail API blocked.

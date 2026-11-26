@@ -79,7 +79,8 @@ export default function Root() {
   if (path.startsWith("/care/"))
     return withFooter(<CareArticlePage slug={path.slice("/care/".length)} />);
   if (path.startsWith("/product/")) {
-    return withFooter(<ProductPage slug={decodeURIComponent(path.slice("/product/".length))} />);
+    const slug = decodeURIComponent(path.slice("/product/".length));
+    return withFooter(<ProductPage key={slug} slug={slug} />);
   }
   if (path.startsWith("/account/orders/")) {
     return withFooter(
