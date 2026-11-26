@@ -21,7 +21,7 @@ func TestOzonMeasurementWaitsForProcurementPriceWithoutAttemptOnLiveDatabase(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	must := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -44,17 +44,29 @@ func TestOzonMeasurementWaitsForProcurementPriceWithoutAttemptOnLiveDatabase(t *
 VALUES($1,$2,'ozon',$3,2500,'queued',$4)`, batch, line, "offer-"+key, variant)
 	must(err)
 	_, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,execution_mode,fingerprint,status,payload,next_attempt_at)
-VALUES($1,'ozon','mock','receipt-measurements','prepared',jsonb_build_object('variantId',$1::bigint,'productId',$2::bigint,'procurementMeasurements',TRUE,'existingId',$3::text,'action','update'),'2001-01-01')`, variant, product, "offer-"+key)
+VALUES($1,'ozon','live','receipt-measurements','prepared',jsonb_build_object('variantId',$1::bigint,'productId',$2::bigint,'procurementMeasurements',TRUE,'existingId',$3::text,'action','update'),'2001-01-01')`, variant, product, "offer-"+key)
 	must(err)
 	must(tx.Commit(ctx))
 	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM procurement_orders WHERE id=$1`, purchase)
-		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, product)
-		_, _ = pool.Exec(ctx, `DELETE FROM procurement_suppliers WHERE id=$1`, supplier)
-		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actor)
+		if _, err := pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id=$1`, variant); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM procurement_orders WHERE id=$1`, purchase); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, product); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM procurement_suppliers WHERE id=$1`, supplier); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actor); err != nil {
+			t.Error(err)
+		}
 	})
 	publisher := &channelRecorder{}
-	must(PublicationStep(ctx, pool, publisher, "mock"))
+	// Do not compete for a lease with the CRM acceptance app's mock worker.
+	must(PublicationStep(ctx, pool, publisher, "live"))
 	var attempts int
 	var message string
 	var delayed bool

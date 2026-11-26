@@ -22,7 +22,7 @@ func TestCombinedProcurementApprovalScopesPricesAndPhysicalMeasurementsOnLiveDat
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	t.Cleanup(pool.Close)
 	must := func(err error) {
 		t.Helper()
 		if err != nil {
@@ -44,11 +44,16 @@ SELECT $1,$2,'invoice','EUR','ready_to_receive',now(),version FROM procurement_p
 	must(tx.QueryRow(ctx, `INSERT INTO procurement_documents(supplier_id,procurement_order_id,file_name,content_type,sha256,object_key,size_bytes,parser_kind,currency) VALUES($1,$2,'fixture.pdf','application/pdf',$3,$4,20,'holland_packing_list','EUR') RETURNING id`, supplier, purchase, fmt.Sprintf("%x", sha256.Sum256([]byte(key))), "fixtures/"+key).Scan(&document))
 	must(tx.QueryRow(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,procurement_document_id,canonical_variant_id,raw_name,ordered_qty,invoiced_qty,unit_price,match_status,reconciliation_status,pot_diameter_cm,height_cm,dimensions_reviewed,proposed_retail_rub,baseline_site_price_minor,retail_override_rub,channel_quotes)
 VALUES($1,$2,$3,'Фикус',2,2,7,'confirmed','matched',14.5,31.25,TRUE,2000,100000,2000,'{"site":{"priceRub":2000,"contributionRub":1000,"breakEvenRub":300}}') RETURNING id`, purchase, document, variant).Scan(&line))
-	for _, v := range []struct{ channel, mode, target string }{{"wb", "mock", key}, {"ozon", "mock", "offer-" + key}} {
-		_, err := tx.Exec(ctx, `INSERT INTO catalog_editor_remote_links(variant_id,channel,execution_mode,remote_id,offer_id) VALUES($1,$2,$3,$4,$5)`, variant, v.channel, v.mode, key, "offer-"+key)
+	// The application runs a mock worker in CRM acceptance. Its lease cannot
+	// consume these fixtures while the live channel selection is under test.
+	_, err = tx.Exec(ctx, `INSERT INTO product_external_ids(product_id,variant_id,provider,id_type,external_id,status)
+VALUES($1,$2,'wildberries','nm_id',$3,'active'),($1,$2,'ozon','offer_id',$4,'active')`, product, variant, key, "offer-"+key)
+	must(err)
+	for _, v := range []struct{ channel, target string }{{"wb", key}, {"ozon", "offer-" + key}} {
+		_, err := tx.Exec(ctx, `INSERT INTO catalog_editor_remote_links(variant_id,channel,execution_mode,remote_id,offer_id) VALUES($1,$2,'live',$3,$4)`, variant, v.channel, key, "offer-"+key)
 		must(err)
 		_, err = tx.Exec(ctx, `INSERT INTO catalog_editor_publications(variant_id,channel,execution_mode,fingerprint,status,payload,progress)
-VALUES($1,$2,$3,'prior','synced',jsonb_build_object('variantId',$1::bigint,'productId',$4::bigint,'action','update','existingId',$5::text),jsonb_build_object('ids',jsonb_build_object('productId',$6::text,'offerId',$7::text)))`, variant, v.channel, v.mode, product, v.target, key, "offer-"+key)
+VALUES($1,$2,'live','prior','synced',jsonb_build_object('variantId',$1::bigint,'productId',$3::bigint,'action','update','existingId',$4::text),jsonb_build_object('ids',jsonb_build_object('productId',$5::text,'offerId',$6::text)))`, variant, v.channel, product, v.target, key, "offer-"+key)
 		must(err)
 	}
 	for channel, id := range map[string]*int64{"site": &site, "wb": &wb, "saby_price": &saby} {
@@ -60,10 +65,30 @@ VALUES($1,$3,'site',$4,2000),($2,$3,'saby_price',$4,0)`, site, saby, line, key)
 	must(err)
 	must(tx.Commit(ctx))
 	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM procurement_orders WHERE id=$1`, purchase)
-		_, _ = pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, product)
-		_, _ = pool.Exec(ctx, `DELETE FROM procurement_suppliers WHERE id=$1`, supplier)
-		_, _ = pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID)
+		if _, err := pool.Exec(ctx, `DELETE FROM catalog_editor_publications WHERE variant_id=$1`, variant); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM catalog_editor_remote_links WHERE variant_id=$1`, variant); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM procurement_orders WHERE id=$1`, purchase); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM procurement_documents WHERE id=$1`, document); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM products WHERE id=$1`, product); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM procurement_suppliers WHERE id=$1`, supplier); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM admin_audit_log WHERE actor_customer_id=$1`, actorID); err != nil {
+			t.Error(err)
+		}
+		if _, err := pool.Exec(ctx, `DELETE FROM customers WHERE id=$1`, actorID); err != nil {
+			t.Error(err)
+		}
 	})
 	store := NewPostgresStore(pool)
 	actor := Actor{CustomerID: actorID, Role: "owner"}
