@@ -5,8 +5,9 @@ import { mockApi } from "./helpers";
 test("@desktop @phone карточка из HTML работает при недоступном API товара", async ({ page }) => {
   await mockApi(page);
   const product = {
-    id: "161", name: "Фаленопсис", catalogSection: "plants", images: [],
+    id: "161", name: "Фаленопсис", catalogSection: "plants", images: ["/assets/photo<front>.svg"],
     description: "Орхидея с тремя цветоносами.", passport: { watering: "Полив после подсыхания" },
+    recommendations: [{ id: "related/example", name: "Другая орхидея", price: 600, stock: 1 }],
     variants: [
       { id: 1, sku: "small", label: "D12", potDiameterCm: 12, price: 750, stock: 2 },
       { id: 2, sku: "large", label: "D14", potDiameterCm: 14, price: 1290, stock: 3 },
@@ -20,6 +21,9 @@ test("@desktop @phone карточка из HTML работает при нед�
       .replace('<div id="root"></div>', '<div id="root"><main data-product-html><h1>Фаленопсис</h1></main></div>');
     await route.fulfill({ response, body });
   });
+  await page.route("**/assets/photo%3Cfront%3E.svg", route => route.fulfill({
+    contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>',
+  }));
   let detailRequests = 0;
   await page.route("**/api/v1/products/161", route => {
     detailRequests += 1;
@@ -28,6 +32,8 @@ test("@desktop @phone карточка из HTML работает при нед�
 
   await page.goto("/product/161?sku=large#plant-watering");
   await expect(page.getByRole("heading", { level: 1, name: "Фаленопсис" })).toBeVisible();
+  await expect(page.locator(".pdp-photo-track img").first()).toHaveAttribute("src", "/assets/photo%3Cfront%3E.svg");
+  await expect(page.getByRole("link", { name: /Другая орхидея/ })).toHaveAttribute("href", "/product/related%2Fexample");
   await expect(page.locator(".pdp-price-row > strong")).toHaveText("1 290 ₽");
   await expect(page.getByRole("tabpanel")).toContainText("Полив после подсыхания");
   await page.getByRole("button", { name: /Ø 12 см/ }).click();

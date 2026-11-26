@@ -552,7 +552,7 @@ func withProductMeta(
 	if initialProduct, err := json.Marshal(detail); err == nil {
 		head.WriteString(`<script id="initial-product" type="application/json">` + string(initialProduct) + "</script>\n")
 	} else {
-		logger.Error("initial product JSON failed", "slug", slug, "error", err)
+		logger.Error("initial product JSON failed", "error", err)
 	}
 
 	page := titlePattern.ReplaceAllLiteral(shell, []byte("<title>"+html.EscapeString(title)+"</title>"))

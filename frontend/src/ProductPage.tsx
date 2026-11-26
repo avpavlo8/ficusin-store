@@ -420,7 +420,7 @@ export default function ProductPage({ slug }: { slug: string }) {
           {product.recommendations.map((item) => (
             <a
               className="product-card related-card"
-              href={`/product/${item.id}`}
+              href={`/product/${encodeURIComponent(item.id)}`}
               onClick={() =>
                 track("select_item", {
                   productCode: item.id,
