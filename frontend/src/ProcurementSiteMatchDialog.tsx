@@ -47,12 +47,17 @@ export default function ProcurementSiteMatchDialog({
     };
   }, [query, notify]);
   const select = async (variantId: number) => {
-    if (!line.matchAlias) return;
     setSaving(true);
     try {
-      await api(`/api/v1/admin/procurement/aliases/${line.matchAlias.id}`, {
+      const match = line.matchAlias
+        ? {
+            endpoint: `aliases/${line.matchAlias.id}`,
+            body: { matchStatus: "confirmed", variantId, orderLineId: line.id },
+          }
+        : { endpoint: `order-lines/${line.id}`, body: { siteVariantId: variantId } };
+      await api(`/api/v1/admin/procurement/${match.endpoint}`, {
         method: "PATCH",
-        body: JSON.stringify({ matchStatus: "confirmed", variantId, orderLineId: line.id }),
+        body: JSON.stringify(match.body),
       });
       onSaved();
     } catch (failure) {

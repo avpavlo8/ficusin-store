@@ -2,7 +2,11 @@ package procurement
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func (store *PostgresStore) SearchSiteNomenclature(ctx context.Context, query string) ([]NomenclatureCandidate, error) {
@@ -27,4 +31,36 @@ func (store *PostgresStore) SearchSiteNomenclature(ctx context.Context, query st
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func linkProcurementSiteLine(ctx context.Context, tx pgx.Tx, actor Actor, lineID, variantID int64) error {
+	var aliasID, supplierID int64
+	var line ParsedLine
+	var seenAt *time.Time
+	err := tx.QueryRow(ctx, `SELECT COALESCE(l.supplier_alias_id,0),o.supplier_id,
+  COALESCE(NULLIF(l.invoice_raw_name,''),l.raw_name),
+  COALESCE(NULLIF(l.invoice_supplier_article,''),l.supplier_article,''),
+  l.pot_diameter_cm::float8,l.height_cm::float8,o.document_date
+FROM procurement_order_lines l JOIN procurement_orders o ON o.id=l.procurement_order_id
+WHERE l.id=$1 AND NOT l.invoice_excluded AND l.reconciliation_status NOT IN ('missing','superseded')
+  AND l.invoiced_qty>0 AND l.receiving_mode IN ('catalog','awaiting_catalog')
+  AND o.status IN ('review','invoice_received','ready_to_receive')`, lineID).Scan(
+		&aliasID, &supplierID, &line.RawName, &line.SupplierArticle, &line.PotDiameterCM, &line.HeightCM, &seenAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read procurement line for site card: %w", err)
+	}
+	if aliasID == 0 {
+		aliasID, _, _, err = upsertAlias(ctx, tx, supplierID, line, seenAt)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE procurement_order_lines SET supplier_alias_id=$2 WHERE id=$1`, lineID, aliasID); err != nil {
+			return fmt.Errorf("attach supplier alias to procurement line: %w", err)
+		}
+	}
+	_, err = resolveAliasTx(ctx, tx, actor, aliasID, AliasResolution{MatchStatus: "confirmed", VariantID: variantID, OrderLineID: lineID})
+	return err
 }

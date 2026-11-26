@@ -348,6 +348,7 @@ type OrderStatusUpdate struct {
 }
 
 type OrderLineUpdate struct {
+	SiteVariantID        *int64                  `json:"siteVariantId,omitempty"`
 	ChannelPrices        map[string]int64        `json:"channelPrices"`
 	RetailOverrideRUB    *int64                  `json:"retailOverrideRub"`
 	ChannelCosts         map[string]ChannelCosts `json:"channelCosts"`

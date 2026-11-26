@@ -2714,15 +2714,14 @@ export function ProcurementOrderDetailDialog({
                                 {(needsSiteCard(line) ||
                                   line.receivingMode === "awaiting_catalog" ||
                                   (needsDimensionReview(line) &&
-                                    (!line.receivingMode || line.receivingMode === "catalog"))) &&
-                                  line.matchAlias && (
-                                    <button
-                                      disabled={closed || saving}
-                                      onClick={() => setMatchingLine(line)}
-                                    >
-                                      Выбрать карточку сайта
-                                    </button>
-                                  )}
+                                    (!line.receivingMode || line.receivingMode === "catalog"))) && (
+                                  <button
+                                    disabled={closed || saving}
+                                    onClick={() => setMatchingLine(line)}
+                                  >
+                                    Выбрать карточку сайта
+                                  </button>
+                                )}
                                 {(line.reconciliationStatus === "changed" ||
                                   lineFilter === "calculation_data") &&
                                   line.comparisonMismatch &&
@@ -2856,7 +2855,7 @@ export function ProcurementOrderDetailDialog({
                             <td>
                               <div className="procurement-inline-actions">
                                 <button
-                                  disabled={closed || saving || !line.matchAlias}
+                                  disabled={closed || saving}
                                   onClick={() => setMatchingLine(line)}
                                 >
                                   Выбрать карточку сайта
@@ -3084,7 +3083,7 @@ export function ProcurementOrderDetailDialog({
           />
         </Suspense>
       )}
-      {matchingLine?.matchAlias && (
+      {matchingLine && (
         <Suspense fallback={<p role="status">Загружаем каталог сайта…</p>}>
           <ProcurementSiteMatchDialog
             line={matchingLine}

@@ -782,6 +782,17 @@ func (store *PostgresStore) ResolveAlias(
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
 
+	item, err := resolveAliasTx(ctx, tx, actor, aliasID, input)
+	if err != nil {
+		return AliasReview{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AliasReview{}, fmt.Errorf("commit procurement alias resolution: %w", err)
+	}
+	return item, nil
+}
+
+func resolveAliasTx(ctx context.Context, tx pgx.Tx, actor Actor, aliasID int64, input AliasResolution) (AliasReview, error) {
 	var siteOrderID int64
 	if input.VariantID > 0 {
 		err := tx.QueryRow(ctx, `SELECT o.id FROM procurement_orders o JOIN procurement_order_lines l ON o.id=l.procurement_order_id
@@ -996,9 +1007,6 @@ func (store *PostgresStore) ResolveAlias(
 	}
 	if err := audit(ctx, tx, actor, "procurement.alias.resolve", "procurement_supplier_alias", aliasID, item); err != nil {
 		return AliasReview{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return AliasReview{}, fmt.Errorf("commit procurement alias resolution: %w", err)
 	}
 	return item, nil
 }
@@ -1327,6 +1335,15 @@ func (store *PostgresStore) UpdateOrderLine(ctx context.Context, actor Actor, li
 	}
 	if err != nil {
 		return OrderDetail{}, fmt.Errorf("lock procurement line: %w", err)
+	}
+	if input.SiteVariantID != nil {
+		if err := linkProcurementSiteLine(ctx, tx, actor, lineID, *input.SiteVariantID); err != nil {
+			return OrderDetail{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return OrderDetail{}, fmt.Errorf("commit procurement site card: %w", err)
+		}
+		return store.OrderDetail(ctx, orderID)
 	}
 	if input.ChannelCosts != nil || input.ChannelPrices != nil || input.RetailOverrideRUB != nil || input.PotDiameterCM != nil || input.HeightCM != nil || input.LoadUnit != nil {
 		var busy bool

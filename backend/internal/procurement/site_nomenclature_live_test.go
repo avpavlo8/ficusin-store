@@ -65,4 +65,18 @@ func TestInvoiceOnlyLineLinksToExactSiteVariantWithoutSaby(t *testing.T) {
 	if len(batch.Items) != 1 || batch.Items[0].Channel != "site" || batch.Items[0].LineID != line {
 		t.Fatalf("site-only variant missing from price proposal: %+v", batch.Items)
 	}
+
+	// Old invoice rows may predate the supplier alias link. They can still be
+	// matched through the same resolution transaction as new imports.
+	var legacyLine int64
+	must(pool.QueryRow(ctx, `INSERT INTO procurement_order_lines(procurement_order_id,raw_name,ordered_qty,invoiced_qty,unit_price,reconciliation_status,match_status)
+VALUES($1,'Legacy invoice plant',0,2,500,'added','new_product') RETURNING id`, order).Scan(&legacyLine))
+	_, err = store.UpdateOrderLine(ctx, Actor{CustomerID: actor}, legacyLine, OrderLineUpdate{SiteVariantID: &variant})
+	must(err)
+	must(pool.QueryRow(ctx, `SELECT comparison_accepted AND match_status='confirmed' AND canonical_variant_id=$2
+  AND supplier_alias_id IS NOT NULL AND saby_id IS NULL FROM procurement_order_lines WHERE id=$1`, legacyLine, variant).Scan(&accepted))
+	if !accepted {
+		t.Fatal("legacy invoice-only row without an alias could not select the site variant")
+	}
+
 }

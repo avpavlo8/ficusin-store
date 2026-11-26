@@ -8750,6 +8750,10 @@ components:
           anyOf:
             - type: integer
             - type: "null"
+        siteVariantId:
+          description: A site catalog variant to link to this invoice line. Send separately from other line changes.
+          type: integer
+          minimum: 1
       type: object
     procurement.OrderStatusUpdate:
       properties:
