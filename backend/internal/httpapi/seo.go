@@ -547,6 +547,13 @@ func withProductMeta(
 	if encoded != nil {
 		head.WriteString(`<script type="application/ld+json">` + string(encoded) + "</script>\n")
 	}
+	// The public product data is already loaded for the HTML and metadata.
+	// Marshal escapes HTML-sensitive characters inside the inert data block.
+	if initialProduct, err := json.Marshal(detail); err == nil {
+		head.WriteString(`<script id="initial-product" type="application/json">` + string(initialProduct) + "</script>\n")
+	} else {
+		logger.Error("initial product JSON failed", "slug", slug, "error", err)
+	}
 
 	page := titlePattern.ReplaceAllLiteral(shell, []byte("<title>"+html.EscapeString(title)+"</title>"))
 	page = descriptionPattern.ReplaceAllLiteral(
@@ -555,7 +562,7 @@ func withProductMeta(
 	page = bytes.Replace(page, []byte("</head>"), []byte(head.String()+"</head>"), 1)
 	// Serve the same public catalogue text to every visitor, without requiring
 	// JavaScript or a bot-specific response. React replaces this initial body
-	// with the interactive product page and its preloaded tab panels.
+	// with the interactive product page using the embedded data.
 	page = bytes.Replace(page, []byte(`<div id="root"></div>`), []byte(`<div id="root">`+productHTML(detail)+`</div>`), 1)
 	return page, canonicalSlug, nil
 }

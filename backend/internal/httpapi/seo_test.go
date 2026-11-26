@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -250,7 +251,8 @@ func TestProductMetaLeavesShellWhenMissing(t *testing.T) {
 
 func TestProductHTMLIsAvailableWithoutJavaScriptAndEscapesCatalogueText(t *testing.T) {
 	detail := catalog.ProductDetail{ID: "33", Name: "Антуриум", CatalogSection: "plants",
-		Description: `Описание <script>alert("x")</script>`, CareInstructions: "Общий уход",
+		Description: `Описание </script><script>alert("x")</script>`, CareInstructions: "Общий уход",
+		Variants: []catalog.Variant{{SKU: "33-large", Price: 1290, Stock: 3}},
 		Passport: catalog.PlantPassport{Lighting: "Яркий рассеянный свет", Watering: "Полив после подсыхания", Pests: "Проверяйте листья",
 			FAQ: []catalog.FAQItem{{Question: "Как поливать?", Answer: "Без застоя воды"}}},
 		ImportantWarnings: []string{"Беречь от животных"}, Reviews: []catalog.Review{{Author: "Покупатель", Text: `Отзыв <img src=x onerror=alert(1)>`}},
@@ -261,7 +263,7 @@ func TestProductHTMLIsAvailableWithoutJavaScriptAndEscapesCatalogueText(t *testi
 		t.Fatal(err)
 	}
 	body := strings.SplitN(string(page), "</head>", 2)[1]
-	for _, want := range []string{`data-product-html`, "Антуриум", "Общий уход", "Яркий рассеянный свет", "Полив после подсыхания", "Проверяйте листья", "Как поливать?", "Без застоя воды", "Беречь от животных", "Покупатель", "Отзыв &lt;img", "Описание &lt;script&gt;"} {
+	for _, want := range []string{`data-product-html`, "Антуриум", "Общий уход", "Яркий рассеянный свет", "Полив после подсыхания", "Проверяйте листья", "Как поливать?", "Без застоя воды", "Беречь от животных", "Покупатель", "Отзыв &lt;img", "Описание &lt;/script&gt;&lt;script&gt;"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("initial body is missing %q", want)
 		}
@@ -270,6 +272,18 @@ func TestProductHTMLIsAvailableWithoutJavaScriptAndEscapesCatalogueText(t *testi
 		if strings.Contains(body, forbidden) {
 			t.Errorf("unsafe or hidden initial body: %q", forbidden)
 		}
+	}
+	_, script, found := strings.Cut(string(page), `<script id="initial-product" type="application/json">`)
+	if !found || strings.Contains(string(page), `<script>alert("x")</script>`) {
+		t.Fatal("expected an inert, safely embedded product payload")
+	}
+	data, _, _ := strings.Cut(script, "</script>")
+	var initial catalog.ProductDetail
+	if err := json.Unmarshal([]byte(data), &initial); err != nil {
+		t.Fatalf("decode initial product: %v", err)
+	}
+	if initial.ID != detail.ID || initial.Description != detail.Description || len(initial.Variants) != 1 || initial.Variants[0].SKU != "33-large" || initial.Variants[0].Stock != 3 {
+		t.Fatalf("initial product does not match the catalogue detail: %+v", initial)
 	}
 }
 

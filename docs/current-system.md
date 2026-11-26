@@ -87,7 +87,7 @@ worker и затем публикует готовый router. Применён�
 | Сценарий | Вход и код | Основные зависимости и проверка |
 |---|---|---|
 | Главная/каталог | `StorefrontPage`, `CatalogSearch`, `internal/catalog` | Категории, фасеты, подборки, наличие, серверная популярность; browser navigation/filter tests |
-| Карточка товара | `/product/:slug`, `ProductPage`, `product/*` | Выбор SKU и фото, характеристики, уход, отзывы, связанные товары; PDP/plant-care tests |
+| Карточка товара | `/product/:slug`, `ProductPage`, `product/*` | Серверный HTML и данные карточки в одном ответе; выбор SKU и фото, характеристики, уход, отзывы, связанные товары; PDP/plant-care tests |
 | Материалы по уходу | `/care/:slug`, `care/CareArticlePage` | Разрешённые статьи, SEO/sitemap, действующий набор `articles-v4`; care-articles tests |
 | Уценённые растения | `DiscountPlantsPage`, API возвратов/витрины | Сохранённые фото/причины уценки, текущая доступность; storefront return tests |
 | Избранное | `FavoritesPage`, `lib/favorites` | Локальный список, повторная сверка доступных товаров; не источник корзины |
